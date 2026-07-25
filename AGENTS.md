@@ -15,11 +15,11 @@ standard-library names, generated symbols and conventional files such as
 `LICENSE`.
 
 Read `README.md`, `go.mod`, `.golangci.yml`, `.github/` and the verification
-scripts before reviewing changes. Apply `COMMIT_POLICY.md` when creating,
-reviewing or pushing repository history. Apply `PROGRAMMING_POLICY.md` to every
-source and test change. Do not treat either policy as enforced unless the
-applicable repository check covers the rule. Apply `LINTER_POLICY.md` whenever
-adding, configuring, suppressing, replacing or removing an analyser.
+scripts before reviewing changes. Apply `policies/commit.md` when creating,
+reviewing or pushing repository history. Apply `policies/programming.md` to
+every source and test change. Do not treat either policy as enforced unless
+the applicable repository check covers the rule. Apply `policies/linting.md`
+whenever adding, configuring, suppressing, replacing or removing an analyser.
 
 ## Required Review Behaviour
 - Trace changed behaviour through its real callers, boundaries and tests.
