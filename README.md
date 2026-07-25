@@ -21,6 +21,9 @@ Run the local gate:
 bash ./.github/scripts/devcheck.sh
 ```
 
+Rust verification requires `cargo-audit 0.22.2`, `cargo-deny 0.20.2` and
+`cargo-llvm-cov 0.8.7`. CI installs those exact versions.
+
 Optional output and fuzz controls:
 ```sh
 DEVCHECK_OUTPUT=failed bash ./.github/scripts/devcheck.sh

@@ -25,18 +25,23 @@ jobs:
           - name: Linux AMD64
             runner: ubuntu-24.04
             currency: 'true'
+            supply-chain: 'true'
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
             currency: 'false'
+            supply-chain: 'false'
           - name: Windows AMD64
             runner: windows-2025
             currency: 'false'
+            supply-chain: 'false'
           - name: macOS ARM64
             runner: macos-15
             currency: 'false'
+            supply-chain: 'false'
           - name: macOS Intel
             runner: macos-15-intel
             currency: 'false'
+            supply-chain: 'false'
     steps:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,11 +52,25 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Setup Rust
+        uses: taiki-e/install-action@3d7d7cd5ac7f994c1892ae0c06165095b9139094 # v2.85.1
+        with:
+          tool: |
+            rust@1.94.1 + rustfmt + clippy + llvm-tools-preview
+            cargo-llvm-cov@0.8.7
+      - name: Setup Rust Security
+        if: matrix.supply-chain == 'true'
+        uses: taiki-e/install-action@3d7d7cd5ac7f994c1892ae0c06165095b9139094 # v2.85.1
+        with:
+          tool: |
+            cargo-audit@0.22.2
+            cargo-deny@0.20.2
       - name: Verify
         shell: bash
         env:
           DEVCHECK_CURRENCY: ${{ matrix.currency }}
           DEVCHECK_OUTPUT: failed
+          DEVCHECK_SUPPLY_CHAIN: ${{ matrix.supply-chain }}
         run: bash ./.github/scripts/devcheck.sh
 
   dependency-review:
