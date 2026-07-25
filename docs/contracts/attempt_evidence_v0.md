@@ -10,12 +10,17 @@ Each admitted attempt starts in a private pending bundle:
   admitted.json
   observation.json | recovery.json
   receipt.json
+
+<root>/.locks/<attempt-id>.lock
 ```
 
 The complete bundle is moved to `<root>/attempts/<attempt-id>/` before its
 publication marker is written.
 
 `admitted.json` retains the original input and exact request frame.
+Inspection decodes that frame and requires its attempt identity and input to
+match the duplicated admitted fields. The frame validator enforces the
+deadline, input length, input hash, mode and fixed operation limits.
 `observation.json` retains the worker identity, exact bounded streams, process
 outcome, protocol result, verification result and terminal status.
 `recovery.json` records an interrupted attempt as `indeterminate`.
@@ -26,6 +31,12 @@ publication marker. A bundle without a valid publication marker is not a
 durable terminal outcome.
 
 ## Atomicity and Recovery
+- Each attempt has a permanent lock file. Its operating-system exclusive lock
+  is held from staging through terminal publication.
+- Recovery uses a non-blocking acquisition and refuses an active attempt.
+  Process death releases the lock without a timestamp or stale-age guess.
+- Lock files are never replaced or removed, preventing ownership from splitting
+  across different filesystem objects.
 - Pending and published directory creation refuses duplicate identities.
 - Every record is flushed then published to its final name without replacement.
   Windows uses a write-through move; Unix-like systems link then sync the
