@@ -13,17 +13,30 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $root = (Resolve-Path -LiteralPath "$PSScriptRoot\..\..").Path
+$maximumOutputBytes = 1MB
+$shellDeadline = [TimeSpan]::FromMinutes(10)
+$outputLimit = $maximumOutputBytes + 1
 $checks = @(
     @{
         Name = 'Git Bash'
         File = 'C:\Program Files\Git\bin\bash.exe'
-        Arguments = @('--noprofile', '--norc', '-c', 'bash ./.github/scripts/devcheck.sh')
+        Arguments = @(
+            '--noprofile',
+            '--norc',
+            '-c',
+            'set -o pipefail; bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(cygpath "$CELESTIA_SHELL_LOG")"'
+        )
         Environment = @{}
     },
     @{
         Name = 'MSYS2'
         File = 'C:\msys64\usr\bin\bash.exe'
-        Arguments = @('--noprofile', '--norc', '-c', 'bash ./.github/scripts/devcheck.sh')
+        Arguments = @(
+            '--noprofile',
+            '--norc',
+            '-c',
+            'set -o pipefail; bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(cygpath "$CELESTIA_SHELL_LOG")"'
+        )
         Environment = @{
             CHERE_INVOKING = '1'
             MSYSTEM = 'UCRT64'
@@ -37,67 +50,119 @@ $checks = @(
             '-o',
             'igncr',
             '-c',
-            'cd "$(cygpath "$GITHUB_WORKSPACE")" && bash ./.github/scripts/devcheck.sh'
+            'cd "$(cygpath "$GITHUB_WORKSPACE")" || exit; set -o pipefail; bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(cygpath "$CELESTIA_SHELL_LOG")"'
         )
         Environment = @{}
     }
 )
 
-$running = foreach ($check in $checks) {
+foreach ($check in $checks) {
     if (-not (Test-Path -LiteralPath $check.File -PathType Leaf)) {
         throw "$($check.Name) executable does not exist: $($check.File)"
     }
+}
 
-    $start = [System.Diagnostics.ProcessStartInfo]::new()
-    $start.FileName = $check.File
-    $start.WorkingDirectory = $root
-    $start.UseShellExecute = $false
-    $start.RedirectStandardOutput = $true
-    $start.RedirectStandardError = $true
-    $start.Environment['DEVCHECK_CURRENCY'] = 'false'
-    $start.Environment['DEVCHECK_PROFILE'] = 'shell'
-    $start.Environment['GITHUB_WORKSPACE'] = $root
-    foreach ($entry in $check.Environment.GetEnumerator()) {
-        $start.Environment[$entry.Key] = $entry.Value
-    }
-    foreach ($argument in $check.Arguments) {
-        $start.ArgumentList.Add($argument)
+$logRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+    "celestia-shellcheck-$([guid]::NewGuid().ToString('N'))"
+)
+[System.IO.Directory]::CreateDirectory($logRoot) | Out-Null
+$running = @()
+$failure = $null
+$deadline = [DateTime]::UtcNow + $shellDeadline
+
+try {
+    foreach ($check in $checks) {
+        $log = Join-Path $logRoot "$($check.Name.Replace(' ', '-')).log"
+        $start = [System.Diagnostics.ProcessStartInfo]::new()
+        $start.FileName = $check.File
+        $start.WorkingDirectory = $root
+        $start.UseShellExecute = $false
+        $start.Environment['CELESTIA_SHELL_LOG'] = $log
+        $start.Environment['CELESTIA_SHELL_OUTPUT_LIMIT'] = [string]$outputLimit
+        $start.Environment['DEVCHECK_CURRENCY'] = 'false'
+        $start.Environment['DEVCHECK_PROFILE'] = 'shell'
+        $start.Environment['GITHUB_WORKSPACE'] = $root
+        foreach ($entry in $check.Environment.GetEnumerator()) {
+            $start.Environment[$entry.Key] = $entry.Value
+        }
+        foreach ($argument in $check.Arguments) {
+            $start.ArgumentList.Add($argument)
+        }
+
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $start
+        if (-not $process.Start()) {
+            throw "Failed to start $($check.Name)"
+        }
+        $running += [pscustomobject]@{
+            Name = $check.Name
+            Log = $log
+            Process = $process
+        }
     }
 
-    $process = [System.Diagnostics.Process]::new()
-    $process.StartInfo = $start
-    if (-not $process.Start()) {
-        throw "Failed to start $($check.Name)"
+    while (-not $failure) {
+        $allExited = $true
+        foreach ($run in $running) {
+            if (Test-Path -LiteralPath $run.Log -PathType Leaf) {
+                $length = (Get-Item -LiteralPath $run.Log).Length
+                if ($length -gt $maximumOutputBytes) {
+                    $failure = "$($run.Name) exceeded the output limit"
+                    break
+                }
+            }
+            if (-not $run.Process.HasExited) {
+                $allExited = $false
+            } elseif ($run.Process.ExitCode -ne 0) {
+                $failure = "$($run.Name) failed with exit code $($run.Process.ExitCode)"
+                break
+            }
+        }
+        if ($allExited -or $failure) {
+            break
+        }
+        if ([DateTime]::UtcNow -ge $deadline) {
+            $failure = 'Windows shell verification exceeded its deadline'
+            break
+        }
+        Start-Sleep -Milliseconds 100
     }
-    [pscustomobject]@{
-        Name = $check.Name
-        Process = $process
-        StandardOutput = $process.StandardOutput.ReadToEndAsync()
-        StandardError = $process.StandardError.ReadToEndAsync()
+} catch {
+    $failure = $_.Exception.Message
+} finally {
+    foreach ($run in $running) {
+        if (-not $run.Process.HasExited) {
+            try {
+                $run.Process.Kill($true)
+            } catch {
+                $failure = "$($run.Name) could not be terminated: $($_.Exception.Message)"
+            }
+        }
+    }
+    foreach ($run in $running) {
+        try {
+            if (-not $run.Process.WaitForExit(5000)) {
+                $failure = "$($run.Name) did not terminate"
+            }
+        } catch {
+            $failure = "$($run.Name) could not be reaped: $($_.Exception.Message)"
+        }
     }
 }
 
-$failed = $false
 foreach ($run in $running) {
-    $run.Process.WaitForExit()
-    $output = $run.StandardOutput.GetAwaiter().GetResult()
-    $errorOutput = $run.StandardError.GetAwaiter().GetResult()
     Write-Output "`n==> $($run.Name)"
-    if ($output) {
-        Write-Output $output.TrimEnd()
-    }
-    if ($errorOutput) {
-        [Console]::Error.WriteLine($errorOutput.TrimEnd())
-    }
-    if ($run.Process.ExitCode -ne 0) {
-        $failed = $true
-        [Console]::Error.WriteLine(
-            "$($run.Name) failed with exit code $($run.Process.ExitCode)"
-        )
+    if (Test-Path -LiteralPath $run.Log -PathType Leaf) {
+        $output = Get-Content -LiteralPath $run.Log -Raw
+        if ($output) {
+            Write-Output $output.TrimEnd()
+        }
     }
     $run.Process.Dispose()
 }
 
-if ($failed) {
+[System.IO.Directory]::Delete($logRoot, $true)
+if ($failure) {
+    [Console]::Error.WriteLine($failure)
     exit 1
 }
