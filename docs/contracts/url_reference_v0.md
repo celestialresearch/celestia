@@ -49,8 +49,11 @@ commit is deletion of this uncommitted slice and its generated test evidence.
 
 ## Input
 
-Input is exact UTF-8 with no byte-order mark. It must be between 1 and 4,096
-bytes. Literal NUL, ASCII controls and DEL are rejected. The rejected
+An original operation input is exact UTF-8 with no byte-order mark. It must be
+between 1 and 4,096 bytes. A transformed reference may be revalidated up to the
+8,192-byte output limit so idempotency and round trips remain defined after
+host markers expand the original input. Literal NUL, ASCII controls and DEL
+are rejected. The rejected
 whitespace scalars are U+0020, U+0085, U+00A0, U+1680, U+2000 through U+200A,
 U+2028, U+2029, U+202F, U+205F, U+3000 and U+FEFF. No trimming, Unicode
 normalisation, case folding or IDNA conversion occurs.
@@ -155,8 +158,8 @@ worker execution.
 
 The Go supervisor enforces:
 ```text
-input bytes             4,096
-output bytes            8,192
+original input bytes    4,096
+reference/output bytes  8,192
 request bytes          65,536
 response bytes         65,536
 standard-error bytes    8,192
