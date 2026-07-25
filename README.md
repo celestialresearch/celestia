@@ -1,6 +1,8 @@
 # Governed Deterministic Operation
 
-Celestia implementation repository. No operation has been implemented.
+Celestia implementation repository. One internal governed URL-reference
+operation is qualified locally on Windows. No public CLI exists and other
+platforms fail closed.
 
 The first operation is constrained by
 [`docs/contracts/url_reference_v0.md`](docs/contracts/url_reference_v0.md).

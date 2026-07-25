@@ -188,7 +188,7 @@ run_check() {
   mkdir -p .cache
   profile=$(mktemp ".cache/coverage.XXXXXX")
   report=$(mktemp ".cache/coverage-report.XXXXXX")
-  trap 'rm -f -- "$profile" "$report"' EXIT
+  trap 'rm -f -- "${profile:-}" "${report:-}"' EXIT
   create_report "$profile" "$report" "$packages"
   enforce_report "$report" || status=1
   mkdir -p -- "$(dirname -- "$cache_file")"

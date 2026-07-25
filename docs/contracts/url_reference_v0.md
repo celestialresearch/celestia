@@ -14,9 +14,9 @@ new operation or protocol version and fixtures for both versions.
 
 ## Change Brief
 
-Current behaviour is no implemented operation. The desired behaviour is one
-standard-library Go command that accepts `fang` or `defang` plus one admitted
-reference and prints output only after independent verification.
+Current behaviour is one internal Go use case that admits, stages, supervises,
+validates, independently verifies and durably records the operation on
+Windows. No public command exists.
 
 The complete flow is:
 ```text
@@ -25,7 +25,7 @@ CLI -> typed request -> admission -> attempt and nonce -> evidence staging
     -> terminal publication -> receipt -> CLI presentation
 ```
 
-The CLI owns parsing and presentation. Admission owns permission to execute.
+Any future CLI owns parsing and presentation. Admission owns permission to execute.
 The Rust worker owns only transformation. Go owns process supervision,
 protocol validation, verification, evidence publication and terminal outcome.
 No worker field grants authority or trust.
@@ -35,17 +35,16 @@ Only accepted attempts reach it. One supervisor call owns one worker process
 and joins its complete process tree before returning. Protocol and evidence
 formats are compatible only within their declared versions.
 
-Observed facts are that the repository contains no production operation and
-that native containment remains unqualified. The selected options are the
-standard-library CLI, strict byte-preserving grammar, one-shot JSON protocol
-and per-attempt filesystem bundles. Cobra, permissive normalisation, SQLite
-and a persistent worker add no demonstrated correctness benefit in this slice.
+The selected options are a future standard-library CLI, strict byte-preserving
+grammar, one-shot JSON protocol and per-attempt filesystem bundles. Cobra,
+permissive normalisation, SQLite and a persistent worker add no demonstrated
+correctness benefit in this slice.
 
-Implementation may begin only after platform containment is selected and
-tested. Proof requires table and property tests for grammar and transformation,
+Windows containment and attempt evidence are defined in
+`windows_containment_v0.md` and `attempt_evidence_v0.md`. Other platforms fail
+closed. Proof requires table and property tests for grammar and transformation,
 hostile worker fixtures, protocol fuzzing, interruption and recovery tests,
-race-tested process cleanup and native platform evidence. Rollback before
-commit is deletion of this uncommitted slice and its generated test evidence.
+race-tested process cleanup and native platform evidence.
 
 ## Input
 
@@ -189,6 +188,9 @@ fixtures that attempt an outbound socket, credential-store access, absolute
 filesystem access, a child and grandchild process, memory exhaustion and
 survival after cancellation. The profile must deny every attempt and prove
 complete owned-process cleanup before that platform can enable the operation.
+
+The selected Windows profile is defined in
+[`windows_containment_v0.md`](windows_containment_v0.md).
 
 ## Request Envelope
 
