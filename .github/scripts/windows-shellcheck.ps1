@@ -24,7 +24,7 @@ $checks = @(
             '--noprofile',
             '--norc',
             '-c',
-            'set -o pipefail; /usr/bin/bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(cygpath "$CELESTIA_SHELL_LOG")"'
+            'set -o pipefail; /usr/bin/bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(/usr/bin/cygpath "$CELESTIA_SHELL_LOG")"'
         )
         Environment = @{}
     },
@@ -35,7 +35,7 @@ $checks = @(
             '--noprofile',
             '--norc',
             '-c',
-            'set -o pipefail; /usr/bin/bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(cygpath "$CELESTIA_SHELL_LOG")"'
+            'set -o pipefail; /usr/bin/bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(/usr/bin/cygpath "$CELESTIA_SHELL_LOG")"'
         )
         Environment = @{
             CHERE_INVOKING = '1'
@@ -50,7 +50,7 @@ $checks = @(
             '-o',
             'igncr',
             '-c',
-            'cd "$(cygpath "$GITHUB_WORKSPACE")" || exit; set -o pipefail; /usr/bin/bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(cygpath "$CELESTIA_SHELL_LOG")"'
+            'cd "$(/usr/bin/cygpath "$GITHUB_WORKSPACE")" || exit; set -o pipefail; /usr/bin/bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(/usr/bin/cygpath "$CELESTIA_SHELL_LOG")"'
         )
         Environment = @{}
     }
