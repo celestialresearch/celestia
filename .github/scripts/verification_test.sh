@@ -248,8 +248,17 @@ EOF
 
   repo_dir="$work_dir/repo"
   mkdir -p "$repo_dir"
-  git -C "$root" archive HEAD | tar -x -C "$repo_dir"
-  cp "$root"/.github/scripts/*.sh "$repo_dir/.github/scripts/"
+  tar -cf - -C "$root" \
+    .github/codeql .github/scripts .github/workflows \
+    .github/.coverage .github/dependabot.yml \
+    docs internal policies worker \
+    .editorconfig .gitattributes .gitignore .golangci.yml \
+    AGENTS.md Cargo.lock Cargo.toml deny.toml go.mod go.sum LICENSE README.md \
+    rust-toolchain.toml |
+    tar -xf - -C "$repo_dir"
+  git -C "$repo_dir" init -q
+  git -C "$repo_dir" config core.autocrlf false
+  git -C "$repo_dir" add -A
   rm -- "$repo_dir/rust-toolchain.toml"
   set +e
   output=$(
