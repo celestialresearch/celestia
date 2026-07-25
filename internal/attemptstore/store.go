@@ -22,12 +22,26 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"time"
 
 	"celestia.research/governed-operation/internal/urladmission"
 )
 
 const Version = 0
+
+const (
+	attemptsDirectory = "attempts"
+	pendingDirectory  = ".pending"
+	bundleDirectory   = "bundle"
+	publicationFile   = "publication.json"
+	receiptFile       = "receipt.json"
+	admittedFile      = "admitted.json"
+	observationFile   = "observation.json"
+	recoveryFile      = "recovery.json"
+
+	maxRecordBytes = 256 * 1024
+)
 
 var (
 	ErrInvalid   = errors.New("invalid attempt evidence")
@@ -80,11 +94,18 @@ type Receipt struct {
 	TerminalState string `json:"terminal_status"`
 }
 
+type Publication struct {
+	Version     int    `json:"version"`
+	AttemptID   string `json:"attempt_id"`
+	ReceiptHash string `json:"receipt_sha256"`
+}
+
 type Records struct {
 	Admitted    Admitted
 	Observation *Observation
 	Recovery    *Recovery
 	Receipt     Receipt
+	Publication Publication
 }
 
 type Store struct {
@@ -92,18 +113,33 @@ type Store struct {
 }
 
 type Attempt struct {
-	path     string
-	admitted Admitted
+	store       *Store
+	path        string
+	pendingPath string
+	admitted    Admitted
 }
 
 func New(root string) (*Store, error) {
 	if root == "" || !filepath.IsAbs(root) {
 		return nil, fmt.Errorf("%w: evidence root", ErrInvalid)
 	}
-	if err := os.MkdirAll(root, 0o700); err != nil {
+	clean := filepath.Clean(root)
+	if err := rejectLinkedAncestors(clean); err != nil {
+		return nil, fmt.Errorf("inspect evidence root: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Join(clean, attemptsDirectory, pendingDirectory), 0o700); err != nil {
 		return nil, fmt.Errorf("create evidence root: %w", err)
 	}
-	return &Store{root: filepath.Clean(root)}, nil
+	for _, directory := range []string{
+		clean,
+		filepath.Join(clean, attemptsDirectory),
+		filepath.Join(clean, attemptsDirectory, pendingDirectory),
+	} {
+		if err := secureEvidenceTree(directory); err != nil {
+			return nil, err
+		}
+	}
+	return &Store{root: clean}, nil
 }
 
 func (store *Store) Stage(accepted urladmission.Accepted, admittedAt time.Time) (*Attempt, error) {
@@ -112,12 +148,28 @@ func (store *Store) Stage(accepted urladmission.Accepted, admittedAt time.Time) 
 		len(accepted.Frame) == 0 {
 		return nil, fmt.Errorf("%w: admitted attempt", ErrInvalid)
 	}
-	path := filepath.Join(store.root, accepted.Request.AttemptID)
-	if err := os.Mkdir(path, 0o700); err != nil {
+	if exists, err := pathExists(store.finalPath(accepted.Request.AttemptID)); err != nil {
+		return nil, fmt.Errorf("inspect published attempt: %w", err)
+	} else if exists {
+		return nil, ErrDuplicate
+	}
+	pendingPath := store.pendingPath(accepted.Request.AttemptID)
+	if err := os.Mkdir(pendingPath, 0o700); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return nil, ErrDuplicate
 		}
 		return nil, fmt.Errorf("create attempt: %w", err)
+	}
+	path := filepath.Join(pendingPath, bundleDirectory)
+	if err := os.Mkdir(path, 0o700); err != nil {
+		_ = os.RemoveAll(pendingPath)
+		return nil, fmt.Errorf("create attempt bundle: %w", err)
+	}
+	for _, directory := range []string{pendingPath, path} {
+		if err := secureEvidenceTree(directory); err != nil {
+			_ = os.RemoveAll(pendingPath)
+			return nil, err
+		}
 	}
 	admitted := Admitted{
 		Version:       Version,
@@ -126,55 +178,66 @@ func (store *Store) Stage(accepted urladmission.Accepted, admittedAt time.Time) 
 		OriginalInput: accepted.Request.Input,
 		RequestFrame:  accepted.Frame,
 	}
-	if err := writeRecord(path, "admitted.json", admitted); err != nil {
-		_ = os.Remove(path)
+	if err := writeRecord(path, admittedFile, admitted); err != nil {
+		_ = os.RemoveAll(pendingPath)
 		return nil, fmt.Errorf("stage attempt: %w", err)
 	}
-	return &Attempt{path: path, admitted: admitted}, nil
+	return &Attempt{
+		store:       store,
+		path:        path,
+		pendingPath: pendingPath,
+		admitted:    admitted,
+	}, nil
 }
 
 func (attempt *Attempt) Publish(observation Observation) error {
-	if observation.Version != Version ||
-		observation.AttemptID != attempt.admitted.AttemptID ||
-		!validTerminal(observation.TerminalStatus) ||
-		!validHash(observation.WorkerSHA256) {
+	if err := validateObservation(observation); err != nil ||
+		observation.AttemptID != attempt.admitted.AttemptID {
 		return fmt.Errorf("%w: observation", ErrInvalid)
 	}
-	if err := writeRecord(attempt.path, "observation.json", observation); err != nil {
+	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		return fmt.Errorf("write observation: %w", err)
 	}
-	return publishReceipt(
+	if err := writeOrMatchReceipt(
 		attempt.path,
 		attempt.admitted.AttemptID,
 		"observation",
-		"observation.json",
+		observationFile,
 		observation.TerminalStatus,
-	)
-}
-
-func (store *Store) Recover(attemptID, reason string) error {
-	path, err := store.attemptPath(attemptID)
+	); err != nil {
+		return err
+	}
+	path, err := attempt.publishDirectory()
 	if err != nil {
 		return err
 	}
+	return publishMarker(path, attempt.admitted.AttemptID)
+}
+
+func (store *Store) Recover(attemptID, reason string) error {
 	if reason == "" {
 		return fmt.Errorf("%w: recovery reason", ErrInvalid)
 	}
-	if _, err := os.Stat(filepath.Join(path, "receipt.json")); err == nil {
+	path, final, err := store.recoverablePath(attemptID)
+	if err != nil {
+		return err
+	}
+	if published, err := publicationExists(path); err != nil {
+		return err
+	} else if published {
 		return ErrDuplicate
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("inspect receipt: %w", err)
 	}
-	recovery := Recovery{
-		Version:        Version,
-		AttemptID:      attemptID,
-		TerminalStatus: "indeterminate",
-		Reason:         reason,
+	if err := store.ensureTerminal(path, attemptID, reason); err != nil {
+		return err
 	}
-	if err := writeRecord(path, "recovery.json", recovery); err != nil {
-		return fmt.Errorf("write recovery: %w", err)
+	if !final {
+		path, err = publishPendingDirectory(path, store.finalPath(attemptID), store.attemptsPath())
+		if err != nil {
+			return err
+		}
+		_ = os.Remove(filepath.Dir(path))
 	}
-	return publishReceipt(path, attemptID, "recovery", "recovery.json", "indeterminate")
+	return publishMarker(path, attemptID)
 }
 
 func (store *Store) Inspect(attemptID string) (Records, error) {
@@ -182,11 +245,28 @@ func (store *Store) Inspect(attemptID string) (Records, error) {
 	if err != nil {
 		return Records{}, err
 	}
-	var records Records
-	if err := readRecord(path, "admitted.json", &records.Admitted); err != nil {
+	records, err := readBundle(path, attemptID)
+	if err != nil {
 		return Records{}, err
 	}
-	if err := readRecord(path, "receipt.json", &records.Receipt); err != nil {
+	if err := readRecord(path, publicationFile, &records.Publication); err != nil {
+		return Records{}, err
+	}
+	if records.Publication.AttemptID != attemptID {
+		return Records{}, ErrCorrupt
+	}
+	if err := verifyHash(path, receiptFile, records.Publication.ReceiptHash); err != nil {
+		return Records{}, err
+	}
+	return records, nil
+}
+
+func readBundle(path, attemptID string) (Records, error) {
+	var records Records
+	if err := readRecord(path, admittedFile, &records.Admitted); err != nil {
+		return Records{}, err
+	}
+	if err := readRecord(path, receiptFile, &records.Receipt); err != nil {
 		return Records{}, err
 	}
 	if err := validateReceipt(attemptID, records.Admitted, records.Receipt); err != nil {
@@ -205,24 +285,31 @@ func (store *Store) Inspect(attemptID string) (Records, error) {
 }
 
 func validateReceipt(attemptID string, admitted Admitted, receipt Receipt) error {
-	if admitted.AttemptID != attemptID ||
-		receipt.AttemptID != attemptID ||
-		receipt.AdmittedFile != "admitted.json" {
-		return ErrCorrupt
-	}
-	switch receipt.TerminalKind {
-	case "observation":
-		if receipt.TerminalFile != "observation.json" {
-			return ErrCorrupt
-		}
-	case "recovery":
-		if receipt.TerminalFile != "recovery.json" {
-			return ErrCorrupt
-		}
-	default:
+	if validateAdmitted(admitted) != nil ||
+		validateReceiptShape(receipt) != nil ||
+		admitted.AttemptID != attemptID ||
+		receipt.AttemptID != attemptID {
 		return ErrCorrupt
 	}
 	return nil
+}
+
+func (attempt *Attempt) publishDirectory() (string, error) {
+	if attempt.pendingPath == "" {
+		return attempt.path, nil
+	}
+	path, err := publishPendingDirectory(
+		attempt.path,
+		attempt.store.finalPath(attempt.admitted.AttemptID),
+		attempt.store.attemptsPath(),
+	)
+	if err != nil {
+		return "", err
+	}
+	_ = os.Remove(attempt.pendingPath)
+	attempt.path = path
+	attempt.pendingPath = ""
+	return path, nil
 }
 
 func loadTerminal(path string, records *Records) error {
@@ -255,19 +342,22 @@ func (store *Store) attemptPath(attemptID string) (string, error) {
 	if !validIdentity(attemptID) {
 		return "", fmt.Errorf("%w: attempt identity", ErrInvalid)
 	}
-	path := filepath.Join(store.root, attemptID)
+	path := store.finalPath(attemptID)
+	if err := rejectLinkedAncestors(path); err != nil {
+		return "", err
+	}
 	info, err := os.Lstat(path)
 	if err != nil {
 		return "", fmt.Errorf("inspect attempt: %w", err)
 	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || pathIsLinked(path, info) {
 		return "", ErrCorrupt
 	}
 	return path, nil
 }
 
-func publishReceipt(path, attemptID, kind, terminalFile, state string) error {
-	admittedHash, err := fileHash(path, "admitted.json")
+func writeOrMatchReceipt(path, attemptID, kind, terminalFile, state string) error {
+	admittedHash, err := fileHash(path, admittedFile)
 	if err != nil {
 		return err
 	}
@@ -279,13 +369,32 @@ func publishReceipt(path, attemptID, kind, terminalFile, state string) error {
 		Version:       Version,
 		AttemptID:     attemptID,
 		TerminalKind:  kind,
-		AdmittedFile:  "admitted.json",
+		AdmittedFile:  admittedFile,
 		AdmittedHash:  admittedHash,
 		TerminalFile:  terminalFile,
 		TerminalHash:  terminalHash,
 		TerminalState: state,
 	}
-	return writeRecord(path, "receipt.json", receipt)
+	return writeOrMatchRecord(path, receiptFile, receipt)
+}
+
+func publishMarker(path, attemptID string) error {
+	if _, err := readBundle(path, attemptID); err != nil {
+		return fmt.Errorf("verify published bundle: %w", err)
+	}
+	receiptHash, err := fileHash(path, receiptFile)
+	if err != nil {
+		return err
+	}
+	publication := Publication{
+		Version:     Version,
+		AttemptID:   attemptID,
+		ReceiptHash: receiptHash,
+	}
+	if err := writeRecord(path, publicationFile, publication); err != nil {
+		return fmt.Errorf("write publication: %w", err)
+	}
+	return nil
 }
 
 func writeRecord(path, name string, value any) error {
@@ -328,10 +437,31 @@ func writeRecord(path, name string, value any) error {
 	return nil
 }
 
+func writeOrMatchRecord(path, name string, value any) error {
+	err := writeRecord(path, name, value)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, ErrDuplicate) {
+		return err
+	}
+	existing := reflect.New(reflect.TypeOf(value)).Interface()
+	if readErr := readRecord(path, name, existing); readErr != nil {
+		return readErr
+	}
+	if !reflect.DeepEqual(reflect.ValueOf(existing).Elem().Interface(), value) {
+		return ErrDuplicate
+	}
+	return nil
+}
+
 func readRecord(path, name string, target any) error {
 	data, err := readRooted(path, name)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", name, err)
+	}
+	if err := requireRecordFields(data, target); err != nil {
+		return err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -342,7 +472,7 @@ func readRecord(path, name string, target any) error {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return ErrCorrupt
 	}
-	return nil
+	return validateRecord(target)
 }
 
 func verifyHash(path, name, expected string) error {
@@ -366,6 +496,9 @@ func fileHash(path, name string) (string, error) {
 }
 
 func readRooted(path, name string) ([]byte, error) {
+	if err := rejectLinkedAncestors(path); err != nil {
+		return nil, err
+	}
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, err
@@ -373,6 +506,13 @@ func readRooted(path, name string) ([]byte, error) {
 	defer func() {
 		_ = root.Close()
 	}()
+	info, err := root.Lstat(name)
+	if err != nil {
+		return nil, err
+	}
+	if invalidRecordFile(filepath.Join(path, name), info) {
+		return nil, ErrCorrupt
+	}
 	file, err := root.Open(name)
 	if err != nil {
 		return nil, err
@@ -380,14 +520,28 @@ func readRooted(path, name string) ([]byte, error) {
 	defer func() {
 		_ = file.Close()
 	}()
-	info, err := file.Stat()
+	info, err = file.Stat()
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+	if invalidRecordFile(filepath.Join(path, name), info) {
 		return nil, ErrCorrupt
 	}
-	return io.ReadAll(file)
+	data, err := io.ReadAll(io.LimitReader(file, maxRecordBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxRecordBytes {
+		return nil, ErrCorrupt
+	}
+	return data, nil
+}
+
+func invalidRecordFile(path string, info os.FileInfo) bool {
+	return !info.Mode().IsRegular() ||
+		info.Mode()&os.ModeSymlink != 0 ||
+		pathIsLinked(path, info) ||
+		info.Size() > maxRecordBytes
 }
 
 func validTerminal(status string) bool {

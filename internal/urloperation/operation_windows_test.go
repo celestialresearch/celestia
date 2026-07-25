@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"celestia.research/governed-operation/internal/attemptstore"
 	"celestia.research/governed-operation/internal/processsupervision"
 	"celestia.research/governed-operation/internal/urladmission"
 	"celestia.research/governed-operation/internal/urlreference"
@@ -96,9 +97,9 @@ func TestOperationRejectsBeforeExecution(t *testing.T) {
 	if result.Status != Rejected {
 		t.Fatalf("result=%+v", result)
 	}
-	entries, err := os.ReadDir(root)
+	entries, err := os.ReadDir(filepath.Join(root, "attempts", ".pending"))
 	if err != nil {
-		t.Fatalf("read evidence root: %v", err)
+		t.Fatalf("read pending attempts: %v", err)
 	}
 	if len(entries) != 0 {
 		t.Fatalf("rejected request created evidence: %v", entries)
@@ -111,7 +112,7 @@ func TestOperationReportsStagingFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new operation: %v", err)
 	}
-	if err := os.Remove(root); err != nil {
+	if err := os.RemoveAll(root); err != nil {
 		t.Fatalf("remove evidence root: %v", err)
 	}
 	if err := os.WriteFile(root, []byte("not a directory"), 0o600); err != nil {
@@ -144,10 +145,41 @@ func TestObservationPreservesProcessFailure(t *testing.T) {
 		Err: ErrProtocol,
 	}
 	observation := observationFrom(result)
-	if observation.ProtocolStatus != "invalid" ||
+	if observation.ProtocolStatus != protocolRejected ||
 		observation.ProcessError == "" ||
 		observation.TerminalStatus != string(Failed) {
 		t.Fatalf("observation=%+v", observation)
+	}
+}
+
+func TestObservationMapsProtocolState(t *testing.T) {
+	tests := []struct {
+		name     string
+		result   Result
+		expected string
+	}{
+		{name: "not run", result: Result{}, expected: protocolNotRun},
+		{
+			name: "valid",
+			result: Result{
+				Response: &workerprotocol.Response{},
+			},
+			expected: protocolValid,
+		},
+		{
+			name: "rejected",
+			result: Result{
+				Err: ErrProtocol,
+			},
+			expected: protocolRejected,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if actual := observationFrom(test.result).ProtocolStatus; actual != test.expected {
+				t.Fatalf("status=%q, want %q", actual, test.expected)
+			}
+		})
 	}
 }
 
@@ -284,6 +316,57 @@ func TestOperationPublishesProtocolFailure(t *testing.T) {
 	)
 	if result.Status != Failed || result.Process.Status != processsupervision.Completed {
 		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestOperationRecordsValidWorkerFailure(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		status workerprotocol.Status
+	}{
+		{name: "rejected", input: "https://rejected.test", status: workerprotocol.Rejected},
+		{name: "failed", input: "https://failed.test", status: workerprotocol.Failed},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			operation, err := newTestOperation(t, testHostileWorker(t))
+			if err != nil {
+				t.Fatalf("new operation: %v", err)
+			}
+			result := operation.Execute(
+				context.Background(),
+				test.input,
+				urlreference.Defang,
+			)
+			assertWorkerFailure(t, result, test.status)
+			records, err := operation.store.Inspect(result.AttemptID)
+			if err != nil {
+				t.Fatalf("inspect: %v", err)
+			}
+			assertWorkerFailureEvidence(t, records)
+		})
+	}
+}
+
+func assertWorkerFailure(t *testing.T, result Result, status workerprotocol.Status) {
+	t.Helper()
+	if result.Status != Failed ||
+		result.Process.Status != processsupervision.Completed ||
+		result.Response == nil ||
+		result.Response.Status != status ||
+		result.Verification.VerifierID != "" {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func assertWorkerFailureEvidence(t *testing.T, records attemptstore.Records) {
+	t.Helper()
+	if records.Observation == nil ||
+		records.Observation.ProtocolStatus != protocolValid ||
+		records.Observation.VerificationID != "" ||
+		records.Observation.TerminalStatus != string(Failed) {
+		t.Fatalf("records=%+v", records)
 	}
 }
 

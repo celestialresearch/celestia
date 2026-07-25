@@ -117,7 +117,7 @@ func TestStoreDetectsCorruption(t *testing.T) {
 	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	path := filepath.Join(store.root, accepted.Request.AttemptID, "observation.json")
+	path := filepath.Join(store.finalPath(accepted.Request.AttemptID), observationFile)
 	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
 		t.Fatalf("corrupt observation: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestStoreRejectsReceiptPathSubstitution(t *testing.T) {
 	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	receiptPath := filepath.Join(store.root, accepted.Request.AttemptID, "receipt.json")
+	receiptPath := filepath.Join(store.finalPath(accepted.Request.AttemptID), receiptFile)
 	root, err := os.OpenRoot(filepath.Dir(receiptPath))
 	if err != nil {
 		t.Fatalf("open attempt root: %v", err)
@@ -204,7 +204,7 @@ func TestRecoveryRejectsInvalidReceiptState(t *testing.T) {
 	if _, err := store.Stage(accepted, admittedAt); err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	receiptPath := filepath.Join(store.root, accepted.Request.AttemptID, "receipt.json")
+	receiptPath := filepath.Join(store.pendingPath(accepted.Request.AttemptID), bundleDirectory, receiptFile)
 	if err := os.Mkdir(receiptPath, 0o700); err != nil {
 		t.Fatalf("create receipt directory: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestStoreRejectsMalformedRecords(t *testing.T) {
 	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	path := filepath.Join(store.root, accepted.Request.AttemptID)
+	path := store.finalPath(accepted.Request.AttemptID)
 	tests := []struct {
 		name string
 		file string
@@ -312,7 +312,7 @@ func TestStoreRejectsReceiptVariants(t *testing.T) {
 			if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
 				t.Fatalf("publish: %v", err)
 			}
-			path := filepath.Join(store.root, accepted.Request.AttemptID)
+			path := store.finalPath(accepted.Request.AttemptID)
 			var receipt Receipt
 			if err := readRecord(path, "receipt.json", &receipt); err != nil {
 				t.Fatalf("read receipt: %v", err)
@@ -440,7 +440,24 @@ func TestHashHelpersRejectMissingAndMismatch(t *testing.T) {
 	if err := verifyHash(root, "record", "wrong"); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("hash mismatch: %v", err)
 	}
-	if err := publishReceipt(root, "attempt", "observation", "missing", "failed"); err == nil {
+	accepted, admittedAt := testAccepted(t)
+	admitted := Admitted{
+		Version:       Version,
+		AttemptID:     accepted.Request.AttemptID,
+		AdmittedAt:    admittedAt.Format(time.RFC3339Nano),
+		OriginalInput: accepted.Request.Input,
+		RequestFrame:  accepted.Frame,
+	}
+	if err := writeRecord(root, admittedFile, admitted); err != nil {
+		t.Fatalf("write admitted: %v", err)
+	}
+	if err := writeOrMatchReceipt(
+		root,
+		accepted.Request.AttemptID,
+		"observation",
+		"missing",
+		"failed",
+	); err == nil {
 		t.Fatal("missing terminal record published")
 	}
 	if _, err := readRooted(filepath.Join(root, "missing"), "record"); err == nil {
@@ -451,7 +468,7 @@ func TestHashHelpersRejectMissingAndMismatch(t *testing.T) {
 func TestAttemptPathRejectsFile(t *testing.T) {
 	store := newTestStore(t)
 	attemptID := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	if err := os.WriteFile(filepath.Join(store.root, attemptID), []byte("file"), 0o600); err != nil {
+	if err := os.WriteFile(store.finalPath(attemptID), []byte("file"), 0o600); err != nil {
 		t.Fatalf("write attempt file: %v", err)
 	}
 	if _, err := store.attemptPath(attemptID); !errors.Is(err, ErrCorrupt) {

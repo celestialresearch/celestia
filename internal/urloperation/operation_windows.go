@@ -119,6 +119,25 @@ func (operation *Operation) executeAccepted(
 			Err:     errors.Join(ErrProtocol, err),
 		}
 	}
+	return evaluateResponse(accepted, process, response)
+}
+
+func evaluateResponse(
+	accepted urladmission.Accepted,
+	process processsupervision.Outcome,
+	response workerprotocol.Response,
+) Result {
+	if response.Status != workerprotocol.Completed {
+		return Result{
+			Status:   Failed,
+			Process:  process,
+			Response: &response,
+			Err: errors.Join(
+				ErrProcess,
+				fmt.Errorf("worker status %s", response.Status),
+			),
+		}
+	}
 	result := Result{
 		Status:   ExecutedUnverified,
 		Process:  process,
@@ -128,7 +147,7 @@ func (operation *Operation) executeAccepted(
 			VerifierVersion: VerifierVersion,
 		},
 	}
-	if response.Status != workerprotocol.Completed || response.Output == nil {
+	if response.Output == nil {
 		result.Err = ErrVerification
 		return result
 	}
@@ -198,11 +217,11 @@ func operationLimits() processsupervision.Limits {
 }
 
 func observationFrom(result Result) attemptstore.Observation {
-	protocolStatus := "not_checked"
+	protocolStatus := protocolNotRun
 	if result.Response != nil {
-		protocolStatus = "valid"
+		protocolStatus = protocolValid
 	} else if errors.Is(result.Err, ErrProtocol) {
-		protocolStatus = "invalid"
+		protocolStatus = protocolRejected
 	}
 	processError := ""
 	if result.Process.Err != nil {

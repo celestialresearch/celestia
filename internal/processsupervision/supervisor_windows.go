@@ -138,7 +138,12 @@ func (supervisor *Supervisor) run(ctx context.Context, frame []byte) Outcome {
 	}
 	process, hash, err := supervisor.launch()
 	if err != nil {
-		return failedOutcome(StartFailed, started, err)
+		outcome := failedOutcome(StartFailed, started, err)
+		outcome.WorkerSHA256 = supervisor.workerHash
+		if hash != ([32]byte{}) {
+			outcome.WorkerSHA256 = hash
+		}
+		return outcome
 	}
 	remaining := supervisor.limits.Timeout - time.Since(started)
 	outcome := supervisor.observe(ctx, process, frame, remaining)
@@ -162,6 +167,9 @@ func (supervisor *Supervisor) launch() (*launchedProcess, [32]byte, error) {
 func (supervisor *Supervisor) prepareLaunch() (*launchResources, error) {
 	container, err := createContainerName()
 	if err != nil {
+		if container.name != "" {
+			err = errors.Join(err, container.close())
+		}
 		return nil, err
 	}
 	image, hash, imagePath, err := stageImage(container.folder, supervisor.workerPath)
@@ -280,8 +288,10 @@ func (supervisor *Supervisor) observe(
 	stderrHandle := process.pipes.stderrRead
 	process.pipes.stdoutRead = 0
 	process.pipes.stderrRead = 0
-	go readPipe(stdoutHandle, supervisor.limits.OutputBytes, OutputOverflow, stdout, overflow)
-	go readPipe(stderrHandle, supervisor.limits.ErrorBytes, ErrorOverflow, stderr, overflow)
+	stdoutReader := newStreamReader("output", stdoutHandle)
+	stderrReader := newStreamReader("diagnostics", stderrHandle)
+	go stdoutReader.read(supervisor.limits.OutputBytes, OutputOverflow, stdout, overflow)
+	go stderrReader.read(supervisor.limits.ErrorBytes, ErrorOverflow, stderr, overflow)
 	input := make(chan error, 1)
 	inputDone := make(chan error, 1)
 	stdinHandle := process.pipes.stdinWrite
@@ -326,7 +336,10 @@ func (supervisor *Supervisor) observe(
 		}
 		cause = errors.Join(cause, inputErr)
 	}
-	outcome := finishOutcome(process, status, cause, cleanupComplete, <-stdout, <-stderr)
+	streamDeadline := time.Now().Add(supervisor.limits.CleanupTimeout)
+	out := awaitStream(stdoutReader, stdout, streamDeadline)
+	diagnostics := awaitStream(stderrReader, stderr, streamDeadline)
+	outcome := finishOutcome(process, status, cause, cleanupComplete, out, diagnostics)
 	if err := process.close(); err != nil {
 		outcome.Status = CleanupFailed
 		outcome.CleanupComplete = false
@@ -410,8 +423,10 @@ func applyStreamResult(
 	if errors.Is(result.err, errStreamLimit) {
 		return status, errors.Join(cause, result.err)
 	}
-	if result.err != nil && status != CleanupFailed {
-		status = ExitFailed
+	if result.err != nil {
+		if status != CleanupFailed {
+			status = ExitFailed
+		}
 		cause = errors.Join(cause, fmt.Errorf("read worker %s: %w", name, result.err))
 	}
 	return status, cause
@@ -424,10 +439,19 @@ func readExit(process windows.Handle, status Status, cause error) (Status, uint3
 			status = ExitFailed
 		}
 		cause = errors.Join(cause, fmt.Errorf("read exit code: %w", err))
-	} else if status == Completed && exitCode != 0 {
+	} else if status == Completed && !protocolExit(exitCode) {
 		status = ExitFailed
 	}
 	return status, exitCode, cause
+}
+
+func protocolExit(exitCode uint32) bool {
+	switch exitCode {
+	case 0, 2, 3:
+		return true
+	default:
+		return false
+	}
 }
 
 func createContainerName() (appContainer, error) {
@@ -650,38 +674,6 @@ func writeFrame(handle windows.Handle, frame []byte) error {
 		return fmt.Errorf("write worker frame: %w", err)
 	}
 	return nil
-}
-
-func readPipe(
-	handle windows.Handle,
-	limit int,
-	overflowStatus Status,
-	result chan<- streamResult,
-	overflow chan<- Status,
-) {
-	file := os.NewFile(uintptr(handle), "worker-stream")
-	if file == nil {
-		result <- streamResult{err: errors.New("create worker stream")}
-		return
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-	var buffer bytes.Buffer
-	_, err := io.CopyN(&buffer, file, int64(limit)+1)
-	if err == nil || buffer.Len() > limit {
-		select {
-		case overflow <- overflowStatus:
-		default:
-		}
-		result <- streamResult{data: buffer.Bytes()[:min(buffer.Len(), limit)], err: errStreamLimit}
-		return
-	}
-	if !errors.Is(err, io.EOF) {
-		result <- streamResult{data: buffer.Bytes(), err: err}
-		return
-	}
-	result <- streamResult{data: buffer.Bytes()}
 }
 
 func waitCleanup(process, job windows.Handle, timeout time.Duration) (bool, error) {

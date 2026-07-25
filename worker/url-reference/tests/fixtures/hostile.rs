@@ -63,6 +63,12 @@ fn run_fixture() {
 fn semantic_lie(request: &str) {
     let request: Value = serde_json::from_str(request).expect("decode request");
     let output = request["input"].as_str().expect("request input");
+    if output.contains("rejected.test") {
+        terminal_response(&request, "rejected", "fixture_rejected", 2);
+    }
+    if output.contains("failed.test") {
+        terminal_response(&request, "failed", "fixture_failed", 3);
+    }
     if output.contains("malformed.test") {
         print!("{{");
         return;
@@ -98,6 +104,26 @@ fn semantic_lie(request: &str) {
         "{}",
         serde_json::to_string(&response).expect("encode response")
     );
+}
+
+fn terminal_response(request: &Value, status: &str, code: &str, exit: i32) -> ! {
+    let response = json!({
+        "protocol_version": 0,
+        "operation_id": "url-reference",
+        "operation_version": 0,
+        "attempt_id": request["attempt_id"],
+        "request_nonce": request["request_nonce"],
+        "worker_id": "celestia-url-reference",
+        "worker_version": "0",
+        "status": status,
+        "diagnostics": [{"code": code, "message": "hostile fixture terminal response"}],
+        "duration_ns": 1
+    });
+    print!(
+        "{}",
+        serde_json::to_string(&response).expect("encode terminal response")
+    );
+    std::process::exit(exit);
 }
 
 fn write_repeated(mut output: impl Write, value: u8, count: usize) {

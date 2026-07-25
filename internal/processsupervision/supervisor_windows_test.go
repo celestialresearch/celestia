@@ -15,6 +15,10 @@ package processsupervision_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -87,6 +91,55 @@ func TestSupervisorRunsWorker(t *testing.T) {
 	if !outcome.CleanupComplete {
 		t.Fatal("worker cleanup was incomplete")
 	}
+}
+
+func TestSupervisorAllowsProtocolExits(t *testing.T) {
+	worker := os.Getenv("CELESTIA_TEST_WORKER")
+	if worker == "" {
+		t.Skip("CELESTIA_TEST_WORKER is not set")
+	}
+	supervisor, err := processsupervision.New(worker, testLimits())
+	if err != nil {
+		t.Fatalf("new supervisor: %v", err)
+	}
+	accepted, err := urladmission.Admit(
+		"https://example.test/path",
+		urlreference.Defang,
+		time.Now().UTC(),
+	)
+	if err != nil {
+		t.Fatalf("admit request: %v", err)
+	}
+	t.Run("rejected", func(t *testing.T) {
+		outcome := supervisor.Run(
+			context.Background(),
+			workerRejectedFrame(t, accepted),
+		)
+		if outcome.Status != processsupervision.Completed || outcome.ExitCode != 2 {
+			t.Fatalf("status=%s exit=%d error=%v", outcome.Status, outcome.ExitCode, outcome.Err)
+		}
+		if _, err := workerprotocol.DecodeResponse(
+			outcome.Stdout,
+			correlation(t, accepted),
+			int(outcome.ExitCode),
+		); err != nil {
+			t.Fatalf("decode rejected response: %v", err)
+		}
+	})
+	t.Run("failed", func(t *testing.T) {
+		outcome := supervisor.Run(context.Background(), []byte("{"))
+		if outcome.Status != processsupervision.Completed || outcome.ExitCode != 3 {
+			t.Fatalf("status=%s exit=%d error=%v", outcome.Status, outcome.ExitCode, outcome.Err)
+		}
+		_, err := workerprotocol.DecodeResponse(
+			outcome.Stdout,
+			correlation(t, accepted),
+			int(outcome.ExitCode),
+		)
+		if !errors.Is(err, workerprotocol.ErrProtocol) {
+			t.Fatalf("decode failed response error=%v, want protocol error", err)
+		}
+	})
 }
 
 func TestSupervisorEnforcesStreamsAndDeadline(t *testing.T) {
@@ -167,6 +220,7 @@ func TestSupervisorDistinguishesFailures(t *testing.T) {
 	}{
 		{name: "malformed output remains process success", frame: "malformed", status: processsupervision.Completed},
 		{name: "partial output and crash", frame: "partial", status: processsupervision.ExitFailed},
+		{name: "unsupported exit", frame: "unsupported", status: processsupervision.ExitFailed},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -412,6 +466,24 @@ func correlation(t *testing.T, accepted urladmission.Accepted) workerprotocol.Co
 func admittedAt(accepted urladmission.Accepted) time.Time {
 	deadline, _ := time.Parse(time.RFC3339Nano, accepted.Request.Deadline)
 	return deadline.Add(-time.Duration(workerprotocol.TimeoutMS) * time.Millisecond)
+}
+
+func workerRejectedFrame(t *testing.T, accepted urladmission.Accepted) []byte {
+	t.Helper()
+	var request workerprotocol.Request
+	if err := json.Unmarshal(accepted.Frame, &request); err != nil {
+		t.Fatalf("decode accepted frame: %v", err)
+	}
+	input := "https://example[.]test/"
+	hash := sha256.Sum256([]byte(input))
+	request.Input = input
+	request.InputLength = len(input)
+	request.InputSHA256 = hex.EncodeToString(hash[:])
+	frame, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("encode rejected frame: %v", err)
+	}
+	return frame
 }
 
 func testLimits() processsupervision.Limits {
