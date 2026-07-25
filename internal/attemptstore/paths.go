@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 func (store *Store) attemptsPath() string {
@@ -32,6 +33,40 @@ func (store *Store) pendingPath(attemptID string) string {
 
 func (store *Store) finalPath(attemptID string) string {
 	return filepath.Join(store.attemptsPath(), attemptID)
+}
+
+func canonicalEvidenceRoot(path string) (string, error) {
+	clean := filepath.Clean(path)
+	if info, err := os.Lstat(clean); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || pathIsLinked(clean, info) {
+			return "", ErrCorrupt
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	existing := clean
+	var suffix []string
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return "", os.ErrNotExist
+		}
+		suffix = append(suffix, filepath.Base(existing))
+		existing = parent
+	}
+	resolved, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return "", err
+	}
+	for _, component := range slices.Backward(suffix) {
+		resolved = filepath.Join(resolved, component)
+	}
+	return resolved, nil
 }
 
 func pathExists(path string) (bool, error) {
