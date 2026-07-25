@@ -23,9 +23,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"time"
 
 	"celestia.research/governed-operation/internal/urladmission"
+	"celestia.research/governed-operation/internal/workerprotocol"
 )
 
 const Version = 0
@@ -33,6 +35,7 @@ const Version = 0
 const (
 	attemptsDirectory = "attempts"
 	pendingDirectory  = ".pending"
+	locksDirectory    = ".locks"
 	bundleDirectory   = "bundle"
 	publicationFile   = "publication.json"
 	receiptFile       = "receipt.json"
@@ -47,6 +50,7 @@ var (
 	ErrInvalid   = errors.New("invalid attempt evidence")
 	ErrDuplicate = errors.New("duplicate attempt")
 	ErrCorrupt   = errors.New("corrupt attempt evidence")
+	ErrActive    = errors.New("attempt is active")
 )
 
 type Admitted struct {
@@ -113,10 +117,13 @@ type Store struct {
 }
 
 type Attempt struct {
+	mu          sync.Mutex
 	store       *Store
 	path        string
 	pendingPath string
 	admitted    Admitted
+	owner       *attemptLock
+	closed      bool
 }
 
 func New(root string) (*Store, error) {
@@ -133,10 +140,15 @@ func New(root string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(clean, attemptsDirectory, pendingDirectory), 0o700); err != nil {
 		return nil, fmt.Errorf("create evidence root: %w", err)
 	}
+	if err := os.Mkdir(filepath.Join(clean, locksDirectory), 0o700); err != nil &&
+		!errors.Is(err, os.ErrExist) {
+		return nil, fmt.Errorf("create attempt locks: %w", err)
+	}
 	for _, directory := range []string{
 		clean,
 		filepath.Join(clean, attemptsDirectory),
 		filepath.Join(clean, attemptsDirectory, pendingDirectory),
+		filepath.Join(clean, locksDirectory),
 	} {
 		if err := secureEvidenceTree(directory); err != nil {
 			return nil, err
@@ -146,58 +158,111 @@ func New(root string) (*Store, error) {
 }
 
 func (store *Store) Stage(accepted urladmission.Accepted, admittedAt time.Time) (*Attempt, error) {
-	if !validIdentity(accepted.Request.AttemptID) ||
-		admittedAt.Location() != time.UTC ||
-		len(accepted.Frame) == 0 {
-		return nil, fmt.Errorf("%w: admitted attempt", ErrInvalid)
+	request, err := validateAccepted(accepted, admittedAt)
+	if err != nil {
+		return nil, err
 	}
-	if exists, err := pathExists(store.finalPath(accepted.Request.AttemptID)); err != nil {
-		return nil, fmt.Errorf("inspect published attempt: %w", err)
-	} else if exists {
-		return nil, ErrDuplicate
+	owner, err := store.acquireAttemptLock(request.AttemptID)
+	if err != nil {
+		return nil, err
 	}
-	pendingPath := store.pendingPath(accepted.Request.AttemptID)
-	if err := os.Mkdir(pendingPath, 0o700); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return nil, ErrDuplicate
+	keepOwner := false
+	defer func() {
+		if !keepOwner {
+			_ = owner.release()
 		}
-		return nil, fmt.Errorf("create attempt: %w", err)
+	}()
+	pendingPath, path, err := store.prepareAttemptDirectories(request.AttemptID)
+	if err != nil {
+		return nil, err
 	}
-	path := filepath.Join(pendingPath, bundleDirectory)
-	if err := os.Mkdir(path, 0o700); err != nil {
-		_ = os.RemoveAll(pendingPath)
-		return nil, fmt.Errorf("create attempt bundle: %w", err)
-	}
-	for _, directory := range []string{pendingPath, path} {
-		if err := secureEvidenceTree(directory); err != nil {
-			_ = os.RemoveAll(pendingPath)
-			return nil, err
-		}
-	}
-	admitted := Admitted{
-		Version:       Version,
-		AttemptID:     accepted.Request.AttemptID,
-		AdmittedAt:    admittedAt.Format(time.RFC3339Nano),
-		OriginalInput: accepted.Request.Input,
-		RequestFrame:  accepted.Frame,
-	}
+	admitted := admittedRecord(request, accepted.Frame, admittedAt)
 	if err := writeRecord(path, admittedFile, admitted); err != nil {
 		_ = os.RemoveAll(pendingPath)
 		return nil, fmt.Errorf("stage attempt: %w", err)
 	}
-	return &Attempt{
+	attempt := &Attempt{
 		store:       store,
 		path:        path,
 		pendingPath: pendingPath,
 		admitted:    admitted,
-	}, nil
+		owner:       owner,
+	}
+	keepOwner = true
+	return attempt, nil
 }
 
-func (attempt *Attempt) Publish(observation Observation) error {
+func (store *Store) prepareAttemptDirectories(attemptID string) (string, string, error) {
+	if exists, err := pathExists(store.finalPath(attemptID)); err != nil {
+		return "", "", fmt.Errorf("inspect published attempt: %w", err)
+	} else if exists {
+		return "", "", ErrDuplicate
+	}
+	pendingPath := store.pendingPath(attemptID)
+	if err := os.Mkdir(pendingPath, 0o700); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return "", "", ErrDuplicate
+		}
+		return "", "", fmt.Errorf("create attempt: %w", err)
+	}
+	path := filepath.Join(pendingPath, bundleDirectory)
+	if err := os.Mkdir(path, 0o700); err != nil {
+		_ = os.RemoveAll(pendingPath)
+		return "", "", fmt.Errorf("create attempt bundle: %w", err)
+	}
+	for _, directory := range []string{pendingPath, path} {
+		if err := secureEvidenceTree(directory); err != nil {
+			_ = os.RemoveAll(pendingPath)
+			return "", "", err
+		}
+	}
+	return pendingPath, path, nil
+}
+
+func validateAccepted(
+	accepted urladmission.Accepted,
+	admittedAt time.Time,
+) (workerprotocol.Request, error) {
+	if admittedAt.Location() != time.UTC || len(accepted.Frame) == 0 {
+		return workerprotocol.Request{}, fmt.Errorf("%w: admitted attempt", ErrInvalid)
+	}
+	request, _, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt)
+	if err != nil {
+		return workerprotocol.Request{}, fmt.Errorf("%w: admitted request frame: %w", ErrInvalid, err)
+	}
+	if request != accepted.Request {
+		return workerprotocol.Request{}, fmt.Errorf("%w: accepted request binding", ErrInvalid)
+	}
+	return request, nil
+}
+
+func admittedRecord(
+	request workerprotocol.Request,
+	frame []byte,
+	admittedAt time.Time,
+) Admitted {
+	return Admitted{
+		Version:       Version,
+		AttemptID:     request.AttemptID,
+		AdmittedAt:    admittedAt.Format(time.RFC3339Nano),
+		OriginalInput: request.Input,
+		RequestFrame:  frame,
+	}
+}
+
+func (attempt *Attempt) Publish(observation Observation) (err error) {
+	attempt.mu.Lock()
+	defer attempt.mu.Unlock()
+	if attempt.closed {
+		return fmt.Errorf("%w: attempt ownership released", ErrInvalid)
+	}
 	if err := validateObservation(observation); err != nil ||
 		observation.AttemptID != attempt.admitted.AttemptID {
 		return fmt.Errorf("%w: observation", ErrInvalid)
 	}
+	defer func() {
+		err = errors.Join(err, attempt.closeLocked())
+	}()
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		return fmt.Errorf("write observation: %w", err)
 	}
@@ -217,10 +282,17 @@ func (attempt *Attempt) Publish(observation Observation) error {
 	return publishMarker(path, attempt.admitted.AttemptID)
 }
 
-func (store *Store) Recover(attemptID, reason string) error {
+func (store *Store) Recover(attemptID, reason string) (err error) {
 	if reason == "" {
 		return fmt.Errorf("%w: recovery reason", ErrInvalid)
 	}
+	owner, err := store.acquireAttemptLock(attemptID)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, owner.release())
+	}()
 	path, final, err := store.recoverablePath(attemptID)
 	if err != nil {
 		return err
@@ -241,6 +313,23 @@ func (store *Store) Recover(attemptID, reason string) error {
 		_ = os.Remove(filepath.Dir(path))
 	}
 	return publishMarker(path, attemptID)
+}
+
+func (attempt *Attempt) Close() error {
+	if attempt == nil {
+		return nil
+	}
+	attempt.mu.Lock()
+	defer attempt.mu.Unlock()
+	return attempt.closeLocked()
+}
+
+func (attempt *Attempt) closeLocked() error {
+	if attempt.closed || attempt.owner == nil {
+		return nil
+	}
+	attempt.closed = true
+	return attempt.owner.release()
 }
 
 func (store *Store) Inspect(attemptID string) (Records, error) {

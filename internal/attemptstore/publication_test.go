@@ -130,6 +130,9 @@ func TestRecoverPublishesAfterReceiptFailure(t *testing.T) {
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
 	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release interrupted attempt: %v", err)
+	}
 	if err := store.Recover(accepted.Request.AttemptID, "receipt write failed"); err != nil {
 		t.Fatalf("recover: %v", err)
 	}
@@ -159,6 +162,9 @@ func TestRecoverResumesRecoveryReceipt(t *testing.T) {
 	}
 	if err := writeOrMatchRecord(attempt.path, recoveryFile, recovery); err != nil {
 		t.Fatalf("write recovery: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release interrupted attempt: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, recovery.Reason); err != nil {
 		t.Fatalf("resume recovery: %v", err)
@@ -196,6 +202,9 @@ func TestRecoverPublishesAfterMarkerFailure(t *testing.T) {
 	}
 	if _, err := attempt.publishDirectory(); err != nil {
 		t.Fatalf("publish directory: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release interrupted attempt: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, "marker write failed"); err != nil {
 		t.Fatalf("recover: %v", err)

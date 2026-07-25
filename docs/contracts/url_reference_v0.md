@@ -339,10 +339,11 @@ garbage collection.
 
 The bundle contains exact input, request, response and diagnostic bytes plus
 versioned JSON records for admission, process outcome, protocol validation,
-verification and pre-publication outcome. The receipt lists every required
-record name, byte length and SHA-256 plus the worker executable hash and
-verifier identity. Record files do not contain their own hashes. The manifest
-set excludes the receipt and publication marker.
+verification and pre-publication outcome. `attempt_evidence_v0.md` is the
+authoritative persistent schema. Its receipt hashes the admitted and terminal
+records; worker and verifier identity remain inside the hashed terminal
+observation. Record files do not contain their own hashes. The manifest set
+excludes the receipt and publication marker.
 
 Records are written through same-directory temporary files, flushed and
 atomically renamed. The receipt is written last and hashed separately. The
@@ -361,7 +362,12 @@ self-declared inside a pre-publication record.
 
 Existing attempt identities are rejected before worker start. Bundle records
 are never modified after rename and the publication marker is created at most
-once. A pending attempt is never resumed or re-executed. Recovery may only:
+once. A pending attempt is never resumed or re-executed. A permanent
+per-attempt lock file provides the cross-process ownership identity. Execution
+holds its operating-system lock from staging through publication. Recovery
+fails while that lock is held and may proceed after process death releases it.
+Lock files are not deleted because replacing a locked inode would split
+ownership. Recovery may only:
 - validate and publish a complete pending attempt;
 - retain and report an incomplete pending attempt;
 - report a corrupt pending or published attempt.

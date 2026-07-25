@@ -53,8 +53,12 @@ func TestStorePublishesAndInspects(t *testing.T) {
 func TestStoreRecoversPendingAttempt(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
-	if _, err := store.Stage(accepted, admittedAt); err != nil {
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
 		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release interrupted attempt: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, "interrupted"); err != nil {
 		t.Fatalf("recover: %v", err)
@@ -80,7 +84,7 @@ func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrActive) {
 		t.Fatalf("duplicate stage: %v", err)
 	}
 	observation := testObservation("invalid")
@@ -91,7 +95,7 @@ func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
 	if err := attempt.Publish(observation); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
-	if err := attempt.Publish(observation); !errors.Is(err, ErrDuplicate) {
+	if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("duplicate publication: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, ""); !errors.Is(err, ErrInvalid) {
