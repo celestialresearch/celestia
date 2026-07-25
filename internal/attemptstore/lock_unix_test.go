@@ -28,6 +28,7 @@ func TestStageRejectsPermissiveLockFile(t *testing.T) {
 		locksDirectory,
 		accepted.Request.AttemptID+".lock",
 	)
+	// #nosec G306 -- permissive mode is the rejected security fixture.
 	if err := os.WriteFile(lockPath, nil, 0o644); err != nil {
 		t.Fatalf("write lock file: %v", err)
 	}
