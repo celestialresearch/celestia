@@ -124,6 +124,21 @@ func TestTransformRejectsMode(t *testing.T) {
 	}
 }
 
+func TestValidateInput(t *testing.T) {
+	t.Parallel()
+
+	if err := ValidateInput("https://example.test/"); err != nil {
+		t.Fatalf("ValidateInput() error = %v", err)
+	}
+	expanded := "hxxps://" + strings.Repeat("a[.]", 126) + "a/" + strings.Repeat("x", 3834)
+	if len(expanded) <= MaxInputBytes {
+		t.Fatal("fixture did not exceed original input limit")
+	}
+	if err := ValidateInput(expanded); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("ValidateInput() error = %v, want ErrInvalid", err)
+	}
+}
+
 func TestTransformProperties(t *testing.T) {
 	t.Parallel()
 
