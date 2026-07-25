@@ -21,9 +21,17 @@ import (
 
 type attemptLock struct {
 	file       *os.File
+	key        string
 	once       sync.Once
 	releaseErr error
 }
+
+type lockReservation struct {
+	key  string
+	keep bool
+}
+
+var activeAttemptLocks sync.Map
 
 func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptLock, error) {
 	if !validIdentity(attemptID) {
@@ -38,16 +46,15 @@ func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptL
 		_ = root.Close()
 	}()
 	name := attemptID + ".lock"
-	flags := os.O_RDWR
-	if create {
-		flags |= os.O_CREATE
-	}
-	file, err := root.OpenFile(name, flags, 0o600)
+	key := filepath.Join(directory, name)
+	reservation, err := reserveAttemptLock(key)
 	if err != nil {
-		if !create && errors.Is(err, os.ErrNotExist) {
-			return nil, ErrCorrupt
-		}
-		return nil, fmt.Errorf("open attempt lock: %w", err)
+		return nil, err
+	}
+	defer reservation.abandon()
+	file, err := openAttemptLockFile(root, name, create)
+	if err != nil {
+		return nil, err
 	}
 	pathInfo, err := root.Lstat(name)
 	if err != nil {
@@ -65,7 +72,36 @@ func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptL
 		}
 		return nil, fmt.Errorf("lock attempt: %w", err)
 	}
-	return &attemptLock{file: file}, nil
+	reservation.keep = true
+	return &attemptLock{file: file, key: key}, nil
+}
+
+func reserveAttemptLock(key string) (*lockReservation, error) {
+	if _, loaded := activeAttemptLocks.LoadOrStore(key, struct{}{}); loaded {
+		return nil, ErrActive
+	}
+	return &lockReservation{key: key}, nil
+}
+
+func (reservation *lockReservation) abandon() {
+	if !reservation.keep {
+		activeAttemptLocks.Delete(reservation.key)
+	}
+}
+
+func openAttemptLockFile(root *os.Root, name string, create bool) (*os.File, error) {
+	flags := os.O_RDWR
+	if create {
+		flags |= os.O_CREATE
+	}
+	file, err := root.OpenFile(name, flags, 0o600)
+	if err == nil {
+		return file, nil
+	}
+	if !create && errors.Is(err, os.ErrNotExist) {
+		return nil, ErrCorrupt
+	}
+	return nil, fmt.Errorf("open attempt lock: %w", err)
 }
 
 func validateLockFile(file *os.File, pathInfo os.FileInfo) error {
@@ -88,6 +124,9 @@ func (lock *attemptLock) release() error {
 	lock.once.Do(func() {
 		unlockErr := unlockAttemptFile(lock.file)
 		closeErr := lock.file.Close()
+		if closeErr == nil {
+			activeAttemptLocks.Delete(lock.key)
+		}
 		lock.releaseErr = errors.Join(unlockErr, closeErr)
 	})
 	return lock.releaseErr

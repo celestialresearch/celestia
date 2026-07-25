@@ -13,6 +13,9 @@ package attemptstore
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -128,6 +131,26 @@ func TestDecodeRequestV0AcceptsEquivalentJSON(t *testing.T) {
 				t.Fatalf("equivalent v0 JSON rejected: %v", err)
 			}
 		})
+	}
+}
+
+func TestDecodeRequestV0RejectsSurrogateAfterQuote(t *testing.T) {
+	accepted, admittedAt := testAccepted(t)
+	request, err := decodeRequestV0(accepted.Frame, admittedAt)
+	if err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	request.Input = "https://example.test/a\"\ufffd"
+	request.InputLength = len(request.Input)
+	hash := sha256.Sum256([]byte(request.Input))
+	request.InputSHA256 = hex.EncodeToString(hash[:])
+	frame, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("encode fixture: %v", err)
+	}
+	frame = bytes.Replace(frame, []byte("\ufffd"), []byte(`\ud800`), 1)
+	if _, err := decodeRequestV0(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("unpaired surrogate after escaped quote accepted: %v", err)
 	}
 }
 
