@@ -76,6 +76,8 @@ func TestDecodeResponseRejects(t *testing.T) {
 		{"invalid UTF-8", string([]byte{0xff}), 0},
 		{"whitespace", " " + valid, 0},
 		{"trailing newline", valid + "\n", 0},
+		{"unpaired high surrogate", strings.Replace(valid, `"completed"`, `"\ud800"`, 1), 0},
+		{"unpaired low surrogate", strings.Replace(valid, `"completed"`, `"\udc00"`, 1), 0},
 		{"malformed", "{", 0},
 		{"duplicate", strings.Replace(valid, `"protocol_version":0`, `"protocol_version":0,"protocol_version":0`, 1), 0},
 		{"unknown", strings.Replace(valid, "{", `{"unknown":0,`, 1), 0},
@@ -257,6 +259,8 @@ func TestDecodeRequestRejects(t *testing.T) {
 		"",
 		string([]byte{0xff}),
 		" " + frame,
+		strings.Replace(frame, `"url-reference"`, `"\ud800"`, 1),
+		strings.Replace(frame, `"url-reference"`, `"\udc00"`, 1),
 		strings.Replace(frame, `"protocol_version":0`, `"protocol_version":-0`, 1),
 		strings.Replace(frame, `"protocol_version":0`, `"protocol_version":null`, 1),
 		strings.Replace(frame, `"protocol_version":0`, `"protocol_version":0,"protocol_version":0`, 1),
@@ -270,6 +274,30 @@ func TestDecodeRequestRejects(t *testing.T) {
 		if _, _, err := DecodeRequest([]byte(data), testAdmittedAt()); !errors.Is(err, ErrProtocol) {
 			t.Fatalf("DecodeRequest(%q) error = %v, want ErrProtocol", data, err)
 		}
+	}
+}
+
+func TestHasUnpairedSurrogate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		data   string
+		paired bool
+	}{
+		{"high", `{"value":"\ud800"}`, false},
+		{"low", `{"value":"\udc00"}`, false},
+		{"wrong pair", `{"value":"\ud800\u0041"}`, false},
+		{"pair", `{"value":"\ud83d\ude00"}`, true},
+		{"escaped text", `{"value":"\\ud800"}`, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := !hasUnpairedSurrogate([]byte(test.data)); got != test.paired {
+				t.Fatalf("paired = %t, want %t", got, test.paired)
+			}
+		})
 	}
 }
 

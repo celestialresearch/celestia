@@ -94,6 +94,9 @@ fn main() -> ExitCode {
 fn run() -> Result<ExitCode, ()> {
     let start = Instant::now();
     let data = read_request()?;
+    if !is_compact_frame(&data) {
+        return Err(());
+    }
     let request: Request = serde_json::from_slice(&data).map_err(|_| ())?;
     validate_request(&request)?;
     let output = match transform(&request.input, &request.mode) {
@@ -143,6 +146,27 @@ fn run() -> Result<ExitCode, ()> {
     };
     write_response(&response)?;
     Ok(ExitCode::SUCCESS)
+}
+
+fn is_compact_frame(data: &[u8]) -> bool {
+    let mut escaped = false;
+    let mut in_string = false;
+    for byte in data {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if *byte == b'\\' {
+                escaped = true;
+            } else if *byte == b'"' {
+                in_string = false;
+            }
+        } else if *byte == b'"' {
+            in_string = true;
+        } else if matches!(*byte, b' ' | b'\t' | b'\n' | b'\r') {
+            return false;
+        }
+    }
+    true
 }
 
 fn write_response(response: &Response<'_>) -> Result<(), ()> {

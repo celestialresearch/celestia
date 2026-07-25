@@ -99,7 +99,11 @@ func Transform(input string, mode Mode) (string, error) {
 		}
 	}
 
-	return scheme + input[ref.schemeEnd:ref.hostStart] + host + input[ref.hostEnd:], nil
+	output := scheme + input[ref.schemeEnd:ref.hostStart] + host + input[ref.hostEnd:]
+	if len(output) > MaxReferenceBytes {
+		return "", invalid("output length")
+	}
+	return output, nil
 }
 
 func parse(input string) (reference, error) {
