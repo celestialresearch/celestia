@@ -80,9 +80,11 @@ func (operation *Operation) Execute(
 }
 
 func applyPublishError(result *Result, err error) {
-	if !errors.Is(err, attemptstore.ErrRelease) {
-		result.Status = Indeterminate
+	if errors.Is(err, attemptstore.ErrRelease) {
+		result.Err = errors.Join(result.Err, ErrCleanup, err)
+		return
 	}
+	result.Status = Indeterminate
 	result.Err = errors.Join(result.Err, ErrPersistence, err)
 }
 

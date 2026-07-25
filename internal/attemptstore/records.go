@@ -22,8 +22,6 @@ import (
 	"reflect"
 	"strings"
 	"time"
-
-	"celestia.research/governed-operation/internal/workerprotocol"
 )
 
 func requireRecordFields(data []byte, target any) error {
@@ -84,13 +82,18 @@ func validateRecord(target any) error {
 func validateAdmitted(record Admitted) error {
 	admittedAt, err := time.Parse(time.RFC3339Nano, record.AdmittedAt)
 	if err != nil ||
-		record.Version != Version ||
-		!validIdentity(record.AttemptID) ||
 		admittedAt.Location() != time.UTC ||
+		admittedAt.Format(time.RFC3339Nano) != record.AdmittedAt ||
 		len(record.RequestFrame) == 0 {
 		return ErrCorrupt
 	}
-	request, _, err := workerprotocol.DecodeRequest(record.RequestFrame, admittedAt)
+	var request requestV0
+	switch record.Version {
+	case 0:
+		request, err = decodeRequestV0(record.RequestFrame, admittedAt)
+	default:
+		return ErrCorrupt
+	}
 	if err != nil {
 		return ErrCorrupt
 	}

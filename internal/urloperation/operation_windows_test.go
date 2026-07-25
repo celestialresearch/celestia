@@ -451,9 +451,12 @@ func TestPublishReleaseFailurePreservesTerminalStatus(t *testing.T) {
 	if result.Status != Verified {
 		t.Fatalf("release failure changed status to %q", result.Status)
 	}
-	if !errors.Is(result.Err, ErrPersistence) ||
+	if !errors.Is(result.Err, ErrCleanup) ||
 		!errors.Is(result.Err, attemptstore.ErrRelease) {
 		t.Fatalf("release failure not reported: %v", result.Err)
+	}
+	if errors.Is(result.Err, ErrPersistence) {
+		t.Fatalf("release failure reported as persistence failure: %v", result.Err)
 	}
 }
 

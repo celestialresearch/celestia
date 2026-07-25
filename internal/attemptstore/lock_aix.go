@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build !windows && !aix
+//go:build aix
 
 package attemptstore
 
@@ -24,15 +24,17 @@ import (
 var errLockHeld = errors.New("attempt lock held")
 
 func lockAttemptFile(file *os.File) error {
-	err := unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
-	if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+	lock := unix.Flock_t{Type: unix.F_WRLCK}
+	err := unix.FcntlFlock(file.Fd(), unix.F_SETLK, &lock)
+	if errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EAGAIN) {
 		return errLockHeld
 	}
 	return err
 }
 
 func unlockAttemptFile(file *os.File) error {
-	return unix.Flock(int(file.Fd()), unix.LOCK_UN)
+	lock := unix.Flock_t{Type: unix.F_UNLCK}
+	return unix.FcntlFlock(file.Fd(), unix.F_SETLK, &lock)
 }
 
 func secureLockFile(_ *os.File, info os.FileInfo) error {

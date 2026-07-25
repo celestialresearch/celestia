@@ -128,6 +128,11 @@ func TestRecoverAfterOwnerProcessDeath(t *testing.T) {
 		_ = command.Wait()
 		t.Fatalf("helper did not stage: %v", scanner.Err())
 	}
+	if err := store.Recover(accepted.Request.AttemptID, "owner still active"); !errors.Is(err, ErrActive) {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		t.Fatalf("recovered before owner death: %v", err)
+	}
 	if err := command.Process.Kill(); err != nil {
 		t.Fatalf("kill helper: %v", err)
 	}
@@ -160,9 +165,13 @@ func TestAttemptLockHelper(t *testing.T) {
 		}
 		fmt.Println("active")
 	case "stage":
-		if _, err := store.Stage(accepted, admittedAt); err != nil {
+		attempt, err := store.Stage(accepted, admittedAt)
+		if err != nil {
 			t.Fatalf("stage: %v", err)
 		}
+		defer func() {
+			_ = attempt.Close()
+		}()
 		fmt.Println("staged")
 		select {}
 	default:
