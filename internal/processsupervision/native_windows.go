@@ -82,8 +82,13 @@ func createContainer(name string) (appContainer, error) {
 	}
 	folder, err := containerFolder(sid)
 	if err != nil {
-		_ = windows.FreeSid(sid)
-		_ = deleteContainer(name)
+		container := appContainer{name: name, sid: sid}
+		if rollbackErr := container.close(); rollbackErr != nil {
+			return container, errors.Join(
+				err,
+				fmt.Errorf("rollback AppContainer %s: %w", container.identity(), rollbackErr),
+			)
+		}
 		return appContainer{}, err
 	}
 	return appContainer{name: name, sid: sid, folder: folder}, nil
@@ -113,9 +118,34 @@ func containerFolder(sid *windows.SID) (string, error) {
 	return windows.UTF16PtrToString(folder), nil
 }
 
-func (container appContainer) close() error {
-	_ = windows.FreeSid(container.sid)
-	return deleteContainer(container.name)
+func (container *appContainer) close() error {
+	var closeErr error
+	identity := container.identity()
+	if container.sid != nil {
+		if err := windows.FreeSid(container.sid); err != nil {
+			closeErr = errors.Join(
+				closeErr,
+				fmt.Errorf("free AppContainer SID %s: %w", identity, err),
+			)
+		} else {
+			container.sid = nil
+		}
+	}
+	if err := deleteContainer(container.name); err != nil {
+		closeErr = errors.Join(
+			closeErr,
+			fmt.Errorf("delete AppContainer profile %s: %w", identity, err),
+		)
+	}
+	return closeErr
+}
+
+func (container appContainer) identity() string {
+	sid := "<nil>"
+	if container.sid != nil {
+		sid = container.sid.String()
+	}
+	return fmt.Sprintf("name=%q sid=%s", container.name, sid)
 }
 
 func deleteContainer(name string) error {

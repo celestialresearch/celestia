@@ -17,10 +17,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -49,6 +51,14 @@ func TestContainerRejectsInvalidNames(t *testing.T) {
 	}
 }
 
+func TestContainerCloseReportsIdentity(t *testing.T) {
+	container := appContainer{name: "invalid\x00name"}
+	err := container.close()
+	if err == nil || !strings.Contains(err.Error(), "name=") {
+		t.Fatalf("close error=%v, want identity", err)
+	}
+}
+
 func TestSupervisorDetectsWorkerChange(t *testing.T) {
 	source := os.Getenv("CELESTIA_TEST_HOSTILE_WORKER")
 	worker := filepath.Join(t.TempDir(), "worker.exe")
@@ -63,6 +73,30 @@ func TestSupervisorDetectsWorkerChange(t *testing.T) {
 	outcome := supervisor.Run(context.Background(), []byte("malformed"))
 	if outcome.Status != StartFailed || outcome.Err == nil {
 		t.Fatalf("changed worker: status=%s error=%v", outcome.Status, outcome.Err)
+	}
+}
+
+func TestSupervisorReportsWorkerHashOnLaunchFailure(t *testing.T) {
+	content := []byte("not a Windows executable")
+	worker := filepath.Join(t.TempDir(), "worker.exe")
+	if err := os.WriteFile(worker, content, 0o600); err != nil {
+		t.Fatalf("write worker: %v", err)
+	}
+	supervisor, err := New(worker, testNativeLimits())
+	if err != nil {
+		t.Fatalf("new supervisor: %v", err)
+	}
+	outcome := supervisor.Run(context.Background(), []byte("malformed"))
+	expected := sha256.Sum256(content)
+	if outcome.Status != StartFailed ||
+		outcome.WorkerSHA256 != expected ||
+		outcome.Err == nil {
+		t.Fatalf(
+			"status=%s hash=%x error=%v",
+			outcome.Status,
+			outcome.WorkerSHA256,
+			outcome.Err,
+		)
 	}
 }
 
@@ -120,7 +154,8 @@ func TestNativeWaitRejectsInvalidState(t *testing.T) {
 	t.Run("read handle", func(t *testing.T) {
 		result := make(chan streamResult, 1)
 		overflow := make(chan Status, 1)
-		readPipe(windows.InvalidHandle, 1, OutputOverflow, result, overflow)
+		reader := newStreamReader("output", windows.InvalidHandle)
+		reader.read(1, OutputOverflow, result, overflow)
 		if (<-result).err == nil {
 			t.Fatal("invalid read handle was accepted")
 		}
@@ -262,6 +297,29 @@ func TestAwaitInputStates(t *testing.T) {
 	}
 }
 
+func TestAwaitStreamCancelsBlockedRead(t *testing.T) {
+	read, write := nativePipe(t)
+	defer closeNativeHandle(t, write)
+	result := make(chan streamResult, 1)
+	reader := newStreamReader("output", read)
+	go reader.read(8, OutputOverflow, result, make(chan Status, 1))
+	observation := awaitStream(reader, result, time.Now().Add(time.Millisecond))
+	if observation.err == nil ||
+		!strings.Contains(observation.err.Error(), "join worker output") {
+		t.Fatalf("stream result=%v, want bounded join error", observation.err)
+	}
+	select {
+	case <-reader.done:
+	default:
+		t.Fatal("stream reader survived bounded join")
+	}
+	select {
+	case value := <-result:
+		t.Fatalf("unjoined stream result=%v", value)
+	default:
+	}
+}
+
 func TestStreamResultStates(t *testing.T) {
 	status, err := applyStreamResult(
 		Completed,
@@ -290,7 +348,8 @@ func TestReadPipeStates(t *testing.T) {
 		read, write := nativePipe(t)
 		closeNativeHandle(t, write)
 		result := make(chan streamResult, 1)
-		readPipe(read, 8, OutputOverflow, result, make(chan Status, 1))
+		reader := newStreamReader("output", read)
+		reader.read(8, OutputOverflow, result, make(chan Status, 1))
 		observation := <-result
 		if len(observation.data) != 0 || observation.err != nil {
 			t.Fatalf("empty pipe: data=%q error=%v", observation.data, observation.err)
@@ -307,7 +366,8 @@ func TestReadPipeStates(t *testing.T) {
 		}
 		result := make(chan streamResult, 1)
 		overflow := make(chan Status, 1)
-		readPipe(read, 8, OutputOverflow, result, overflow)
+		reader := newStreamReader("output", read)
+		reader.read(8, OutputOverflow, result, overflow)
 		if !errors.Is((<-result).err, errStreamLimit) || <-overflow != OutputOverflow {
 			t.Fatal("pipe overflow was not reported")
 		}

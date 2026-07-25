@@ -13,7 +13,10 @@
 
 package attemptstore
 
-import "os"
+import (
+	"os"
+	"syscall"
+)
 
 func publishFile(source, target, directory string) error {
 	if err := os.Link(source, target); err != nil {
@@ -30,6 +33,53 @@ func publishFile(source, target, directory string) error {
 		_ = root.Close()
 	}()
 	handle, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	syncErr := handle.Sync()
+	closeErr := handle.Close()
+	if syncErr != nil {
+		return syncErr
+	}
+	return closeErr
+}
+
+func publishDirectory(source, target, directory string) error {
+	if err := os.Rename(source, target); err != nil {
+		if os.IsExist(err) {
+			return ErrDuplicate
+		}
+		return err
+	}
+	return syncDirectory(directory)
+}
+
+func secureEvidenceTree(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || pathIsLinked(path, info) {
+		return ErrCorrupt
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if ok && stat.Uid != uint32(os.Geteuid()) {
+		return ErrCorrupt
+	}
+	if info.Mode().Perm() != 0o700 {
+		if err := os.Chmod(path, 0o700); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func pathIsLinked(_ string, info os.FileInfo) bool {
+	return info.Mode()&os.ModeSymlink != 0
+}
+
+func syncDirectory(directory string) error {
+	handle, err := os.Open(directory)
 	if err != nil {
 		return err
 	}
