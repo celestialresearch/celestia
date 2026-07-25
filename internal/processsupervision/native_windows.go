@@ -1,0 +1,160 @@
+// Copyright © 2026 @sudocelestia. All rights reserved.
+//
+// PROPRIETARY AND CONFIDENTIAL SOURCE CODE.
+//
+// No licence, permission or authorisation is granted to use, copy, modify,
+// compile, execute, distribute, publish, sublicense or otherwise exploit this
+// file, except to the limited extent unavoidably permitted by applicable law
+// or GitHub's Terms of Service.
+//
+// See the LICENSE file at the repository root for the complete terms.
+
+//go:build windows
+
+package processsupervision
+
+import (
+	"errors"
+	"fmt"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
+)
+
+const (
+	securityCapabilitiesAttribute = 0x00020009
+	startfUseStdHandles           = 0x00000100
+	extendedStartupInfoPresent    = 0x00080000
+	createSuspended               = 0x00000004
+	createNoWindow                = 0x08000000
+	createUnicodeEnvironment      = 0x00000400
+	stillActive                   = 259
+)
+
+var (
+	userenv                       = windows.NewLazySystemDLL("userenv.dll")
+	createAppContainerProfile     = userenv.NewProc("CreateAppContainerProfile")
+	deleteAppContainerProfile     = userenv.NewProc("DeleteAppContainerProfile")
+	getAppContainerFolderPath     = userenv.NewProc("GetAppContainerFolderPath")
+	ole32                         = windows.NewLazySystemDLL("ole32.dll")
+	coTaskMemFree                 = ole32.NewProc("CoTaskMemFree")
+	errAppContainerAlreadyExists  = windows.Errno(183)
+	errAppContainerNotImplemented = errors.New("AppContainer API unavailable")
+)
+
+type securityCapabilities struct {
+	appContainerSID *windows.SID
+	capabilities    unsafe.Pointer
+	capabilityCount uint32
+	reserved        uint32
+}
+
+type appContainer struct {
+	name   string
+	sid    *windows.SID
+	folder string
+}
+
+func createContainer(name string) (appContainer, error) {
+	namePointer, err := windows.UTF16PtrFromString(name)
+	if err != nil {
+		return appContainer{}, fmt.Errorf("encode AppContainer name: %w", err)
+	}
+	display, _ := windows.UTF16PtrFromString("Celestia worker")
+	description, _ := windows.UTF16PtrFromString("Ephemeral deterministic worker")
+	var sid *windows.SID
+	result, _, callErr := createAppContainerProfile.Call(
+		uintptr(unsafe.Pointer(namePointer)), // #nosec G103 -- Win32 requires a PCWSTR address.
+		uintptr(unsafe.Pointer(display)),     // #nosec G103 -- Win32 requires a PCWSTR address.
+		uintptr(unsafe.Pointer(description)), // #nosec G103 -- Win32 requires a PCWSTR address.
+		0,
+		0,
+		uintptr(unsafe.Pointer(&sid)), // #nosec G103 -- Win32 writes the allocated SID pointer.
+	)
+	if result != 0 {
+		if windows.Errno(result&0xffff) == errAppContainerAlreadyExists {
+			return appContainer{}, fmt.Errorf("create AppContainer: duplicate profile")
+		}
+		if errors.Is(callErr, windows.ERROR_PROC_NOT_FOUND) {
+			return appContainer{}, errAppContainerNotImplemented
+		}
+		return appContainer{}, fmt.Errorf("create AppContainer: HRESULT %#x", result)
+	}
+	folder, err := containerFolder(sid)
+	if err != nil {
+		_ = windows.FreeSid(sid)
+		_ = deleteContainer(name)
+		return appContainer{}, err
+	}
+	return appContainer{name: name, sid: sid, folder: folder}, nil
+}
+
+func containerFolder(sid *windows.SID) (string, error) {
+	sidText, err := windows.UTF16PtrFromString(sid.String())
+	if err != nil {
+		return "", fmt.Errorf("encode AppContainer SID: %w", err)
+	}
+	var folder *uint16
+	result, _, callErr := getAppContainerFolderPath.Call(
+		uintptr(unsafe.Pointer(sidText)), // #nosec G103 -- Win32 requires a PCWSTR address.
+		uintptr(unsafe.Pointer(&folder)), // #nosec G103 -- Win32 writes the allocated path pointer.
+	)
+	if result != 0 {
+		if errors.Is(callErr, windows.ERROR_PROC_NOT_FOUND) {
+			return "", errAppContainerNotImplemented
+		}
+		return "", fmt.Errorf("get AppContainer folder: HRESULT %#x", result)
+	}
+	defer func() {
+		_, _, _ = coTaskMemFree.Call(
+			uintptr(unsafe.Pointer(folder)), // #nosec G103 -- Win32 requires the allocated path address.
+		)
+	}()
+	return windows.UTF16PtrToString(folder), nil
+}
+
+func (container appContainer) close() error {
+	_ = windows.FreeSid(container.sid)
+	return deleteContainer(container.name)
+}
+
+func deleteContainer(name string) error {
+	namePointer, err := windows.UTF16PtrFromString(name)
+	if err != nil {
+		return fmt.Errorf("encode AppContainer name: %w", err)
+	}
+	result, _, _ := deleteAppContainerProfile.Call(
+		uintptr(unsafe.Pointer(namePointer)), // #nosec G103 -- Win32 requires a PCWSTR address.
+	)
+	if result != 0 {
+		return fmt.Errorf("delete AppContainer: HRESULT %#x", result)
+	}
+	return nil
+}
+
+func createJob(limits Limits) (windows.Handle, error) {
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return 0, fmt.Errorf("create job: %w", err)
+	}
+	information := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
+	information.BasicLimitInformation.PerProcessUserTimeLimit = limits.Timeout.Nanoseconds() / 100
+	information.BasicLimitInformation.ActiveProcessLimit = limits.Processes
+	information.BasicLimitInformation.LimitFlags =
+		windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE |
+			windows.JOB_OBJECT_LIMIT_PROCESS_TIME |
+			windows.JOB_OBJECT_LIMIT_ACTIVE_PROCESS |
+			windows.JOB_OBJECT_LIMIT_PROCESS_MEMORY
+	information.ProcessMemoryLimit = uintptr(limits.MemoryBytes)
+	_, err = windows.SetInformationJobObject(
+		job,
+		windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&information)), // #nosec G103 -- Win32 reads the typed job structure.
+		uint32(unsafe.Sizeof(information)),
+	)
+	if err != nil {
+		_ = windows.CloseHandle(job)
+		return 0, fmt.Errorf("configure job: %w", err)
+	}
+	return job, nil
+}
