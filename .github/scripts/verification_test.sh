@@ -193,11 +193,35 @@ deny)
 esac
 EOF
   chmod +x "$rust_dir/bin/cargo"
+  cat >"$rust_dir/bin/rustc" <<'EOF'
+#!/usr/bin/env bash
+printf 'rustc %s\n' "${FIXTURE_RUSTC_VERSION:-1.94.1}"
+EOF
+  chmod +x "$rust_dir/bin/rustc"
+  unset FIXTURE_RUSTC_VERSION
 
   (
     cd "$rust_dir" &&
       PATH="$rust_dir/bin:$PATH" bash .github/scripts/rustcheck.sh tools
   )
+  set +e
+  output=$(
+    cd "$rust_dir" &&
+      PATH="$rust_dir/bin:$PATH" FIXTURE_RUSTC_VERSION=0 \
+        bash .github/scripts/rustcheck.sh tools 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust tool check accepted a mismatched compiler version\n' >&2
+    return 1
+  }
+  grep -Fq 'Rust compiler version mismatch: expected=1.94.1 actual=0' \
+    <<<"$output" || {
+    printf 'Rust tool check omitted the compiler mismatch diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
   (
     cd "$rust_dir" &&
       PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=false \
