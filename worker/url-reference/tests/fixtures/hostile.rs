@@ -15,6 +15,7 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::process::{Command, Stdio};
+#[cfg(windows)]
 use std::ptr;
 use std::thread;
 use std::time::Duration;
@@ -126,13 +127,16 @@ fn spawn_descendant() {
     reason = "hostile fixture deliberately leaves descendants for the supervisor"
 )]
 fn spawn_child() {
-    let mut child = Command::new(env::current_exe().expect("fixture path"))
+    let Ok(mut child) = Command::new(env::current_exe().expect("fixture path"))
         .arg("child")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn child");
+    else {
+        print!("blocked");
+        return;
+    };
     let mut identity = String::new();
     BufReader::new(child.stdout.take().expect("child output"))
         .read_line(&mut identity)
@@ -147,13 +151,16 @@ fn spawn_child() {
     reason = "hostile fixture deliberately leaves descendants for the supervisor"
 )]
 fn child() {
-    let grandchild = Command::new(env::current_exe().expect("fixture path"))
+    let Ok(grandchild) = Command::new(env::current_exe().expect("fixture path"))
         .arg("grandchild")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("spawn grandchild");
+    else {
+        print!("blocked");
+        return;
+    };
     println!("{}", grandchild.id());
     io::stdout().flush().expect("flush grandchild identity");
     hang();

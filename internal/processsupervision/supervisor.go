@@ -56,26 +56,10 @@ type Outcome struct {
 	Err             error
 }
 
-type Supervisor struct {
-	workerPath string
-	workerHash [32]byte
-	limits     Limits
-}
-
 func New(workerPath string, limits Limits) (*Supervisor, error) {
 	return newSupervisor(workerPath, limits)
 }
 
 func (supervisor *Supervisor) Run(ctx context.Context, frame []byte) Outcome {
 	return supervisor.run(ctx, frame)
-}
-
-func validLimits(limits Limits) bool {
-	return limits.InputBytes > 0 &&
-		limits.OutputBytes > 0 &&
-		limits.ErrorBytes > 0 &&
-		limits.MemoryBytes > 0 &&
-		limits.Processes > 0 &&
-		limits.Timeout > 0 &&
-		limits.CleanupTimeout > 0
 }

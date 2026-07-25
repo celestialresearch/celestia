@@ -33,6 +33,12 @@ import (
 
 var errStreamLimit = errors.New("process stream limit exceeded")
 
+type Supervisor struct {
+	workerPath string
+	workerHash [32]byte
+	limits     Limits
+}
+
 type pipeSet struct {
 	stdinRead   windows.Handle
 	stdinWrite  windows.Handle
@@ -58,6 +64,7 @@ type launchResources struct {
 	imageHash [32]byte
 	pipes     pipeSet
 	job       windows.Handle
+	cleanup   time.Duration
 }
 
 type streamResult struct {
@@ -107,6 +114,16 @@ func newSupervisor(workerPath string, limits Limits) (*Supervisor, error) {
 		workerHash: hash,
 		limits:     limits,
 	}, nil
+}
+
+func validLimits(limits Limits) bool {
+	return limits.InputBytes > 0 &&
+		limits.OutputBytes > 0 &&
+		limits.ErrorBytes > 0 &&
+		limits.MemoryBytes > 0 &&
+		limits.Processes > 0 &&
+		limits.Timeout > 0 &&
+		limits.CleanupTimeout > 0
 }
 
 func (supervisor *Supervisor) run(ctx context.Context, frame []byte) Outcome {
@@ -174,6 +191,7 @@ func (supervisor *Supervisor) prepareLaunch() (*launchResources, error) {
 		imageHash: hash,
 		pipes:     pipes,
 		job:       job,
+		cleanup:   supervisor.limits.CleanupTimeout,
 	}, nil
 }
 
@@ -183,17 +201,19 @@ func (resources *launchResources) start() (*launchedProcess, error) {
 		return nil, err
 	}
 	if err := windows.AssignProcessToJobObject(resources.job, info.Process); err != nil {
-		_ = windows.TerminateProcess(info.Process, 1)
-		_ = windows.CloseHandle(info.Thread)
-		_ = windows.CloseHandle(info.Process)
-		return nil, fmt.Errorf("assign worker job: %w", err)
+		stopErr := resources.stopStart(info, false)
+		return nil, errors.Join(
+			fmt.Errorf("assign worker job: %w", err),
+			stopErr,
+		)
 	}
 	resources.pipes.closeChildEnds()
 	if _, err := windows.ResumeThread(info.Thread); err != nil {
-		_ = windows.TerminateJobObject(resources.job, 1)
-		_ = windows.CloseHandle(info.Thread)
-		_ = windows.CloseHandle(info.Process)
-		return nil, fmt.Errorf("resume worker: %w", err)
+		stopErr := resources.stopStart(info, true)
+		return nil, errors.Join(
+			fmt.Errorf("resume worker: %w", err),
+			stopErr,
+		)
 	}
 	_ = windows.CloseHandle(info.Thread)
 	info.Thread = 0
@@ -205,6 +225,33 @@ func (resources *launchResources) start() (*launchedProcess, error) {
 		image:     resources.image,
 		started:   time.Now(),
 	}, nil
+}
+
+func (resources *launchResources) stopStart(
+	info windows.ProcessInformation,
+	assigned bool,
+) error {
+	resources.pipes.closeChildEnds()
+	var stopErr error
+	if assigned {
+		stopErr = windows.TerminateJobObject(resources.job, 1)
+	} else {
+		stopErr = windows.TerminateProcess(info.Process, 1)
+	}
+	complete, waitErr := waitCleanup(
+		info.Process,
+		resources.job,
+		resources.cleanup,
+	)
+	if !complete && waitErr == nil {
+		waitErr = errors.New("startup cleanup incomplete")
+	}
+	return errors.Join(
+		stopErr,
+		waitErr,
+		windows.CloseHandle(info.Thread),
+		windows.CloseHandle(info.Process),
+	)
 }
 
 func (resources *launchResources) close() error {

@@ -11,22 +11,31 @@
 
 //go:build !windows
 
-package processsupervision
+package urloperation
 
 import (
 	"context"
 	"fmt"
+
+	"celestia.research/governed-operation/internal/processsupervision"
+	"celestia.research/governed-operation/internal/urlreference"
 )
 
-type Supervisor struct{}
+type Operation struct{}
 
-func newSupervisor(string, Limits) (*Supervisor, error) {
-	return nil, fmt.Errorf("%w: native containment is not qualified", ErrUnavailable)
+func New(
+	string,
+	string,
+) (*Operation, error) {
+	return nil, fmt.Errorf(
+		"configure URL operation: %w",
+		processsupervision.ErrUnavailable,
+	)
 }
 
-func (*Supervisor) run(context.Context, []byte) Outcome {
-	return Outcome{
-		Status: StartFailed,
-		Err:    fmt.Errorf("%w: native containment is not qualified", ErrUnavailable),
+func (*Operation) Execute(context.Context, string, urlreference.Mode) Result {
+	return Result{
+		Status: Failed,
+		Err:    processsupervision.ErrUnavailable,
 	}
 }

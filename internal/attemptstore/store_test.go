@@ -100,6 +100,11 @@ func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
 	if _, err := store.Inspect("invalid"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("invalid identity: %v", err)
 	}
+	if _, err := store.Inspect(
+		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB",
+	); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("non-canonical identity: %v", err)
+	}
 }
 
 func TestStoreDetectsCorruption(t *testing.T) {
@@ -361,6 +366,8 @@ func TestWriteRecordRejectsDuplicate(t *testing.T) {
 func TestRecordValidators(t *testing.T) {
 	for _, status := range []string{
 		"failed",
+		"cancelled",
+		"timed_out",
 		"executed_unverified",
 		"verified",
 		"indeterminate",

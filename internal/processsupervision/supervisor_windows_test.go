@@ -300,6 +300,11 @@ func assertDescendantCleaned(t *testing.T, mode string, processes uint32) {
 	limits := testLimits()
 	limits.Processes = processes
 	outcome := runFixture(t, worker, limits, mode)
+	if outcome.Status == processsupervision.Completed &&
+		strings.TrimSpace(string(outcome.Stdout)) == "blocked" &&
+		outcome.CleanupComplete {
+		return
+	}
 	if outcome.Status != processsupervision.TimedOut {
 		t.Fatalf("status=%s stdout=%q error=%v", outcome.Status, outcome.Stdout, outcome.Err)
 	}

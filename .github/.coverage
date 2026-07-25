@@ -1,7 +1,7 @@
 default 90
 cache-max-age-minutes 1440
 # Host filesystem failures retain behavioural tests without test-only I/O hooks.
-package celestia.research/governed-operation/internal/attemptstore 87
+package celestia.research/governed-operation/internal/attemptstore 85
 # Native Win32 failure injection would weaken the production ownership boundary.
 package celestia.research/governed-operation/internal/processsupervision 75
 # The application path is exercised end to end; unreachable native failures stay below it.

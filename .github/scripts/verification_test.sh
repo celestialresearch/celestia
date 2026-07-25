@@ -357,6 +357,29 @@ func TestFirst(t *testing.T) {
 }
 EOF
 
+  cat >"$work_dir/b/failure_test.go" <<'EOF'
+package b
+
+import "testing"
+
+func TestFailure(t *testing.T) {
+	t.Fatal("fixture failure")
+}
+EOF
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/coveragecheck.sh verify 2>&1)
+  status=$?
+  set -e
+  rm -- "$work_dir/b/failure_test.go"
+  [[ "$status" -ne 0 ]] || {
+    printf 'coverage check accepted a failing test\n' >&2
+    return 1
+  }
+  if grep -Fq 'unbound variable' <<<"$output"; then
+    printf 'coverage cleanup masked a failing test:\n%s\n' "$output" >&2
+    return 1
+  fi
+
   set +e
   output=$(cd "$work_dir" && bash .github/scripts/coveragecheck.sh verify 2>&1)
   status=$?
