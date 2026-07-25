@@ -33,3 +33,27 @@ func TestPublishResultDistinguishesReleaseFailure(t *testing.T) {
 		t.Fatalf("combined failure lost: %v", err)
 	}
 }
+
+func TestPublishClassifiesReleaseAfterPublication(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	owner := attempt.owner
+	owner.once.Do(func() {
+		owner.releaseErr = errors.New("injected release failure")
+	})
+	t.Cleanup(func() {
+		_ = unlockAttemptFile(owner.file)
+		_ = owner.file.Close()
+	})
+	err = attempt.Publish(testObservation(accepted.Request.AttemptID))
+	if !errors.Is(err, ErrRelease) {
+		t.Fatalf("release failure not classified: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
+		t.Fatalf("published attempt not inspectable: %v", err)
+	}
+}
