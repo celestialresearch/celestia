@@ -117,6 +117,21 @@ ci/bsd-toolchain
 Keep branches focused and delete them after merge. Do not maintain long-lived
 development branches or use branch names containing personal information.
 
+## Merge Strategy
+
+Prefer a rebase merge for a large pull request whose commits represent
+distinct, coherent and independently reviewable changes.
+
+Prefer a squash merge when a small pull request contains one substantive
+commit followed by no more than three compatibility, review or CI corrections
+that have no useful independent history.
+
+Before either merge:
+- remove temporary `fixup!` or `squash!` commits;
+- preserve the required commit-signing guarantees;
+- ensure the resulting commit or commits remain coherent and revertible;
+- do not squash unrelated changes merely to reduce commit count.
+
 ## Pre-Push Gate
 
 Before pushing:
