@@ -15,19 +15,9 @@ concurrency:
 
 jobs:
   windows-shells:
-    name: Windows ${{ matrix.name }}
+    name: Windows Shells
     runs-on: windows-2025
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Git Bash
-            shell: git-bash
-          - name: MSYS2
-            shell: msys2
-          - name: Cygwin
-            shell: cygwin
     steps:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -37,40 +27,18 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: Verify Git Bash
-        if: matrix.shell == 'git-bash'
-        shell: bash
-        env:
-          DEVCHECK_CURRENCY: 'false'
-          DEVCHECK_PROFILE: shell
-        run: bash ./.github/scripts/devcheck.sh
       - name: Setup MSYS2
-        if: matrix.shell == 'msys2'
         uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
         with:
           msystem: UCRT64
           path-type: inherit
-      - name: Verify MSYS2
-        if: matrix.shell == 'msys2'
-        shell: msys2 {0}
-        env:
-          DEVCHECK_CURRENCY: 'false'
-          DEVCHECK_PROFILE: shell
-        run: bash ./.github/scripts/devcheck.sh
       - name: Setup Cygwin
-        if: matrix.shell == 'cygwin'
         uses: cygwin/cygwin-install-action@3f0a3f9f988f7e96b8c18098ae05eaec175f5b52 # v6.0.2
         with:
           packages: git
-      - name: Verify Cygwin
-        if: matrix.shell == 'cygwin'
-        shell: C:\cygwin\bin\bash.exe --login -o igncr '{0}'
-        env:
-          DEVCHECK_CURRENCY: 'false'
-          DEVCHECK_PROFILE: shell
-        run: |
-          cd "$(cygpath "$GITHUB_WORKSPACE")"
-          bash ./.github/scripts/devcheck.sh
+      - name: Verify Windows Shells
+        shell: pwsh
+        run: ./.github/scripts/windows-shellcheck.ps1
 
   bsd-bootstrap:
     name: ${{ matrix.name }} ${{ matrix.version }} Guest Bootstrap
