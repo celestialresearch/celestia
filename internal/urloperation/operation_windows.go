@@ -74,10 +74,16 @@ func (operation *Operation) Execute(
 	result.AttemptID = accepted.Request.AttemptID
 	observation := observationFrom(result)
 	if err := attempt.Publish(observation); err != nil {
-		result.Status = Indeterminate
-		result.Err = errors.Join(result.Err, ErrPersistence, err)
+		applyPublishError(&result, err)
 	}
 	return result
+}
+
+func applyPublishError(result *Result, err error) {
+	if !errors.Is(err, attemptstore.ErrRelease) {
+		result.Status = Indeterminate
+	}
+	result.Err = errors.Join(result.Err, ErrPersistence, err)
 }
 
 func (operation *Operation) executeAccepted(

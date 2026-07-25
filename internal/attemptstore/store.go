@@ -51,6 +51,7 @@ var (
 	ErrDuplicate = errors.New("duplicate attempt")
 	ErrCorrupt   = errors.New("corrupt attempt evidence")
 	ErrActive    = errors.New("attempt is active")
+	ErrRelease   = errors.New("attempt ownership release failed")
 )
 
 type Admitted struct {
@@ -250,15 +251,17 @@ func admittedRecord(
 	}
 }
 
-func (attempt *Attempt) Publish(observation Observation) (err error) {
+func (attempt *Attempt) Publish(observation Observation) error {
 	attempt.mu.Lock()
 	defer attempt.mu.Unlock()
 	if attempt.closed {
 		return fmt.Errorf("%w: attempt ownership released", ErrInvalid)
 	}
-	defer func() {
-		err = errors.Join(err, attempt.closeLocked())
-	}()
+	err := attempt.publishLocked(observation)
+	return publishResult(err, attempt.closeLocked())
+}
+
+func (attempt *Attempt) publishLocked(observation Observation) error {
 	if err := validateObservation(observation); err != nil ||
 		observation.AttemptID != attempt.admitted.AttemptID {
 		return fmt.Errorf("%w: observation", ErrInvalid)
@@ -285,6 +288,9 @@ func (attempt *Attempt) Publish(observation Observation) (err error) {
 func (store *Store) Recover(attemptID, reason string) (err error) {
 	if reason == "" {
 		return fmt.Errorf("%w: recovery reason", ErrInvalid)
+	}
+	if _, _, err := store.recoverablePath(attemptID); err != nil {
+		return err
 	}
 	owner, err := store.acquireAttemptLock(attemptID)
 	if err != nil {
@@ -313,6 +319,19 @@ func (store *Store) Recover(attemptID, reason string) (err error) {
 		_ = os.Remove(filepath.Dir(path))
 	}
 	return publishMarker(path, attemptID)
+}
+
+func publishResult(publicationErr, releaseErr error) error {
+	if releaseErr == nil {
+		return publicationErr
+	}
+	if publicationErr == nil {
+		return fmt.Errorf("%w: %w", ErrRelease, releaseErr)
+	}
+	return errors.Join(
+		publicationErr,
+		fmt.Errorf("release attempt ownership: %w", releaseErr),
+	)
 }
 
 func (attempt *Attempt) Close() error {
