@@ -263,13 +263,16 @@ fi
 run_check 'Policy' bash ./.github/scripts/policycheck.sh
 run_check 'Modules' bash ./.github/scripts/modcheck.sh verify
 run_check 'Actions' bash ./.github/scripts/actioncheck.sh verify
+run_check 'Currency Exceptions' bash ./.github/scripts/currencycheck.sh verify
 run_check 'Licence Headers' bash ./.github/scripts/licencecheck.sh verify
 if [[ "${DEVCHECK_CURRENCY:-true}" == true ]]; then
   run_check 'Module Currency' bash ./.github/scripts/modcheck.sh cached-diff
   run_check 'Action Currency' bash ./.github/scripts/actioncheck.sh cached-currency
+  run_check 'Version Currency' bash ./.github/scripts/currencycheck.sh currency
 else
   skip_check 'Module Currency' 'Disabled for this platform job'
   skip_check 'Action Currency' 'Disabled for this platform job'
+  skip_check 'Version Currency' 'Disabled for this platform job'
 fi
 
 if [[ "$profile" == shell ]]; then

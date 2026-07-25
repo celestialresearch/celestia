@@ -39,9 +39,10 @@ Allowed types:
 
 Use `fix(security)` for security corrections rather than a separate type.
 
-The scope is optional. When present it must name the smallest stable ownership
-area such as `cli`, `protocol`, `worker`, `evidence`, `ci` or `repo`. Do not use
-a filename as a scope unless the file is itself the maintained system boundary.
+The scope is mandatory and must name the smallest stable ownership area such
+as `cli`, `protocol`, `worker`, `evidence`, `verification` or `repo`. Do not
+repeat the type as the scope or use a filename unless the file is itself the
+maintained system boundary.
 
 The summary must:
 - begin with a lowercase imperative verb;
@@ -57,7 +58,7 @@ chore(repo): establish verification scaffold
 feat(cli): implement governed URL-reference operation
 fix(protocol): reject mismatched response nonce
 test(worker): cover truncated response
-ci: qualify macOS Bash 3.2 verification
+ci(verification): qualify macOS Bash 3.2
 ```
 
 ## Commit Body
@@ -85,7 +86,7 @@ git tag -s
 ```
 
 Do not use DCO sign-off trailers unless a separate policy requires them.
-Platform-created merge commits must show GitHub's verified signature. An
+Platform-created squash commits must show GitHub's verified signature. An
 unsigned or unverifiable commit must not enter `main`.
 
 ## Branches and Pull Requests
@@ -119,22 +120,14 @@ development branches or use branch names containing personal information.
 
 ## Merge Strategy
 
-Do not use GitHub rebase merges. GitHub rewrites the commits without preserving
-their local GPG signatures, which violates the signed-history requirement.
+Use squash merges only. GitHub rebase merges rewrite local commits without
+preserving their signatures. Merge commits retain branch implementation detail
+that is not needed in protected history.
 
-Use a merge commit for a pull request whose commits represent distinct,
-coherent and independently reviewable changes. The platform-created merge
-commit must show GitHub's verified signature and every parent commit must
-retain its valid local signature.
-
-Prefer a squash merge when a small pull request contains one substantive
-commit followed by no more than three compatibility, review or CI corrections
-that have no useful independent history.
-
-Before either merge:
+Before merging:
 - remove temporary `fixup!` or `squash!` commits;
-- preserve the required commit-signing guarantees;
-- ensure the resulting commit or commits remain coherent and revertible;
+- ensure the squash summary describes one coherent and revertible change;
+- verify that GitHub will sign the resulting commit;
 - do not squash unrelated changes merely to reduce commit count.
 
 ## Pre-Push Gate
