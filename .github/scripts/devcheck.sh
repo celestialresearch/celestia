@@ -14,6 +14,15 @@ set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
+profile=${DEVCHECK_PROFILE:-full}
+case "$profile" in
+  full | shell) ;;
+  *)
+    printf 'Unknown verification profile: %s\n' "$profile" >&2
+    exit 2
+    ;;
+esac
+
 check_names=()
 check_statuses=()
 check_outputs=()
@@ -252,7 +261,7 @@ printf '    %-16s %s\n' govulncheck \
   "$(go list -m -f '{{.Version}}' golang.org/x/vuln)"
 printf '    %-16s %s\n' shellcheck \
   "$(go list -m -f '{{.Version}}' github.com/wasilibs/go-shellcheck)"
-if [[ -f rust-toolchain.toml ]]; then
+if [[ "$profile" == full && -f rust-toolchain.toml ]]; then
   printf '    %-16s %s %s\n' Rust \
     "$(rustc --version | awk '{ print $1 }')" \
     "$(rustc --version | awk '{ print $2 }')"
@@ -274,6 +283,11 @@ if [[ "${DEVCHECK_CURRENCY:-true}" == true ]]; then
 else
   skip_check 'Module Currency' 'Disabled for this platform job'
   skip_check 'Action Currency' 'Disabled for this platform job'
+fi
+
+if [[ "$profile" == shell ]]; then
+  finish
+  exit
 fi
 
 if has_go_packages; then
