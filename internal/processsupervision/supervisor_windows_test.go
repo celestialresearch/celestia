@@ -92,17 +92,35 @@ func TestSupervisorRunsWorker(t *testing.T) {
 func TestSupervisorEnforcesStreamsAndDeadline(t *testing.T) {
 	worker := hostileWorker(t)
 	tests := []struct {
-		name   string
-		frame  string
-		status processsupervision.Status
+		name    string
+		frame   string
+		status  processsupervision.Status
+		timeout time.Duration
 	}{
-		{name: "stdout", frame: "stdout_overflow", status: processsupervision.OutputOverflow},
-		{name: "stderr", frame: "stderr_overflow", status: processsupervision.ErrorOverflow},
-		{name: "timeout", frame: "hang", status: processsupervision.TimedOut},
+		{
+			name:    "stdout",
+			frame:   "stdout_overflow",
+			status:  processsupervision.OutputOverflow,
+			timeout: 2 * time.Second,
+		},
+		{
+			name:    "stderr",
+			frame:   "stderr_overflow",
+			status:  processsupervision.ErrorOverflow,
+			timeout: 2 * time.Second,
+		},
+		{
+			name:    "timeout",
+			frame:   "hang",
+			status:  processsupervision.TimedOut,
+			timeout: 500 * time.Millisecond,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			outcome := runFixture(t, worker, testLimits(), test.frame)
+			limits := testLimits()
+			limits.Timeout = test.timeout
+			outcome := runFixture(t, worker, limits, test.frame)
 			if outcome.Status != test.status {
 				t.Fatalf("status=%s error=%v", outcome.Status, outcome.Err)
 			}
