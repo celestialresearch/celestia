@@ -643,10 +643,10 @@ mod tests {
     #[test]
     fn checks_identifiers() {
         assert!(valid_identity(
-            "oaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoYA"
+            "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
         ));
         assert!(!valid_identity(
-            "oaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoYB"
+            "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh9"
         ));
         assert!(!valid_identity("invalid"));
     }

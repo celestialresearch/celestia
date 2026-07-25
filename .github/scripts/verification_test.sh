@@ -21,6 +21,21 @@ main() (
   local rust_dir
   local status
   local work_dir
+  local change_pid=
+  local currency_pid=
+
+  # shellcheck disable=SC2329 # Invoked by the EXIT and signal trap.
+  cleanup() {
+    if [[ -n "$change_pid" ]]; then
+      kill "$change_pid" 2>/dev/null || true
+      wait "$change_pid" 2>/dev/null || true
+    fi
+    if [[ -n "$currency_pid" ]]; then
+      kill "$currency_pid" 2>/dev/null || true
+      wait "$currency_pid" 2>/dev/null || true
+    fi
+    rm -rf -- "$work_dir"
+  }
 
   mkdir -p "$root/.cache"
   work_dir=$(mktemp -d "$root/.cache/verification-test.XXXXXX")
@@ -31,7 +46,11 @@ main() (
     return 1
     ;;
   esac
-  trap 'rm -rf -- "$work_dir"' EXIT HUP INT TERM
+  trap cleanup EXIT HUP INT TERM
+  bash "$root/.github/scripts/changecheck_test.sh" &
+  change_pid=$!
+  bash "$root/.github/scripts/currencycheck_test.sh" &
+  currency_pid=$!
 
   mkdir -p "$work_dir/.github/scripts" "$work_dir/a" "$work_dir/b"
   cp "$root/.github/scripts/coveragecheck.sh" \
@@ -274,7 +293,7 @@ EOF
   mkdir -p "$repo_dir"
   tar -cf - -C "$root" \
     .github/codeql .github/scripts .github/workflows \
-    .github/.coverage .github/dependabot.yml \
+    .github/.coverage .github/.currency .github/dependabot.yml \
     docs internal policies worker \
     .editorconfig .gitattributes .gitignore .golangci.yml \
     AGENTS.md Cargo.lock Cargo.toml deny.toml go.mod go.sum LICENSE README.md \
@@ -393,6 +412,11 @@ EOF
   rm -- "$licence_dir/removed.sh"
   (cd "$licence_dir" &&
     bash .github/scripts/licencecheck.sh verify >/dev/null)
+
+  wait "$change_pid"
+  change_pid=
+  wait "$currency_pid"
+  currency_pid=
 )
 
 main

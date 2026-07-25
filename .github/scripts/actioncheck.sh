@@ -129,9 +129,15 @@ check_actions() {
             "$ACTION_REPOSITORY" >&2
           status=1
         elif [[ "$latest" != "$ACTION_TAG" ]]; then
-          printf '%s uses %s; latest stable release is %s\n' \
-            "$ACTION_REPOSITORY" "$ACTION_TAG" "$latest" >&2
-          status=1
+          if bash ./.github/scripts/currencycheck.sh \
+            allows action "$ACTION_REPOSITORY" "$ACTION_TAG"; then
+            printf '%s retains %s by documented exception; latest is %s\n' \
+              "$ACTION_REPOSITORY" "$ACTION_TAG" "$latest"
+          else
+            printf '%s uses %s; latest stable release is %s\n' \
+              "$ACTION_REPOSITORY" "$ACTION_TAG" "$latest" >&2
+            status=1
+          fi
         fi
         checked_latest+="$ACTION_REPOSITORY"$'\n'
       fi
