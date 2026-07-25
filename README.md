@@ -2,14 +2,17 @@
 
 Celestia implementation repository. No operation has been implemented.
 
+The first operation is constrained by
+[`docs/contracts/url_reference_v0.md`](docs/contracts/url_reference_v0.md).
+
 Repository history and push requirements are defined in
-[`COMMIT_POLICY.md`](COMMIT_POLICY.md).
+[`policies/commit.md`](policies/commit.md).
 
 Source structure, naming and comment requirements are defined in
-[`PROGRAMMING_POLICY.md`](PROGRAMMING_POLICY.md).
+[`policies/programming.md`](policies/programming.md).
 
 Static-analysis admission and suppression requirements are defined in
-[`LINTER_POLICY.md`](LINTER_POLICY.md).
+[`policies/linting.md`](policies/linting.md).
 
 ## Verification
 
