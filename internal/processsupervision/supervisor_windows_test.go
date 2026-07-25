@@ -254,7 +254,9 @@ func TestSupervisorBlocksAmbientAuthority(t *testing.T) {
 				t.Errorf("close listener: %v", err)
 			}
 		}()
-		outcome := runFixture(t, worker, testLimits(), "network\n"+listener.Addr().String())
+		limits := testLimits()
+		limits.Timeout = 2 * time.Second
+		outcome := runFixture(t, worker, limits, "network\n"+listener.Addr().String())
 		assertDenied(t, outcome)
 	})
 	t.Run("file", func(t *testing.T) {
@@ -299,11 +301,12 @@ func assertDescendantCleaned(t *testing.T, mode string, processes uint32) {
 	worker := hostileWorker(t)
 	limits := testLimits()
 	limits.Processes = processes
+	limits.Timeout = 2 * time.Second
 	outcome := runFixture(t, worker, limits, mode)
 	if outcome.Status == processsupervision.Completed &&
 		strings.TrimSpace(string(outcome.Stdout)) == "blocked" &&
 		outcome.CleanupComplete {
-		return
+		t.Skip("host denied child creation; cleanup path was not exercised")
 	}
 	if outcome.Status != processsupervision.TimedOut {
 		t.Fatalf("status=%s stdout=%q error=%v", outcome.Status, outcome.Stdout, outcome.Err)
