@@ -1,0 +1,53 @@
+version: "2"
+
+formatters:
+  enable:
+    - gofmt
+
+linters:
+  settings:
+    cyclop:
+      max-complexity: 12
+      package-average: 0.0
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+    misspell:
+      mode: restricted
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - errcheck
+    - ineffassign
+
+    - bodyclose
+    - cyclop
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - funlen
+    - gochecksumtype
+    - makezero
+    - misspell
+    - modernize
+    - noctx
+    - nilerr
+    - nilnesserr
+    - rowserrcheck
+    - sqlclosecheck
+
+    - bidichk
+    - gosec
+    - gomoddirectives
+    - musttag
+    - nolintlint
+
+    - thelper
+    - usetesting

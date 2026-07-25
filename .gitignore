@@ -1,0 +1,43 @@
+# local configuration and secrets
+.env
+.env.*
+!.env.example
+go.work
+go.work.sum
+
+# generated local outputs
+/generated/
+/reports/
+*.sarif
+
+# build artefacts and helpers
+/bin/
+/dist/
+/target/
+*.exe
+*.test
+*.tmp
+*.syso
+/.github/generated/
+
+# coverage and profiling artefacts
+coverage.out
+coverage/
+*.prof
+*.pprof
+
+# logs and local caches
+/.cache/
+*.log
+
+# macOS files
+.DS_Store
+
+# Windows files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE files
+.idea/
+.vscode/

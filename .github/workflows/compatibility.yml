@@ -1,0 +1,105 @@
+name: Compatibility Verification
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compatibility-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-shells:
+    name: Windows Shells
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Verify Git Bash
+        shell: bash
+        env:
+          DEVCHECK_CURRENCY: 'false'
+        run: bash ./.github/scripts/devcheck.sh
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        with:
+          msystem: UCRT64
+          path-type: inherit
+      - name: Verify MSYS2
+        shell: msys2 {0}
+        env:
+          DEVCHECK_CURRENCY: 'false'
+        run: bash ./.github/scripts/devcheck.sh
+      - name: Setup Cygwin
+        uses: cygwin/cygwin-install-action@3f0a3f9f988f7e96b8c18098ae05eaec175f5b52 # v6.0.2
+        with:
+          packages: git
+      - name: Verify Cygwin
+        shell: C:\cygwin\bin\bash.exe --login -o igncr '{0}'
+        env:
+          DEVCHECK_CURRENCY: 'false'
+        run: |
+          cd "$(cygpath "$GITHUB_WORKSPACE")"
+          bash ./.github/scripts/devcheck.sh
+
+  bsd-bootstrap:
+    name: ${{ matrix.name }} ${{ matrix.version }} Guest Bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: FreeBSD
+            operating-system: freebsd
+            version: '15.1'
+          - name: OpenBSD
+            operating-system: openbsd
+            version: '7.9'
+          - name: NetBSD
+            operating-system: netbsd
+            version: '10.1'
+          - name: DragonFly BSD
+            operating-system: dragonflybsd
+            version: '6.4.2'
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start ${{ matrix.name }}
+        uses: cross-platform-actions/action@5ea7e8e4677bd726033a10b094ba1c5762b15dee # v1.3.0
+        with:
+          operating_system: ${{ matrix.operating-system }}
+          architecture: x86-64
+          version: ${{ matrix.version }}
+          shell: bash
+          cpu_count: 2
+          memory: 4G
+      - name: Verify Guest
+        shell: cpa.sh {0}
+        run: |
+          uname -a
+          command -v bash
+          test -f go.mod
+          if ! find . -type f -name '*.go' -print -quit | grep -q .; then
+            echo 'No Go packages exist'
+          elif command -v go >/dev/null 2>&1; then
+            go version
+            go test -count=1 ./...
+          else
+            echo 'Go source exists but the guest has no Go toolchain' >&2
+            exit 1
+          fi

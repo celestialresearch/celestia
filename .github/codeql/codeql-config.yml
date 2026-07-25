@@ -1,0 +1,8 @@
+name: Celestia CodeQL Configuration
+
+queries:
+  - uses: security-and-quality
+
+paths-ignore:
+  - '.cache/**'
+  - 'coverage.out'

@@ -1,0 +1,67 @@
+name: CodeQL Analysis
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 3'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: autobuild
+          - language: rust
+            build-mode: none
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Detect Language
+        id: detect
+        shell: bash
+        env:
+          LANGUAGE: ${{ matrix.language }}
+        run: |
+          case "$LANGUAGE" in
+            actions)
+              find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print -quit | grep -q .
+              ;;
+            go)
+              find . -type f -name '*.go' -print -quit | grep -q .
+              ;;
+            rust)
+              find . -type f -name '*.rs' -print -quit | grep -q .
+              ;;
+          esac && echo 'present=true' >>"$GITHUB_OUTPUT" || echo 'present=false' >>"$GITHUB_OUTPUT"
+      - name: Init CodeQL
+        if: steps.detect.outputs.present == 'true'
+        uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
+      - name: Analyze
+        if: steps.detect.outputs.present == 'true'
+        uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
+        with:
+          category: /language:${{ matrix.language }}
