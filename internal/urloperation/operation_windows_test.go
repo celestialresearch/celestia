@@ -43,6 +43,8 @@ func TestMain(testingMain *testing.M) {
 		"build",
 		"--workspace",
 		"--all-targets",
+		"--features",
+		"qualification-fixtures",
 		"--locked",
 	)
 	command.Dir = root

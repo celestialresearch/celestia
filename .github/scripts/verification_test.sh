@@ -199,6 +199,33 @@ EOF
   cat >"$rust_dir/bin/cargo" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
+build)
+  shift
+  target_dir=
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --target-dir)
+      shift
+      target_dir=${1:-}
+      ;;
+    esac
+    shift || exit 2
+  done
+  [[ -n "$target_dir" ]] || exit 2
+  release_dir="$target_dir/release"
+  mkdir -p "$release_dir"
+  suffix=
+  case "$(uname -s 2>/dev/null)" in
+  CYGWIN* | MINGW* | MSYS*) suffix=.exe ;;
+  esac
+  : >"$release_dir/celestia-url-reference$suffix"
+  chmod +x "$release_dir/celestia-url-reference$suffix"
+  : >"$release_dir/celestia-url-reference.d"
+  if [[ -n "${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE:-}" ]]; then
+    : >"$release_dir/${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE}${suffix}"
+    chmod +x "$release_dir/${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE}${suffix}"
+  fi
+  ;;
 llvm-cov) printf 'cargo-llvm-cov %s\n' "${LLVM_COV_VERSION:-0.8.7}" ;;
 audit)
   [[ "${FAIL_SUPPLY_COMMANDS:-false}" == false ]] || exit 9
@@ -288,6 +315,30 @@ EOF
       return 1
     }
   done
+
+  (
+    cd "$rust_dir" &&
+      PATH="$rust_dir/bin:$PATH" bash .github/scripts/rustcheck.sh artefacts
+  )
+  set +e
+  output=$(
+    cd "$rust_dir" &&
+      PATH="$rust_dir/bin:$PATH" \
+        RUSTCHECK_EXTRA_RELEASE_EXECUTABLE=celestia-hostile-worker \
+        bash .github/scripts/rustcheck.sh artefacts 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust artefact check accepted an unexpected executable\n' >&2
+    return 1
+  }
+  grep -Fq 'Unexpected release executable: celestia-hostile-worker' \
+    <<<"$output" || {
+    printf 'Rust artefact check omitted the unexpected executable:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
 
   repo_dir="$work_dir/repo"
   mkdir -p "$repo_dir"
