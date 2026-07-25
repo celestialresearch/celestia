@@ -168,11 +168,11 @@ go_race_tests() {
 
 rust_docs() {
   RUSTDOCFLAGS='-D warnings' \
-    cargo doc --workspace --all-features --no-deps --locked
+    cargo doc --workspace --features qualification-fixtures --no-deps --locked
 }
 
 rust_coverage() {
-  cargo llvm-cov --workspace --all-features --locked \
+  cargo llvm-cov --workspace --features qualification-fixtures --locked \
     --fail-under-lines 90
 }
 
@@ -307,17 +307,16 @@ if [[ -f Cargo.toml ]]; then
   run_check 'Rust Tools' bash ./.github/scripts/rustcheck.sh tools
   run_no_output 'Rust Format' cargo fmt --all -- --check
   run_check 'Rust Check' \
-    cargo check --workspace --all-targets --all-features --locked
+    cargo check --workspace --all-targets --features qualification-fixtures --locked
   run_check 'Rust Minimal Check' \
     cargo check --workspace --all-targets --no-default-features --locked
   run_check 'Rust Clippy' \
-    cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+    cargo clippy --workspace --all-targets --features qualification-fixtures --locked -- -D warnings
   run_check 'Rust Test' \
-    cargo test --workspace --all-targets --all-features --locked
+    cargo test --workspace --all-targets --features qualification-fixtures --locked
   run_check 'Rust Docs' rust_docs
   run_check 'Rust Coverage' rust_coverage
-  run_check 'Rust Release Build' \
-    cargo build --workspace --all-targets --all-features --release --locked
+  run_check 'Rust Release' bash ./.github/scripts/rustcheck.sh artefacts
   if [[ "${DEVCHECK_SUPPLY_CHAIN:-true}" == true ]]; then
     run_check 'Rust Advisories' cargo audit --deny warnings
     run_check 'Rust Dependencies' cargo deny check

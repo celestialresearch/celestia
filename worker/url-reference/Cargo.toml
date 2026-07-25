@@ -6,15 +6,21 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = []
+qualification-fixtures = []
+
 [[bin]]
 name = "celestia-hostile-worker"
 path = "tests/fixtures/hostile.rs"
+required-features = ["qualification-fixtures"]
 test = false
 bench = false
 
 [[bin]]
 name = "celestia-blocked-input-worker"
 path = "tests/fixtures/blocked_input.rs"
+required-features = ["qualification-fixtures"]
 test = false
 bench = false
 

@@ -46,7 +46,16 @@ func TestMain(testingMain *testing.M) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		command := exec.CommandContext(ctx, "cargo", "build", "--workspace", "--all-targets", "--locked")
+		command := exec.CommandContext(
+			ctx,
+			"cargo",
+			"build",
+			"--workspace",
+			"--all-targets",
+			"--features",
+			"qualification-fixtures",
+			"--locked",
+		)
 		command.Dir = root
 		command.Stdout = os.Stderr
 		command.Stderr = os.Stderr
