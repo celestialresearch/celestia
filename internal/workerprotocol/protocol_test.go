@@ -290,6 +290,10 @@ func TestHasUnpairedSurrogate(t *testing.T) {
 		{"wrong pair", `{"value":"\ud800\u0041"}`, false},
 		{"pair", `{"value":"\ud83d\ude00"}`, true},
 		{"escaped text", `{"value":"\\ud800"}`, true},
+		{"escaped quote then high", `{"value":"\"\ud800"}`, false},
+		{"escaped quote then low", `{"value":"\"\udc00"}`, false},
+		{"escaped quote then pair", `{"value":"\"\ud83d\ude00"}`, true},
+		{"escaped slash then high", `{"value":"\\\ud800"}`, false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
