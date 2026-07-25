@@ -57,3 +57,10 @@ func TestPublishClassifiesReleaseAfterPublication(t *testing.T) {
 		t.Fatalf("published attempt not inspectable: %v", err)
 	}
 }
+
+func TestNilAttemptClose(t *testing.T) {
+	var attempt *Attempt
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("close nil attempt: %v", err)
+	}
+}
