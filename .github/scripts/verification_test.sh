@@ -16,7 +16,9 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 
 main() (
   local output
+  local repo_dir
   local licence_dir
+  local rust_dir
   local status
   local work_dir
 
@@ -56,6 +58,224 @@ main() (
       "$output" >&2
     return 1
   }
+
+  rust_dir="$work_dir/rust"
+  mkdir -p "$rust_dir/.github/scripts" "$rust_dir/.github/workflows" \
+    "$rust_dir/bin"
+  cp "$root/.github/scripts/rustcheck.sh" "$rust_dir/.github/scripts/"
+  cat >"$rust_dir/Cargo.toml" <<'EOF'
+[workspace]
+resolver = "3"
+
+[workspace.package]
+rust-version = "1.94.1"
+EOF
+  printf '%s\n' '[toolchain]' 'channel = "1.94.0"' \
+    >"$rust_dir/rust-toolchain.toml"
+  cat >"$rust_dir/.github/workflows/main.yml" <<'EOF'
+steps:
+  - name: Unrelated
+    with:
+      tool: |
+        rust@1.94.1 + ignored
+  - name: Setup
+    uses: taiki-e/install-action@0123456789012345678901234567890123456789
+    with:
+      tool: |
+        rust@1.94.1 + rustfmt + clippy
+        cargo-llvm-cov@0.8.7
+        cargo-audit@0.22.2
+        cargo-deny@0.20.2
+EOF
+
+  set +e
+  output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted mismatched versions\n' >&2
+    return 1
+  }
+  grep -Fq \
+    'Rust version mismatch: manifest=1.94.1 toolchain=1.94.0 workflow=1.94.1' \
+    <<<"$output" || {
+    printf 'Rust config check omitted the mismatch diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+
+  rm -- "$rust_dir/rust-toolchain.toml"
+  set +e
+  output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted an incomplete workspace\n' >&2
+    return 1
+  }
+  grep -Fq 'Incomplete Rust configuration' <<<"$output" || {
+    printf 'Rust config check omitted the incomplete diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+
+  printf '%s\n' '[toolchain]' 'channel = "1.94.1"' \
+    >"$rust_dir/rust-toolchain.toml"
+  (cd "$rust_dir" && bash .github/scripts/rustcheck.sh config)
+
+  mv "$rust_dir/Cargo.toml" "$rust_dir/Cargo.toml.saved"
+  set +e
+  output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+  status=$?
+  set -e
+  mv "$rust_dir/Cargo.toml.saved" "$rust_dir/Cargo.toml"
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted workflow-only configuration\n' >&2
+    return 1
+  }
+
+  {
+    printf '%s\n' '# rust@1.94.1'
+    sed 's/rust@1.94.1 +/rust@1.94.0 +/' \
+      "$rust_dir/.github/workflows/main.yml"
+  } >"$rust_dir/.github/workflows/main.yml.new"
+  mv "$rust_dir/.github/workflows/main.yml.new" \
+    "$rust_dir/.github/workflows/main.yml"
+  set +e
+  output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted a matching commented version\n' >&2
+    return 1
+  }
+  sed 's/rust@1.94.0 +/rust@1.94.1 +/' \
+    "$rust_dir/.github/workflows/main.yml" \
+    >"$rust_dir/.github/workflows/main.yml.new"
+  mv "$rust_dir/.github/workflows/main.yml.new" \
+    "$rust_dir/.github/workflows/main.yml"
+
+  sed '/^[[:space:]]*rust@1.94.1 + rustfmt + clippy$/a\
+        rust@1.94.1 + rustfmt' \
+    "$rust_dir/.github/workflows/main.yml" \
+    >"$rust_dir/.github/workflows/main.yml.new"
+  mv "$rust_dir/.github/workflows/main.yml.new" \
+    "$rust_dir/.github/workflows/main.yml"
+  set +e
+  output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted duplicate active pins\n' >&2
+    return 1
+  }
+  grep -Fq 'Expected one active workflow pin for rust, found 2' \
+    <<<"$output" || {
+    printf 'Rust config check omitted the duplicate diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  awk '!duplicate &&
+    /^[[:space:]]*rust@1[.]94[.]1 [+] rustfmt$/ {
+      duplicate=1
+      next
+    }
+    { print }' \
+    "$rust_dir/.github/workflows/main.yml" \
+    >"$rust_dir/.github/workflows/main.yml.new"
+  mv "$rust_dir/.github/workflows/main.yml.new" \
+    "$rust_dir/.github/workflows/main.yml"
+
+  cat >"$rust_dir/bin/cargo" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+llvm-cov) printf 'cargo-llvm-cov %s\n' "${LLVM_COV_VERSION:-0.8.7}" ;;
+audit)
+  [[ "${FAIL_SUPPLY_COMMANDS:-false}" == false ]] || exit 9
+  printf 'cargo-audit %s\n' "${AUDIT_VERSION:-0.22.2}"
+  ;;
+deny)
+  [[ "${FAIL_SUPPLY_COMMANDS:-false}" == false ]] || exit 9
+  printf 'cargo-deny %s\n' "${DENY_VERSION:-0.20.2}"
+  ;;
+*) exit 2 ;;
+esac
+EOF
+  chmod +x "$rust_dir/bin/cargo"
+
+  (
+    cd "$rust_dir" &&
+      PATH="$rust_dir/bin:$PATH" bash .github/scripts/rustcheck.sh tools
+  )
+  (
+    cd "$rust_dir" &&
+      PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=false \
+        FAIL_SUPPLY_COMMANDS=true bash .github/scripts/rustcheck.sh tools
+  )
+
+  for mismatch in llvm-cov audit deny; do
+    set +e
+    case "$mismatch" in
+    llvm-cov)
+      output=$(
+        cd "$rust_dir" &&
+          PATH="$rust_dir/bin:$PATH" LLVM_COV_VERSION=0 \
+            bash .github/scripts/rustcheck.sh tools 2>&1
+      )
+      ;;
+    audit)
+      output=$(
+        cd "$rust_dir" &&
+          PATH="$rust_dir/bin:$PATH" AUDIT_VERSION=0 \
+            bash .github/scripts/rustcheck.sh tools 2>&1
+      )
+      ;;
+    deny)
+      output=$(
+        cd "$rust_dir" &&
+          PATH="$rust_dir/bin:$PATH" DENY_VERSION=0 \
+            bash .github/scripts/rustcheck.sh tools 2>&1
+      )
+      ;;
+    esac
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'Rust tool check accepted a mismatched %s version\n' \
+        "$mismatch" >&2
+      return 1
+    }
+    grep -Fq 'Rust helper version mismatch' <<<"$output" || {
+      printf 'Rust tool check omitted the %s mismatch diagnostic:\n%s\n' \
+        "$mismatch" "$output" >&2
+      return 1
+    }
+  done
+
+  repo_dir="$work_dir/repo"
+  mkdir -p "$repo_dir"
+  git -C "$root" archive HEAD | tar -x -C "$repo_dir"
+  cp "$root"/.github/scripts/*.sh "$repo_dir/.github/scripts/"
+  rm -- "$repo_dir/rust-toolchain.toml"
+  set +e
+  output=$(
+    cd "$repo_dir" &&
+      DEVCHECK_PROFILE=shell DEVCHECK_CURRENCY=false \
+        DEVCHECK_SELF_TEST=false \
+        bash .github/scripts/devcheck.sh 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'devcheck accepted incomplete Rust configuration\n' >&2
+    return 1
+  }
+  if ! grep -Fq 'Config' <<<"$output" ||
+    ! grep -Fq 'Incomplete Rust configuration' <<<"$output"; then
+    printf 'devcheck omitted the incomplete Rust diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  fi
 
   cat >"$work_dir/a/a.go" <<'EOF'
 package a
