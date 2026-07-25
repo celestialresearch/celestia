@@ -94,10 +94,33 @@ check_config() {
 
   go tool golangci-lint config verify
   go tool actionlint
+  check_rust_versions
   while IFS= read -r script; do
     scripts+=("$script")
   done < <(find .github/scripts -type f -name '*.sh' -print | sort)
   go tool shellcheck --severity=style "${scripts[@]}"
+}
+
+check_rust_versions() {
+  [[ -f Cargo.toml && -f rust-toolchain.toml ]] || return
+
+  local manifest_version
+  local toolchain_version
+  local workflow_version
+
+  manifest_version=$(awk -F'"' '$1 ~ /^[[:space:]]*rust-version/ { print $2; exit }' Cargo.toml)
+  toolchain_version=$(awk -F'"' '$1 ~ /^[[:space:]]*channel/ { print $2; exit }' rust-toolchain.toml)
+  workflow_version=$(
+    sed -n 's/.*rust@\([^[:space:]]*\).*/\1/p' .github/workflows/main.yml |
+      head -n 1
+  )
+  if [[ -z "$manifest_version" ||
+    "$manifest_version" != "$toolchain_version" ||
+    "$manifest_version" != "$workflow_version" ]]; then
+    printf 'Rust version mismatch: manifest=%s toolchain=%s workflow=%s\n' \
+      "$manifest_version" "$toolchain_version" "$workflow_version"
+    return 1
+  fi
 }
 
 discover_fuzz_targets() {
@@ -151,16 +174,14 @@ go_race_tests() {
   go test -race -count=1 -shuffle=on ./...
 }
 
-rust_checks() {
-  [[ -f Cargo.toml ]] || {
-    printf 'No Cargo workspace exists; Rust checks are pending.\n'
-    return
-  }
+rust_docs() {
+  RUSTDOCFLAGS='-D warnings' \
+    cargo doc --workspace --all-features --no-deps --locked
+}
 
-  cargo fmt --all -- --check
-  cargo check --workspace --all-targets --locked
-  cargo test --workspace --all-targets --locked
-  cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+rust_coverage() {
+  cargo llvm-cov --workspace --all-features --locked \
+    --fail-under-lines 90
 }
 
 finish() {
@@ -231,6 +252,14 @@ printf '    %-16s %s\n' govulncheck \
   "$(go list -m -f '{{.Version}}' golang.org/x/vuln)"
 printf '    %-16s %s\n' shellcheck \
   "$(go list -m -f '{{.Version}}' github.com/wasilibs/go-shellcheck)"
+if [[ -f rust-toolchain.toml ]]; then
+  printf '    %-16s %s %s\n' Rust \
+    "$(rustc --version | awk '{ print $1 }')" \
+    "$(rustc --version | awk '{ print $2 }')"
+  printf '    %-16s %s %s\n' Cargo \
+    "$(cargo --version | awk '{ print $1 }')" \
+    "$(cargo --version | awk '{ print $2 }')"
+fi
 
 section 'Project'
 run_check 'Config' check_config
@@ -248,22 +277,17 @@ else
 fi
 
 if has_go_packages; then
-  run_check 'Compilation' go build -trimpath -buildvcs=true ./...
-
-  section 'Code quality'
-  run_no_output 'Modernisation (go fix)' go fix -diff ./...
-  run_no_output 'Formatting' go tool golangci-lint fmt --diff
+  section 'Go'
+  run_check 'Go Build' go build -trimpath -buildvcs=true ./...
+  run_no_output 'Go Fix' go fix -diff ./...
+  run_no_output 'Go Format' go tool golangci-lint fmt --diff
   run_check 'Go Vet' go vet ./...
-  run_check 'Linting' go tool golangci-lint run
-
-  section 'Tests'
-  run_check 'Standard' go_standard_tests
-  run_check 'Race Detection' go_race_tests
-  run_check 'Coverage' bash ./.github/scripts/coveragecheck.sh cached
-  run_check 'Fuzz Smoke' fuzz_smoke
-
-  section 'Security'
-  run_check 'Reachable Vulnerabilities' go tool govulncheck ./...
+  run_check 'Go Lint' go tool golangci-lint run
+  run_check 'Go Test' go_standard_tests
+  run_check 'Go Race' go_race_tests
+  run_check 'Go Coverage' bash ./.github/scripts/coveragecheck.sh cached
+  run_check 'Go Fuzz' fuzz_smoke
+  run_check 'Go Vulnerabilities' go tool govulncheck ./...
 else
   package_discovery_status=$?
   if ((package_discovery_status == 2)); then
@@ -276,9 +300,28 @@ fi
 
 section 'Rust'
 if [[ -f Cargo.toml ]]; then
-  run_check 'Rust Verification' rust_checks
+  run_no_output 'Rust Format' cargo fmt --all -- --check
+  run_check 'Rust Check' \
+    cargo check --workspace --all-targets --all-features --locked
+  run_check 'Rust Minimal Check' \
+    cargo check --workspace --all-targets --no-default-features --locked
+  run_check 'Rust Clippy' \
+    cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+  run_check 'Rust Test' \
+    cargo test --workspace --all-targets --all-features --locked
+  run_check 'Rust Docs' rust_docs
+  run_check 'Rust Coverage' rust_coverage
+  run_check 'Rust Release Build' \
+    cargo build --workspace --all-targets --all-features --release --locked
+  if [[ "${DEVCHECK_SUPPLY_CHAIN:-true}" == true ]]; then
+    run_check 'Rust Advisories' cargo audit --deny warnings
+    run_check 'Rust Dependencies' cargo deny check
+  else
+    skip_check 'Rust Advisories' 'Disabled for this platform job'
+    skip_check 'Rust Dependencies' 'Disabled for this platform job'
+  fi
 else
-  skip_check 'Rust Verification' 'No Cargo workspace exists'
+  skip_check 'Rust Checks' 'No Cargo workspace exists'
 fi
 
 finish
