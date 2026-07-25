@@ -58,22 +58,27 @@ jobs:
             runner: ubuntu-24.04
             currency: 'true'
             supply-chain: 'true'
+            go-flags: ''
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
             currency: 'false'
             supply-chain: 'false'
+            go-flags: ''
           - name: Windows AMD64
             runner: windows-2025
             currency: 'false'
             supply-chain: 'false'
+            go-flags: -p=1
           - name: macOS ARM64
             runner: macos-15
             currency: 'false'
             supply-chain: 'false'
+            go-flags: ''
           - name: macOS Intel
             runner: macos-15-intel
             currency: 'false'
             supply-chain: 'false'
+            go-flags: ''
     steps:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,6 +108,7 @@ jobs:
           DEVCHECK_CURRENCY: ${{ matrix.currency }}
           DEVCHECK_OUTPUT: failed
           DEVCHECK_SUPPLY_CHAIN: ${{ matrix.supply-chain }}
+          GOFLAGS: ${{ matrix.go-flags }}
         run: bash ./.github/scripts/devcheck.sh
 
   verify-bounded:
