@@ -11,8 +11,9 @@
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::io::Write;
-use std::process::{Command, Output, Stdio};
+use std::io::{self, Write};
+use std::process::{Child, Command, Output, Stdio};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 const IDENTITY: &str = "oaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoYA";
@@ -97,32 +98,84 @@ fn sha256(value: &str) -> String {
 }
 
 fn run_worker(input: Vec<u8>) -> Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_celestia-url-reference"))
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let child = Command::new(env!("CARGO_BIN_EXE_celestia-url-reference"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .expect("start worker");
-    child
-        .stdin
-        .take()
-        .expect("worker stdin")
-        .write_all(&input)
-        .expect("write request");
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut child = ChildGuard::new(child);
+    let mut stdin = child.child_mut().stdin.take().expect("worker stdin");
+    let mut writer = Some(thread::spawn(move || stdin.write_all(&input)));
+    let mut failure = None;
     loop {
-        if child.try_wait().expect("query worker").is_some() {
-            return child.wait_with_output().expect("collect worker output");
+        if let Some(handle) = writer.take_if(|handle| handle.is_finished())
+            && join_writer(handle).is_err()
+        {
+            failure = Some("write request");
+            break;
+        }
+        match child.child_mut().try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {}
+            Err(_) => {
+                failure = Some("query worker");
+                break;
+            }
         }
         if Instant::now() >= deadline {
-            child.kill().expect("kill timed-out worker");
-            let output = child.wait_with_output().expect("reap timed-out worker");
-            panic!(
-                "worker exceeded test deadline; status={:?}, stderr={}",
-                output.status.code(),
-                String::from_utf8_lossy(&output.stderr)
-            );
+            failure = Some("worker exceeded test deadline");
+            break;
         }
-        std::thread::yield_now();
+        thread::sleep(Duration::from_millis(10));
+    }
+    if let Some(reason) = failure {
+        child.terminate();
+        if let Some(handle) = writer {
+            let _ = join_writer(handle);
+        }
+        panic!("{reason}");
+    }
+    if let Some(handle) = writer {
+        join_writer(handle).expect("write request");
+    }
+    child.output().expect("collect worker output")
+}
+
+fn join_writer(writer: JoinHandle<io::Result<()>>) -> io::Result<()> {
+    writer
+        .join()
+        .map_err(|_| io::Error::other("worker input thread panicked"))?
+}
+
+struct ChildGuard {
+    child: Option<Child>,
+}
+
+impl ChildGuard {
+    fn new(child: Child) -> Self {
+        Self { child: Some(child) }
+    }
+
+    fn child_mut(&mut self) -> &mut Child {
+        self.child.as_mut().expect("owned worker")
+    }
+
+    fn terminate(&mut self) {
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+
+    fn output(mut self) -> io::Result<Output> {
+        self.child.take().expect("owned worker").wait_with_output()
+    }
+}
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        self.terminate();
     }
 }
