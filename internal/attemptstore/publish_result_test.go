@@ -64,3 +64,18 @@ func TestNilAttemptClose(t *testing.T) {
 		t.Fatalf("close nil attempt: %v", err)
 	}
 }
+
+func TestAttemptCloseIsIdempotent(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("first close: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+}
