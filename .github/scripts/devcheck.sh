@@ -99,37 +99,20 @@ has_go_packages() {
 }
 
 check_config() {
+  local script_list
   local scripts=()
 
-  go tool golangci-lint config verify
-  go tool actionlint
-  check_rust_versions
+  go tool golangci-lint config verify || return
+  go tool actionlint || return
+  bash ./.github/scripts/rustcheck.sh config || return
+  script_list=$(find .github/scripts -type f -name '*.sh' -print | sort) ||
+    return
   while IFS= read -r script; do
+    [[ -n "$script" ]] || continue
     scripts+=("$script")
-  done < <(find .github/scripts -type f -name '*.sh' -print | sort)
-  go tool shellcheck --severity=style "${scripts[@]}"
-}
-
-check_rust_versions() {
-  [[ -f Cargo.toml && -f rust-toolchain.toml ]] || return
-
-  local manifest_version
-  local toolchain_version
-  local workflow_version
-
-  manifest_version=$(awk -F'"' '$1 ~ /^[[:space:]]*rust-version/ { print $2; exit }' Cargo.toml)
-  toolchain_version=$(awk -F'"' '$1 ~ /^[[:space:]]*channel/ { print $2; exit }' rust-toolchain.toml)
-  workflow_version=$(
-    sed -n 's/.*rust@\([^[:space:]]*\).*/\1/p' .github/workflows/main.yml |
-      head -n 1
-  )
-  if [[ -z "$manifest_version" ||
-    "$manifest_version" != "$toolchain_version" ||
-    "$manifest_version" != "$workflow_version" ]]; then
-    printf 'Rust version mismatch: manifest=%s toolchain=%s workflow=%s\n' \
-      "$manifest_version" "$toolchain_version" "$workflow_version"
-    return 1
-  fi
+  done <<<"$script_list"
+  ((${#scripts[@]} > 0)) || return 1
+  go tool shellcheck --severity=style "${scripts[@]}" || return
 }
 
 discover_fuzz_targets() {
@@ -272,7 +255,11 @@ fi
 
 section 'Project'
 run_check 'Config' check_config
-run_check 'Verification Scripts' bash ./.github/scripts/verification_test.sh
+if [[ "${DEVCHECK_SELF_TEST:-true}" == true ]]; then
+  run_check 'Verification Scripts' bash ./.github/scripts/verification_test.sh
+else
+  skip_check 'Verification Scripts' 'Disabled by the verification self-test'
+fi
 run_check 'Policy' bash ./.github/scripts/policycheck.sh
 run_check 'Modules' bash ./.github/scripts/modcheck.sh verify
 run_check 'Actions' bash ./.github/scripts/actioncheck.sh verify
@@ -314,6 +301,7 @@ fi
 
 section 'Rust'
 if [[ -f Cargo.toml ]]; then
+  run_check 'Rust Tools' bash ./.github/scripts/rustcheck.sh tools
   run_no_output 'Rust Format' cargo fmt --all -- --check
   run_check 'Rust Check' \
     cargo check --workspace --all-targets --all-features --locked
