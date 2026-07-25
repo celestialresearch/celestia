@@ -56,7 +56,7 @@ func (operation *Operation) Execute(
 	ctx context.Context,
 	input string,
 	mode urlreference.Mode,
-) (result Result) {
+) Result {
 	admittedAt := time.Now().UTC()
 	accepted, err := urladmission.Admit(input, mode, admittedAt)
 	if err != nil {
@@ -70,13 +70,7 @@ func (operation *Operation) Execute(
 			Err:       errors.Join(ErrPersistence, err),
 		}
 	}
-	defer func() {
-		if closeErr := attempt.Close(); closeErr != nil {
-			result.Status = Indeterminate
-			result.Err = errors.Join(result.Err, ErrPersistence, closeErr)
-		}
-	}()
-	result = operation.executeAccepted(ctx, accepted, admittedAt)
+	result := operation.executeAccepted(ctx, accepted, admittedAt)
 	result.AttemptID = accepted.Request.AttemptID
 	observation := observationFrom(result)
 	if err := attempt.Publish(observation); err != nil {

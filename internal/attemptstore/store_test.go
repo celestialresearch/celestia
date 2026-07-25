@@ -92,11 +92,8 @@ func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
 		t.Fatalf("invalid observation: %v", err)
 	}
 	observation = testObservation(accepted.Request.AttemptID)
-	if err := attempt.Publish(observation); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
 	if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("duplicate publication: %v", err)
+		t.Fatalf("released attempt published: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, ""); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("empty recovery: %v", err)

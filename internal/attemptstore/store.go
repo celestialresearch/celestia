@@ -256,13 +256,13 @@ func (attempt *Attempt) Publish(observation Observation) (err error) {
 	if attempt.closed {
 		return fmt.Errorf("%w: attempt ownership released", ErrInvalid)
 	}
+	defer func() {
+		err = errors.Join(err, attempt.closeLocked())
+	}()
 	if err := validateObservation(observation); err != nil ||
 		observation.AttemptID != attempt.admitted.AttemptID {
 		return fmt.Errorf("%w: observation", ErrInvalid)
 	}
-	defer func() {
-		err = errors.Join(err, attempt.closeLocked())
-	}()
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		return fmt.Errorf("write observation: %w", err)
 	}
