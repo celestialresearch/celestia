@@ -16,6 +16,7 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 
 main() (
   local output
+  local licence_dir
   local status
   local work_dir
 
@@ -116,6 +117,18 @@ EOF
       "$output" >&2
     return 1
   }
+
+  licence_dir="$work_dir/licence"
+  mkdir -p "$licence_dir/.github/scripts"
+  cp "$root/.github/scripts/licencecheck.sh" \
+    "$licence_dir/.github/scripts/"
+  git -C "$licence_dir" init -q
+  git -C "$licence_dir" config core.autocrlf false
+  printf '%s\n' '#!/usr/bin/env bash' >"$licence_dir/removed.sh"
+  git -C "$licence_dir" add removed.sh
+  rm -- "$licence_dir/removed.sh"
+  (cd "$licence_dir" &&
+    bash .github/scripts/licencecheck.sh verify >/dev/null)
 )
 
 main

@@ -34,6 +34,7 @@ eligible_files() {
   local file
 
   while IFS= read -r -d '' file; do
+    [[ -f "$file" ]] || continue
     [[ -n "$(style_for "$file")" ]] || continue
     printf '%s\0' "$file"
   done < <(git ls-files -co --exclude-standard -z)
