@@ -494,7 +494,10 @@ func TestRecordMetadataUsesRequiredFields(t *testing.T) {
 }
 
 func TestWriteOrMatchRecordRequiresEquality(t *testing.T) {
-	root := t.TempDir()
+	root, err := canonicalEvidenceRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonical root: %v", err)
+	}
 	record := Recovery{
 		Version:        Version,
 		AttemptID:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
@@ -528,7 +531,10 @@ func TestNewRejectsLinkedRoot(t *testing.T) {
 }
 
 func TestPendingPublicationRefusesExistingTarget(t *testing.T) {
-	root := t.TempDir()
+	root, err := canonicalEvidenceRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonical root: %v", err)
+	}
 	source := filepath.Join(root, "source")
 	target := filepath.Join(root, "target")
 	for _, path := range []string{source, target} {
@@ -548,6 +554,15 @@ func TestPendingPublicationRefusesExistingTarget(t *testing.T) {
 	if _, err := pathExists("invalid\x00path"); err == nil {
 		t.Fatal("invalid path accepted")
 	}
+}
+
+func TestPendingPublicationRequiresSource(t *testing.T) {
+	root, err := canonicalEvidenceRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonical root: %v", err)
+	}
+	source := filepath.Join(root, "source")
+	target := filepath.Join(root, "target")
 	if err := os.RemoveAll(source); err != nil {
 		t.Fatalf("remove source: %v", err)
 	}
@@ -556,6 +571,12 @@ func TestPendingPublicationRefusesExistingTarget(t *testing.T) {
 	}
 	if _, err := publishPendingDirectory(source, target, root); err == nil {
 		t.Fatal("missing source published")
+	}
+}
+
+func TestCanonicalEvidenceRootRejectsInvalidPath(t *testing.T) {
+	if _, err := canonicalEvidenceRoot("invalid\x00path"); err == nil {
+		t.Fatal("invalid evidence root accepted")
 	}
 }
 
