@@ -40,6 +40,23 @@ main() (
   printf 'module probe.local/coverage\n\ngo 1.26.5\n' >"$work_dir/go.mod"
   git -C "$work_dir" init -q
 
+  set +e
+  output=$(
+    cd "$root" &&
+      DEVCHECK_PROFILE=invalid bash .github/scripts/devcheck.sh 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -eq 2 ]] || {
+    printf 'devcheck accepted an unknown profile\n' >&2
+    return 1
+  }
+  grep -Fq 'Unknown verification profile: invalid' <<<"$output" || {
+    printf 'devcheck omitted the unknown-profile diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+
   cat >"$work_dir/a/a.go" <<'EOF'
 package a
 
