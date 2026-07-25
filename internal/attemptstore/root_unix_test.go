@@ -46,3 +46,34 @@ func TestNewCreatesSecureUnixTree(t *testing.T) {
 		}
 	}
 }
+
+func TestSecureEvidenceTreeRejectsNonDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "evidence")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := secureEvidenceTree(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("non-directory accepted: %v", err)
+	}
+}
+
+func TestPublishFileRejectsDuplicate(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	target := filepath.Join(root, "target")
+	for _, path := range []string{source, target} {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatalf("write %s: %v", filepath.Base(path), err)
+		}
+	}
+	if err := publishFile(source, target, root); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("duplicate target accepted: %v", err)
+	}
+}
+
+func TestSyncDirectoryRejectsMissingDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing")
+	if err := syncDirectory(path); err == nil {
+		t.Fatal("missing directory accepted")
+	}
+}
