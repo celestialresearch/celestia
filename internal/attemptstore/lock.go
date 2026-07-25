@@ -25,7 +25,7 @@ type attemptLock struct {
 	releaseErr error
 }
 
-func (store *Store) acquireAttemptLock(attemptID string) (*attemptLock, error) {
+func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptLock, error) {
 	if !validIdentity(attemptID) {
 		return nil, fmt.Errorf("%w: attempt identity", ErrInvalid)
 	}
@@ -38,8 +38,15 @@ func (store *Store) acquireAttemptLock(attemptID string) (*attemptLock, error) {
 		_ = root.Close()
 	}()
 	name := attemptID + ".lock"
-	file, err := root.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o600)
+	flags := os.O_RDWR
+	if create {
+		flags |= os.O_CREATE
+	}
+	file, err := root.OpenFile(name, flags, 0o600)
 	if err != nil {
+		if !create && errors.Is(err, os.ErrNotExist) {
+			return nil, ErrCorrupt
+		}
 		return nil, fmt.Errorf("open attempt lock: %w", err)
 	}
 	pathInfo, err := root.Lstat(name)

@@ -36,3 +36,29 @@ func TestStageRejectsPermissiveLockFile(t *testing.T) {
 		t.Fatalf("permissive lock accepted: %v", err)
 	}
 }
+
+func TestRecoverRejectsMissingActiveLock(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	defer func() {
+		_ = attempt.Close()
+	}()
+	lockPath := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+".lock",
+	)
+	if err := os.Remove(lockPath); err != nil {
+		t.Fatalf("remove active lock path: %v", err)
+	}
+	if err := store.Recover(
+		accepted.Request.AttemptID,
+		"missing active lock",
+	); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("missing active lock recovered: %v", err)
+	}
+}

@@ -18,9 +18,10 @@ The complete bundle is moved to `<root>/attempts/<attempt-id>/` before its
 publication marker is written.
 
 `admitted.json` retains the original input and exact request frame.
-Inspection decodes that frame and requires its attempt identity and input to
-match the duplicated admitted fields. The frame validator enforces the
-deadline, input length, input hash, mode and fixed operation limits.
+Inspection uses the frozen v0 frame decoder and requires its attempt identity
+and input to match the duplicated admitted fields. The decoder enforces the
+v0 deadline, input length, input hash, mode and fixed operation limits. It does
+not replay the current admission policy.
 `observation.json` retains the worker identity, exact bounded streams, process
 outcome, protocol result, verification result and terminal status.
 `recovery.json` records an interrupted attempt as `indeterminate`.

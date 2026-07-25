@@ -163,7 +163,7 @@ func (store *Store) Stage(accepted urladmission.Accepted, admittedAt time.Time) 
 	if err != nil {
 		return nil, err
 	}
-	owner, err := store.acquireAttemptLock(request.AttemptID)
+	owner, err := store.acquireAttemptLock(request.AttemptID, true)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +292,7 @@ func (store *Store) Recover(attemptID, reason string) (err error) {
 	if _, _, err := store.recoverablePath(attemptID); err != nil {
 		return err
 	}
-	owner, err := store.acquireAttemptLock(attemptID)
+	owner, err := store.acquireAttemptLock(attemptID, false)
 	if err != nil {
 		return err
 	}
