@@ -126,6 +126,18 @@ check_tool() {
 }
 
 check_tools() {
+  expected=$(toolchain_version)
+  if ! output=$(rustc --version 2>&1); then
+    printf 'Required Rust compiler is unavailable\n'
+    return 1
+  fi
+  actual=$(printf '%s\n' "$output" | awk '{ print $2; exit }')
+  if [[ "$actual" != "$expected" ]]; then
+    printf 'Rust compiler version mismatch: expected=%s actual=%s\n' \
+      "$expected" "$actual"
+    return 1
+  fi
+
   check_tool llvm-cov cargo-llvm-cov
   if [[ "${DEVCHECK_SUPPLY_CHAIN:-true}" == true ]]; then
     check_tool audit cargo-audit
