@@ -270,8 +270,11 @@ is exactly 64 lowercase hexadecimal digits. `duration_ns` is an integer from
 zero through 2,000,000,000. A diagnostic is an object
 containing required string fields `code` and `message`. A response has at most
 16 diagnostics. Codes contain 1 to 64 lowercase ASCII letters, digits and
-underscores. Messages contain at most 512 UTF-8 bytes. Messages are redacted
-and are not stable API text.
+underscores. Messages contain at most 512 UTF-8 bytes. Messages are
+worker-controlled, potentially sensitive evidence and are not stable API text.
+They are retained in the protected attempt bundle but are never copied to
+ordinary logs, standard error or CLI output. Operator-facing diagnostics are
+selected by Go from the validated code.
 
 For `completed`, every shown field is required and diagnostics may be empty.
 For `rejected` and `failed`, output media type, length, hash and output are
