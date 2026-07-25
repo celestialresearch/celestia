@@ -82,10 +82,18 @@ jobs:
           test -f go.mod
           if ! find . -type f -name '*.go' -print -quit | grep -q .; then
             echo 'No Go packages exist'
-          elif command -v go >/dev/null 2>&1; then
-            go version
-            go test -count=1 ./...
-          else
-            echo 'Go source exists but the guest has no Go toolchain' >&2
-            exit 1
+            exit
           fi
+          if ! command -v go >/dev/null 2>&1; then
+            case "$(uname -s)" in
+              FreeBSD | DragonFly)
+                sudo pkg install -y go
+                ;;
+              *)
+                echo 'Go source exists but the guest has no Go toolchain' >&2
+                exit 1
+                ;;
+            esac
+          fi
+          go version
+          GOTOOLCHAIN=auto go test -count=1 ./...
