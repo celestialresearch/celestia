@@ -57,6 +57,14 @@ const (
 	hostIPv4
 )
 
+func ValidateInput(input string) error {
+	if len(input) > MaxInputBytes {
+		return invalid("original input length")
+	}
+	_, err := parse(input)
+	return err
+}
+
 func Transform(input string, mode Mode) (string, error) {
 	if mode != Fang && mode != Defang {
 		return "", invalid("unsupported mode")
