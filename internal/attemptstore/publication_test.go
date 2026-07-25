@@ -16,6 +16,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -592,8 +593,19 @@ func TestCanonicalEvidenceRootRejectsInvalidPath(t *testing.T) {
 func TestMissingAttemptCannotRecover(t *testing.T) {
 	store := newTestStore(t)
 	attemptID := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	before, err := os.ReadDir(filepath.Join(store.root, locksDirectory))
+	if err != nil {
+		t.Fatalf("read locks before recovery: %v", err)
+	}
 	if err := store.Recover(attemptID, "missing"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing attempt recovered: %v", err)
+	}
+	after, err := os.ReadDir(filepath.Join(store.root, locksDirectory))
+	if err != nil {
+		t.Fatalf("read locks after recovery: %v", err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("missing recovery changed locks: before=%v after=%v", before, after)
 	}
 	if _, err := store.Inspect(attemptID); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing attempt inspected: %v", err)
