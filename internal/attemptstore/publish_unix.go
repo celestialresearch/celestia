@@ -63,13 +63,11 @@ func secureEvidenceTree(path string) error {
 		return ErrCorrupt
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if ok && stat.Uid != uint32(os.Geteuid()) {
+	if ok && uint64(stat.Uid) != uint64(os.Geteuid()) {
 		return ErrCorrupt
 	}
 	if info.Mode().Perm() != 0o700 {
-		if err := os.Chmod(path, 0o700); err != nil {
-			return err
-		}
+		return ErrCorrupt
 	}
 	return nil
 }
@@ -79,7 +77,14 @@ func pathIsLinked(_ string, info os.FileInfo) bool {
 }
 
 func syncDirectory(directory string) error {
-	handle, err := os.Open(directory)
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = root.Close()
+	}()
+	handle, err := root.Open(".")
 	if err != nil {
 		return err
 	}

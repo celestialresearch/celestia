@@ -31,6 +31,12 @@ type Operation struct {
 	store      *attemptstore.Store
 }
 
+const (
+	protocolNotRun   = "not_run"
+	protocolValid    = "valid"
+	protocolRejected = "rejected"
+)
+
 func New(
 	workerPath string,
 	evidenceRoot string,

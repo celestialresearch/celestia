@@ -14,16 +14,25 @@
 package attemptstore
 
 import (
+	"errors"
 	"os"
+	"path/filepath"
+	"syscall"
 	"testing"
 )
 
-func TestNewSecuresUnixRootMode(t *testing.T) {
+func TestNewRejectsInsecureUnixRootMode(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Chmod(root, 0o777); err != nil {
+	if err := syscall.Chmod(root, 0o777); err != nil {
 		t.Fatalf("loosen root: %v", err)
 	}
-	store, err := New(root)
+	if _, err := New(root); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("insecure root accepted: %v", err)
+	}
+}
+
+func TestNewCreatesSecureUnixTree(t *testing.T) {
+	store, err := New(filepath.Join(t.TempDir(), "evidence"))
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}

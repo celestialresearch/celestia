@@ -21,10 +21,6 @@ import (
 const (
 	VerifierID      = "go-url-reference"
 	VerifierVersion = "0"
-
-	protocolNotRun   = "not_run"
-	protocolValid    = "valid"
-	protocolRejected = "rejected"
 )
 
 var (

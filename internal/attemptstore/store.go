@@ -123,7 +123,10 @@ func New(root string) (*Store, error) {
 	if root == "" || !filepath.IsAbs(root) {
 		return nil, fmt.Errorf("%w: evidence root", ErrInvalid)
 	}
-	clean := filepath.Clean(root)
+	clean, err := canonicalEvidenceRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("resolve evidence root: %w", err)
+	}
 	if err := rejectLinkedAncestors(clean); err != nil {
 		return nil, fmt.Errorf("inspect evidence root: %w", err)
 	}
