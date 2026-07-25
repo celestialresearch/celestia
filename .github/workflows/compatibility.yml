@@ -87,7 +87,16 @@ jobs:
           if ! command -v go >/dev/null 2>&1; then
             case "$(uname -s)" in
               FreeBSD | DragonFly)
-                sudo pkg install -y go
+                installed=false
+                for attempt in 1 2 3; do
+                  if sudo pkg install -y go; then
+                    installed=true
+                    break
+                  fi
+                  echo "Go bootstrap attempt $attempt failed" >&2
+                  sleep $((attempt * 5))
+                done
+                test "$installed" = true
                 ;;
               *)
                 echo 'Go source exists but the guest has no Go toolchain' >&2
