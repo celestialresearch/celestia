@@ -16,7 +16,8 @@ use std::process::{Child, Command, Output, Stdio};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-const IDENTITY: &str = "oaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoYA";
+const ATTEMPT_ID: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+const REQUEST_NONCE: &str = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8";
 
 #[test]
 fn writes_completed_response() {
@@ -28,8 +29,8 @@ fn writes_completed_response() {
     let response: Value = serde_json::from_slice(&output.stdout).expect("valid response JSON");
     assert_eq!(response["status"], "completed");
     assert_eq!(response["output"], "hxxps://example[.]test/");
-    assert_eq!(response["attempt_id"], IDENTITY);
-    assert_eq!(response["request_nonce"], IDENTITY);
+    assert_eq!(response["attempt_id"], ATTEMPT_ID);
+    assert_eq!(response["request_nonce"], REQUEST_NONCE);
     assert_eq!(response["diagnostics"], json!([]));
 }
 
@@ -73,8 +74,8 @@ fn request(input: &str, mode: &str) -> Vec<u8> {
         "protocol_version": 0,
         "operation_id": "url-reference",
         "operation_version": 0,
-        "attempt_id": IDENTITY,
-        "request_nonce": IDENTITY,
+        "attempt_id": ATTEMPT_ID,
+        "request_nonce": REQUEST_NONCE,
         "input_media_type": "text/plain; charset=utf-8",
         "input_length": input.len(),
         "input_sha256": sha256(input),
@@ -94,7 +95,13 @@ fn request(input: &str, mode: &str) -> Vec<u8> {
 }
 
 fn sha256(value: &str) -> String {
-    format!("{:x}", Sha256::digest(value.as_bytes()))
+    let digest = Sha256::digest(value.as_bytes());
+    let mut encoded = String::with_capacity(64);
+    for byte in digest {
+        use std::fmt::Write as _;
+        write!(&mut encoded, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    encoded
 }
 
 fn run_worker(input: Vec<u8>) -> Output {
