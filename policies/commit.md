@@ -119,8 +119,13 @@ development branches or use branch names containing personal information.
 
 ## Merge Strategy
 
-Prefer a rebase merge for a large pull request whose commits represent
-distinct, coherent and independently reviewable changes.
+Do not use GitHub rebase merges. GitHub rewrites the commits without preserving
+their local GPG signatures, which violates the signed-history requirement.
+
+Use a merge commit for a pull request whose commits represent distinct,
+coherent and independently reviewable changes. The platform-created merge
+commit must show GitHub's verified signature and every parent commit must
+retain its valid local signature.
 
 Prefer a squash merge when a small pull request contains one substantive
 commit followed by no more than three compatibility, review or CI corrections
