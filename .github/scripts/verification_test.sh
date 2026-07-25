@@ -87,6 +87,8 @@ steps:
         cargo-audit@0.22.2
         cargo-deny@0.20.2
 EOF
+  cp "$rust_dir/.github/workflows/main.yml" \
+    "$rust_dir/.github/workflows/main.yml.base"
 
   set +e
   output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
@@ -137,7 +139,7 @@ EOF
   {
     printf '%s\n' '# rust@1.94.1'
     sed 's/rust@1.94.1 +/rust@1.94.0 +/' \
-      "$rust_dir/.github/workflows/main.yml"
+      "$rust_dir/.github/workflows/main.yml.base"
   } >"$rust_dir/.github/workflows/main.yml.new"
   mv "$rust_dir/.github/workflows/main.yml.new" \
     "$rust_dir/.github/workflows/main.yml"
@@ -149,15 +151,12 @@ EOF
     printf 'Rust config check accepted a matching commented version\n' >&2
     return 1
   }
-  sed 's/rust@1.94.0 +/rust@1.94.1 +/' \
-    "$rust_dir/.github/workflows/main.yml" \
-    >"$rust_dir/.github/workflows/main.yml.new"
-  mv "$rust_dir/.github/workflows/main.yml.new" \
+  cp "$rust_dir/.github/workflows/main.yml.base" \
     "$rust_dir/.github/workflows/main.yml"
 
   sed '/^[[:space:]]*rust@1.94.1 + rustfmt + clippy$/a\
         rust@1.94.1 + rustfmt' \
-    "$rust_dir/.github/workflows/main.yml" \
+    "$rust_dir/.github/workflows/main.yml.base" \
     >"$rust_dir/.github/workflows/main.yml.new"
   mv "$rust_dir/.github/workflows/main.yml.new" \
     "$rust_dir/.github/workflows/main.yml"
@@ -175,15 +174,7 @@ EOF
       "$output" >&2
     return 1
   }
-  awk '!duplicate &&
-    /^[[:space:]]*rust@1[.]94[.]1 [+] rustfmt$/ {
-      duplicate=1
-      next
-    }
-    { print }' \
-    "$rust_dir/.github/workflows/main.yml" \
-    >"$rust_dir/.github/workflows/main.yml.new"
-  mv "$rust_dir/.github/workflows/main.yml.new" \
+  cp "$rust_dir/.github/workflows/main.yml.base" \
     "$rust_dir/.github/workflows/main.yml"
 
   cat >"$rust_dir/bin/cargo" <<'EOF'
@@ -219,21 +210,24 @@ EOF
     llvm-cov)
       output=$(
         cd "$rust_dir" &&
-          PATH="$rust_dir/bin:$PATH" LLVM_COV_VERSION=0 \
+          PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=true \
+            LLVM_COV_VERSION=0 \
             bash .github/scripts/rustcheck.sh tools 2>&1
       )
       ;;
     audit)
       output=$(
         cd "$rust_dir" &&
-          PATH="$rust_dir/bin:$PATH" AUDIT_VERSION=0 \
+          PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=true \
+            AUDIT_VERSION=0 \
             bash .github/scripts/rustcheck.sh tools 2>&1
       )
       ;;
     deny)
       output=$(
         cd "$rust_dir" &&
-          PATH="$rust_dir/bin:$PATH" DENY_VERSION=0 \
+          PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=true \
+            DENY_VERSION=0 \
             bash .github/scripts/rustcheck.sh tools 2>&1
       )
       ;;
