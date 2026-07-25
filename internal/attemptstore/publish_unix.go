@@ -22,7 +22,14 @@ func publishFile(source, target, directory string) error {
 		}
 		return err
 	}
-	handle, err := os.Open(directory)
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = root.Close()
+	}()
+	handle, err := root.Open(".")
 	if err != nil {
 		return err
 	}

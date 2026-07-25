@@ -164,6 +164,48 @@ func TestNativeWaitRejectsInvalidState(t *testing.T) {
 	})
 }
 
+func TestStartupCleanupJoinsWorker(t *testing.T) {
+	for _, assigned := range []bool{false, true} {
+		t.Run(map[bool]string{false: "unassigned", true: "assigned"}[assigned], func(t *testing.T) {
+			supervisor, err := New(
+				os.Getenv("CELESTIA_TEST_HOSTILE_WORKER"),
+				testNativeLimits(),
+			)
+			if err != nil {
+				t.Fatalf("new supervisor: %v", err)
+			}
+			resources, err := supervisor.prepareLaunch()
+			if err != nil {
+				t.Fatalf("prepare launch: %v", err)
+			}
+			defer func() {
+				if err := resources.close(); err != nil {
+					t.Errorf("close resources: %v", err)
+				}
+			}()
+			info, err := startSuspended(
+				resources.container,
+				resources.imagePath,
+				resources.pipes,
+			)
+			if err != nil {
+				t.Fatalf("start suspended: %v", err)
+			}
+			if assigned {
+				if err := windows.AssignProcessToJobObject(
+					resources.job,
+					info.Process,
+				); err != nil {
+					t.Fatalf("assign process: %v", err)
+				}
+			}
+			if err := resources.stopStart(info, assigned); err != nil {
+				t.Fatalf("stop startup: %v", err)
+			}
+		})
+	}
+}
+
 func TestAwaitProcessStates(t *testing.T) {
 	t.Run("wait error", func(t *testing.T) {
 		waited := make(chan error, 1)

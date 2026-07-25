@@ -15,18 +15,16 @@ package processsupervision
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"testing"
 )
 
-type Supervisor struct{}
-
-func newSupervisor(string, Limits) (*Supervisor, error) {
-	return nil, fmt.Errorf("%w: native containment is not qualified", ErrUnavailable)
-}
-
-func (*Supervisor) run(context.Context, []byte) Outcome {
-	return Outcome{
-		Status: StartFailed,
-		Err:    fmt.Errorf("%w: native containment is not qualified", ErrUnavailable),
+func TestSupervisorFailsClosed(t *testing.T) {
+	if _, err := New("/worker", Limits{}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("constructor error=%v", err)
+	}
+	outcome := (&Supervisor{}).Run(context.Background(), []byte("request"))
+	if outcome.Status != StartFailed || !errors.Is(outcome.Err, ErrUnavailable) {
+		t.Fatalf("outcome=%+v", outcome)
 	}
 }

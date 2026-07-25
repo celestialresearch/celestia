@@ -15,7 +15,9 @@ package urloperation
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -25,6 +27,32 @@ import (
 	"celestia.research/governed-operation/internal/urlreference"
 	"celestia.research/governed-operation/internal/workerprotocol"
 )
+
+func TestMain(testingMain *testing.M) {
+	root, err := repositoryRoot()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	command := exec.CommandContext(
+		ctx,
+		"cargo",
+		"build",
+		"--workspace",
+		"--all-targets",
+		"--locked",
+	)
+	command.Dir = root
+	command.Stdout = os.Stderr
+	command.Stderr = os.Stderr
+	if err := command.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "build worker fixtures: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(testingMain.Run())
+}
 
 func TestOperationVerifiesWorker(t *testing.T) {
 	worker := testWorker(t)
@@ -56,7 +84,7 @@ func TestOperationVerifiesWorker(t *testing.T) {
 
 func TestOperationRejectsBeforeExecution(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "evidence")
-	operation, err := New(testWorker(t), testLimits(), root)
+	operation, err := New(testWorker(t), root)
 	if err != nil {
 		t.Fatalf("new operation: %v", err)
 	}
@@ -79,7 +107,7 @@ func TestOperationRejectsBeforeExecution(t *testing.T) {
 
 func TestOperationReportsStagingFailure(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "evidence")
-	operation, err := New(testWorker(t), testLimits(), root)
+	operation, err := New(testWorker(t), root)
 	if err != nil {
 		t.Fatalf("new operation: %v", err)
 	}
@@ -100,7 +128,7 @@ func TestOperationReportsStagingFailure(t *testing.T) {
 }
 
 func TestOperationRejectsInvalidConfiguration(t *testing.T) {
-	if _, err := New("missing.exe", testLimits(), t.TempDir()); err == nil {
+	if _, err := New("missing.exe", t.TempDir()); err == nil {
 		t.Fatal("invalid worker accepted")
 	}
 }
@@ -134,6 +162,77 @@ func TestOperationRejectsProcessFailure(t *testing.T) {
 	result := operation.executeAccepted(context.Background(), accepted, admittedAt)
 	if result.Status != Failed || result.Process.Status != processsupervision.ExitFailed {
 		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestOperationPreservesTermination(t *testing.T) {
+	operation, err := newTestOperation(t, testHostileWorker(t))
+	if err != nil {
+		t.Fatalf("new operation: %v", err)
+	}
+	tests := []struct {
+		name       string
+		admittedAt time.Time
+		context    func() context.Context
+		status     Status
+	}{
+		{
+			name:       "admitted deadline",
+			admittedAt: time.Now().UTC().Add(-3 * time.Second),
+			context:    context.Background,
+			status:     TimedOut,
+		},
+		{
+			name:       "caller cancellation",
+			admittedAt: time.Now().UTC(),
+			context: func() context.Context {
+				cancelled, cancel := context.WithCancel(context.Background())
+				cancel()
+				return cancelled
+			},
+			status: Cancelled,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			accepted := admittedFixture(t, test.admittedAt)
+			result := operation.executeAccepted(
+				test.context(),
+				accepted,
+				test.admittedAt,
+			)
+			if result.Status != test.status {
+				t.Fatalf("status=%s process=%s error=%v", result.Status, result.Process.Status, result.Err)
+			}
+		})
+	}
+}
+
+func TestOperationRejectsInvalidContext(t *testing.T) {
+	if _, _, err := admittedContext(
+		nilContext(),
+		time.Now().UTC().Format(time.RFC3339Nano),
+	); err == nil {
+		t.Fatal("nil context accepted")
+	}
+	if _, _, err := admittedContext(context.Background(), "invalid"); err == nil {
+		t.Fatal("invalid deadline accepted")
+	}
+}
+
+func nilContext() context.Context {
+	return nil
+}
+
+func TestOperationUsesContractLimits(t *testing.T) {
+	limits := operationLimits()
+	if limits.InputBytes != workerprotocol.MaxResponseBytes ||
+		limits.OutputBytes != workerprotocol.MaxResponseBytes ||
+		limits.ErrorBytes != workerprotocol.StderrBytes ||
+		limits.MemoryBytes != workerprotocol.MemoryBytes ||
+		limits.Processes != workerprotocol.Processes ||
+		limits.Timeout != time.Duration(workerprotocol.TimeoutMS)*time.Millisecond {
+		t.Fatalf("limits=%+v", limits)
 	}
 }
 
@@ -220,7 +319,7 @@ func admittedFixture(t *testing.T, admittedAt time.Time) urladmission.Accepted {
 
 func newTestOperation(t *testing.T, worker string) (*Operation, error) {
 	t.Helper()
-	return New(worker, testLimits(), filepath.Join(t.TempDir(), "evidence"))
+	return New(worker, filepath.Join(t.TempDir(), "evidence"))
 }
 
 func testWorker(t *testing.T) string {
@@ -252,22 +351,17 @@ func testWorkingDirectory(tb testing.TB) string {
 	return workingDirectory
 }
 
-func testLimits() processsupervision.Limits {
-	return processsupervision.Limits{
-		InputBytes:     workerprotocol.MaxResponseBytes,
-		OutputBytes:    workerprotocol.MaxResponseBytes,
-		ErrorBytes:     workerprotocol.StderrBytes,
-		MemoryBytes:    workerprotocol.MemoryBytes,
-		Processes:      workerprotocol.Processes,
-		Timeout:        time.Duration(workerprotocol.TimeoutMS) * time.Millisecond,
-		CleanupTimeout: time.Second,
+func repositoryRoot() (string, error) {
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("working directory: %w", err)
 	}
+	return filepath.Clean(filepath.Join(workingDirectory, "..", "..")), nil
 }
 
 func BenchmarkOperation(b *testing.B) {
 	operation, err := New(
 		locateWorker(b, "celestia-url-reference.exe"),
-		testLimits(),
 		filepath.Join(b.TempDir(), "evidence"),
 	)
 	if err != nil {

@@ -14,6 +14,7 @@ package attemptstore
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -21,7 +22,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"time"
 
 	"celestia.research/governed-operation/internal/urladmission"
@@ -33,7 +33,6 @@ var (
 	ErrInvalid   = errors.New("invalid attempt evidence")
 	ErrDuplicate = errors.New("duplicate attempt")
 	ErrCorrupt   = errors.New("corrupt attempt evidence")
-	identity     = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 )
 
 type Admitted struct {
@@ -108,7 +107,7 @@ func New(root string) (*Store, error) {
 }
 
 func (store *Store) Stage(accepted urladmission.Accepted, admittedAt time.Time) (*Attempt, error) {
-	if !identity.MatchString(accepted.Request.AttemptID) ||
+	if !validIdentity(accepted.Request.AttemptID) ||
 		admittedAt.Location() != time.UTC ||
 		len(accepted.Frame) == 0 {
 		return nil, fmt.Errorf("%w: admitted attempt", ErrInvalid)
@@ -253,7 +252,7 @@ func loadTerminal(path string, records *Records) error {
 }
 
 func (store *Store) attemptPath(attemptID string) (string, error) {
-	if !identity.MatchString(attemptID) {
+	if !validIdentity(attemptID) {
 		return "", fmt.Errorf("%w: attempt identity", ErrInvalid)
 	}
 	path := filepath.Join(store.root, attemptID)
@@ -393,11 +392,19 @@ func readRooted(path, name string) ([]byte, error) {
 
 func validTerminal(status string) bool {
 	switch status {
-	case "failed", "executed_unverified", "verified", "indeterminate":
+	case "failed", "cancelled", "timed_out",
+		"executed_unverified", "verified", "indeterminate":
 		return true
 	default:
 		return false
 	}
+}
+
+func validIdentity(value string) bool {
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	return err == nil &&
+		len(decoded) == sha256.Size &&
+		base64.RawURLEncoding.EncodeToString(decoded) == value
 }
 
 func validHash(value string) bool {
