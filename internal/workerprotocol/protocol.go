@@ -497,11 +497,75 @@ func validateJSONFrame(data []byte) error {
 	if err := json.Compact(&compact, data); err != nil || !bytes.Equal(compact.Bytes(), data) {
 		return protocolError("frame")
 	}
+	if hasUnpairedSurrogate(data) {
+		return protocolError("unpaired surrogate")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := scanValue(decoder); err != nil {
 		return err
 	}
 	return nil
+}
+
+func hasUnpairedSurrogate(data []byte) bool {
+	inString := false
+	for index := 0; index < len(data); index++ {
+		if data[index] == '"' {
+			inString = !inString
+			continue
+		}
+		if !inString || data[index] != '\\' {
+			continue
+		}
+		next, invalid := inspectEscapedRune(data, index)
+		if invalid {
+			return true
+		}
+		index = next
+	}
+	return false
+}
+
+func inspectEscapedRune(data []byte, index int) (int, bool) {
+	if index+5 >= len(data) || data[index+1] != 'u' {
+		return min(index+1, len(data)-1), false
+	}
+	value, ok := decodeHex4(data[index+2 : index+6])
+	if !ok || value&0xf800 != 0xd800 {
+		return index + 5, false
+	}
+	if value&0xfc00 == 0xdc00 {
+		return index + 5, true
+	}
+	if index+11 >= len(data) || data[index+6] != '\\' || data[index+7] != 'u' {
+		return index + 5, true
+	}
+	low, ok := decodeHex4(data[index+8 : index+12])
+	if !ok || low&0xfc00 != 0xdc00 {
+		return index + 5, true
+	}
+	return index + 11, false
+}
+
+func decodeHex4(data []byte) (uint16, bool) {
+	if len(data) != 4 {
+		return 0, false
+	}
+	var value uint16
+	for _, digit := range data {
+		value <<= 4
+		switch {
+		case digit >= '0' && digit <= '9':
+			value |= uint16(digit - '0')
+		case digit >= 'a' && digit <= 'f':
+			value |= uint16(digit-'a') + 10
+		case digit >= 'A' && digit <= 'F':
+			value |= uint16(digit-'A') + 10
+		default:
+			return 0, false
+		}
+	}
+	return value, true
 }
 
 func scanValue(decoder *json.Decoder) error {

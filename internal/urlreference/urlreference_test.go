@@ -189,6 +189,19 @@ func TestTransformMaximumExpansion(t *testing.T) {
 	}
 }
 
+func TestTransformRejectsOversizedOutput(t *testing.T) {
+	t.Parallel()
+
+	prefix := "https://" + strings.Repeat("a.", 126) + "a/"
+	input := prefix + strings.Repeat("x", MaxReferenceBytes-len(prefix))
+	if len(input) != MaxReferenceBytes {
+		t.Fatalf("fixture length = %d, want %d", len(input), MaxReferenceBytes)
+	}
+	if _, err := Transform(input, Defang); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("Transform() error = %v, want ErrInvalid", err)
+	}
+}
+
 func FuzzTransform(f *testing.F) {
 	seeds := []string{
 		"https://example.test/",

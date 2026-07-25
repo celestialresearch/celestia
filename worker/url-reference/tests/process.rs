@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 const IDENTITY: &str = "oaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoaGhoYA";
 
@@ -49,6 +50,17 @@ fn writes_rejected_response() {
 #[test]
 fn rejects_malformed_frame() {
     let output = run_worker(b"{".to_vec());
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
+fn rejects_non_compact_frame() {
+    let mut input = request("https://example.test/", "defang");
+    input.push(b'\n');
+    let output = run_worker(input);
 
     assert_eq!(output.status.code(), Some(3));
     assert!(output.stdout.is_empty());
@@ -97,5 +109,20 @@ fn run_worker(input: Vec<u8>) -> Output {
         .expect("worker stdin")
         .write_all(&input)
         .expect("write request");
-    child.wait_with_output().expect("wait for worker")
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if child.try_wait().expect("query worker").is_some() {
+            return child.wait_with_output().expect("collect worker output");
+        }
+        if Instant::now() >= deadline {
+            child.kill().expect("kill timed-out worker");
+            let output = child.wait_with_output().expect("reap timed-out worker");
+            panic!(
+                "worker exceeded test deadline; status={:?}, stderr={}",
+                output.status.code(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        std::thread::yield_now();
+    }
 }
