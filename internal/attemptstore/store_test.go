@@ -723,8 +723,8 @@ func newTestEvidenceRoot(t *testing.T) string {
 	return filepath.Join(parent, "evidence")
 }
 
-func testAccepted(t *testing.T) (urladmission.Accepted, time.Time) {
-	t.Helper()
+func testAccepted(tb testing.TB) (urladmission.Accepted, time.Time) {
+	tb.Helper()
 	admittedAt := time.Now().UTC()
 	accepted, err := urladmission.Admit(
 		"https://example.test/path",
@@ -732,7 +732,7 @@ func testAccepted(t *testing.T) (urladmission.Accepted, time.Time) {
 		admittedAt,
 	)
 	if err != nil {
-		t.Fatalf("admit: %v", err)
+		tb.Fatalf("admit: %v", err)
 	}
 	return accepted, admittedAt
 }
