@@ -123,11 +123,26 @@ func openLocked(path string, access, disposition uint32) (*os.File, error) {
 		windows.FILE_SHARE_READ,
 		nil,
 		disposition,
-		windows.FILE_ATTRIBUTE_NORMAL,
+		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_OPEN_REPARSE_POINT,
 		0,
 	)
 	if err != nil {
 		return nil, err
 	}
-	return os.NewFile(uintptr(handle), path), nil
+	var information windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &information); err != nil {
+		return nil, errors.Join(err, windows.CloseHandle(handle))
+	}
+	if information.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0 ||
+		information.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+		return nil, errors.Join(
+			errors.New("worker must be a regular non-reparse file"),
+			windows.CloseHandle(handle),
+		)
+	}
+	file := os.NewFile(uintptr(handle), path)
+	if file == nil {
+		return nil, errors.Join(errors.New("create worker file"), windows.CloseHandle(handle))
+	}
+	return file, nil
 }

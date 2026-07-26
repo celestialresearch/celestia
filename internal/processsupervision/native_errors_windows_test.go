@@ -63,6 +63,16 @@ func TestContainerFolderRejectsMissingSID(t *testing.T) {
 	}
 }
 
+func TestSupervisorRejectsReparseWorker(t *testing.T) {
+	link := filepath.Join(t.TempDir(), "worker.exe")
+	if err := os.Symlink(os.Args[0], link); err != nil {
+		t.Skipf("create worker symlink: %v", err)
+	}
+	if _, err := New(link, testNativeLimits()); err == nil {
+		t.Fatal("reparse worker was accepted")
+	}
+}
+
 func TestContainerCloseReportsIdentity(t *testing.T) {
 	container := appContainer{name: "invalid\x00name"}
 	err := container.close()
