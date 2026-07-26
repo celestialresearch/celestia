@@ -62,17 +62,30 @@ foreach ($check in $checks) {
     }
 }
 
-$logRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
-    "celestia-shellcheck-$([guid]::NewGuid().ToString('N'))"
-)
+$runID = [guid]::NewGuid().ToString('N')
+$logRoot = Join-Path ([System.IO.Path]::GetTempPath()) "celestia-shellcheck-$runID"
+$mutableRoot = Join-Path $root ".cache\windows-shell\$runID"
 [System.IO.Directory]::CreateDirectory($logRoot) | Out-Null
+[System.IO.Directory]::CreateDirectory($mutableRoot) | Out-Null
 $running = @()
 $failure = $null
 $deadline = [DateTime]::UtcNow + $shellDeadline
 
 try {
     foreach ($check in $checks) {
-        $log = Join-Path $logRoot "$($check.Name.Replace(' ', '-')).log"
+        $shellID = $check.Name.Replace(' ', '-').ToLowerInvariant()
+        $shellRoot = Join-Path $mutableRoot $shellID
+        [System.IO.Directory]::CreateDirectory(
+            (Join-Path $shellRoot 'cache')
+        ) | Out-Null
+        [System.IO.Directory]::CreateDirectory(
+            (Join-Path $shellRoot 'target')
+        ) | Out-Null
+        [System.IO.Directory]::CreateDirectory(
+            (Join-Path $shellRoot 'tmp')
+        ) | Out-Null
+        $relativeRoot = ".cache/windows-shell/$runID/$shellID"
+        $log = Join-Path $logRoot "$shellID.log"
         $start = [System.Diagnostics.ProcessStartInfo]::new()
         $start.FileName = $check.File
         $start.WorkingDirectory = $root
@@ -82,6 +95,9 @@ try {
         $start.Environment['DEVCHECK_CURRENCY'] = 'false'
         $start.Environment['DEVCHECK_PROFILE'] = 'shell'
         $start.Environment['GITHUB_WORKSPACE'] = $root
+        $start.Environment['CELESTIA_CACHE_DIR'] = "$relativeRoot/cache"
+        $start.Environment['CARGO_TARGET_DIR'] = "$relativeRoot/target"
+        $start.Environment['TMPDIR'] = "$relativeRoot/tmp"
         foreach ($entry in $check.Environment.GetEnumerator()) {
             $start.Environment[$entry.Key] = $entry.Value
         }
@@ -162,6 +178,7 @@ foreach ($run in $running) {
 }
 
 [System.IO.Directory]::Delete($logRoot, $true)
+[System.IO.Directory]::Delete($mutableRoot, $true)
 if ($failure) {
     [Console]::Error.WriteLine($failure)
     exit 1

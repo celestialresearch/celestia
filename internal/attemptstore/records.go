@@ -13,6 +13,9 @@ package attemptstore
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,6 +26,36 @@ import (
 	"strings"
 	"time"
 )
+
+func invalidRecordFile(path string, info os.FileInfo) bool {
+	return !info.Mode().IsRegular() ||
+		info.Mode()&os.ModeSymlink != 0 ||
+		pathIsLinked(path, info) ||
+		info.Size() > maxRecordBytes ||
+		secureEvidenceFile(path) != nil
+}
+
+func validTerminal(status string) bool {
+	switch status {
+	case "failed", "cancelled", "timed_out",
+		"executed_unverified", "verified", "indeterminate":
+		return true
+	default:
+		return false
+	}
+}
+
+func validIdentity(value string) bool {
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	return err == nil &&
+		len(decoded) == sha256.Size &&
+		base64.RawURLEncoding.EncodeToString(decoded) == value
+}
+
+func validHash(value string) bool {
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == sha256.Size && value == strings.ToLower(value)
+}
 
 func requireRecordFields(data []byte, target any) error {
 	var fields map[string]json.RawMessage
@@ -133,21 +166,37 @@ func validObservationTransition(record Observation) bool {
 	case "failed":
 		return validFailedObservation(record)
 	case "cancelled":
-		return record.ProcessStatus == "cancelled" &&
-			record.ProtocolStatus == "not_run" &&
-			noVerification(record)
+		return validCancelledObservation(record)
 	case "timed_out":
-		return (record.ProcessStatus == "timed_out" ||
-			record.ProcessStatus == "cancelled") &&
-			record.ProtocolStatus == "not_run" &&
-			noVerification(record)
+		return validTimedOutObservation(record)
 	default:
 		return false
 	}
 }
 
+func validCancelledObservation(record Observation) bool {
+	return record.ProcessStatus == "cancelled" &&
+		record.ProcessError != "" &&
+		record.CleanupComplete &&
+		record.ProtocolStatus == "not_run" &&
+		noVerification(record)
+}
+
+func validTimedOutObservation(record Observation) bool {
+	return (record.ProcessStatus == "timed_out" ||
+		record.ProcessStatus == "start_failed") &&
+		record.ProcessError != "" &&
+		record.CleanupComplete &&
+		record.ProtocolStatus == "not_run" &&
+		noVerification(record) &&
+		(record.ProcessStatus != "start_failed" || record.ExitCode == 0)
+}
+
 func validVerifiedObservation(record Observation) bool {
 	return record.ProcessStatus == "completed" &&
+		record.ProcessError == "" &&
+		record.ExitCode == 0 &&
+		record.CleanupComplete &&
 		record.ProtocolStatus == "valid" &&
 		record.VerificationID != "" &&
 		record.VerificationVer != "" &&
@@ -157,6 +206,9 @@ func validVerifiedObservation(record Observation) bool {
 
 func validUnverifiedObservation(record Observation) bool {
 	return record.ProcessStatus == "completed" &&
+		record.ProcessError == "" &&
+		record.ExitCode == 0 &&
+		record.CleanupComplete &&
 		record.ProtocolStatus == "valid" &&
 		record.VerificationID != "" &&
 		record.VerificationVer != "" &&
@@ -168,13 +220,53 @@ func validFailedObservation(record Observation) bool {
 	if !noVerification(record) {
 		return false
 	}
-	if record.ProcessStatus == "completed" {
-		return record.ProtocolStatus == "valid" ||
-			record.ProtocolStatus == "rejected"
+	switch record.ProcessStatus {
+	case "completed":
+		return validCompletedFailure(record)
+	case "cleanup_failed":
+		return validCleanupFailure(record)
+	case "start_failed":
+		return validStartFailure(record)
+	case "output_overflow", "error_overflow", "exit_failed":
+		return validProcessFailure(record)
+	default:
+		return false
 	}
+}
+
+func validCompletedFailure(record Observation) bool {
+	if record.ProcessError != "" || !record.CleanupComplete {
+		return false
+	}
+	switch record.ProtocolStatus {
+	case "valid":
+		return record.ExitCode == 2 || record.ExitCode == 3
+	case "rejected":
+		return record.ExitCode == 0 ||
+			record.ExitCode == 2 ||
+			record.ExitCode == 3
+	default:
+		return false
+	}
+}
+
+func validCleanupFailure(record Observation) bool {
 	return record.ProtocolStatus == "not_run" &&
-		record.ProcessStatus != "cancelled" &&
-		record.ProcessStatus != "timed_out"
+		record.ProcessError != "" &&
+		!record.CleanupComplete
+}
+
+func validStartFailure(record Observation) bool {
+	return record.ProtocolStatus == "not_run" &&
+		record.ProcessError != "" &&
+		record.CleanupComplete &&
+		record.ExitCode == 0
+}
+
+func validProcessFailure(record Observation) bool {
+	return record.ProtocolStatus == "not_run" &&
+		record.ProcessError != "" &&
+		record.CleanupComplete
 }
 
 func noVerification(record Observation) bool {
@@ -246,10 +338,19 @@ func validProtocolStatus(status string) bool {
 	}
 }
 
-func publicationExists(path string) (bool, error) {
+func publicationExists(path, attemptID string) (bool, error) {
 	var publication Publication
 	err := readRecord(path, publicationFile, &publication)
 	if err == nil {
+		if publication.AttemptID != attemptID {
+			return false, ErrCorrupt
+		}
+		if _, err := readBundle(path, attemptID); err != nil {
+			return false, err
+		}
+		if err := verifyHash(path, receiptFile, publication.ReceiptHash); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
@@ -311,12 +412,18 @@ func publishExistingTerminal(path, attemptID string) error {
 		return ErrCorrupt
 	}
 	if observationExists {
+		if !errors.Is(recoveryErr, os.ErrNotExist) {
+			return recoveryErr
+		}
 		if observation.AttemptID != attemptID {
 			return ErrCorrupt
 		}
 		return writeOrMatchReceipt(path, attemptID, "observation", observationFile, observation.TerminalStatus)
 	}
 	if recoveryExists {
+		if !errors.Is(observationErr, os.ErrNotExist) {
+			return observationErr
+		}
 		if recovery.AttemptID != attemptID {
 			return ErrCorrupt
 		}

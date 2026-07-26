@@ -73,15 +73,29 @@ jobs:
         run: |
           case "$LANGUAGE" in
             actions)
-              find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print -quit | grep -q .
+              if ! detected=$(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print -quit); then
+                exit 1
+              fi
               ;;
             go)
-              find . -type f -name '*.go' -print -quit | grep -q .
+              if ! detected=$(find . -type f -name '*.go' -print -quit); then
+                exit 1
+              fi
               ;;
             rust)
-              find . -type f -name '*.rs' -print -quit | grep -q .
+              if ! detected=$(find . -type f -name '*.rs' -print -quit); then
+                exit 1
+              fi
               ;;
-          esac && echo 'present=true' >>"$GITHUB_OUTPUT" || echo 'present=false' >>"$GITHUB_OUTPUT"
+            *)
+              echo "unsupported CodeQL language: $LANGUAGE" >&2
+              exit 1
+          esac
+          if [[ -n "$detected" ]]; then
+            echo 'present=true' >>"$GITHUB_OUTPUT"
+          else
+            echo 'present=false' >>"$GITHUB_OUTPUT"
+          fi
       - name: Init CodeQL
         if: steps.detect.outputs.present == 'true'
         uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3

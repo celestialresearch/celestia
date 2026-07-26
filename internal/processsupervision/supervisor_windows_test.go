@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows && amd64
 
 package processsupervision_test
 
@@ -52,22 +52,39 @@ func TestMain(testingMain *testing.M) {
 			"build",
 			"--workspace",
 			"--all-targets",
-			"--features",
-			"qualification-fixtures",
 			"--locked",
 		)
 		command.Dir = root
 		command.Stdout = os.Stderr
 		command.Stderr = os.Stderr
 		if err := command.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "build worker fixtures: %v\n", err)
+			fmt.Fprintf(os.Stderr, "build production worker: %v\n", err)
+			os.Exit(1)
+		}
+		// The test invokes the repository-pinned Cargo tool with fixed arguments;
+		// the path is derived only from the checked-out repository root.
+		qualification := exec.CommandContext( //nolint:gosec // fixed test-tool invocation
+			ctx,
+			"cargo",
+			"build",
+			"--manifest-path",
+			filepath.Join(root, "worker", "qualification-fixtures", "Cargo.toml"),
+			"--bins",
+			"--locked",
+		)
+		qualification.Dir = root
+		qualification.Stdout = os.Stderr
+		qualification.Stderr = os.Stderr
+		if err := qualification.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "build qualification fixtures: %v\n", err)
 			os.Exit(1)
 		}
 		binaryDirectory := filepath.Join(root, "target", "debug")
+		fixtureDirectory := filepath.Join(root, "worker", "qualification-fixtures", "target", "debug")
 		_ = os.Setenv("CELESTIA_TEST_WORKER", filepath.Join(binaryDirectory, "celestia-url-reference.exe"))
 		_ = os.Setenv(
 			"CELESTIA_TEST_HOSTILE_WORKER",
-			filepath.Join(binaryDirectory, "celestia-hostile-worker.exe"),
+			filepath.Join(fixtureDirectory, "celestia-hostile-worker.exe"),
 		)
 	}
 	os.Exit(testingMain.Run())
@@ -502,6 +519,7 @@ func testLimits() processsupervision.Limits {
 		ErrorBytes:     8192,
 		MemoryBytes:    workerprotocol.MemoryBytes,
 		Processes:      workerprotocol.Processes,
+		StartupTimeout: 2 * time.Second,
 		Timeout:        500 * time.Millisecond,
 		CleanupTimeout: time.Second,
 	}

@@ -72,6 +72,17 @@ func secureEvidenceTree(path string) error {
 	return nil
 }
 
+func secureEvidenceFile(_ string) error {
+	return nil
+}
+
+func createEvidenceDirectory(path string) error {
+	if err := os.Mkdir(path, 0o700); err != nil {
+		return err
+	}
+	return secureEvidenceTree(path)
+}
+
 func pathIsLinked(_ string, info os.FileInfo) bool {
 	return info.Mode()&os.ModeSymlink != 0
 }

@@ -1,0 +1,22 @@
+[workspace]
+
+[package]
+name = "celestia-qualification-fixtures"
+version = "0.0.0"
+edition = "2024"
+license = "LicenseRef-Celestia-Proprietary"
+rust-version = "1.97.1"
+publish = false
+
+[[bin]]
+name = "celestia-hostile-worker"
+path = "src/bin/hostile.rs"
+
+[[bin]]
+name = "celestia-blocked-input-worker"
+path = "src/bin/blocked_input.rs"
+
+[dependencies]
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.151"
+sha2 = "=0.11.0"

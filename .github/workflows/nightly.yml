@@ -27,6 +27,18 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Setup Rust
+        uses: taiki-e/install-action@41049aa56687c35e0afa74eed4f09cec4f9afabf # v2.85.2
+        with:
+          tool: |
+            rust@1.97.1 + rustfmt + clippy + llvm-tools-preview
+            cargo-llvm-cov@0.8.7
+      - name: Setup Rust Security
+        uses: taiki-e/install-action@41049aa56687c35e0afa74eed4f09cec4f9afabf # v2.85.2
+        with:
+          tool: |
+            cargo-audit@0.22.2
+            cargo-deny@0.20.2
       - name: Check Currency
         run: |
           bash ./.github/scripts/modcheck.sh diff

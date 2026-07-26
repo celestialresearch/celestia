@@ -168,11 +168,11 @@ go_race_tests() {
 
 rust_docs() {
   RUSTDOCFLAGS='-D warnings' \
-    cargo doc --workspace --features qualification-fixtures --no-deps --locked
+    cargo doc --workspace --no-deps --locked
 }
 
 rust_coverage() {
-  cargo llvm-cov --workspace --features qualification-fixtures --locked \
+  cargo llvm-cov --workspace --locked \
     --fail-under-lines 90
 }
 
@@ -307,13 +307,17 @@ if [[ -f Cargo.toml ]]; then
   run_check 'Rust Tools' bash ./.github/scripts/rustcheck.sh tools
   run_no_output 'Rust Format' cargo fmt --all -- --check
   run_check 'Rust Check' \
-    cargo check --workspace --all-targets --features qualification-fixtures --locked
+    cargo check --workspace --all-targets --locked
   run_check 'Rust Minimal Check' \
     cargo check --workspace --all-targets --no-default-features --locked
   run_check 'Rust Clippy' \
-    cargo clippy --workspace --all-targets --features qualification-fixtures --locked -- -D warnings
+    cargo clippy --workspace --all-targets --locked -- -D warnings
   run_check 'Rust Test' \
-    cargo test --workspace --all-targets --features qualification-fixtures --locked
+    cargo test --workspace --all-targets --locked
+  run_no_output 'Qualification Fixture Format' \
+    cargo fmt --manifest-path worker/qualification-fixtures/Cargo.toml -- --check
+  run_check 'Qualification Fixtures' \
+    cargo test --manifest-path worker/qualification-fixtures/Cargo.toml --bins --locked
   run_check 'Rust Docs' rust_docs
   run_check 'Rust Coverage' rust_coverage
   run_check 'Rust Release' bash ./.github/scripts/rustcheck.sh artefacts

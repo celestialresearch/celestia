@@ -28,6 +28,7 @@ func TestPublishCreatesMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
+	t.Cleanup(func() { _ = attempt.Close() })
 	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -52,6 +53,7 @@ func TestPublishedIdentityCannotRestage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
+	t.Cleanup(func() { _ = attempt.Close() })
 	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -67,6 +69,7 @@ func TestInspectRequiresPublicationMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
+	t.Cleanup(func() { _ = attempt.Close() })
 	observation := testObservation(accepted.Request.AttemptID)
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
@@ -95,6 +98,7 @@ func TestPublicationRequiresFinalReadBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
+	t.Cleanup(func() { _ = attempt.Close() })
 	observation := testObservation(accepted.Request.AttemptID)
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
@@ -326,6 +330,43 @@ func TestObservationRejectsUnknownStates(t *testing.T) {
 	}
 }
 
+func TestRecoveryRejectsInvalidShape(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	recovery := Recovery{
+		Version:        Version,
+		AttemptID:      accepted.Request.AttemptID,
+		TerminalStatus: "indeterminate",
+		Reason:         "interrupted",
+	}
+	if err := validateRecovery(recovery); err != nil {
+		t.Fatalf("valid recovery rejected: %v", err)
+	}
+	for _, change := range []func(*Recovery){
+		func(value *Recovery) { value.Version++ },
+		func(value *Recovery) { value.AttemptID = "invalid" },
+		func(value *Recovery) { value.TerminalStatus = "failed" },
+		func(value *Recovery) { value.Reason = "" },
+	} {
+		invalid := recovery
+		change(&invalid)
+		if err := validateRecovery(invalid); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("invalid recovery accepted: %v", err)
+		}
+	}
+}
+
+func TestRecordValidationRejectsMissingRequiredFields(t *testing.T) {
+	if err := requireRecordFields([]byte(`{}`), &Recovery{}); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("missing record fields accepted: %v", err)
+	}
+	accepted, admittedAt := testAccepted(t)
+	admitted := admittedRecord(accepted.Request, accepted.Frame, admittedAt)
+	admitted.RequestFrame = nil
+	if err := validateAdmitted(admitted); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("missing admitted frame accepted: %v", err)
+	}
+}
+
 func TestObservationRejectsContradictoryTerminal(t *testing.T) {
 	accepted, _ := testAccepted(t)
 	observation := testObservation(accepted.Request.AttemptID)
@@ -340,6 +381,20 @@ func TestObservationRejectsContradictoryTerminal(t *testing.T) {
 	}
 }
 
+func TestObservationRejectsInvalidTerminalTransitions(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	base := testObservation(accepted.Request.AttemptID)
+	for _, terminal := range []string{"unknown", "cancelled", "timed_out"} {
+		t.Run(terminal, func(t *testing.T) {
+			observation := base
+			observation.TerminalStatus = terminal
+			if err := validateObservation(observation); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("invalid terminal transition accepted: %v", err)
+			}
+		})
+	}
+}
+
 func TestObservationAcceptsContractTransitions(t *testing.T) {
 	accepted, _ := testAccepted(t)
 	verified := testObservation(accepted.Request.AttemptID)
@@ -348,9 +403,12 @@ func TestObservationAcceptsContractTransitions(t *testing.T) {
 	unverified.VerificationPass = false
 	failedResponse := observationWithoutVerification(verified)
 	failedResponse.TerminalStatus = "failed"
+	failedResponse.ExitCode = 2
 	failedProcess := failedResponse
 	failedProcess.ProcessStatus = "exit_failed"
 	failedProcess.ProtocolStatus = "not_run"
+	failedProcess.ProcessError = "worker failed"
+	failedProcess.ExitCode = 0
 	cancelled := failedProcess
 	cancelled.ProcessStatus = "cancelled"
 	cancelled.TerminalStatus = "cancelled"
@@ -368,6 +426,90 @@ func TestObservationAcceptsContractTransitions(t *testing.T) {
 		if err := validateObservation(observation); err != nil {
 			t.Fatalf("valid transition rejected: %+v: %v", observation, err)
 		}
+	}
+}
+
+func TestObservationAcceptsAndRejectsCleanupFailureTransitions(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	base := observationWithoutVerification(testObservation(accepted.Request.AttemptID))
+	base.TerminalStatus = "failed"
+	validCleanupFailure := base
+	validCleanupFailure.ProcessStatus = "cleanup_failed"
+	validCleanupFailure.ProcessError = "cleanup failed"
+	validCleanupFailure.CleanupComplete = false
+	validCleanupFailure.ProtocolStatus = "not_run"
+	if err := validateObservation(validCleanupFailure); err != nil {
+		t.Fatalf("valid cleanup failure rejected: %v", err)
+	}
+	invalidCleanupFailure := validCleanupFailure
+	invalidCleanupFailure.CleanupComplete = true
+	if err := validateObservation(invalidCleanupFailure); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("cleanup failure with complete cleanup accepted: %v", err)
+	}
+	validProcessFailure := base
+	validProcessFailure.ProcessStatus = "output_overflow"
+	validProcessFailure.ProcessError = "output limit"
+	validProcessFailure.CleanupComplete = true
+	validProcessFailure.ProtocolStatus = "not_run"
+	if err := validateObservation(validProcessFailure); err != nil {
+		t.Fatalf("valid output failure rejected: %v", err)
+	}
+	validStartFailure := validProcessFailure
+	validStartFailure.ProcessStatus = "start_failed"
+	validStartFailure.ProcessError = "start failed"
+	if err := validateObservation(validStartFailure); err != nil {
+		t.Fatalf("valid start failure rejected: %v", err)
+	}
+	invalidCompletedFailure := validProcessFailure
+	invalidCompletedFailure.ProcessStatus = "completed"
+	invalidCompletedFailure.ProcessError = "unexpected process error"
+	if err := validateObservation(invalidCompletedFailure); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("completed failure with process error accepted: %v", err)
+	}
+	invalidProcessFailure := validProcessFailure
+	invalidProcessFailure.ProcessStatus = "cancelled"
+	if err := validateObservation(invalidProcessFailure); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("cancelled failed observation accepted: %v", err)
+	}
+}
+
+func TestObservationRejectsContradictoryProcessProtocolStates(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	base := observationWithoutVerification(testObservation(accepted.Request.AttemptID))
+	base.TerminalStatus = "failed"
+	base.ProcessError = "worker failed"
+	base.CleanupComplete = true
+	tests := []struct {
+		name     string
+		process  string
+		protocol string
+		exitCode uint32
+	}{
+		{name: "start valid", process: "start_failed", protocol: "valid"},
+		{name: "start rejected", process: "start_failed", protocol: "rejected"},
+		{name: "start exit", process: "start_failed", protocol: "not_run", exitCode: 1},
+		{name: "output valid", process: "output_overflow", protocol: "valid", exitCode: 1},
+		{name: "output rejected", process: "output_overflow", protocol: "rejected", exitCode: 1},
+		{name: "error valid", process: "error_overflow", protocol: "valid", exitCode: 1},
+		{name: "exit valid", process: "exit_failed", protocol: "valid", exitCode: 1},
+		{name: "cancelled failed", process: "cancelled", protocol: "not_run", exitCode: 1},
+		{name: "timed out failed", process: "timed_out", protocol: "not_run", exitCode: 1},
+		{name: "completed not run", process: "completed", protocol: "not_run"},
+		{name: "completed valid zero", process: "completed", protocol: "valid"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			observation := base
+			observation.ProcessStatus = test.process
+			observation.ProtocolStatus = test.protocol
+			observation.ExitCode = test.exitCode
+			if test.process == "completed" {
+				observation.ProcessError = ""
+			}
+			if err := validateObservation(observation); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("contradictory observation accepted: %+v", observation)
+			}
+		})
 	}
 }
 

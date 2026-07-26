@@ -9,12 +9,11 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows && amd64
 
 package processsupervision
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -122,49 +121,80 @@ func validLimits(limits Limits) bool {
 		limits.ErrorBytes > 0 &&
 		limits.MemoryBytes > 0 &&
 		limits.Processes > 0 &&
+		limits.StartupTimeout > 0 &&
 		limits.Timeout > 0 &&
 		limits.CleanupTimeout > 0
 }
 
-func (supervisor *Supervisor) run(ctx context.Context, frame []byte) Outcome {
+func (supervisor *Supervisor) run(
+	ctx context.Context,
+	frame []byte,
+	startDeadline time.Time,
+) Outcome {
 	started := time.Now()
-	if ctx == nil || len(frame) == 0 || len(frame) > supervisor.limits.InputBytes {
-		return failedOutcome(StartFailed, started, fmt.Errorf("%w: context or frame", ErrInvalid))
+	if ctx == nil ||
+		startDeadline.IsZero() ||
+		len(frame) == 0 ||
+		len(frame) > supervisor.limits.InputBytes {
+		outcome := failedOutcome(StartFailed, started, fmt.Errorf("%w: context or frame", ErrInvalid))
+		outcome.WorkerSHA256 = supervisor.workerHash
+		outcome.CleanupComplete = true
+		return outcome
 	}
 	select {
 	case <-ctx.Done():
-		return failedOutcome(Cancelled, started, ctx.Err())
+		outcome := failedOutcome(Cancelled, started, ctx.Err())
+		outcome.WorkerSHA256 = supervisor.workerHash
+		outcome.CleanupComplete = true
+		return outcome
 	default:
 	}
-	process, hash, err := supervisor.launch()
+	if err := checkStartupDeadline(startDeadline); err != nil {
+		outcome := failedOutcome(StartFailed, started, err)
+		outcome.WorkerSHA256 = supervisor.workerHash
+		outcome.CleanupComplete = true
+		return outcome
+	}
+	startupDeadline := earliestDeadline(
+		startDeadline,
+		time.Now().Add(supervisor.limits.StartupTimeout),
+	)
+	process, hash, err := supervisor.launch(startupDeadline)
 	if err != nil {
 		outcome := failedOutcome(StartFailed, started, err)
 		outcome.WorkerSHA256 = supervisor.workerHash
 		if hash != ([32]byte{}) {
 			outcome.WorkerSHA256 = hash
 		}
+		outcome.CleanupComplete = true
 		return outcome
 	}
-	remaining := supervisor.limits.Timeout - time.Since(started)
-	outcome := supervisor.observe(ctx, process, frame, remaining)
+	outcome := supervisor.observe(ctx, process, frame, supervisor.limits.Timeout)
 	outcome.WorkerSHA256 = hash
 	outcome.Duration = time.Since(started)
 	return outcome
 }
 
-func (supervisor *Supervisor) launch() (*launchedProcess, [32]byte, error) {
-	resources, err := supervisor.prepareLaunch()
+func earliestDeadline(first, second time.Time) time.Time {
+	if first.Before(second) {
+		return first
+	}
+	return second
+}
+
+func (supervisor *Supervisor) launch(startupDeadline time.Time) (*launchedProcess, [32]byte, error) {
+	resources, err := supervisor.prepareLaunch(startupDeadline)
 	if err != nil {
 		return nil, [32]byte{}, err
 	}
-	process, err := resources.start()
+	process, err := resources.start(startupDeadline)
 	if err != nil {
 		return nil, resources.imageHash, errors.Join(err, resources.close())
 	}
 	return process, resources.imageHash, nil
 }
 
-func (supervisor *Supervisor) prepareLaunch() (*launchResources, error) {
+func (supervisor *Supervisor) prepareLaunch(startupDeadline time.Time) (*launchResources, error) {
 	container, err := createContainerName()
 	if err != nil {
 		if container.name != "" {
@@ -172,9 +202,15 @@ func (supervisor *Supervisor) prepareLaunch() (*launchResources, error) {
 		}
 		return nil, err
 	}
+	if err := checkStartupDeadline(startupDeadline); err != nil {
+		return nil, errors.Join(err, container.close())
+	}
 	image, hash, imagePath, err := stageImage(container.folder, supervisor.workerPath)
 	if err != nil {
 		return nil, errors.Join(err, container.close())
+	}
+	if err := checkStartupDeadline(startupDeadline); err != nil {
+		return nil, errors.Join(err, image.Close(), container.close())
 	}
 	if hash != supervisor.workerHash {
 		return nil, errors.Join(
@@ -187,10 +223,17 @@ func (supervisor *Supervisor) prepareLaunch() (*launchResources, error) {
 	if err != nil {
 		return nil, errors.Join(err, image.Close(), container.close())
 	}
+	if err := checkStartupDeadline(startupDeadline); err != nil {
+		pipes.close()
+		return nil, errors.Join(err, image.Close(), container.close())
+	}
 	job, err := createJob(supervisor.limits)
 	if err != nil {
 		pipes.close()
 		return nil, errors.Join(err, image.Close(), container.close())
+	}
+	if err := checkStartupDeadline(startupDeadline); err != nil {
+		return nil, errors.Join(err, windows.CloseHandle(job), image.Close(), container.close())
 	}
 	return &launchResources{
 		container: container,
@@ -203,10 +246,13 @@ func (supervisor *Supervisor) prepareLaunch() (*launchResources, error) {
 	}, nil
 }
 
-func (resources *launchResources) start() (*launchedProcess, error) {
+func (resources *launchResources) start(startupDeadline time.Time) (*launchedProcess, error) {
 	info, err := startSuspended(resources.container, resources.imagePath, resources.pipes)
 	if err != nil {
 		return nil, err
+	}
+	if err := checkStartupDeadline(startupDeadline); err != nil {
+		return nil, errors.Join(err, resources.stopStart(info, false))
 	}
 	if err := windows.AssignProcessToJobObject(resources.job, info.Process); err != nil {
 		stopErr := resources.stopStart(info, false)
@@ -216,6 +262,9 @@ func (resources *launchResources) start() (*launchedProcess, error) {
 		)
 	}
 	resources.pipes.closeChildEnds()
+	if err := checkStartupDeadline(startupDeadline); err != nil {
+		return nil, errors.Join(err, resources.stopStart(info, true))
+	}
 	if _, err := windows.ResumeThread(info.Thread); err != nil {
 		stopErr := resources.stopStart(info, true)
 		return nil, errors.Join(
@@ -233,6 +282,13 @@ func (resources *launchResources) start() (*launchedProcess, error) {
 		image:     resources.image,
 		started:   time.Now(),
 	}, nil
+}
+
+func checkStartupDeadline(deadline time.Time) error {
+	if !time.Now().Before(deadline) {
+		return context.DeadlineExceeded
+	}
+	return nil
 }
 
 func (resources *launchResources) stopStart(
@@ -367,16 +423,19 @@ func awaitProcess(
 	input <-chan error,
 ) (Status, error) {
 	for {
+		if status, cause, ready := readWaitResult(waited); ready {
+			return status, cause
+		}
+		if timeoutReady(timeout) {
+			return resolveProcessTimeout(waited)
+		}
 		select {
 		case cause := <-waited:
-			if cause != nil {
-				return ExitFailed, cause
-			}
-			return Completed, nil
+			return processWaitResult(cause)
 		case <-ctx.Done():
 			return Cancelled, ctx.Err()
 		case <-timeout:
-			return TimedOut, context.DeadlineExceeded
+			return resolveProcessTimeout(waited)
 		case status := <-overflow:
 			return status, errStreamLimit
 		case cause := <-input:
@@ -386,6 +445,41 @@ func awaitProcess(
 			input = nil
 		}
 	}
+}
+
+func timeoutReady(timeout <-chan time.Time) bool {
+	select {
+	case <-timeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func readWaitResult(waited <-chan error) (Status, error, bool) {
+	select {
+	case cause := <-waited:
+		status, err := processWaitResult(cause)
+		return status, err, true
+	default:
+		return Status(""), nil, false
+	}
+}
+
+func processWaitResult(cause error) (Status, error) {
+	if cause != nil {
+		return ExitFailed, cause
+	}
+	return Completed, nil
+}
+
+func resolveProcessTimeout(
+	waited <-chan error,
+) (Status, error) {
+	if status, cause, ready := readWaitResult(waited); ready {
+		return status, cause
+	}
+	return TimedOut, context.DeadlineExceeded
 }
 
 func finishOutcome(
@@ -631,100 +725,6 @@ func startSuspended(
 	runtime.KeepAlive(handles)
 	runtime.KeepAlive(environment)
 	return info, nil
-}
-
-func environmentBlock(folder string) ([]uint16, error) {
-	systemRoot := os.Getenv("SystemRoot")
-	if systemRoot == "" {
-		return nil, fmt.Errorf("%w: SystemRoot is unavailable", ErrInvalid)
-	}
-	temp := filepath.Join(folder, "Temp")
-	if err := os.MkdirAll(temp, 0o700); err != nil {
-		return nil, fmt.Errorf("prepare worker temporary directory: %w", err)
-	}
-	values := []string{
-		"LOCALAPPDATA=" + folder,
-		"SystemRoot=" + systemRoot,
-		"TEMP=" + temp,
-		"TMP=" + temp,
-		"WINDIR=" + systemRoot,
-	}
-	var block []uint16
-	for _, value := range values {
-		encoded, err := windows.UTF16FromString(value)
-		if err != nil {
-			return nil, fmt.Errorf("encode worker environment: %w", err)
-		}
-		block = append(block, encoded...)
-	}
-	return append(block, 0), nil
-}
-
-func writeFrame(handle windows.Handle, frame []byte) error {
-	file := os.NewFile(uintptr(handle), "worker-stdin")
-	if file == nil {
-		return errors.New("create worker stdin")
-	}
-	written, writeErr := io.Copy(file, bytes.NewReader(frame))
-	if writeErr == nil && written != int64(len(frame)) {
-		writeErr = io.ErrShortWrite
-	}
-	closeErr := file.Close()
-	if err := errors.Join(writeErr, closeErr); err != nil {
-		return fmt.Errorf("write worker frame: %w", err)
-	}
-	return nil
-}
-
-func waitCleanup(process, job windows.Handle, timeout time.Duration) (bool, error) {
-	deadline := time.Now().Add(timeout)
-	wait := waitMilliseconds(timeout)
-	event, err := windows.WaitForSingleObject(process, wait)
-	if err != nil {
-		return false, fmt.Errorf("wait for worker cleanup: %w", err)
-	}
-	if event == uint32(windows.WAIT_TIMEOUT) {
-		return false, errors.New("worker cleanup deadline exceeded")
-	}
-	if event != windows.WAIT_OBJECT_0 {
-		return false, fmt.Errorf("unexpected worker wait result: %d", event)
-	}
-	for {
-		empty, err := jobEmpty(job)
-		if err != nil {
-			return false, err
-		}
-		if empty {
-			return true, nil
-		}
-		if !time.Now().Before(deadline) {
-			return false, errors.New("process tree cleanup deadline exceeded")
-		}
-		time.Sleep(time.Millisecond)
-	}
-}
-
-func waitMilliseconds(timeout time.Duration) uint32 {
-	milliseconds := uint64(timeout / time.Millisecond) // #nosec G115 -- valid limits require a positive duration.
-	if milliseconds >= uint64(^uint32(0)-1) {
-		return ^uint32(0) - 1
-	}
-	return uint32(milliseconds)
-}
-
-func jobEmpty(job windows.Handle) (bool, error) {
-	var accounting jobAccounting
-	err := windows.QueryInformationJobObject(
-		job,
-		windows.JobObjectBasicAccountingInformation,
-		uintptr(unsafe.Pointer(&accounting)), // #nosec G103 -- Win32 writes the typed accounting structure.
-		uint32(unsafe.Sizeof(accounting)),
-		nil,
-	)
-	if err != nil {
-		return false, fmt.Errorf("query process tree: %w", err)
-	}
-	return accounting.activeProcesses == 0, nil
 }
 
 func failedOutcome(status Status, started time.Time, err error) Outcome {

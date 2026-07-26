@@ -5,4 +5,3 @@ queries:
 
 paths-ignore:
   - '.cache/**'
-  - 'coverage.out'

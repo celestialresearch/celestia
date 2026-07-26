@@ -9,13 +9,14 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build !windows
+//go:build !windows || (windows && !amd64)
 
 package processsupervision
 
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 type Supervisor struct{}
@@ -24,7 +25,7 @@ func newSupervisor(string, Limits) (*Supervisor, error) {
 	return nil, fmt.Errorf("%w: native containment is not qualified", ErrUnavailable)
 }
 
-func (*Supervisor) run(context.Context, []byte) Outcome {
+func (*Supervisor) run(context.Context, []byte, time.Time) Outcome {
 	return Outcome{
 		Status: StartFailed,
 		Err:    fmt.Errorf("%w: native containment is not qualified", ErrUnavailable),

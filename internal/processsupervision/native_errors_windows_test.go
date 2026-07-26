@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows && amd64
 
 package processsupervision
 
@@ -39,9 +39,12 @@ func TestContainerRejectsDuplicateProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
-	defer closeContainer(t, container)
+	defer closeContainer(t, &container)
 	if _, err := createContainer(name); err == nil {
 		t.Fatal("duplicate AppContainer profile was accepted")
+	}
+	if err := container.close(); err != nil {
+		t.Fatalf("close container: %v", err)
 	}
 }
 
@@ -105,7 +108,7 @@ func TestStageImageRejectsFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
-	defer closeContainer(t, container)
+	defer closeContainer(t, &container)
 	if _, _, _, err := stageImage(container.folder, filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("missing worker was staged")
 	}
@@ -209,7 +212,9 @@ func TestStartupCleanupJoinsWorker(t *testing.T) {
 			if err != nil {
 				t.Fatalf("new supervisor: %v", err)
 			}
-			resources, err := supervisor.prepareLaunch()
+			resources, err := supervisor.prepareLaunch(
+				time.Now().Add(testNativeLimits().StartupTimeout),
+			)
 			if err != nil {
 				t.Fatalf("prepare launch: %v", err)
 			}
@@ -270,6 +275,22 @@ func TestAwaitProcessStates(t *testing.T) {
 			t.Fatalf("status=%s error=%v", status, err)
 		}
 	})
+	t.Run("ready completion wins at timeout cutoff", func(t *testing.T) {
+		timeout := make(chan time.Time, 1)
+		timeout <- time.Now()
+		waited := make(chan error, 1)
+		waited <- nil
+		status, err := awaitProcess(
+			context.Background(),
+			timeout,
+			waited,
+			make(chan Status),
+			make(chan error),
+		)
+		if status != Completed || err != nil {
+			t.Fatalf("status=%s error=%v", status, err)
+		}
+	})
 	t.Run("overflow", func(t *testing.T) {
 		overflow := make(chan Status, 1)
 		overflow <- OutputOverflow
@@ -284,6 +305,39 @@ func TestAwaitProcessStates(t *testing.T) {
 			t.Fatalf("status=%s error=%v", status, err)
 		}
 	})
+}
+
+func TestAwaitProcessKeepsTimeout(t *testing.T) {
+	timeout := make(chan time.Time, 1)
+	timeout <- time.Now()
+	input := make(chan error, 1)
+	input <- nil
+	result := make(chan struct {
+		status Status
+		err    error
+	}, 1)
+	go func() {
+		status, err := awaitProcess(
+			context.Background(),
+			timeout,
+			make(chan error),
+			make(chan Status),
+			input,
+		)
+		result <- struct {
+			status Status
+			err    error
+		}{status: status, err: err}
+	}()
+	select {
+	case outcome := <-result:
+		if outcome.status != TimedOut ||
+			!errors.Is(outcome.err, context.DeadlineExceeded) {
+			t.Fatalf("status=%s error=%v", outcome.status, outcome.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout outcome was discarded")
+	}
 }
 
 func TestAwaitInputStates(t *testing.T) {
@@ -379,7 +433,7 @@ func TestStartRejectsInvalidImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create container: %v", err)
 	}
-	defer closeContainer(t, container)
+	defer closeContainer(t, &container)
 	pipes, err := newPipes()
 	if err != nil {
 		t.Fatalf("create pipes: %v", err)
@@ -397,6 +451,7 @@ func testNativeLimits() Limits {
 		ErrorBytes:     8192,
 		MemoryBytes:    67_108_864,
 		Processes:      1,
+		StartupTimeout: 2 * time.Second,
 		Timeout:        500 * time.Millisecond,
 		CleanupTimeout: time.Second,
 	}
@@ -415,7 +470,7 @@ func copyFile(t *testing.T, target, source string) {
 	}
 }
 
-func closeContainer(t *testing.T, container appContainer) {
+func closeContainer(t *testing.T, container *appContainer) {
 	t.Helper()
 	if err := container.close(); err != nil {
 		t.Errorf("close container: %v", err)

@@ -171,7 +171,9 @@ fn is_compact_frame(data: &[u8]) -> bool {
 
 fn write_response(response: &Response<'_>) -> Result<(), ()> {
     let encoded = serde_json::to_vec(&response).map_err(|_| ())?;
-    io::stdout().write_all(&encoded).map_err(|_| ())
+    let mut stdout = io::stdout();
+    stdout.write_all(&encoded).map_err(|_| ())?;
+    stdout.flush().map_err(|_| ())
 }
 
 fn duration_ns(start: Instant) -> u64 {

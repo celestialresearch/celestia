@@ -13,6 +13,7 @@
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+cache_root=${CELESTIA_CACHE_DIR:-"$root/.cache"}
 
 main() (
   local output
@@ -22,6 +23,7 @@ main() (
   local rust_dir
   local status
   local work_dir
+  local action_pid=
   local change_pid=
   local currency_pid=
 
@@ -35,13 +37,17 @@ main() (
       kill "$currency_pid" 2>/dev/null || true
       wait "$currency_pid" 2>/dev/null || true
     fi
+    if [[ -n "$action_pid" ]]; then
+      kill "$action_pid" 2>/dev/null || true
+      wait "$action_pid" 2>/dev/null || true
+    fi
     rm -rf -- "$work_dir"
   }
 
-  mkdir -p "$root/.cache"
-  work_dir=$(mktemp -d "$root/.cache/verification-test.XXXXXX")
+  mkdir -p "$cache_root"
+  work_dir=$(mktemp -d "$cache_root/verification-test.XXXXXX")
   case "$work_dir" in
-  "$root"/.cache/verification-test.*) ;;
+  "$cache_root"/verification-test.*) ;;
   *)
     printf 'refusing unexpected temporary path %s\n' "$work_dir" >&2
     return 1
@@ -52,6 +58,8 @@ main() (
   change_pid=$!
   bash "$root/.github/scripts/currencycheck_test.sh" &
   currency_pid=$!
+  bash "$root/.github/scripts/actioncheck_test.sh" &
+  action_pid=$!
 
   mkdir -p "$work_dir/.github/scripts" "$work_dir/a" "$work_dir/b"
   cp "$root/.github/scripts/coveragecheck.sh" \
@@ -229,6 +237,13 @@ build)
     : >"$release_dir/${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE}${suffix}"
     chmod +x "$release_dir/${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE}${suffix}"
   fi
+  if [[ -n "${RUSTCHECK_EXTRA_RELEASE_ARTEFACT:-}" ]]; then
+    : >"$release_dir/${RUSTCHECK_EXTRA_RELEASE_ARTEFACT}"
+  fi
+  if [[ -n "${RUSTCHECK_NESTED_RELEASE_ARTEFACT:-}" ]]; then
+    mkdir -p "$release_dir/nested"
+    : >"$release_dir/nested/${RUSTCHECK_NESTED_RELEASE_ARTEFACT}"
+  fi
   ;;
 llvm-cov) printf 'cargo-llvm-cov %s\n' "${LLVM_COV_VERSION:-0.8.7}" ;;
 audit)
@@ -340,6 +355,42 @@ EOF
   grep -Fq 'Unexpected release executable: celestia-hostile-worker' \
     <<<"$output" || {
     printf 'Rust artefact check omitted the unexpected executable:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  set +e
+  output=$(
+    cd "$rust_dir" &&
+      PATH="$rust_dir/bin:$PATH" RUSTCHECK_EXTRA_RELEASE_ARTEFACT=unexpected.metadata \
+        bash .github/scripts/rustcheck.sh artefacts 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust artefact check accepted an unexpected regular file\n' >&2
+    return 1
+  }
+  grep -Fq 'Unexpected release artefact: unexpected.metadata' \
+    <<<"$output" || {
+    printf 'Rust artefact check omitted the unexpected regular file:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  set +e
+  output=$(
+    cd "$rust_dir" &&
+      PATH="$rust_dir/bin:$PATH" RUSTCHECK_NESTED_RELEASE_ARTEFACT=unexpected.nested \
+        bash .github/scripts/rustcheck.sh artefacts 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust artefact check accepted a nested regular file\n' >&2
+    return 1
+  }
+  grep -Fq 'Unexpected release directory: nested' \
+    <<<"$output" || {
+    printf 'Rust artefact check omitted the nested release directory:\n%s\n' \
       "$output" >&2
     return 1
   }
@@ -518,6 +569,8 @@ EOF
   change_pid=
   wait "$currency_pid"
   currency_pid=
+  wait "$action_pid"
+  action_pid=
 )
 
 main
