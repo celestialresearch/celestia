@@ -147,17 +147,27 @@ func secureDirectoryACL(path string) error {
 		ace == nil ||
 		ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE ||
 		ace.Header.AceFlags != windows.OBJECT_INHERIT_ACE|windows.CONTAINER_INHERIT_ACE ||
-		ace.Mask != evidenceDirectoryAccess {
-		return ErrCorrupt
-	}
-	// GetAce exposes the variable-length SID through the fixed ACE prefix.
-	// The Windows API contract makes this conversion necessary after the ACE
-	// type and bounds have been checked above.
-	aceSID := (*windows.SID)(unsafe.Pointer(&ace.SidStart)) //nolint:gosec // audited Windows ACE SID conversion
-	if !aceSID.Equals(userSID) {
+		ace.Mask != evidenceDirectoryAccess ||
+		!evidenceACEIdentifies(ace, userSID) {
 		return ErrCorrupt
 	}
 	return nil
+}
+
+func evidenceACEIdentifies(ace *windows.ACCESS_ALLOWED_ACE, expected *windows.SID) bool {
+	const minimumSIDBytes = 8
+	var layout windows.ACCESS_ALLOWED_ACE
+	sidOffset := unsafe.Offsetof(layout.SidStart)
+	if ace == nil ||
+		expected == nil ||
+		uintptr(ace.Header.AceSize) < sidOffset+minimumSIDBytes {
+		return false
+	}
+	// GetAce exposes the variable-length SID through the fixed ACE prefix.
+	aceSID := (*windows.SID)(unsafe.Pointer(&ace.SidStart)) //nolint:gosec // validated ACE bounds precede this Win32 SID conversion
+	return aceSID.IsValid() &&
+		uintptr(ace.Header.AceSize) == sidOffset+uintptr(aceSID.Len()) &&
+		aceSID.Equals(expected)
 }
 
 func currentUserSID() (*windows.SID, error) {
