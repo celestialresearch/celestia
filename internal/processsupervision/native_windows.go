@@ -120,23 +120,32 @@ func containerFolder(sid *windows.SID) (string, error) {
 }
 
 func (container *appContainer) close() error {
+	return container.closeWith(windows.FreeSid, deleteContainer)
+}
+
+func (container *appContainer) closeWith(
+	freeSID func(*windows.SID) error,
+	deleteProfile func(string) error,
+) error {
 	var closeErr error
 	identity := container.identity()
 	if !container.sidReleased {
-		sid := container.sid
-		container.sid = nil
-		container.sidReleased = true
-		if sid != nil {
-			if err := windows.FreeSid(sid); err != nil {
+		if container.sid == nil {
+			container.sidReleased = true
+		} else {
+			if err := freeSID(container.sid); err != nil {
 				closeErr = errors.Join(
 					closeErr,
 					fmt.Errorf("free AppContainer SID %s: %w", identity, err),
 				)
+			} else {
+				container.sid = nil
+				container.sidReleased = true
 			}
 		}
 	}
 	if !container.profileDeleted {
-		if err := deleteContainer(container.name); err != nil {
+		if err := deleteProfile(container.name); err != nil {
 			closeErr = errors.Join(
 				closeErr,
 				fmt.Errorf("delete AppContainer profile %s: %w", identity, err),
