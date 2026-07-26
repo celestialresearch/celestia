@@ -91,15 +91,12 @@ cache_key() (
 
   inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage.XXXXXX")
   trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
-  git ls-files -co --exclude-standard -z -- \
-    '*.go' '*.rs' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml' \
-    >"$inventory"
+  git ls-files -co --exclude-standard -z >"$inventory"
 
   {
-    git hash-object "$policy" .github/scripts/coveragecheck.sh go.mod
-    [[ ! -f go.sum ]] || git hash-object go.sum
     while IFS= read -r -d '' file; do
       [[ -f "$file" ]] || continue
+      printf '%s\0' "$file"
       git hash-object "$file"
     done <"$inventory"
     go env GOVERSION GOOS GOARCH CGO_ENABLED CC CXX GOFLAGS

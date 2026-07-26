@@ -187,10 +187,12 @@ update_files() {
 }
 
 cache_key() {
-  local file
+  local file style
 
   {
     while IFS= read -r -d '' file; do
+      style=$(style_for "$file")
+      printf '%s\0%s\0' "$file" "$style"
       git hash-object "$file"
     done <"$eligible_inventory"
     git hash-object .github/scripts/licencecheck.sh

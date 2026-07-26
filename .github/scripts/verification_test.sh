@@ -620,6 +620,20 @@ func TestSecond(t *testing.T) {
 }
 EOF
   (cd "$work_dir" && bash .github/scripts/coveragecheck.sh verify >/dev/null)
+  (
+    cd "$work_dir" &&
+      bash .github/scripts/coveragecheck.sh cached >/dev/null
+  )
+  mv -- "$work_dir/b/b_test.go" "$work_dir/b/b_plan9_test.go"
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/coveragecheck.sh cached 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'coverage cache ignored a build-sensitive filename change\n' >&2
+    return 1
+  }
+  mv -- "$work_dir/b/b_plan9_test.go" "$work_dir/b/b_test.go"
 
   printf '%s\n' '// probe' >"$work_dir/coverage_test.go"
   set +e
@@ -698,6 +712,28 @@ EOF
   rm -- "$licence_dir/removed.sh"
   (cd "$licence_dir" &&
     bash .github/scripts/licencecheck.sh verify >/dev/null)
+  printf '%s\n' 'package fixture' >"$licence_dir/fixture.go"
+  (
+    cd "$licence_dir" &&
+      bash .github/scripts/licencecheck.sh apply >/dev/null &&
+      bash .github/scripts/licencecheck.sh cached-diff >/dev/null
+  )
+  mv -- "$licence_dir/fixture.go" "$licence_dir/fixture.sh"
+  set +e
+  output=$(
+    cd "$licence_dir" &&
+      bash .github/scripts/licencecheck.sh cached-diff 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'licence cache ignored a filename-dependent header change\n' >&2
+    return 1
+  }
+  grep -Fq 'fixture.sh: missing or incorrect proprietary header' <<<"$output" || {
+    printf 'licence cache did not report the renamed fixture\n' >&2
+    return 1
+  }
 
   rust_dir="$work_dir/rust"
   rust_bin="$rust_dir/bin"
