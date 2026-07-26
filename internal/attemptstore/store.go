@@ -12,6 +12,7 @@
 package attemptstore
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -266,7 +267,7 @@ func admittedRecord(
 		AttemptID:     request.AttemptID,
 		AdmittedAt:    admittedAt.Format(time.RFC3339Nano),
 		OriginalInput: request.Input,
-		RequestFrame:  frame,
+		RequestFrame:  bytes.Clone(frame),
 	}
 }
 
