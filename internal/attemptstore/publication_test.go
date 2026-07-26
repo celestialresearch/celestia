@@ -170,6 +170,39 @@ func TestPublicationRequiresFinalReadBack(t *testing.T) {
 	}
 }
 
+func TestPublicationRejectsUnexpectedRecord(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	t.Cleanup(func() { _ = attempt.Close() })
+	observation := testObservationFor(t, accepted)
+	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
+		t.Fatalf("write observation: %v", err)
+	}
+	if err := writeOrMatchReceipt(
+		attempt.path,
+		accepted.Request.AttemptID,
+		"observation",
+		observationFile,
+		observation.TerminalStatus,
+	); err != nil {
+		t.Fatalf("write receipt: %v", err)
+	}
+	path, err := attempt.publishDirectory()
+	if err != nil {
+		t.Fatalf("publish directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "unexpected.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatalf("write unexpected record: %v", err)
+	}
+	if err := publishMarker(path, accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("unexpected record published: %v", err)
+	}
+}
+
 func TestRecoverPublishesAfterReceiptFailure(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
