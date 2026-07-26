@@ -710,9 +710,18 @@ func startSuspended(
 	); err != nil {
 		return windows.ProcessInformation{}, fmt.Errorf("set inherited handles: %w", err)
 	}
-	image, _ := windows.UTF16PtrFromString(imagePath)
-	command, _ := windows.UTF16PtrFromString(windows.EscapeArg(imagePath))
-	directory, _ := windows.UTF16PtrFromString(container.folder)
+	image, err := windows.UTF16PtrFromString(imagePath)
+	if err != nil {
+		return windows.ProcessInformation{}, fmt.Errorf("encode worker image path: %w", err)
+	}
+	command, err := windows.UTF16PtrFromString(windows.EscapeArg(imagePath))
+	if err != nil {
+		return windows.ProcessInformation{}, fmt.Errorf("encode worker command line: %w", err)
+	}
+	directory, err := windows.UTF16PtrFromString(container.folder)
+	if err != nil {
+		return windows.ProcessInformation{}, fmt.Errorf("encode worker directory: %w", err)
+	}
 	environment, err := environmentBlock(container.folder)
 	if err != nil {
 		return windows.ProcessInformation{}, err
