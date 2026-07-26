@@ -72,3 +72,30 @@ if cache_key >/dev/null 2>&1; then
   printf 'action cache ignored a failed file inventory\n' >&2
   exit 1
 fi
+
+git_ls_remote() {
+  printf '%s\n' \
+    '0000000000000000000000000000000000000001 refs/tags/v0.0.0' \
+    '0000000000000000000000000000000000000002 refs/tags/v01.0.0' \
+    '0000000000000000000000000000000000000003 refs/tags/v9007199254740992.0.0' \
+    '0000000000000000000000000000000000000004 refs/tags/v9007199254740993.0.0'
+}
+if [[ "$(latest_tag example.invalid)" != v9007199254740993.0.0 ]]; then
+  printf 'action release selection mishandled exact semantic versions\n' >&2
+  exit 1
+fi
+
+git_ls_remote() {
+  printf '%s\n' \
+    '0000000000000000000000000000000000000001 refs/tags/v0.0.0'
+}
+if [[ "$(latest_tag example.invalid)" != v0.0.0 ]]; then
+  printf 'action release selection omitted v0.0.0\n' >&2
+  exit 1
+fi
+
+invalid_entry='.github/workflows/main.yml:1:actions/checkout@0000000000000000000000000000000000000001 # v01.0.0'
+if parse_action "$invalid_entry" >/dev/null 2>&1; then
+  printf 'action parser accepted a non-canonical semantic version\n' >&2
+  exit 1
+fi
