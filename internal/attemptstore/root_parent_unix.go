@@ -19,7 +19,7 @@ import (
 )
 
 func secureEvidenceParent(path string) error {
-	info, err := os.Lstat(path)
+	info, err := lstatEvidencePath(path)
 	if err != nil {
 		return err
 	}

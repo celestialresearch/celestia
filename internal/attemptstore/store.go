@@ -149,7 +149,7 @@ func New(root string) (*Store, error) {
 			return nil, fmt.Errorf("sync attempt locks: %w", err)
 		}
 	}
-	lockIdentity, err := os.Lstat(filepath.Join(clean, locksDirectory))
+	lockIdentity, err := lstatEvidencePath(filepath.Join(clean, locksDirectory))
 	if err != nil {
 		return nil, fmt.Errorf("inspect attempt locks: %w", err)
 	}
