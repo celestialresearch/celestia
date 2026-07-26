@@ -219,8 +219,7 @@ func validRequestV0(request requestV0, admittedAt time.Time) bool {
 		request.OperationVersion != 0 ||
 		request.InputMediaType != requestV0MediaType ||
 		request.TimeoutMS != requestV0TimeoutMS ||
-		!validIdentityV0(request.AttemptID) ||
-		!validIdentityV0(request.RequestNonce) ||
+		!validCorrelationV0(request) ||
 		(request.Mode != "fang" && request.Mode != "defang") {
 		return false
 	}
@@ -234,6 +233,12 @@ func validRequestV0(request requestV0, admittedAt time.Time) bool {
 		MemoryBytes: requestV0MemoryMax,
 		Processes:   requestV0Processes,
 	})
+}
+
+func validCorrelationV0(request requestV0) bool {
+	return validIdentityV0(request.AttemptID) &&
+		validIdentityV0(request.RequestNonce) &&
+		request.AttemptID != request.RequestNonce
 }
 
 func validIdentityV0(value string) bool {

@@ -216,7 +216,10 @@ fn validate_request(request: &Request) -> Result<(), ()> {
     {
         return Err(());
     }
-    if !valid_identity(&request.attempt_id) || !valid_identity(&request.request_nonce) {
+    if !valid_identity(&request.attempt_id)
+        || !valid_identity(&request.request_nonce)
+        || request.attempt_id == request.request_nonce
+    {
         return Err(());
     }
     Ok(())
