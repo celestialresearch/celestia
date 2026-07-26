@@ -232,6 +232,7 @@ main() {
     usage
     return 2
   fi
+  action_files >/dev/null
 
   case "$1" in
   verify)

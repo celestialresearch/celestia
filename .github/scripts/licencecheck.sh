@@ -219,6 +219,8 @@ if (($# != 1)); then
   exit 2
 fi
 
+git ls-files -co --exclude-standard -z >/dev/null
+
 case "$1" in
 verify)
   verify_files
