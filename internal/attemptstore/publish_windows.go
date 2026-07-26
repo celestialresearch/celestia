@@ -92,7 +92,37 @@ func secureEvidenceFile(path string) error {
 	if err := secureOwnedPath(path); err != nil {
 		return err
 	}
-	return secureDirectoryACL(path)
+	if err := secureDirectoryACL(path); err != nil {
+		return err
+	}
+	pointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	handle, err := windows.CreateFile(
+		pointer,
+		windows.GENERIC_READ,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_OPEN_REPARSE_POINT,
+		0,
+	)
+	if err != nil {
+		return err
+	}
+	var information windows.ByHandleFileInformation
+	infoErr := windows.GetFileInformationByHandle(handle, &information)
+	closeErr := windows.CloseHandle(handle)
+	if err := errors.Join(infoErr, closeErr); err != nil {
+		return err
+	}
+	if information.NumberOfLinks != 1 ||
+		information.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0 ||
+		information.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+		return ErrCorrupt
+	}
+	return nil
 }
 
 func secureDirectoryACL(path string) error {

@@ -228,3 +228,24 @@ func TestSecureEvidenceFileRejectsReadOnlyDACL(t *testing.T) {
 		t.Fatalf("read-only evidence file accepted: %v", err)
 	}
 }
+
+func TestSecureEvidenceFileRejectsHardLink(t *testing.T) {
+	store := newTestStore(t)
+	file, err := createRecordTemp(store.root, "record.json")
+	if err != nil {
+		t.Fatalf("create record: %v", err)
+	}
+	path := file.Name()
+	if err := file.Close(); err != nil {
+		t.Fatalf("close record: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(path) })
+	link := filepath.Join(store.root, "record-link")
+	if err := os.Link(path, link); err != nil {
+		t.Fatalf("create hard link: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(link) })
+	if err := secureEvidenceFile(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("hard-linked evidence file accepted: %v", err)
+	}
+}
