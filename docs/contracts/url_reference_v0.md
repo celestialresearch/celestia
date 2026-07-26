@@ -18,17 +18,17 @@ Current behaviour is one internal Go use case that admits, stages, supervises,
 validates, independently verifies and durably records the operation on
 Windows. No public command exists.
 
-The complete flow is:
+The current internal flow is:
 ```text
-CLI -> typed request -> admission -> attempt and nonce -> evidence staging
+typed request -> admission -> attempt and nonce -> evidence staging
     -> contained one-shot worker -> protocol validation -> Go verification
-    -> terminal publication -> receipt -> CLI presentation
+    -> terminal publication -> receipt
 ```
 
-Any future CLI owns parsing and presentation. Admission owns permission to execute.
-The Rust worker owns only transformation. Go owns process supervision,
-protocol validation, verification, evidence publication and terminal outcome.
-No worker field grants authority or trust.
+Any future CLI owns parsing and presentation. Admission owns permission to
+execute. The Rust worker owns only transformation. Go owns process
+supervision, protocol validation, verification, evidence publication and
+terminal outcome. No worker field grants authority or trust.
 
 One application-owned evidence root contains immutable attempt directories.
 Only accepted attempts reach it. One supervisor call owns one worker process
@@ -364,8 +364,9 @@ observation. Record files do not contain their own hashes. The manifest set
 excludes the receipt and publication marker.
 
 Records are written through same-directory temporary files, flushed and
-atomically renamed. The receipt is written last and hashed separately. The
-complete pending attempt is verified, flushed and atomically renamed to:
+published to unused final names through the platform procedure defined in
+`attempt_evidence_v0.md`. The receipt is written last and hashed separately.
+The complete pending attempt is verified, flushed and atomically renamed to:
 ```text
 attempts/<attempt-id>/
 ```
@@ -401,14 +402,15 @@ evidence root has not been rewritten by a hostile writer. It provides no
 cryptographic provenance or external tamper resistance. It does not prove that
 a URL is safe, reachable, authentic or externally true.
 
-## CLI Contract
+## Planned CLI Contract
 
-The standard-library CLI accepts one mode and exactly one URL-reference
-argument. It rejects missing or extra arguments before application execution.
-Standard output contains only the transformed reference after a `verified`
-outcome. Diagnostics and non-verified summaries use standard error.
+A future standard-library CLI will accept one mode and exactly one
+URL-reference argument. It will reject missing or extra arguments before
+application execution. Standard output will contain only the transformed
+reference after a `verified` outcome. Diagnostics and non-verified summaries
+will use standard error.
 
-Exit statuses are:
+Planned exit statuses are:
 ```text
 0 verified
 2 rejected
