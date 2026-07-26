@@ -65,7 +65,7 @@ parse_action() {
   ACTION_REPOSITORY=${BASH_REMATCH[1]}
   ACTION_SHA=${BASH_REMATCH[3]}
 
-  if [[ ! "$annotation" =~ ^#[[:space:]]+(v[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+  if [[ ! "$annotation" =~ ^#[[:space:]]+(v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$ ]]; then
     printf '%s: pinned actions require an exact trailing release annotation\n' "$location" >&2
     return 1
   fi
@@ -124,9 +124,25 @@ latest_tag() {
   fi
   sed -n 's#^[0-9a-f]\{40\}[[:space:]]refs/tags/\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$#\1#p' <<<"$refs" |
     awk -F '[v.]' '
-      $2 > major ||
-      ($2 == major && $3 > minor) ||
-      ($2 == major && $3 == minor && $4 > patch) {
+      function decimal(value) {
+        return value == "0" || value ~ /^[1-9][0-9]*$/
+      }
+      function compare(left, right) {
+        if (length(left) != length(right)) {
+          return length(left) > length(right) ? 1 : -1
+        }
+        if ("x" left == "x" right) {
+          return 0
+        }
+        return "x" left > "x" right ? 1 : -1
+      }
+      decimal($2) && decimal($3) && decimal($4) &&
+      (!found ||
+        compare($2, major) > 0 ||
+        (compare($2, major) == 0 && compare($3, minor) > 0) ||
+        (compare($2, major) == 0 && compare($3, minor) == 0 &&
+          compare($4, patch) > 0)) {
+        found = 1
         major = $2
         minor = $3
         patch = $4
