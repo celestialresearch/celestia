@@ -42,3 +42,7 @@ func pathIsLinked(_ string, _ os.FileInfo) bool {
 func syncDirectory(_ string) error {
 	return ErrUnsupported
 }
+
+func confirmPublication(_ string) error {
+	return ErrUnsupported
+}

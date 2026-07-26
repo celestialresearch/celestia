@@ -191,3 +191,7 @@ func pathIsLinked(path string, _ os.FileInfo) bool {
 	}
 	return attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0
 }
+
+func confirmPublication(directory string) error {
+	return syncAttemptLockDirectory(directory)
+}

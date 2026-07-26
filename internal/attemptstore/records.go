@@ -380,6 +380,9 @@ func (store *Store) recoverablePath(attemptID string) (string, bool, error) {
 	if exists, err := pathExists(finalPath); err != nil {
 		return "", false, err
 	} else if exists {
+		if err := confirmPublication(store.attemptsPath()); err != nil {
+			return "", false, fmt.Errorf("confirm attempt publication: %w", err)
+		}
 		return finalPath, true, nil
 	}
 	pendingPath := filepath.Join(store.pendingPath(attemptID), bundleDirectory)

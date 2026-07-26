@@ -122,3 +122,7 @@ func syncDirectory(directory string) (err error) {
 	}
 	return closeErr
 }
+
+func confirmPublication(directory string) error {
+	return syncDirectory(directory)
+}

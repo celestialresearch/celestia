@@ -470,6 +470,12 @@ func (store *Store) Inspect(attemptID string) (records Records, err error) {
 			}
 		}()
 	}
+	if err := confirmPublication(store.attemptsPath()); err != nil {
+		return Records{}, fmt.Errorf("confirm attempt publication: %w", err)
+	}
+	if err := confirmPublication(path); err != nil {
+		return Records{}, fmt.Errorf("confirm evidence publication: %w", err)
+	}
 	return inspectPublished(path, attemptID)
 }
 
@@ -707,7 +713,7 @@ func writeOrMatchRecord(path, name string, value any) error {
 	if !reflect.DeepEqual(reflect.ValueOf(existing).Elem().Interface(), value) {
 		return ErrDuplicate
 	}
-	return nil
+	return confirmPublication(path)
 }
 
 func readRecord(path, name string, target any) error {
