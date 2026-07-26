@@ -40,7 +40,6 @@ func TestMain(testingMain *testing.M) {
 		os.Exit(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
 	command := exec.CommandContext(
 		ctx,
 		"cargo",
@@ -74,6 +73,7 @@ func TestMain(testingMain *testing.M) {
 		fmt.Fprintf(os.Stderr, "build qualification fixtures: %v\n", err)
 		os.Exit(1)
 	}
+	cancel()
 	os.Exit(testingMain.Run())
 }
 
