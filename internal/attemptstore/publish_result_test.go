@@ -56,6 +56,13 @@ func TestPublishClassifiesReleaseAfterPublication(t *testing.T) {
 	if !errors.Is(err, ErrRelease) {
 		t.Fatalf("release failure not classified: %v", err)
 	}
+	if err := unlockAttemptFile(owner.file); err != nil {
+		t.Fatalf("release injected owner: %v", err)
+	}
+	if err := owner.file.Close(); err != nil {
+		t.Fatalf("close injected owner: %v", err)
+	}
+	activeAttemptLocks.Delete(owner.key)
 	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
 		t.Fatalf("published attempt not inspectable: %v", err)
 	}

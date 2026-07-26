@@ -46,6 +46,30 @@ func TestPublishCreatesMarker(t *testing.T) {
 	}
 }
 
+func TestInspectRefusesOwnedPublication(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	t.Cleanup(func() { _ = attempt.Close() })
+	if err := attempt.publishLocked(
+		testObservation(accepted.Request.AttemptID),
+	); err != nil {
+		t.Fatalf("publish while retaining ownership: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrActive) {
+		t.Fatalf("active publication inspected: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("close attempt: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
+		t.Fatalf("inspect released publication: %v", err)
+	}
+}
+
 func TestPublishedIdentityCannotRestage(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
