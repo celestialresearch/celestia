@@ -102,7 +102,7 @@ allows() {
   local component=$2
   local version=$3
 
-  verify >/dev/null
+  verify >/dev/null 2>&1 || return 1
   records |
     awk -F'|' -v ecosystem="$ecosystem" -v component="$component" \
       -v version="$version" '
