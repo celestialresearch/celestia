@@ -111,6 +111,9 @@ func secureLockFile(file *os.File, _ os.FileInfo) error {
 	if err := secureOwnedPath(file.Name()); err != nil {
 		return err
 	}
+	if err := secureDirectoryACL(file.Name()); err != nil {
+		return err
+	}
 	var information windows.ByHandleFileInformation
 	if err := windows.GetFileInformationByHandle(
 		windows.Handle(file.Fd()),

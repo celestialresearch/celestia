@@ -57,3 +57,23 @@ func TestActiveLockCannotBeReplacedWhileOwnerAlive(t *testing.T) {
 		t.Fatalf("recover after owner death: %v", err)
 	}
 }
+
+func TestAttemptLockRejectsSharedDACL(t *testing.T) {
+	store, accepted, admittedAt := lockProcessFixture(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("Stage() error = %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	lockPath := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+".lock",
+	)
+	setSharedDACL(t, lockPath)
+	if _, err := store.acquireAttemptLock(accepted.Request.AttemptID, false); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("shared lock DACL accepted: %v", err)
+	}
+}
