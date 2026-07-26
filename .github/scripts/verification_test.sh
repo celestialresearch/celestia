@@ -18,8 +18,10 @@ cache_root=${CELESTIA_CACHE_DIR:-"$root/.cache"}
 main() (
   local output
   local repo_dir
+  local fake_bin
   local licence_dir
   local metadata_probe
+  local real_git
   local rust_dir
   local shellcheck_script
   local status
@@ -626,6 +628,33 @@ EOF
   grep -Fq 'use an intent-named residual coverage file' <<<"$output" || {
     printf 'policy output omitted the rejected filename:\n%s\n' \
       "$output" >&2
+    return 1
+  }
+  fake_bin="$work_dir/fake-bin"
+  real_git=$(command -v git)
+  mkdir -p "$fake_bin"
+  cat >"$fake_bin/git" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == grep ]]; then
+  exit 2
+fi
+exec "$REAL_GIT" "$@"
+EOF
+  chmod +x "$fake_bin/git"
+  set +e
+  output=$(
+    cd "$work_dir" &&
+      REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
+        bash .github/scripts/policycheck.sh 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check ignored a failed scanner\n' >&2
+    return 1
+  }
+  grep -Fq 'git grep failed while enforcing repository policy' <<<"$output" || {
+    printf 'policy output omitted the scanner failure:\n%s\n' "$output" >&2
     return 1
   }
 

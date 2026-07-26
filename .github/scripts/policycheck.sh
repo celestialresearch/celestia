@@ -21,6 +21,21 @@ fail() {
   status=1
 }
 
+git_grep() {
+  local result
+  local grep_status
+
+  set +e
+  result=$(git grep "$@" 2>/dev/null)
+  grep_status=$?
+  set -e
+  if ((grep_status > 1)); then
+    printf 'git grep failed while enforcing repository policy\n' >&2
+    return "$grep_status"
+  fi
+  printf '%s' "$result"
+}
+
 check_module() {
   local module_path
   local version
@@ -37,9 +52,9 @@ check_module() {
 check_markers() {
   local output
 
-  output=$(git grep --untracked -n -I \
+  output=$(git_grep --untracked -n -I \
     -E '^(<<<<<<< [^<]|=======$|>>>>>>> [^>])' -- . \
-    ':(exclude).cache/**' 2>/dev/null || true)
+    ':(exclude).cache/**')
   [[ -z "$output" ]] || {
     printf '%s\n' "$output" >&2
     fail 'unresolved merge markers found'
@@ -53,8 +68,8 @@ check_private_keys() {
 
   for kind in '' 'RSA ' 'EC ' 'DSA ' 'OPENSSH '; do
     marker="BEGIN ${kind}PRIVATE KEY"
-    matches=$(git grep --untracked -n -I -F "$marker" -- . \
-      ':(exclude).cache/**' 2>/dev/null || true)
+    matches=$(git_grep --untracked -n -I -F "$marker" -- . \
+      ':(exclude).cache/**')
     [[ -z "$matches" ]] || {
       printf '%s\n' "$matches" >&2
       fail 'private-key material found in repository files'
