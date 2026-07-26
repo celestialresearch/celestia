@@ -223,6 +223,40 @@ func confirmPublication(directory string) error {
 	return syncAttemptLockDirectory(directory)
 }
 
-func repairInterruptedRecords(string) error {
-	return nil
+func repairInterruptedRecords(path string) (err error) {
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, root.Close())
+	}()
+	directory, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	entries, readErr := directory.ReadDir(-1)
+	closeErr := directory.Close()
+	if err := errors.Join(readErr, closeErr); err != nil {
+		return err
+	}
+	removed := false
+	for _, entry := range entries {
+		if !recordTemporary(entry.Name()) {
+			continue
+		}
+		info, err := root.Lstat(entry.Name())
+		if err != nil ||
+			invalidRecordFile(filepath.Join(path, entry.Name()), info) {
+			return ErrCorrupt
+		}
+		if err := root.Remove(entry.Name()); err != nil {
+			return err
+		}
+		removed = true
+	}
+	if !removed {
+		return nil
+	}
+	return confirmPublication(path)
 }
