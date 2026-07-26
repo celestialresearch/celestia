@@ -302,8 +302,16 @@ func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
 	if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("released attempt published: %v", err)
 	}
-	if err := store.Recover(accepted.Request.AttemptID, ""); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("empty recovery: %v", err)
+	for _, reason := range []string{
+		"",
+		" ",
+		"line\nbreak",
+		string([]byte{0xff}),
+		strings.Repeat("x", maxRecoveryReasonBytes+1),
+	} {
+		if err := store.Recover(accepted.Request.AttemptID, reason); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("invalid recovery reason %q: %v", reason, err)
+		}
 	}
 	if _, err := store.Inspect("invalid"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("invalid identity: %v", err)

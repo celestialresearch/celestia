@@ -25,6 +25,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"celestia.research/governed-operation/internal/urlreference"
 	"celestia.research/governed-operation/internal/workerprotocol"
@@ -366,10 +368,25 @@ func validateRecovery(record Recovery) error {
 	if record.Version != Version ||
 		!validIdentity(record.AttemptID) ||
 		record.TerminalStatus != "indeterminate" ||
-		record.Reason == "" {
+		!validRecoveryReason(record.Reason) {
 		return ErrCorrupt
 	}
 	return nil
+}
+
+func validRecoveryReason(reason string) bool {
+	if len(reason) == 0 ||
+		len(reason) > maxRecoveryReasonBytes ||
+		!utf8.ValidString(reason) ||
+		strings.TrimSpace(reason) != reason {
+		return false
+	}
+	for _, value := range reason {
+		if unicode.IsControl(value) {
+			return false
+		}
+	}
+	return true
 }
 
 func validateReceiptShape(record Receipt) error {
