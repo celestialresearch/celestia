@@ -27,9 +27,9 @@ import (
 )
 
 func environmentBlock(folder string) ([]uint16, error) {
-	systemRoot := os.Getenv("SystemRoot")
-	if systemRoot == "" {
-		return nil, fmt.Errorf("%w: SystemRoot is unavailable", ErrInvalid)
+	systemRoot, err := windows.GetSystemWindowsDirectory()
+	if err != nil {
+		return nil, fmt.Errorf("find Windows directory: %w", err)
 	}
 	temp := filepath.Join(folder, "Temp")
 	if err := os.MkdirAll(temp, 0o700); err != nil {

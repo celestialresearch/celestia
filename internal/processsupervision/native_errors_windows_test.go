@@ -25,6 +25,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
 
 	"golang.org/x/sys/windows"
 )
@@ -206,18 +207,32 @@ func TestNativeHelpersRejectInvalidState(t *testing.T) {
 			t.Fatal("failed file cleanup was reported complete")
 		}
 	})
-	t.Run("environment", func(t *testing.T) {
-		t.Setenv("SystemRoot", "")
-		if _, err := environmentBlock(t.TempDir()); err == nil {
-			t.Fatal("missing SystemRoot was accepted")
-		}
-	})
 	t.Run("write handle", func(t *testing.T) {
 		result := writeFrame(windows.InvalidHandle, []byte("frame"))
 		if result.err == nil {
 			t.Fatal("invalid write handle was accepted")
 		}
 	})
+}
+
+func TestEnvironmentUsesWindowsDirectory(t *testing.T) {
+	const poisoned = `C:\untrusted-system-root`
+	t.Setenv("SystemRoot", poisoned)
+	block, err := environmentBlock(t.TempDir())
+	if err != nil {
+		t.Fatalf("build environment: %v", err)
+	}
+	environment := string(utf16.Decode(block))
+	if strings.Contains(environment, poisoned) {
+		t.Fatal("parent SystemRoot was propagated")
+	}
+	systemRoot, err := windows.GetSystemWindowsDirectory()
+	if err != nil {
+		t.Fatalf("find Windows directory: %v", err)
+	}
+	if !strings.Contains(environment, "SystemRoot="+systemRoot) {
+		t.Fatalf("system root missing from %q", environment)
+	}
 }
 
 func TestCloseHandleRetainsFailedHandle(t *testing.T) {
