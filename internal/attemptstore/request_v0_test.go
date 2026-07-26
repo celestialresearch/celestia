@@ -114,6 +114,19 @@ func TestDecodeRequestV0RejectsNonCanonicalFrame(t *testing.T) {
 	}
 }
 
+func TestDecodeRequestV0RejectsRepeatedCorrelation(t *testing.T) {
+	accepted, admittedAt := testAccepted(t)
+	frame := bytes.Replace(
+		accepted.Frame,
+		[]byte(accepted.Request.RequestNonce),
+		[]byte(accepted.Request.AttemptID),
+		1,
+	)
+	if _, err := decodeRequestV0(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("repeated correlation accepted: %v", err)
+	}
+}
+
 func TestDecodeRequestV0AcceptsEquivalentJSON(t *testing.T) {
 	accepted, admittedAt := testAccepted(t)
 	escaped := bytes.Replace(accepted.Frame, []byte("url-reference"), []byte(`url\u002dreference`), 1)

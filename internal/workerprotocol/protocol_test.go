@@ -197,6 +197,9 @@ func TestValidateRequestRejects(t *testing.T) {
 	}{
 		{"constants", func(request *Request) { request.ProtocolVersion = 1 }},
 		{"attempt", func(request *Request) { request.AttemptID = "attempt" }},
+		{"repeated correlation", func(request *Request) {
+			request.RequestNonce = request.AttemptID
+		}},
 		{"mode", func(request *Request) { request.Mode = "other" }},
 		{"input", func(request *Request) { request.Input = "" }},
 		{"length", func(request *Request) { request.InputLength++ }},

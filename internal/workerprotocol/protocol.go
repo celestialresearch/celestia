@@ -175,7 +175,9 @@ func ValidateRequest(request Request, admittedAt time.Time) (Correlation, error)
 	if err := validateRequestConstants(request); err != nil {
 		return Correlation{}, err
 	}
-	if !validIdentity(request.AttemptID) || !validIdentity(request.RequestNonce) {
+	if !validIdentity(request.AttemptID) ||
+		!validIdentity(request.RequestNonce) ||
+		request.AttemptID == request.RequestNonce {
 		return Correlation{}, protocolError("request identity")
 	}
 	if request.Mode != "fang" && request.Mode != "defang" {

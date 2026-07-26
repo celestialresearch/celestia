@@ -69,6 +69,18 @@ fn rejects_non_compact_frame() {
     assert!(output.stderr.is_empty());
 }
 
+#[test]
+fn rejects_repeated_correlation() {
+    let mut frame: Value =
+        serde_json::from_slice(&request("https://example.test/", "defang")).expect("request JSON");
+    frame["request_nonce"] = Value::String(ATTEMPT_ID.to_owned());
+    let output = run_worker(serde_json::to_vec(&frame).expect("serialise request"));
+
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
+}
+
 fn request(input: &str, mode: &str) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "protocol_version": 0,
