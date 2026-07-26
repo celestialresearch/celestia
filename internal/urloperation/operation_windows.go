@@ -70,9 +70,9 @@ func (operation *Operation) Execute(
 			Err:       errors.Join(ErrPersistence, err),
 		}
 	}
-	result := operation.executeAccepted(ctx, accepted, admittedAt)
+	result, process := operation.executeAccepted(ctx, accepted, admittedAt)
 	result.AttemptID = accepted.Request.AttemptID
-	observation := observationFrom(result)
+	observation := observationFrom(result, process)
 	if err := attempt.Publish(observation); err != nil {
 		applyPublishError(&result, err)
 	}
@@ -92,32 +92,30 @@ func (operation *Operation) executeAccepted(
 	ctx context.Context,
 	accepted urladmission.Accepted,
 	admittedAt time.Time,
-) Result {
+) (Result, processsupervision.Outcome) {
 	startDeadline, err := admittedStartDeadline(ctx, accepted.Request.Deadline)
 	if err != nil {
 		return Result{
 			Status: Failed,
 			Err:    errors.Join(ErrProtocol, err),
-		}
+		}, processsupervision.Outcome{}
 	}
 	process := operation.supervisor.RunBefore(ctx, accepted.Frame, startDeadline)
 	if process.Status != processsupervision.Completed {
 		return Result{
-			Status:   terminalStatus(process),
-			Process:  callerProcess(process),
-			Err:      errors.Join(ErrProcess, process.Err),
-			evidence: process,
-		}
+			Status:  terminalStatus(process),
+			Process: callerProcess(process),
+			Err:     errors.Join(ErrProcess, process.Err),
+		}, process
 	}
 
 	_, correlation, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt)
 	if err != nil {
 		return Result{
-			Status:   Failed,
-			Process:  callerProcess(process),
-			Err:      errors.Join(ErrProtocol, err),
-			evidence: process,
-		}
+			Status:  Failed,
+			Process: callerProcess(process),
+			Err:     errors.Join(ErrProtocol, err),
+		}, process
 	}
 	response, err := workerprotocol.DecodeResponse(
 		process.Stdout,
@@ -126,13 +124,12 @@ func (operation *Operation) executeAccepted(
 	)
 	if err != nil {
 		return Result{
-			Status:   Failed,
-			Process:  callerProcess(process),
-			Err:      errors.Join(ErrProtocol, err),
-			evidence: process,
-		}
+			Status:  Failed,
+			Process: callerProcess(process),
+			Err:     errors.Join(ErrProtocol, err),
+		}, process
 	}
-	return evaluateResponse(accepted, process, response)
+	return evaluateResponse(accepted, process, response), process
 }
 
 func evaluateResponse(
@@ -152,7 +149,6 @@ func evaluateResponse(
 				ErrProcess,
 				fmt.Errorf("worker status %s", response.Status),
 			),
-			evidence: process,
 		}
 	}
 	result := Result{
@@ -164,7 +160,6 @@ func evaluateResponse(
 			VerifierID:      VerifierID,
 			VerifierVersion: VerifierVersion,
 		},
-		evidence: process,
 	}
 	if response.Output == nil {
 		result.Err = ErrVerification
@@ -268,11 +263,10 @@ func operationLimits() processsupervision.Limits {
 	}
 }
 
-func observationFrom(result Result) attemptstore.Observation {
-	process := result.evidence
-	if process.Status == "" {
-		process = result.Process
-	}
+func observationFrom(
+	result Result,
+	process processsupervision.Outcome,
+) attemptstore.Observation {
 	processStatus := observationProcessStatus(result)
 	return attemptstore.Observation{
 		Version:          attemptstore.Version,

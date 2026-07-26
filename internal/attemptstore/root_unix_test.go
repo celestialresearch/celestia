@@ -47,6 +47,16 @@ func TestNewCreatesSecureUnixTree(t *testing.T) {
 	}
 }
 
+func TestNewRejectsInsecureUnixParent(t *testing.T) {
+	parent := t.TempDir()
+	if err := syscall.Chmod(parent, 0o777); err != nil {
+		t.Fatalf("loosen parent: %v", err)
+	}
+	if _, err := New(filepath.Join(parent, "evidence")); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("insecure parent accepted: %v", err)
+	}
+}
+
 func TestSecureEvidenceTreeRejectsNonDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "evidence")
 	if err := os.WriteFile(path, nil, 0o600); err != nil {

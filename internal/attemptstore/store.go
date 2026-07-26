@@ -177,6 +177,9 @@ func (store *Store) Stage(
 			err = publishResult(err, owner.release())
 		}
 	}()
+	if err := store.createOwnershipMarker(request.AttemptID); err != nil {
+		return nil, err
+	}
 	pendingPath, path, err := store.prepareAttemptDirectories(request.AttemptID)
 	if err != nil {
 		return nil, err
@@ -308,9 +311,15 @@ func (store *Store) Recover(attemptID, reason string) (err error) {
 	}
 	owner, err := store.acquireAttemptLock(attemptID, false)
 	if err != nil {
-		if (errors.Is(err, ErrCorrupt) || errors.Is(err, os.ErrNotExist)) &&
-			store.legacyLockMissing(attemptID) {
-			return fmt.Errorf("%w: attempt %s has no v0 ownership lock", ErrMigrationRequired, attemptID)
+		if errors.Is(err, ErrCorrupt) || errors.Is(err, os.ErrNotExist) {
+			legacy, legacyErr := store.legacyLockMissing(attemptID)
+			if legacyErr != nil {
+				return legacyErr
+			}
+			if legacy {
+				return fmt.Errorf("%w: attempt %s has no v0 ownership lock", ErrMigrationRequired, attemptID)
+			}
+			return ErrCorrupt
 		}
 		return err
 	}
@@ -323,12 +332,19 @@ func (store *Store) MigrateV0(attemptID, reason string) (err error) {
 	if reason == "" {
 		return fmt.Errorf("%w: migration reason", ErrInvalid)
 	}
-	if !store.legacyLockMissing(attemptID) {
+	legacy, err := store.legacyLockMissing(attemptID)
+	if err != nil {
+		return err
+	}
+	if !legacy {
 		return fmt.Errorf("%w: v0 lock is present", ErrInvalid)
 	}
 	owner, err := store.acquireAttemptLock(attemptID, true)
 	if err != nil {
 		return err
+	}
+	if err := store.createOwnershipMarker(attemptID); err != nil {
+		return publishResult(err, owner.release())
 	}
 	return store.recoverOwned(attemptID, reason, owner)
 }
@@ -362,15 +378,19 @@ func (store *Store) recoverOwned(attemptID, reason string, owner *attemptLock) (
 	return publishMarker(path, attemptID)
 }
 
-func (store *Store) legacyLockMissing(attemptID string) bool {
+func (store *Store) legacyLockMissing(attemptID string) (bool, error) {
 	if !validIdentity(attemptID) {
-		return false
+		return false, nil
+	}
+	marker, err := store.hasOwnershipMarker(attemptID)
+	if err != nil || marker {
+		return false, err
 	}
 	if _, err := os.Lstat(filepath.Join(store.root, locksDirectory, attemptID+".lock")); !errors.Is(err, os.ErrNotExist) {
-		return false
+		return false, nil
 	}
-	_, _, err := store.recoverablePath(attemptID)
-	return err == nil
+	_, _, err = store.recoverablePath(attemptID)
+	return err == nil, err
 }
 
 func publishResult(publicationErr, releaseErr error) error {

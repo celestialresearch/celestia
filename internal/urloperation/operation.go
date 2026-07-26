@@ -63,5 +63,4 @@ type Result struct {
 	Verification Verification
 	AttemptID    string
 	Err          error
-	evidence     processsupervision.Outcome
 }

@@ -187,6 +187,10 @@ check_toolchain() {
   output=$("$rustup_bin" check 2>&1)
   rustup_status=$?
   set -e
+  if ((rustup_status != 0 && rustup_status != 100)); then
+    printf 'Rust toolchain currency check failed: %s\n' "$output" >&2
+    return 1
+  fi
   normalised=$(tr '[:upper:]' '[:lower:]' <<<"$output")
   latest=$(sed -n \
     's/^stable-.*update[[:space:]]*available[[:space:]]*:[[:space:]].*->[[:space:]]*\([0-9][0-9.]*\).*/\1/p' \
@@ -195,9 +199,6 @@ check_toolchain() {
     if grep -Eq '^stable-.*up[[:space:]]+to[[:space:]]+date[[:space:]]*:' \
       <<<"$normalised"; then
       latest=$current
-    elif ((rustup_status != 0)); then
-      printf 'Rust toolchain currency check failed: %s\n' "$output" >&2
-      return 1
     else
       printf 'Could not determine the latest stable Rust toolchain\n' >&2
       return 1

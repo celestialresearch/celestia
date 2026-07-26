@@ -385,7 +385,8 @@ per-attempt lock file provides the cross-process ownership identity. Execution
 holds its operating-system lock from staging through publication. Recovery
 fails while that lock is held and may proceed after process death releases it.
 Lock files are not deleted because replacing a locked inode would split
-ownership. Recovery may only:
+ownership. A permanent ownership-era marker distinguishes current attempts
+with a missing lock from pre-lock v0 bundles. Recovery may only:
 - validate and publish a complete pending attempt;
 - retain and report an incomplete pending attempt;
 - report a corrupt pending or published attempt.

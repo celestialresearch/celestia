@@ -151,7 +151,7 @@ func TestStoreRecoversPendingAttempt(t *testing.T) {
 	}
 }
 
-func TestStoreRequiresExplicitV0Migration(t *testing.T) {
+func TestStoreRejectsMissingCurrentLock(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
 	attempt, err := store.Stage(accepted, admittedAt)
@@ -173,16 +173,10 @@ func TestStoreRequiresExplicitV0Migration(t *testing.T) {
 		accepted.Request.AttemptID+".lock",
 	)
 	if err := os.Remove(lockPath); err != nil {
-		t.Fatalf("remove legacy lock: %v", err)
+		t.Fatalf("remove current lock: %v", err)
 	}
-	if err := store.Recover(accepted.Request.AttemptID, "legacy"); !errors.Is(err, ErrMigrationRequired) {
-		t.Fatalf("legacy attempt recovered without migration: %v", err)
-	}
-	if err := store.MigrateV0(accepted.Request.AttemptID, "operator quiesced legacy attempt"); err != nil {
-		t.Fatalf("migrate legacy attempt: %v", err)
-	}
-	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
-		t.Fatalf("inspect migrated attempt: %v", err)
+	if err := store.Recover(accepted.Request.AttemptID, "missing current lock"); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("missing current lock accepted: %v", err)
 	}
 }
 

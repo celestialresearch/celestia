@@ -164,7 +164,7 @@ func TestObservationPreservesProcessFailure(t *testing.T) {
 		},
 		Err: ErrProtocol,
 	}
-	observation := observationFrom(result)
+	observation := observationFrom(result, result.Process)
 	if observation.ProtocolStatus != protocolNotRun ||
 		observation.ProcessError == "" ||
 		observation.TerminalStatus != string(Failed) {
@@ -199,7 +199,7 @@ func TestObservationMapsProtocolState(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if actual := observationFrom(test.result).ProtocolStatus; actual != test.expected {
+			if actual := observationFrom(test.result, test.result.Process).ProtocolStatus; actual != test.expected {
 				t.Fatalf("status=%q, want %q", actual, test.expected)
 			}
 		})
@@ -214,7 +214,7 @@ func TestOperationRejectsProcessFailure(t *testing.T) {
 	admittedAt := time.Now().UTC()
 	accepted := admittedFixture(t, admittedAt)
 	accepted.Frame = []byte("partial")
-	result := operation.executeAccepted(context.Background(), accepted, admittedAt)
+	result, _ := operation.executeAccepted(context.Background(), accepted, admittedAt)
 	if result.Status != Failed || result.Process.Status != processsupervision.ExitFailed {
 		t.Fatalf("result=%+v", result)
 	}
@@ -251,7 +251,7 @@ func TestOperationPreservesTermination(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			accepted := admittedFixture(t, test.admittedAt)
-			result := operation.executeAccepted(
+			result, _ := operation.executeAccepted(
 				test.context(),
 				accepted,
 				test.admittedAt,
@@ -321,7 +321,7 @@ func TestOperationRejectsMalformedProtocol(t *testing.T) {
 	admittedAt := time.Now().UTC()
 	accepted := admittedFixture(t, admittedAt)
 	accepted.Frame = []byte("malformed")
-	result := operation.executeAccepted(context.Background(), accepted, admittedAt)
+	result, _ := operation.executeAccepted(context.Background(), accepted, admittedAt)
 	if result.Status != Failed || result.Process.Status != processsupervision.Completed {
 		t.Fatalf("result=%+v", result)
 	}
@@ -379,7 +379,15 @@ func assertWorkerFailure(t *testing.T, result Result, status workerprotocol.Stat
 		len(result.Process.Stdout) != 0 ||
 		len(result.Process.Stderr) != 0 ||
 		result.Response == nil ||
-		result.Response.Status != status ||
+		result.Response.Status != status {
+		t.Fatalf("result=%+v", result)
+	}
+	assertProjectedDiagnostics(t, result)
+}
+
+func assertProjectedDiagnostics(t *testing.T, result Result) {
+	t.Helper()
+	if result.Response == nil ||
 		len(result.Response.Diagnostics) != 0 ||
 		len(result.Diagnostics) != 1 ||
 		result.Diagnostics[0].Message != "The worker reported a failure" ||
@@ -388,6 +396,9 @@ func assertWorkerFailure(t *testing.T, result Result, status workerprotocol.Stat
 	}
 	if strings.Contains(result.Diagnostics[0].Message, "hostile fixture") {
 		t.Fatalf("worker-controlled message exposed: %+v", result.Diagnostics)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", result), "hostile fixture") {
+		t.Fatalf("raw worker evidence retained in result")
 	}
 }
 

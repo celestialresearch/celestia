@@ -103,6 +103,17 @@ func TestSupervisorReportsWorkerHashOnLaunchFailure(t *testing.T) {
 	}
 }
 
+func TestFailedLaunchPreservesCleanupState(t *testing.T) {
+	outcome := failedLaunchOutcome(time.Now(), false, errors.New("cleanup"))
+	if outcome.Status != CleanupFailed || outcome.CleanupComplete {
+		t.Fatalf(
+			"status=%s cleanup=%t",
+			outcome.Status,
+			outcome.CleanupComplete,
+		)
+	}
+}
+
 func TestStageImageRejectsFailures(t *testing.T) {
 	container, err := createContainerName()
 	if err != nil {
@@ -212,7 +223,7 @@ func TestStartupCleanupJoinsWorker(t *testing.T) {
 			if err != nil {
 				t.Fatalf("new supervisor: %v", err)
 			}
-			resources, err := supervisor.prepareLaunch(
+			resources, _, err := supervisor.prepareLaunch(
 				time.Now().Add(testNativeLimits().StartupTimeout),
 			)
 			if err != nil {

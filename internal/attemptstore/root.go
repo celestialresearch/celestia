@@ -57,6 +57,9 @@ func createEvidenceRoot(path string) error {
 		pathIsLinked(parent, info) {
 		return fmt.Errorf("%w: evidence root parent", ErrCorrupt)
 	}
+	if err := secureEvidenceParent(parent); err != nil {
+		return fmt.Errorf("inspect evidence root parent: %w", err)
+	}
 	if err := createEvidenceDirectory(path); err != nil {
 		return fmt.Errorf("create evidence root: %w", err)
 	}

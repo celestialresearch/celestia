@@ -19,7 +19,9 @@ import (
 	"time"
 )
 
-type Supervisor struct{}
+type Supervisor struct {
+	limits Limits
+}
 
 func newSupervisor(string, Limits) (*Supervisor, error) {
 	return nil, fmt.Errorf("%w: native containment is not qualified", ErrUnavailable)
