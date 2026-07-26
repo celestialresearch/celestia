@@ -15,6 +15,23 @@ Set-StrictMode -Version Latest
 $root = (Resolve-Path -LiteralPath "$PSScriptRoot\..\..").Path
 $maximumOutputBytes = 1MB
 $shellDeadline = [TimeSpan]::FromMinutes(10)
+
+function Remove-Directory {
+    param([string]$Path)
+
+    for ($attempt = 1; $attempt -le 20; $attempt++) {
+        try {
+            [System.IO.Directory]::Delete($Path, $true)
+            return $null
+        } catch {
+            if ($attempt -eq 20) {
+                return $_.Exception.Message
+            }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+}
+
 $checks = @(
     @{
         Name = 'Git Bash'
@@ -182,8 +199,20 @@ foreach ($run in $running) {
     $run.Process.Dispose()
 }
 
-[System.IO.Directory]::Delete($logRoot, $true)
-[System.IO.Directory]::Delete($mutableRoot, $true)
+$cleanupFailures = @(
+    Remove-Directory -Path $logRoot
+    Remove-Directory -Path $mutableRoot
+) | Where-Object { $_ }
+if ($cleanupFailures.Count -gt 0) {
+    $cleanupFailure = 'Windows shell cleanup failed: ' + (
+        $cleanupFailures -join '; '
+    )
+    if ($failure) {
+        $failure += "; $cleanupFailure"
+    } else {
+        $failure = $cleanupFailure
+    }
+}
 if ($failure) {
     [Console]::Error.WriteLine($failure)
     exit 1

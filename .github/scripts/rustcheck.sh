@@ -119,6 +119,7 @@ check_config() {
 check_tool() {
   command_name=$1
   workflow_name=$2
+  cargo_bin=${CARGO_BIN:-cargo}
   if ! expected=$(workflow_tool_version "$workflow_name" 2>&1); then
     printf '%s\n' "$expected"
     return 1
@@ -127,7 +128,7 @@ check_tool() {
     printf 'Missing pinned Rust helper in main workflow: %s\n' "$workflow_name"
     return 1
   fi
-  if ! output=$(cargo "$command_name" --version 2>&1); then
+  if ! output=$("$cargo_bin" "$command_name" --version 2>&1); then
     printf 'Required Rust helper is unavailable: cargo %s\n' "$command_name"
     return 1
   fi
@@ -141,7 +142,8 @@ check_tool() {
 
 check_tools() {
   expected=$(toolchain_version)
-  if ! output=$(rustc --version 2>&1); then
+  rustc_bin=${RUSTC_BIN:-rustc}
+  if ! output=$("$rustc_bin" --version 2>&1); then
     printf 'Required Rust compiler is unavailable\n'
     return 1
   fi
@@ -167,6 +169,7 @@ release_exe_suffix() {
 }
 
 check_release_artefacts() (
+  cargo_bin=${CARGO_BIN:-cargo}
   mkdir -p "$cache_root"
   target_dir=$(mktemp -d "$cache_root/release-artefacts.XXXXXX")
 
@@ -178,7 +181,7 @@ check_release_artefacts() (
   }
 
   trap cleanup EXIT HUP INT TERM
-  cargo build --workspace --release --locked --target-dir "$target_dir"
+  "$cargo_bin" build --workspace --release --locked --target-dir "$target_dir"
 
   release_dir=$target_dir/release
   # Cargo keeps build metadata beside the release outputs. It is not part of

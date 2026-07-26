@@ -304,12 +304,15 @@ EOF
 
   (
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" bash .github/scripts/rustcheck.sh tools
+      RUSTC_BIN="$rust_dir/bin/rustc" \
+        CARGO_BIN="$rust_dir/bin/cargo" \
+        bash .github/scripts/rustcheck.sh tools
   )
   set +e
   output=$(
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" FIXTURE_RUSTC_VERSION=0 \
+      RUSTC_BIN="$rust_dir/bin/rustc" \
+        CARGO_BIN="$rust_dir/bin/cargo" FIXTURE_RUSTC_VERSION=0 \
         bash .github/scripts/rustcheck.sh tools 2>&1
   )
   status=$?
@@ -326,7 +329,8 @@ EOF
   }
   (
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=false \
+      RUSTC_BIN="$rust_dir/bin/rustc" \
+        CARGO_BIN="$rust_dir/bin/cargo" DEVCHECK_SUPPLY_CHAIN=false \
         FAIL_SUPPLY_COMMANDS=true bash .github/scripts/rustcheck.sh tools
   )
 
@@ -336,7 +340,8 @@ EOF
     llvm-cov)
       output=$(
         cd "$rust_dir" &&
-          PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=true \
+          RUSTC_BIN="$rust_dir/bin/rustc" \
+            CARGO_BIN="$rust_dir/bin/cargo" DEVCHECK_SUPPLY_CHAIN=true \
             LLVM_COV_VERSION=0 \
             bash .github/scripts/rustcheck.sh tools 2>&1
       )
@@ -344,7 +349,8 @@ EOF
     audit)
       output=$(
         cd "$rust_dir" &&
-          PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=true \
+          RUSTC_BIN="$rust_dir/bin/rustc" \
+            CARGO_BIN="$rust_dir/bin/cargo" DEVCHECK_SUPPLY_CHAIN=true \
             AUDIT_VERSION=0 \
             bash .github/scripts/rustcheck.sh tools 2>&1
       )
@@ -352,7 +358,8 @@ EOF
     deny)
       output=$(
         cd "$rust_dir" &&
-          PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=true \
+          RUSTC_BIN="$rust_dir/bin/rustc" \
+            CARGO_BIN="$rust_dir/bin/cargo" DEVCHECK_SUPPLY_CHAIN=true \
             DENY_VERSION=0 \
             bash .github/scripts/rustcheck.sh tools 2>&1
       )
@@ -374,12 +381,13 @@ EOF
 
   (
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" bash .github/scripts/rustcheck.sh artefacts
+      CARGO_BIN="$rust_dir/bin/cargo" \
+        bash .github/scripts/rustcheck.sh artefacts
   )
   set +e
   output=$(
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" \
+      CARGO_BIN="$rust_dir/bin/cargo" \
         RUSTCHECK_EXTRA_RELEASE_EXECUTABLE=celestia-hostile-worker \
         bash .github/scripts/rustcheck.sh artefacts 2>&1
   )
@@ -398,7 +406,8 @@ EOF
   set +e
   output=$(
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" RUSTCHECK_EXTRA_RELEASE_ARTEFACT=unexpected.metadata \
+      CARGO_BIN="$rust_dir/bin/cargo" \
+        RUSTCHECK_EXTRA_RELEASE_ARTEFACT=unexpected.metadata \
         bash .github/scripts/rustcheck.sh artefacts 2>&1
   )
   status=$?
@@ -416,7 +425,8 @@ EOF
   set +e
   output=$(
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" RUSTCHECK_NESTED_RELEASE_ARTEFACT=unexpected.nested \
+      CARGO_BIN="$rust_dir/bin/cargo" \
+        RUSTCHECK_NESTED_RELEASE_ARTEFACT=unexpected.nested \
         bash .github/scripts/rustcheck.sh artefacts 2>&1
   )
   status=$?
@@ -438,7 +448,7 @@ EOF
     set +e
     output=$(
       cd "$rust_dir" &&
-        PATH="$rust_dir/bin:$PATH" RUSTCHECK_EXECUTABLE_METADATA=true \
+        CARGO_BIN="$rust_dir/bin/cargo" RUSTCHECK_EXECUTABLE_METADATA=true \
           bash .github/scripts/rustcheck.sh artefacts 2>&1
     )
     status=$?
