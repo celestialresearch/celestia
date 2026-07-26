@@ -129,6 +129,7 @@ check_source_files() {
 }
 
 check_module
+git ls-files -co --exclude-standard -z >/dev/null
 check_markers
 check_private_keys
 check_source_files

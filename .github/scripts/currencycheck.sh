@@ -51,6 +51,7 @@ verify() {
     printf 'Missing currency exception file: %s\n' "$exceptions" >&2
     return 1
   }
+  records >/dev/null
   while IFS='|' read -r ecosystem component version expires reason extra; do
     if [[ -n "${extra:-}" || -z "$ecosystem" ||
       ! "$component" =~ ^[^[:space:]\|]+$ ||
@@ -255,6 +256,8 @@ check_helpers() {
 currency() {
   local status=0
 
+  manifest_dependencies >/dev/null
+  workflow_helpers >/dev/null
   verify || status=1
   check_toolchain || status=1
   check_crates || status=1

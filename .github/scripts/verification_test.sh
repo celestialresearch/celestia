@@ -635,7 +635,7 @@ EOF
   mkdir -p "$fake_bin"
   cat >"$fake_bin/git" <<'EOF'
 #!/usr/bin/env bash
-if [[ "${1:-}" == grep ]]; then
+if [[ "${1:-}" == "${FAIL_GIT_COMMAND:-}" ]]; then
   exit 2
 fi
 exec "$REAL_GIT" "$@"
@@ -644,7 +644,7 @@ EOF
   set +e
   output=$(
     cd "$work_dir" &&
-      REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
+      FAIL_GIT_COMMAND=grep REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
         bash .github/scripts/policycheck.sh 2>&1
   )
   status=$?
@@ -664,6 +664,18 @@ EOF
     "$licence_dir/.github/scripts/"
   git -C "$licence_dir" init -q
   git -C "$licence_dir" config core.autocrlf false
+  set +e
+  output=$(
+    cd "$licence_dir" &&
+      FAIL_GIT_COMMAND=ls-files REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
+        bash .github/scripts/licencecheck.sh verify 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'licence check ignored a failed file inventory\n' >&2
+    return 1
+  }
   printf '%s\n' '#!/usr/bin/env bash' >"$licence_dir/removed.sh"
   git -C "$licence_dir" add removed.sh
   rm -- "$licence_dir/removed.sh"
