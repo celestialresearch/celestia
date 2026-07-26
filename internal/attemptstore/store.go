@@ -196,23 +196,28 @@ func (store *Store) stageOwned(
 	markerCreated := false
 	pendingPath := ""
 	defer func() {
-		if pendingPath != "" {
-			cleanupErr := removeStagedAttempt(pendingPath)
-			err = errors.Join(err, cleanupErr)
-			if cleanupErr != nil {
-				return
-			}
-		}
-		if markerCreated {
-			err = errors.Join(err, store.removeOwnershipMarker(request.AttemptID))
-		}
+		err = errors.Join(
+			err,
+			store.rollbackStage(
+				request.AttemptID,
+				pendingPath,
+				markerCreated,
+				removeStagedAttempt,
+			),
+		)
 	}()
 	if err := store.prepareOwnershipMarker(request.AttemptID); err != nil {
 		return nil, err
 	}
 	markerCreated = true
-	pendingPath, path, err := store.prepareAttemptDirectories(request.AttemptID)
+	pendingPath, path, err := store.prepareAttemptDirectories(
+		request.AttemptID,
+		createEvidenceDirectory,
+	)
 	if err != nil {
+		if errors.Is(err, ErrDuplicate) {
+			markerCreated = false
+		}
 		return nil, err
 	}
 	admitted := admittedRecord(request, accepted.Frame, admittedAt)
@@ -245,27 +250,6 @@ func (store *Store) rejectDuplicateAttempt(attemptID string) error {
 		}
 	}
 	return nil
-}
-
-func (store *Store) prepareAttemptDirectories(attemptID string) (string, string, error) {
-	if exists, err := pathExists(store.finalPath(attemptID)); err != nil {
-		return "", "", fmt.Errorf("inspect published attempt: %w", err)
-	} else if exists {
-		return "", "", ErrDuplicate
-	}
-	pendingPath := store.pendingPath(attemptID)
-	if err := createEvidenceDirectory(pendingPath); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return "", "", ErrDuplicate
-		}
-		return "", "", fmt.Errorf("create attempt: %w", err)
-	}
-	path := filepath.Join(pendingPath, bundleDirectory)
-	if err := createEvidenceDirectory(path); err != nil {
-		_ = os.RemoveAll(pendingPath)
-		return "", "", fmt.Errorf("create attempt bundle: %w", err)
-	}
-	return pendingPath, path, nil
 }
 
 func validateAccepted(

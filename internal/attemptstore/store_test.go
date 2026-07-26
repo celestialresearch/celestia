@@ -496,6 +496,55 @@ func TestStageResumesMarkerOnlyAttempt(t *testing.T) {
 	}
 }
 
+func TestAttemptPreparationReturnsAcquiredPendingPath(t *testing.T) {
+	store := newTestStore(t)
+	accepted, _ := testAccepted(t)
+	createCalls := 0
+	createErr := errors.New("injected bundle-directory failure")
+	pendingPath, path, err := store.prepareAttemptDirectories(
+		accepted.Request.AttemptID,
+		func(path string) error {
+			createCalls++
+			if createCalls == 1 {
+				return createEvidenceDirectory(path)
+			}
+			return createErr
+		},
+	)
+	if pendingPath != "" {
+		t.Cleanup(func() { _ = os.RemoveAll(pendingPath) })
+	}
+	if !errors.Is(err, createErr) {
+		t.Fatalf("prepare failure: %v", err)
+	}
+	if pendingPath != store.pendingPath(accepted.Request.AttemptID) || path != "" {
+		t.Fatalf("pending=%q bundle=%q", pendingPath, path)
+	}
+}
+
+func TestStageRollbackKeepsMarkerWhenPendingSurvives(t *testing.T) {
+	store := newTestStore(t)
+	accepted, _ := testAccepted(t)
+	attemptID := accepted.Request.AttemptID
+	if err := store.createOwnershipMarker(attemptID); err != nil {
+		t.Fatalf("create ownership marker: %v", err)
+	}
+	t.Cleanup(func() { _ = store.removeOwnershipMarker(attemptID) })
+	removeErr := errors.New("injected pending rollback failure")
+	err := store.rollbackStage(
+		attemptID,
+		store.pendingPath(attemptID),
+		true,
+		func(string) error { return removeErr },
+	)
+	if !errors.Is(err, removeErr) {
+		t.Fatalf("rollback failure: %v", err)
+	}
+	if marker, err := store.hasOwnershipMarker(attemptID); err != nil || !marker {
+		t.Fatalf("ownership marker lost: present=%t error=%v", marker, err)
+	}
+}
+
 func TestStoreRejectsMalformedRecords(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
