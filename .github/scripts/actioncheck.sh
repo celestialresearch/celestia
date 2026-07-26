@@ -20,7 +20,8 @@ usage() {
 }
 
 action_files() {
-  find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print0
+  find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 ||
+    return
   find . -type f \( -name 'action.yml' -o -name 'action.yaml' \) \
     ! -path './.git/*' ! -path './.cache/*' -print0
 }
