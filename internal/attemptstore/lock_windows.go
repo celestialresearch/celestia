@@ -76,7 +76,14 @@ func openAttemptLockFile(_ *os.Root, directory, name string, create bool) (*os.F
 		}
 		return nil, err
 	}
-	return os.NewFile(uintptr(handle), path), nil
+	file := os.NewFile(uintptr(handle), path)
+	if file == nil {
+		return nil, errors.Join(
+			errors.New("create attempt lock file"),
+			windows.CloseHandle(handle),
+		)
+	}
+	return file, nil
 }
 
 func lockAttemptFile(file *os.File) error {
