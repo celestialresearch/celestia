@@ -35,6 +35,13 @@ func (store *Store) finalPath(attemptID string) string {
 	return filepath.Join(store.attemptsPath(), attemptID)
 }
 
+func removeStagedAttempt(path string) error {
+	if err := os.RemoveAll(path); err != nil {
+		return fmt.Errorf("roll back staged attempt: %w", err)
+	}
+	return nil
+}
+
 func canonicalEvidenceRoot(path string) (string, error) {
 	clean := filepath.Clean(path)
 	if info, err := os.Lstat(clean); err == nil {

@@ -34,6 +34,34 @@ type streamReader struct {
 	closeErr error
 }
 
+func (pipes *pipeSet) closeChildEnds() error {
+	return errors.Join(
+		closeHandle(&pipes.stdinRead),
+		closeHandle(&pipes.stdoutWrite),
+		closeHandle(&pipes.stderrWrite),
+	)
+}
+
+func (pipes *pipeSet) close() error {
+	return errors.Join(
+		closeHandle(&pipes.stdinRead),
+		closeHandle(&pipes.stdinWrite),
+		closeHandle(&pipes.stdoutRead),
+		closeHandle(&pipes.stdoutWrite),
+		closeHandle(&pipes.stderrRead),
+		closeHandle(&pipes.stderrWrite),
+	)
+}
+
+func closeHandle(handle *windows.Handle) error {
+	if *handle == 0 {
+		return nil
+	}
+	err := windows.CloseHandle(*handle)
+	*handle = 0
+	return err
+}
+
 func newStreamReader(name string, handle windows.Handle) *streamReader {
 	return &streamReader{
 		name:   name,

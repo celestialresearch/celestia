@@ -15,6 +15,7 @@ package attemptstore
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -149,5 +150,40 @@ func TestWindowsSecurityHelpersRejectUnmanagedDirectory(t *testing.T) {
 	}
 	if err := secureEvidenceTree(path); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("unmanaged directory accepted: %v", err)
+	}
+}
+
+func TestWindowsSecurityHelpersRejectReadOnlyDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "read-only")
+	if err := createEvidenceDirectory(path); err != nil {
+		t.Fatalf("create evidence directory: %v", err)
+	}
+	sid, err := currentUserSID()
+	if err != nil {
+		t.Fatalf("current user SID: %v", err)
+	}
+	descriptor, err := windows.SecurityDescriptorFromString(
+		fmt.Sprintf("O:%sD:P(A;OICI;FR;;;%s)", sid, sid),
+	)
+	if err != nil {
+		t.Fatalf("create read-only descriptor: %v", err)
+	}
+	dacl, _, err := descriptor.DACL()
+	if err != nil {
+		t.Fatalf("read descriptor DACL: %v", err)
+	}
+	if err := windows.SetNamedSecurityInfo(
+		path,
+		windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil,
+		nil,
+		dacl,
+		nil,
+	); err != nil {
+		t.Fatalf("apply read-only DACL: %v", err)
+	}
+	if _, err := New(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("read-only evidence root accepted: %v", err)
 	}
 }

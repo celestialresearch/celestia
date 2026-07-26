@@ -120,6 +120,32 @@ func (store *Store) createOwnershipMarker(attemptID string) error {
 	return nil
 }
 
+func (store *Store) prepareOwnershipMarker(attemptID string) error {
+	present, err := store.hasOwnershipMarker(attemptID)
+	if err != nil {
+		return err
+	}
+	if !present {
+		return store.createOwnershipMarker(attemptID)
+	}
+	for _, path := range []string{
+		store.pendingPath(attemptID),
+		store.finalPath(attemptID),
+	} {
+		exists, err := pathExists(path)
+		if err != nil {
+			return fmt.Errorf("inspect marker-owned attempt: %w", err)
+		}
+		if exists {
+			return ErrDuplicate
+		}
+	}
+	if err := store.removeOwnershipMarker(attemptID); err != nil {
+		return err
+	}
+	return store.createOwnershipMarker(attemptID)
+}
+
 func (store *Store) hasOwnershipMarker(attemptID string) (bool, error) {
 	directory := filepath.Join(store.root, locksDirectory)
 	root, err := store.openLockRoot(directory)
@@ -153,6 +179,25 @@ func (store *Store) hasOwnershipMarker(attemptID string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func (store *Store) removeOwnershipMarker(attemptID string) error {
+	directory := filepath.Join(store.root, locksDirectory)
+	root, err := store.openLockRoot(directory)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = root.Close()
+	}()
+	name := attemptID + ownershipMarkerSuffix
+	if err := root.Remove(name); err != nil {
+		return fmt.Errorf("remove attempt ownership marker: %w", err)
+	}
+	if err := syncAttemptLockDirectory(directory); err != nil {
+		return fmt.Errorf("sync attempt ownership marker removal: %w", err)
+	}
+	return nil
 }
 
 func (store *Store) openLockRoot(directory string) (*os.Root, error) {

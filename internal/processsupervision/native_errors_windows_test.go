@@ -288,6 +288,44 @@ func TestStartupCleanupJoinsWorker(t *testing.T) {
 	}
 }
 
+func TestExpiredLaunchPreparationClosesPipes(t *testing.T) {
+	pipes, err := newPipes()
+	if err != nil {
+		t.Fatalf("create pipes: %v", err)
+	}
+	resources := &launchResources{
+		container: appContainer{
+			sidReleased:    true,
+			profileDeleted: true,
+		},
+		pipes: pipes,
+	}
+	prepared, complete, err := finishLaunchPreparation(resources, time.Now().Add(-time.Second))
+	if prepared != nil || !complete || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("prepared=%v complete=%t error=%v", prepared, complete, err)
+	}
+	if resources.pipes != (pipeSet{}) {
+		t.Fatalf("pipe handles retained: %#v", resources.pipes)
+	}
+}
+
+func TestPipeCloseReportsFailure(t *testing.T) {
+	handle, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	if err := windows.CloseHandle(handle); err != nil {
+		t.Fatalf("close event: %v", err)
+	}
+	pipes := pipeSet{stdinRead: handle}
+	if err := pipes.close(); err == nil {
+		t.Fatal("already-closed pipe handle reported success")
+	}
+	if pipes != (pipeSet{}) {
+		t.Fatalf("closed pipe handles retained: %#v", pipes)
+	}
+}
+
 func TestAwaitProcessStates(t *testing.T) {
 	t.Run("wait error", func(t *testing.T) {
 		waited := make(chan error, 1)
@@ -491,7 +529,11 @@ func TestStartRejectsInvalidImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create pipes: %v", err)
 	}
-	defer pipes.close()
+	defer func() {
+		if err := pipes.close(); err != nil {
+			t.Errorf("close pipes: %v", err)
+		}
+	}()
 	if _, err := startSuspended(container, filepath.Join(container.folder, "missing.exe"), pipes); err == nil {
 		t.Fatal("missing image was started")
 	}

@@ -178,16 +178,45 @@ func (store *Store) Stage(
 			err = publishResult(err, owner.release())
 		}
 	}()
-	if err := store.createOwnershipMarker(request.AttemptID); err != nil {
+	attempt, err = store.stageOwned(accepted, request, admittedAt, owner, writeRecord)
+	if err != nil {
 		return nil, err
 	}
+	keepOwner = true
+	return attempt, nil
+}
+
+func (store *Store) stageOwned(
+	accepted urladmission.Accepted,
+	request workerprotocol.Request,
+	admittedAt time.Time,
+	owner *attemptLock,
+	write func(string, string, any) error,
+) (attempt *Attempt, err error) {
+	markerCreated := false
+	pendingPath := ""
+	defer func() {
+		if pendingPath != "" {
+			cleanupErr := removeStagedAttempt(pendingPath)
+			err = errors.Join(err, cleanupErr)
+			if cleanupErr != nil {
+				return
+			}
+		}
+		if markerCreated {
+			err = errors.Join(err, store.removeOwnershipMarker(request.AttemptID))
+		}
+	}()
+	if err := store.prepareOwnershipMarker(request.AttemptID); err != nil {
+		return nil, err
+	}
+	markerCreated = true
 	pendingPath, path, err := store.prepareAttemptDirectories(request.AttemptID)
 	if err != nil {
 		return nil, err
 	}
 	admitted := admittedRecord(request, accepted.Frame, admittedAt)
-	if err := writeRecord(path, admittedFile, admitted); err != nil {
-		_ = os.RemoveAll(pendingPath)
+	if err := write(path, admittedFile, admitted); err != nil {
 		return nil, fmt.Errorf("stage attempt: %w", err)
 	}
 	attempt = &Attempt{
@@ -197,7 +226,8 @@ func (store *Store) Stage(
 		admitted:    admitted,
 		owner:       owner,
 	}
-	keepOwner = true
+	pendingPath = ""
+	markerCreated = false
 	return attempt, nil
 }
 

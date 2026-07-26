@@ -441,6 +441,61 @@ func TestStoreReportsWriteFailure(t *testing.T) {
 	}
 }
 
+func TestStageRollsBackUnrecoverableState(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	request, err := validateAccepted(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("validate accepted request: %v", err)
+	}
+	owner, err := store.acquireAttemptLock(request.AttemptID, true)
+	if err != nil {
+		t.Fatalf("acquire attempt lock: %v", err)
+	}
+	writeErr := errors.New("injected admitted-record failure")
+	_, err = store.stageOwned(
+		accepted,
+		request,
+		admittedAt,
+		owner,
+		func(string, string, any) error { return writeErr },
+	)
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("stage failure: %v", err)
+	}
+	if err := owner.release(); err != nil {
+		t.Fatalf("release failed attempt: %v", err)
+	}
+	if marker, err := store.hasOwnershipMarker(request.AttemptID); err != nil || marker {
+		t.Fatalf("ownership marker retained: present=%t error=%v", marker, err)
+	}
+	if _, err := os.Lstat(store.pendingPath(request.AttemptID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("pending attempt retained: %v", err)
+	}
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("retry stage: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("close retried attempt: %v", err)
+	}
+}
+
+func TestStageResumesMarkerOnlyAttempt(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	if err := store.createOwnershipMarker(accepted.Request.AttemptID); err != nil {
+		t.Fatalf("create ownership marker: %v", err)
+	}
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("resume marker-only attempt: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("close resumed attempt: %v", err)
+	}
+}
+
 func TestStoreRejectsMalformedRecords(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)

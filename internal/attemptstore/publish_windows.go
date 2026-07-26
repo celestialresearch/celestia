@@ -23,6 +23,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+const evidenceDirectoryAccess = windows.STANDARD_RIGHTS_ALL | 0x1ff
+
 func publishFile(source, target, _ string) error {
 	sourcePointer, err := windows.UTF16PtrFromString(source)
 	if err != nil {
@@ -127,7 +129,8 @@ func secureDirectoryACL(path string) error {
 	if err := windows.GetAce(dacl, 0, &ace); err != nil ||
 		ace == nil ||
 		ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE ||
-		ace.Header.AceFlags != windows.OBJECT_INHERIT_ACE|windows.CONTAINER_INHERIT_ACE {
+		ace.Header.AceFlags != windows.OBJECT_INHERIT_ACE|windows.CONTAINER_INHERIT_ACE ||
+		ace.Mask != evidenceDirectoryAccess {
 		return ErrCorrupt
 	}
 	// GetAce exposes the variable-length SID through the fixed ACE prefix.
