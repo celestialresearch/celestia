@@ -213,3 +213,30 @@ grep -Fq 'Rust toolchain currency check failed: rustup failed' <<<"$result" || {
   printf 'toolchain currency check hid command failure:\n%s\n' "$result" >&2
   exit 1
 }
+
+manifest_dir="$work_dir/manifest"
+mkdir -p "$manifest_dir/.github/scripts" \
+  "$manifest_dir/.github/workflows" \
+  "$manifest_dir/worker/qualification-fixtures"
+cp "$root/.github/scripts/currencycheck.sh" \
+  "$manifest_dir/.github/scripts/"
+cat >"$manifest_dir/Cargo.toml" <<'EOF'
+[workspace.dependencies]
+multiline-probe = {
+  version = "=1.0.0"
+}
+EOF
+printf '%s\n' '[package]' >"$manifest_dir/worker/qualification-fixtures/Cargo.toml"
+printf '%s\n' '[toolchain]' 'channel = "1.0.0"' \
+  >"$manifest_dir/rust-toolchain.toml"
+printf '%s\n' 'name: Probe' >"$manifest_dir/.github/workflows/main.yml"
+: >"$manifest_dir/.github/.currency"
+printf '%s\n' 'multiline-probe|1.0.0' >"$manifest_dir/crate-versions"
+(
+  cd "$manifest_dir"
+  RUSTUP_BIN=celestia_test_rustup \
+    RUSTUP_TEST_OUTPUT='stable-probe - up to date : 1.0.0' \
+    CARGO_BIN=celestia_test_cargo \
+    CARGO_TEST_VERSIONS="$manifest_dir/crate-versions" \
+    bash .github/scripts/currencycheck.sh currency
+)

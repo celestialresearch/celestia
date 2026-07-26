@@ -41,6 +41,7 @@ durable terminal outcome.
   is held from staging through terminal publication.
 - Current writers create a permanent ownership-era marker before staging.
   A missing current lock is corruption rather than evidence of a legacy bundle.
+  A lock without that marker requires explicit migration resumption.
 - Recovery uses a non-blocking acquisition and refuses an active attempt.
   Process death releases the lock without a timestamp or stale-age guess.
 - Lock files are never replaced or removed, preventing ownership from splitting

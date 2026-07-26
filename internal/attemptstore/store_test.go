@@ -151,6 +151,36 @@ func TestStoreRecoversPendingAttempt(t *testing.T) {
 	}
 }
 
+func TestStoreResumesInterruptedMigration(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release attempt: %v", err)
+	}
+	marker := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+ownershipMarkerSuffix,
+	)
+	if err := os.Remove(marker); err != nil {
+		t.Fatalf("remove ownership marker: %v", err)
+	}
+	if err := store.Recover(accepted.Request.AttemptID, "restart"); !errors.Is(err, ErrMigrationRequired) {
+		t.Fatalf("incomplete migration recovered: %v", err)
+	}
+	if err := store.MigrateV0(accepted.Request.AttemptID, "operator resumed migration"); err != nil {
+		t.Fatalf("resume migration: %v", err)
+	}
+	records, err := store.Inspect(accepted.Request.AttemptID)
+	if err != nil || records.Recovery == nil {
+		t.Fatalf("inspect resumed migration: records=%+v error=%v", records, err)
+	}
+}
+
 func TestStoreRejectsMissingCurrentLock(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)

@@ -29,6 +29,7 @@ git() {
   calls=$((calls + 1))
   printf '%d\n' "$calls" >"$calls_file"
   if ((calls < 3)); then
+    printf 'old-partial\n'
     return 1
   fi
   printf 'resolved\n'

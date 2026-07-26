@@ -69,14 +69,16 @@ git_ls_remote() {
   local attempts=${ACTIONCHECK_REMOTE_ATTEMPTS:-3}
   local delay=${ACTIONCHECK_RETRY_DELAY_SECONDS:-1}
   local attempt=1
+  local output
 
   if [[ ! "$attempts" =~ ^[1-9][0-9]*$ ||
     ! "$delay" =~ ^[0-9]+$ ]]; then
     printf 'Action remote attempts must be positive and delay non-negative\n' >&2
     return 2
   fi
-  while ! git ls-remote "$@"; do
+  while ! output=$(git ls-remote "$@" 2>&1); do
     if ((attempt >= attempts)); then
+      printf '%s\n' "$output" >&2
       return 1
     fi
     printf 'Action remote lookup failed; retrying (%d/%d)\n' \
@@ -84,6 +86,7 @@ git_ls_remote() {
     sleep "$delay"
     attempt=$((attempt + 1))
   done
+  printf '%s\n' "$output"
 }
 
 tag_sha() {
