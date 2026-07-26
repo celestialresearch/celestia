@@ -119,6 +119,16 @@ func TestOperationRejectsBeforeExecution(t *testing.T) {
 	if result.Status != Rejected {
 		t.Fatalf("result=%+v", result)
 	}
+	result = operation.Execute(
+		nilContext(),
+		"https://example.test",
+		urlreference.Defang,
+	)
+	if result.Status != Rejected ||
+		!errors.Is(result.Err, urladmission.ErrRejected) ||
+		result.AttemptID != "" {
+		t.Fatalf("nil context result=%+v", result)
+	}
 	entries, err := os.ReadDir(filepath.Join(root, "attempts", ".pending"))
 	if err != nil {
 		t.Fatalf("read pending attempts: %v", err)
