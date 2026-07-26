@@ -103,12 +103,16 @@ create_report() {
   local profile=$1
   local report=$2
   local packages=$3
+  local go_profile=$profile
   local package
 
+  case "$(uname -s 2>/dev/null)" in
+  CYGWIN*) go_profile=$(cygpath -w "$profile") ;;
+  esac
   : >"$report"
   while IFS= read -r package; do
     [[ -n "$package" ]] || continue
-    go test -count=1 -covermode=atomic -coverprofile="$profile" \
+    go test -count=1 -covermode=atomic -coverprofile="$go_profile" \
       "$package" >/dev/null
     awk -v package="$package" '
       NR == 1 { next }
