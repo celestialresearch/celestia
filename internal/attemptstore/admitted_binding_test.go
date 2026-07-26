@@ -59,6 +59,59 @@ func TestStageRejectsAcceptedFrameMismatch(t *testing.T) {
 	}
 }
 
+func TestPublishRejectsUnverifiableProtocolEvidence(t *testing.T) {
+	tests := map[string]func(*Observation){
+		"response": func(observation *Observation) {
+			observation.Stdout = []byte(`{"status":"completed"}`)
+		},
+		"verifier": func(observation *Observation) {
+			observation.VerificationID = "other"
+		},
+		"expected output": func(observation *Observation) {
+			observation.ExpectedOutput = "hxxps://other[.]test/"
+		},
+		"verification result": func(observation *Observation) {
+			observation.VerificationPass = false
+			observation.TerminalStatus = "executed_unverified"
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := newTestStore(t)
+			accepted, admittedAt := testAccepted(t)
+			attempt, err := store.Stage(accepted, admittedAt)
+			if err != nil {
+				t.Fatalf("stage: %v", err)
+			}
+			t.Cleanup(func() { _ = attempt.Close() })
+			observation := testObservationFor(t, accepted)
+			mutate(&observation)
+			if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("unverifiable protocol evidence accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestInspectRejectsProtocolEvidenceCorruption(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	path := store.finalPath(accepted.Request.AttemptID)
+	replaceJSONField(t, filepath.Join(path, observationFile), "stdout", []byte(`{}`))
+	refreshPublicationHashes(t, path)
+
+	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("corrupt protocol evidence accepted: %v", err)
+	}
+}
+
 func TestInspectRejectsAdmittedBindingCorruption(t *testing.T) {
 	tests := admittedCorruptionTests()
 	for _, test := range tests {
@@ -69,7 +122,7 @@ func TestInspectRejectsAdmittedBindingCorruption(t *testing.T) {
 			if err != nil {
 				t.Fatalf("stage: %v", err)
 			}
-			if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
+			if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 				t.Fatalf("publish: %v", err)
 			}
 			path := store.finalPath(accepted.Request.AttemptID)

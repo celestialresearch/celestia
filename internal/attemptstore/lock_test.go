@@ -122,7 +122,7 @@ func TestReleasedAttemptCannotPublish(t *testing.T) {
 	if err := attempt.Close(); err != nil {
 		t.Fatalf("release attempt: %v", err)
 	}
-	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); !errors.Is(err, ErrInvalid) {
+	if err := attempt.Publish(testObservationFor(t, accepted)); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("released attempt published: %v", err)
 	}
 }

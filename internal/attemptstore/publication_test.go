@@ -31,7 +31,7 @@ func TestPublishCreatesMarker(t *testing.T) {
 		t.Fatalf("stage: %v", err)
 	}
 	t.Cleanup(func() { _ = attempt.Close() })
-	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(store.pendingPath(accepted.Request.AttemptID), bundleDirectory)); !errors.Is(err, os.ErrNotExist) {
@@ -57,7 +57,7 @@ func TestInspectRefusesOwnedPublication(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = attempt.Close() })
 	if err := attempt.publishLocked(
-		testObservation(accepted.Request.AttemptID),
+		testObservationFor(t, accepted),
 	); err != nil {
 		t.Fatalf("publish while retaining ownership: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestPublishedIdentityCannotRestage(t *testing.T) {
 		t.Fatalf("stage: %v", err)
 	}
 	t.Cleanup(func() { _ = attempt.Close() })
-	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
@@ -96,7 +96,7 @@ func TestInspectRequiresPublicationMarker(t *testing.T) {
 		t.Fatalf("stage: %v", err)
 	}
 	t.Cleanup(func() { _ = attempt.Close() })
-	observation := testObservation(accepted.Request.AttemptID)
+	observation := testObservationFor(t, accepted)
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestPublicationRequiresFinalReadBack(t *testing.T) {
 		t.Fatalf("stage: %v", err)
 	}
 	t.Cleanup(func() { _ = attempt.Close() })
-	observation := testObservation(accepted.Request.AttemptID)
+	observation := testObservationFor(t, accepted)
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestRecoverPublishesAfterReceiptFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	observation := testObservation(accepted.Request.AttemptID)
+	observation := testObservationFor(t, accepted)
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestRecoverPublishesAfterMarkerFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	observation := testObservation(accepted.Request.AttemptID)
+	observation := testObservationFor(t, accepted)
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestInspectRejectsMissingFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	path := store.finalPath(accepted.Request.AttemptID)
@@ -321,7 +321,7 @@ func TestInspectRejectsWrongVersion(t *testing.T) {
 			if err != nil {
 				t.Fatalf("stage: %v", err)
 			}
-			if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
+			if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 				t.Fatalf("publish: %v", err)
 			}
 			path := store.finalPath(accepted.Request.AttemptID)
@@ -380,7 +380,7 @@ func TestObservationRejectsUnknownStates(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			observation := testObservation(accepted.Request.AttemptID)
+			observation := testObservationFor(t, accepted)
 			test.change(&observation)
 			if err := validateObservation(observation); !errors.Is(err, ErrCorrupt) {
 				t.Fatalf("invalid observation accepted: %v", err)
@@ -428,7 +428,7 @@ func TestRecordValidationRejectsMissingRequiredFields(t *testing.T) {
 
 func TestObservationRejectsContradictoryTerminal(t *testing.T) {
 	accepted, _ := testAccepted(t)
-	observation := testObservation(accepted.Request.AttemptID)
+	observation := testObservationFor(t, accepted)
 	observation.ProcessStatus = "exit_failed"
 	observation.ProtocolStatus = "not_run"
 	observation.VerificationID = ""
@@ -442,7 +442,7 @@ func TestObservationRejectsContradictoryTerminal(t *testing.T) {
 
 func TestObservationRejectsInvalidTerminalTransitions(t *testing.T) {
 	accepted, _ := testAccepted(t)
-	base := testObservation(accepted.Request.AttemptID)
+	base := testObservationFor(t, accepted)
 	for _, terminal := range []string{"unknown", "cancelled", "timed_out"} {
 		t.Run(terminal, func(t *testing.T) {
 			observation := base
@@ -456,7 +456,7 @@ func TestObservationRejectsInvalidTerminalTransitions(t *testing.T) {
 
 func TestObservationAcceptsContractTransitions(t *testing.T) {
 	accepted, _ := testAccepted(t)
-	verified := testObservation(accepted.Request.AttemptID)
+	verified := testObservationFor(t, accepted)
 	unverified := verified
 	unverified.TerminalStatus = "executed_unverified"
 	unverified.VerificationPass = false
@@ -498,7 +498,7 @@ func TestObservationAcceptsContractTransitions(t *testing.T) {
 
 func TestObservationAcceptsAndRejectsCleanupFailureTransitions(t *testing.T) {
 	accepted, _ := testAccepted(t)
-	base := observationWithoutVerification(testObservation(accepted.Request.AttemptID))
+	base := observationWithoutVerification(testObservationFor(t, accepted))
 	base.TerminalStatus = "failed"
 	validCleanupFailure := base
 	validCleanupFailure.ProcessStatus = "cleanup_failed"
@@ -542,7 +542,7 @@ func TestObservationAcceptsAndRejectsCleanupFailureTransitions(t *testing.T) {
 
 func TestObservationRejectsContradictoryProcessProtocolStates(t *testing.T) {
 	accepted, _ := testAccepted(t)
-	base := observationWithoutVerification(testObservation(accepted.Request.AttemptID))
+	base := observationWithoutVerification(testObservationFor(t, accepted))
 	base.TerminalStatus = "failed"
 	base.ProcessError = "worker failed"
 	base.CleanupComplete = true
@@ -593,7 +593,7 @@ func observationWithoutVerification(observation Observation) Observation {
 func TestExistingTerminalRejectsContradiction(t *testing.T) {
 	root := t.TempDir()
 	accepted, _ := testAccepted(t)
-	observation := testObservation(accepted.Request.AttemptID)
+	observation := testObservationFor(t, accepted)
 	recovery := Recovery{
 		Version:        Version,
 		AttemptID:      accepted.Request.AttemptID,
@@ -622,7 +622,7 @@ func TestExistingTerminalRejectsIdentityMismatch(t *testing.T) {
 		{
 			name:  "observation",
 			file:  observationFile,
-			value: testObservation(other.Request.AttemptID),
+			value: testObservationFor(t, other),
 		},
 		{
 			name: "recovery",

@@ -26,6 +26,7 @@ import (
 
 	"celestia.research/governed-operation/internal/urladmission"
 	"celestia.research/governed-operation/internal/urlreference"
+	"celestia.research/governed-operation/internal/workerprotocol"
 )
 
 func TestStoreRejectsInvalidEvidenceRoots(t *testing.T) {
@@ -107,7 +108,7 @@ func TestStorePublishesAndInspects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	observation := testObservation(accepted.Request.AttemptID)
+	observation := testObservationFor(t, accepted)
 	if err := attempt.Publish(observation); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -321,7 +322,7 @@ func TestStoreDetectsCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
@@ -343,7 +344,7 @@ func TestStoreRejectsReceiptPathSubstitution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	receiptPath := filepath.Join(store.finalPath(accepted.Request.AttemptID), receiptFile)
@@ -436,7 +437,7 @@ func TestStoreReportsWriteFailure(t *testing.T) {
 	if err := os.Rename(attempt.path, attempt.path+".moved"); err != nil {
 		t.Fatalf("move attempt: %v", err)
 	}
-	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err == nil {
+	if err := attempt.Publish(testObservationFor(t, accepted)); err == nil {
 		t.Fatal("missing attempt directory accepted publication")
 	}
 }
@@ -448,7 +449,7 @@ func TestStoreRejectsMalformedRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	path := store.finalPath(accepted.Request.AttemptID)
@@ -524,7 +525,7 @@ func TestStoreRejectsReceiptVariants(t *testing.T) {
 			if err != nil {
 				t.Fatalf("stage: %v", err)
 			}
-			if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
+			if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 				t.Fatalf("publish: %v", err)
 			}
 			path := store.finalPath(accepted.Request.AttemptID)
@@ -754,4 +755,41 @@ func testObservation(attemptID string) Observation {
 		TerminalStatus:   "verified",
 		DurationNS:       1,
 	}
+}
+
+func testObservationFor(tb testing.TB, accepted urladmission.Accepted) Observation {
+	tb.Helper()
+	observation := testObservation(accepted.Request.AttemptID)
+	output, err := urlreference.Transform(
+		accepted.Request.Input,
+		urlreference.Mode(accepted.Request.Mode),
+	)
+	if err != nil {
+		tb.Fatalf("transform response fixture: %v", err)
+	}
+	mediaType := workerprotocol.MediaType
+	outputLength := len(output)
+	outputHash := sha256.Sum256([]byte(output))
+	outputHashText := hex.EncodeToString(outputHash[:])
+	response := workerprotocol.Response{
+		ProtocolVersion:  workerprotocol.ProtocolVersion,
+		OperationID:      workerprotocol.OperationID,
+		OperationVersion: workerprotocol.OperationVersion,
+		AttemptID:        accepted.Request.AttemptID,
+		RequestNonce:     accepted.Request.RequestNonce,
+		WorkerID:         workerprotocol.WorkerID,
+		WorkerVersion:    workerprotocol.WorkerVersion,
+		Status:           workerprotocol.Completed,
+		OutputMediaType:  &mediaType,
+		OutputLength:     &outputLength,
+		OutputSHA256:     &outputHashText,
+		Output:           &output,
+		Diagnostics:      []workerprotocol.Diagnostic{},
+		DurationNS:       1,
+	}
+	observation.Stdout, err = json.Marshal(response)
+	if err != nil {
+		tb.Fatalf("encode response fixture: %v", err)
+	}
+	return observation
 }

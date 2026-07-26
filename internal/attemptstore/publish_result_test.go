@@ -52,7 +52,7 @@ func TestPublishClassifiesReleaseAfterPublication(t *testing.T) {
 		_ = unlockAttemptFile(owner.file)
 		_ = owner.file.Close()
 	})
-	err = attempt.Publish(testObservation(accepted.Request.AttemptID))
+	err = attempt.Publish(testObservationFor(t, accepted))
 	if !errors.Is(err, ErrRelease) {
 		t.Fatalf("release failure not classified: %v", err)
 	}
