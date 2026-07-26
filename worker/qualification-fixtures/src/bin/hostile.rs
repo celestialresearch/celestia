@@ -77,9 +77,6 @@ fn semantic_lie(request: &str) {
         print!("{{\"partial\":");
         std::process::exit(7);
     }
-    if output.contains("hang.test") {
-        hang();
-    }
     let digest = Sha256::digest(output.as_bytes()).iter().fold(
         String::with_capacity(64),
         |mut encoded, byte| {
