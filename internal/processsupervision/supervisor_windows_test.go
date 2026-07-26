@@ -82,11 +82,20 @@ func TestMain(testingMain *testing.M) {
 		}
 		binaryDirectory := filepath.Join(root, "target", "debug")
 		fixtureDirectory := filepath.Join(root, "worker", "qualification-fixtures", "target", "debug")
-		_ = os.Setenv("CELESTIA_TEST_WORKER", filepath.Join(binaryDirectory, "celestia-url-reference.exe"))
-		_ = os.Setenv(
+		if err := os.Setenv(
+			"CELESTIA_TEST_WORKER",
+			filepath.Join(binaryDirectory, "celestia-url-reference.exe"),
+		); err != nil {
+			fmt.Fprintf(os.Stderr, "configure production worker: %v\n", err)
+			os.Exit(1)
+		}
+		if err := os.Setenv(
 			"CELESTIA_TEST_HOSTILE_WORKER",
 			filepath.Join(fixtureDirectory, "celestia-hostile-worker.exe"),
-		)
+		); err != nil {
+			fmt.Fprintf(os.Stderr, "configure qualification worker: %v\n", err)
+			os.Exit(1)
+		}
 	}
 	os.Exit(testingMain.Run())
 }
