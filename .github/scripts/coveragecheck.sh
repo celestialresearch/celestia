@@ -97,7 +97,7 @@ cache_key() (
     while IFS= read -r -d '' file; do
       [[ -f "$file" ]] || continue
       printf '%s\0' "$file"
-      git hash-object "$file"
+      git hash-object -- "$file"
     done <"$inventory"
     go env GOVERSION GOOS GOARCH CGO_ENABLED CC CXX GOFLAGS
   } | git hash-object --stdin

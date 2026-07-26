@@ -38,6 +38,7 @@ build_eligible_inventory() {
   local file
 
   while IFS= read -r -d '' file; do
+    file=./$file
     [[ -f "$file" ]] || continue
     [[ -n "$(style_for "$file")" ]] || continue
     printf '%s\0' "$file"
@@ -193,7 +194,7 @@ cache_key() {
     while IFS= read -r -d '' file; do
       style=$(style_for "$file")
       printf '%s\0%s\0' "$file" "$style"
-      git hash-object "$file"
+      git hash-object -- "$file"
     done <"$eligible_inventory"
     git hash-object .github/scripts/licencecheck.sh
   } | git hash-object --stdin

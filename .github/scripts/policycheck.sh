@@ -87,6 +87,7 @@ check_source_files() {
   local stem
 
   while IFS= read -r -d '' file; do
+    file=./$file
     [[ -f "$file" ]] || continue
     case "$file" in
     *.go | *.rs | *.c | *.cc | *.cpp | *.cxx | *.h | *.hh | *.hpp | *.hxx) ;;
