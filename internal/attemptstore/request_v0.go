@@ -23,6 +23,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"celestia.research/governed-operation/internal/urlreference"
 )
 
 const (
@@ -256,7 +258,8 @@ func validRequestV0Input(request requestV0) bool {
 		return false
 	}
 	hash := sha256.Sum256([]byte(request.Input))
-	return request.InputSHA256 == hex.EncodeToString(hash[:])
+	return request.InputSHA256 == hex.EncodeToString(hash[:]) &&
+		urlreference.ValidateInput(request.Input) == nil
 }
 
 func validRequestV0Deadline(value string, admittedAt time.Time) bool {

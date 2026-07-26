@@ -127,6 +127,25 @@ func TestDecodeRequestV0RejectsRepeatedCorrelation(t *testing.T) {
 	}
 }
 
+func TestDecodeRequestV0RejectsInvalidReference(t *testing.T) {
+	accepted, admittedAt := testAccepted(t)
+	request, err := decodeRequestV0(accepted.Frame, admittedAt)
+	if err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	request.Input = "not-a-url-reference"
+	request.InputLength = len(request.Input)
+	hash := sha256.Sum256([]byte(request.Input))
+	request.InputSHA256 = hex.EncodeToString(hash[:])
+	frame, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("encode invalid reference: %v", err)
+	}
+	if _, err := decodeRequestV0(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("invalid v0 reference accepted: %v", err)
+	}
+}
+
 func TestDecodeRequestV0AcceptsEquivalentJSON(t *testing.T) {
 	accepted, admittedAt := testAccepted(t)
 	escaped := bytes.Replace(accepted.Frame, []byte("url-reference"), []byte(`url\u002dreference`), 1)
@@ -191,4 +210,28 @@ func TestObjectFieldsV0RejectsMalformed(t *testing.T) {
 			}
 		})
 	}
+}
+
+func FuzzDecodeRequestV0(f *testing.F) {
+	accepted, admittedAt := testAccepted(f)
+	f.Add(accepted.Frame)
+	f.Add([]byte(`{}`))
+
+	f.Fuzz(func(t *testing.T, frame []byte) {
+		request, err := decodeRequestV0(frame, admittedAt)
+		if err != nil {
+			return
+		}
+		if !validRequestV0(request, admittedAt) {
+			t.Fatal("decoder accepted an invalid v0 request")
+		}
+		canonical, err := json.Marshal(request)
+		if err != nil {
+			t.Fatalf("marshal accepted v0 request: %v", err)
+		}
+		decoded, err := decodeRequestV0(canonical, admittedAt)
+		if err != nil || decoded != request {
+			t.Fatalf("canonical v0 request did not round trip: decoded=%+v error=%v", decoded, err)
+		}
+	})
 }
