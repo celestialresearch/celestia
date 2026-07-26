@@ -48,6 +48,26 @@ func TestPublishCreatesMarker(t *testing.T) {
 	}
 }
 
+func TestInspectRejectsUnexpectedRecord(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	t.Cleanup(func() { _ = attempt.Close() })
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	path := store.finalPath(accepted.Request.AttemptID)
+	if err := os.WriteFile(filepath.Join(path, "unexpected.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatalf("write unexpected record: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("unexpected record inspected: %v", err)
+	}
+}
+
 func TestInspectRefusesOwnedPublication(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
