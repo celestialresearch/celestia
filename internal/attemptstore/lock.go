@@ -155,25 +155,6 @@ func (store *Store) hasOwnershipMarker(attemptID string) (bool, error) {
 	return true, nil
 }
 
-func (store *Store) removeOwnershipMarker(attemptID string) error {
-	directory := filepath.Join(store.root, locksDirectory)
-	root, err := store.openLockRoot(directory)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		_ = root.Close()
-	}()
-	name := attemptID + ownershipMarkerSuffix
-	if err := root.Remove(name); err != nil {
-		return fmt.Errorf("remove attempt ownership marker: %w", err)
-	}
-	if err := syncAttemptLockDirectory(directory); err != nil {
-		return fmt.Errorf("sync attempt ownership marker removal: %w", err)
-	}
-	return nil
-}
-
 func (store *Store) openLockRoot(directory string) (*os.Root, error) {
 	if err := rejectLinkedAncestors(directory); err != nil {
 		return nil, fmt.Errorf("inspect attempt locks: %w", err)

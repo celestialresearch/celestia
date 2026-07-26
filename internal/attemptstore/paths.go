@@ -66,18 +66,11 @@ func removeStagedAttempt(path string) error {
 }
 
 func (store *Store) rollbackStage(
-	attemptID string,
 	pendingPath string,
-	markerCreated bool,
 	removePending func(string) error,
 ) error {
 	if pendingPath != "" {
-		if err := removePending(pendingPath); err != nil {
-			return err
-		}
-	}
-	if markerCreated {
-		return store.removeOwnershipMarker(attemptID)
+		return removePending(pendingPath)
 	}
 	return nil
 }
