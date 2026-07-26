@@ -23,7 +23,7 @@ import (
 
 func TestActiveLockCannotBeReplacedWhileOwnerAlive(t *testing.T) {
 	store, accepted, _ := lockProcessFixture(t)
-	command := lockHelperCommand(t.Context(), "stage")
+	command := lockHelperCommand(t.Context(), "stage", store.root)
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatalf("open helper stdout: %v", err)

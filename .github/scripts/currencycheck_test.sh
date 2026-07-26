@@ -28,17 +28,17 @@ cargo_fixture="$work_dir/cargo"
 crate_versions="$work_dir/crate-versions"
 
 cat >"$rustup_fixture" <<'EOF'
-#!/usr/bin/env bash
+#!/bin/sh
 printf '%s\n' "${RUSTUP_TEST_OUTPUT:-}"
 exit "${RUSTUP_TEST_STATUS:-0}"
 EOF
 chmod +x "$rustup_fixture"
 cat >"$cargo_fixture" <<'EOF'
-#!/usr/bin/env bash
+#!/bin/sh
 component=${2:-}
 version=$(awk -F'|' -v component="$component" '$1 == component { print $2; exit }' \
   "$CARGO_TEST_VERSIONS")
-[[ -n "$version" ]] || exit 1
+[ -n "$version" ] || exit 1
 printf '%s = "%s" # fixture\n' "$component" "$version"
 EOF
 chmod +x "$cargo_fixture"
