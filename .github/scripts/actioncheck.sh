@@ -26,8 +26,14 @@ action_files() {
     ! -path './.git/*' ! -path './.cache/*' -print0
 }
 
-remote_actions() {
-  local file
+remote_actions() (
+  local file inventory
+
+  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-actions.XXXXXX")
+  trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
+  if ! action_files >"$inventory"; then
+    return 1
+  fi
 
   while IFS= read -r -d '' file; do
     awk -v file="$file" '
@@ -39,8 +45,8 @@ remote_actions() {
         }
       }
     ' "$file"
-  done < <(action_files)
-}
+  done <"$inventory"
+)
 
 parse_action() {
   local entry=$1
@@ -134,9 +140,10 @@ check_actions() {
   local check_currency=$1
   local checked_latest=$'\n'
   local checked_tags=$'\n'
-  local entry expected latest status=0
+  local entries entry expected latest status=0
   local key
 
+  entries=$(remote_actions)
   while IFS= read -r entry; do
     [[ -n "$entry" ]] || continue
     if ! parse_action "$entry"; then
@@ -181,22 +188,28 @@ check_actions() {
         checked_latest+="$ACTION_REPOSITORY"$'\n'
       fi
     fi
-  done < <(remote_actions)
+  done <<<"$entries"
 
   return "$status"
 }
 
-cache_key() {
-  local file
+cache_key() (
+  local file inventory
+
+  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-action-cache.XXXXXX")
+  trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
+  if ! action_files >"$inventory"; then
+    return 1
+  fi
 
   {
     while IFS= read -r -d '' file; do
       git hash-object "$file"
-    done < <(action_files)
+    done <"$inventory"
     git hash-object .github/scripts/actioncheck.sh
     git --version
   } | git hash-object --stdin
-}
+)
 
 cached_currency() {
   local key cache_file temporary_cache

@@ -60,3 +60,15 @@ if ACTIONCHECK_REMOTE_ATTEMPTS=0 \
   printf 'action remote lookup accepted an invalid retry bound\n' >&2
   exit 1
 fi
+
+action_files() {
+  return 2
+}
+if remote_actions >/dev/null 2>&1; then
+  printf 'action parsing ignored a failed file inventory\n' >&2
+  exit 1
+fi
+if cache_key >/dev/null 2>&1; then
+  printf 'action cache ignored a failed file inventory\n' >&2
+  exit 1
+fi
