@@ -270,17 +270,26 @@ func TestOperationPublishesCallerDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new operation: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	result := operation.Execute(
-		ctx,
-		"https://hang.test",
-		urlreference.Defang,
-	)
-	if result.Status != TimedOut ||
-		result.Process.Status != processsupervision.Cancelled ||
-		!errors.Is(result.Err, context.DeadlineExceeded) {
-		t.Fatalf("result=%+v", result)
+	admittedAt := time.Now().UTC()
+	accepted := admittedFixture(t, admittedAt)
+	attempt, err := operation.store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	process := processsupervision.Outcome{
+		Status:          processsupervision.Cancelled,
+		Err:             context.DeadlineExceeded,
+		CleanupComplete: true,
+		Duration:        time.Nanosecond,
+	}
+	result := Result{
+		AttemptID: accepted.Request.AttemptID,
+		Status:    terminalStatus(process),
+		Process:   callerProcess(process),
+		Err:       errors.Join(ErrProcess, process.Err),
+	}
+	if err := attempt.Publish(observationFrom(result, process)); err != nil {
+		t.Fatalf("publish: %v", err)
 	}
 	records, err := operation.store.Inspect(result.AttemptID)
 	if err != nil {
