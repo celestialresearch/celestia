@@ -61,8 +61,14 @@ func createContainer(name string) (appContainer, error) {
 	if err != nil {
 		return appContainer{}, fmt.Errorf("encode AppContainer name: %w", err)
 	}
-	display, _ := windows.UTF16PtrFromString("Celestia worker")
-	description, _ := windows.UTF16PtrFromString("Ephemeral deterministic worker")
+	display, err := windows.UTF16PtrFromString("Celestia worker")
+	if err != nil {
+		return appContainer{}, fmt.Errorf("encode AppContainer display name: %w", err)
+	}
+	description, err := windows.UTF16PtrFromString("Ephemeral deterministic worker")
+	if err != nil {
+		return appContainer{}, fmt.Errorf("encode AppContainer description: %w", err)
+	}
 	var sid *windows.SID
 	result, _, callErr := createAppContainerProfile.Call(
 		uintptr(unsafe.Pointer(namePointer)), // #nosec G103 -- Win32 requires a PCWSTR address.
