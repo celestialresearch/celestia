@@ -213,10 +213,27 @@ func TestNativeHelpersRejectInvalidState(t *testing.T) {
 		}
 	})
 	t.Run("write handle", func(t *testing.T) {
-		if err := writeFrame(windows.InvalidHandle, []byte("frame")); err == nil {
+		result := writeFrame(windows.InvalidHandle, []byte("frame"))
+		if result.err == nil {
 			t.Fatal("invalid write handle was accepted")
 		}
 	})
+}
+
+func TestCloseHandleRetainsFailedHandle(t *testing.T) {
+	handle, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	if err := windows.CloseHandle(handle); err != nil {
+		t.Fatalf("close event: %v", err)
+	}
+	if err := closeHandle(&handle); err == nil {
+		t.Fatal("closed handle close succeeded")
+	}
+	if handle == 0 {
+		t.Fatalf("failed handle cleared: %v", handle)
+	}
 }
 
 func TestNativeWaitRejectsInvalidState(t *testing.T) {
@@ -349,8 +366,8 @@ func TestPipeCloseReportsFailure(t *testing.T) {
 	if complete || !errors.Is(err, operationErr) {
 		t.Fatalf("complete=%t error=%v", complete, err)
 	}
-	if pipes != (pipeSet{}) {
-		t.Fatalf("closed pipe handles retained: %#v", pipes)
+	if pipes.stdinRead != handle {
+		t.Fatalf("failed pipe handle lost: %#v", pipes)
 	}
 }
 
@@ -422,7 +439,7 @@ func TestAwaitProcessStates(t *testing.T) {
 			make(chan time.Time),
 			waited,
 			make(chan Status),
-			make(chan error),
+			make(chan inputResult),
 		)
 		if status != ExitFailed || err == nil {
 			t.Fatalf("status=%s error=%v", status, err)
@@ -436,7 +453,7 @@ func TestAwaitProcessStates(t *testing.T) {
 			timeout,
 			make(chan error),
 			make(chan Status),
-			make(chan error),
+			make(chan inputResult),
 		)
 		if status != TimedOut || !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("status=%s error=%v", status, err)
@@ -452,7 +469,7 @@ func TestAwaitProcessStates(t *testing.T) {
 			timeout,
 			waited,
 			make(chan Status),
-			make(chan error),
+			make(chan inputResult),
 		)
 		if status != Completed || err != nil {
 			t.Fatalf("status=%s error=%v", status, err)
@@ -466,7 +483,7 @@ func TestAwaitProcessStates(t *testing.T) {
 			make(chan time.Time),
 			make(chan error),
 			overflow,
-			make(chan error),
+			make(chan inputResult),
 		)
 		if status != OutputOverflow || !errors.Is(err, errStreamLimit) {
 			t.Fatalf("status=%s error=%v", status, err)
@@ -477,8 +494,8 @@ func TestAwaitProcessStates(t *testing.T) {
 func TestAwaitProcessKeepsTimeout(t *testing.T) {
 	timeout := make(chan time.Time, 1)
 	timeout <- time.Now()
-	input := make(chan error, 1)
-	input <- nil
+	input := make(chan inputResult, 1)
+	input <- inputResult{}
 	result := make(chan struct {
 		status Status
 		err    error
@@ -519,12 +536,15 @@ func TestExecutionAllowanceStartsAtResume(t *testing.T) {
 }
 
 func TestAwaitInputStates(t *testing.T) {
-	input := make(chan error, 1)
-	input <- nil
-	if err := awaitInput(input, time.Second); err != nil {
-		t.Fatalf("completed input: %v", err)
+	input := make(chan inputResult, 1)
+	input <- inputResult{}
+	if result := awaitInput(input, time.Second); result != (inputResult{}) {
+		t.Fatalf("completed input: %+v", result)
 	}
-	if err := awaitInput(make(chan error), time.Millisecond); err == nil {
+	if result := awaitInput(
+		make(chan inputResult),
+		time.Millisecond,
+	); result.cleanupErr == nil {
 		t.Fatal("blocked input join did not time out")
 	}
 }
@@ -536,9 +556,9 @@ func TestAwaitStreamCancelsBlockedRead(t *testing.T) {
 	reader := newStreamReader("output", read)
 	go reader.read(8, OutputOverflow, result, make(chan Status, 1))
 	observation := awaitStream(reader, result, time.Now().Add(time.Millisecond))
-	if observation.err == nil ||
-		!strings.Contains(observation.err.Error(), "join worker output") {
-		t.Fatalf("stream result=%v, want bounded join error", observation.err)
+	if observation.cleanupErr == nil ||
+		!strings.Contains(observation.cleanupErr.Error(), "join worker output") {
+		t.Fatalf("stream result=%v, want bounded join error", observation.cleanupErr)
 	}
 	select {
 	case <-reader.done:
@@ -553,25 +573,59 @@ func TestAwaitStreamCancelsBlockedRead(t *testing.T) {
 }
 
 func TestStreamResultStates(t *testing.T) {
-	status, err := applyStreamResult(
+	status, err, complete := applyStreamResult(
 		Completed,
 		nil,
+		true,
 		streamResult{err: errStreamLimit},
 		"output",
 		OutputOverflow,
 	)
-	if status != OutputOverflow || !errors.Is(err, errStreamLimit) {
-		t.Fatalf("overflow: status=%s error=%v", status, err)
+	if status != OutputOverflow || !errors.Is(err, errStreamLimit) || !complete {
+		t.Fatalf("overflow: status=%s complete=%t error=%v", status, complete, err)
 	}
-	status, err = applyStreamResult(
+	status, err, complete = applyStreamResult(
 		CleanupFailed,
 		errors.New("cleanup"),
+		false,
 		streamResult{err: errors.New("read")},
 		"output",
 		OutputOverflow,
 	)
-	if status != CleanupFailed || err == nil {
-		t.Fatalf("cleanup precedence: status=%s error=%v", status, err)
+	if status != CleanupFailed || err == nil || complete {
+		t.Fatalf("cleanup precedence: status=%s complete=%t error=%v", status, complete, err)
+	}
+	status, err, complete = applyStreamResult(
+		Completed,
+		nil,
+		true,
+		streamResult{cleanupErr: errors.New("close")},
+		"output",
+		OutputOverflow,
+	)
+	if status != CleanupFailed || err == nil || complete {
+		t.Fatalf("stream cleanup: status=%s complete=%t error=%v", status, complete, err)
+	}
+}
+
+func TestInputResultStates(t *testing.T) {
+	status, err, complete := applyInputResult(
+		Completed,
+		nil,
+		true,
+		inputResult{err: errors.New("write")},
+	)
+	if status != ExitFailed || err == nil || !complete {
+		t.Fatalf("input error: status=%s complete=%t error=%v", status, complete, err)
+	}
+	status, err, complete = applyInputResult(
+		Completed,
+		nil,
+		true,
+		inputResult{cleanupErr: errors.New("close")},
+	)
+	if status != CleanupFailed || err == nil || complete {
+		t.Fatalf("input cleanup: status=%s complete=%t error=%v", status, complete, err)
 	}
 }
 

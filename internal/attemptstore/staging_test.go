@@ -28,6 +28,14 @@ func TestStageFailurePreservesAttemptOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire attempt lock: %v", err)
 	}
+	released := false
+	t.Cleanup(func() {
+		if !released {
+			if err := owner.release(); err != nil {
+				t.Errorf("release failed attempt: %v", err)
+			}
+		}
+	})
 	writeErr := errors.New("injected admitted-record failure")
 	_, err = store.stageOwned(
 		accepted,
@@ -39,6 +47,7 @@ func TestStageFailurePreservesAttemptOwnership(t *testing.T) {
 	if !errors.Is(err, writeErr) {
 		t.Fatalf("stage failure: %v", err)
 	}
+	released = true
 	if err := owner.release(); err != nil {
 		t.Fatalf("release failed attempt: %v", err)
 	}

@@ -53,20 +53,24 @@ func environmentBlock(folder string) ([]uint16, error) {
 	return append(block, 0), nil
 }
 
-func writeFrame(handle windows.Handle, frame []byte) error {
+func writeFrame(handle windows.Handle, frame []byte) inputResult {
 	file := os.NewFile(uintptr(handle), "worker-stdin")
 	if file == nil {
-		return errors.New("create worker stdin")
+		return inputResult{
+			err:        errors.New("create worker stdin"),
+			cleanupErr: windows.CloseHandle(handle),
+		}
 	}
 	written, writeErr := io.Copy(file, bytes.NewReader(frame))
 	if writeErr == nil && written != int64(len(frame)) {
 		writeErr = io.ErrShortWrite
 	}
 	closeErr := file.Close()
-	if err := errors.Join(writeErr, closeErr); err != nil {
-		return fmt.Errorf("write worker frame: %w", err)
+	result := inputResult{cleanupErr: closeErr}
+	if writeErr != nil {
+		result.err = fmt.Errorf("write worker frame: %w", writeErr)
 	}
-	return nil
+	return result
 }
 
 func waitCleanup(process, job windows.Handle, timeout time.Duration) (bool, error) {

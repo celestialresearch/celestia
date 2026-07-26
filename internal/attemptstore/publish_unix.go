@@ -20,7 +20,7 @@ import (
 	"syscall"
 )
 
-func publishFile(source, target, directory string) error {
+func publishFile(source, target, directory string) (err error) {
 	if err := os.Link(source, target); err != nil {
 		if os.IsExist(err) {
 			return ErrDuplicate
@@ -32,7 +32,7 @@ func publishFile(source, target, directory string) error {
 		return err
 	}
 	defer func() {
-		_ = root.Close()
+		err = errors.Join(err, root.Close())
 	}()
 	handle, err := root.Open(".")
 	if err != nil {
@@ -89,8 +89,7 @@ func createEvidenceDirectory(path string) error {
 	}
 	name := filepath.Base(path)
 	if err := root.Mkdir(name, 0o700); err != nil {
-		_ = root.Close()
-		return err
+		return errors.Join(err, root.Close())
 	}
 	info, statErr := root.Lstat(name)
 	closeErr := root.Close()
@@ -104,13 +103,13 @@ func pathIsLinked(_ string, info os.FileInfo) bool {
 	return info.Mode()&os.ModeSymlink != 0
 }
 
-func syncDirectory(directory string) error {
+func syncDirectory(directory string) (err error) {
 	root, err := os.OpenRoot(directory)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		_ = root.Close()
+		err = errors.Join(err, root.Close())
 	}()
 	handle, err := root.Open(".")
 	if err != nil {

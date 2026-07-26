@@ -61,8 +61,10 @@ func createRecordTemp(path, name string) (*os.File, error) {
 		}
 		file := os.NewFile(uintptr(handle), filePath)
 		if file == nil {
-			_ = windows.CloseHandle(handle)
-			return nil, errors.New("create record file")
+			return nil, errors.Join(
+				errors.New("create record file"),
+				windows.CloseHandle(handle),
+			)
 		}
 		return file, nil
 	}
