@@ -294,7 +294,8 @@ underscores. Messages contain at most 512 UTF-8 bytes. Messages are
 worker-controlled, potentially sensitive evidence and are not stable API text.
 They are retained in the protected attempt bundle but are never copied to
 ordinary logs, standard error or CLI output. Operator-facing diagnostics are
-selected by Go from the validated code.
+selected by Go from the validated code. Unknown worker codes collapse to the
+host-owned `worker_failure` code and message.
 
 For `completed`, every shown field is required and diagnostics may be empty.
 For `rejected` and `failed`, output media type, length, hash and output are

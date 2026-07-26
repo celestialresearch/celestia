@@ -453,15 +453,55 @@ func assertProjectedDiagnostics(t *testing.T, result Result) {
 	if result.Response == nil ||
 		len(result.Response.Diagnostics) != 0 ||
 		len(result.Diagnostics) != 1 ||
+		result.Diagnostics[0].Code != "worker_failure" ||
 		result.Diagnostics[0].Message != "The worker reported a failure" ||
 		result.Verification.VerifierID != "" {
 		t.Fatalf("result=%+v", result)
+	}
+	if result.Diagnostics[0].Code == "fixture_rejected" ||
+		result.Diagnostics[0].Code == "fixture_failed" {
+		t.Fatalf("worker-controlled code exposed: %+v", result.Diagnostics)
 	}
 	if strings.Contains(result.Diagnostics[0].Message, "hostile fixture") {
 		t.Fatalf("worker-controlled message exposed: %+v", result.Diagnostics)
 	}
 	if strings.Contains(fmt.Sprintf("%+v", result), "hostile fixture") {
 		t.Fatalf("raw worker evidence retained in result")
+	}
+}
+
+func TestProjectDiagnostics(t *testing.T) {
+	tests := []struct {
+		name    string
+		worker  string
+		code    string
+		message string
+	}{
+		{
+			name:    "known rejection",
+			worker:  "invalid_reference",
+			code:    "invalid_reference",
+			message: "The worker rejected the URL reference",
+		},
+		{
+			name:    "unknown failure",
+			worker:  "worker_selected_code",
+			code:    "worker_failure",
+			message: "The worker reported a failure",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diagnostics := projectDiagnostics([]workerprotocol.Diagnostic{{
+				Code:    test.worker,
+				Message: "worker-controlled message",
+			}})
+			if len(diagnostics) != 1 ||
+				diagnostics[0].Code != test.code ||
+				diagnostics[0].Message != test.message {
+				t.Fatalf("diagnostics=%+v", diagnostics)
+			}
+		})
 	}
 }
 
