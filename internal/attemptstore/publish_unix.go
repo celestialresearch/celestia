@@ -212,16 +212,6 @@ func repairInterruptedRecords(path string) (err error) {
 	return nil
 }
 
-func recordNames() []string {
-	return []string{
-		admittedFile,
-		observationFile,
-		recoveryFile,
-		receiptFile,
-		publicationFile,
-	}
-}
-
 func validInterruptedRecord(info os.FileInfo) bool {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	return ok &&

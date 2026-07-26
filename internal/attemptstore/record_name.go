@@ -13,6 +13,16 @@ package attemptstore
 
 import "strings"
 
+func recordNames() []string {
+	return []string{
+		admittedFile,
+		observationFile,
+		recoveryFile,
+		receiptFile,
+		publicationFile,
+	}
+}
+
 func temporaryRecordName(record, candidate string) bool {
 	suffix, found := strings.CutPrefix(candidate, "."+record+".")
 	if !found || len(suffix) != 32 {
@@ -24,4 +34,13 @@ func temporaryRecordName(record, candidate string) bool {
 		}
 	}
 	return true
+}
+
+func recordTemporary(candidate string) bool {
+	for _, record := range recordNames() {
+		if temporaryRecordName(record, candidate) {
+			return true
+		}
+	}
+	return false
 }
