@@ -66,7 +66,7 @@ func TestRecoverRejectsMissingLock(t *testing.T) {
 	if err := store.MigrateV0(
 		accepted.Request.AttemptID,
 		"operator quiesced legacy attempt",
-	); !errors.Is(err, ErrCorrupt) {
+	); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("current attempt migrated: %v", err)
 	}
 }
