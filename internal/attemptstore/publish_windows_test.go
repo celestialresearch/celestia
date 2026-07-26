@@ -64,6 +64,12 @@ func TestNewSetsWindowsOwnerDACL(t *testing.T) {
 	}
 }
 
+func TestNewRejectsUnmanagedWindowsParent(t *testing.T) {
+	if _, err := New(filepath.Join(t.TempDir(), "evidence")); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("unmanaged parent accepted: %v", err)
+	}
+}
+
 func TestWindowsSecurityHelpersRejectFilesAndInvalidPaths(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "file")
 	if err := os.WriteFile(path, []byte("file"), 0o600); err != nil {

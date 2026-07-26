@@ -249,7 +249,7 @@ func lockProcessFixture(t *testing.T) (*Store, urladmission.Accepted, time.Time)
 	t.Helper()
 	root := os.Getenv(lockHelperRoot)
 	if root == "" {
-		root = filepath.Join(t.TempDir(), "evidence")
+		root = newTestEvidenceRoot(t)
 	}
 	store, err := New(root)
 	if err != nil {

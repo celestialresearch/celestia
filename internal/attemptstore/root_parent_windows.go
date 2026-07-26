@@ -9,10 +9,10 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build !aix && !darwin && !dragonfly && !freebsd && !linux && !netbsd && !openbsd && !solaris && !windows
+//go:build windows
 
 package attemptstore
 
-func secureEvidenceParent(string) error {
-	return nil
+func secureEvidenceParent(path string) error {
+	return secureEvidenceTree(path)
 }

@@ -23,12 +23,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"celestia.research/governed-operation/internal/attemptstore"
 	"celestia.research/governed-operation/internal/processsupervision"
 	"celestia.research/governed-operation/internal/urladmission"
 	"celestia.research/governed-operation/internal/urlreference"
 	"celestia.research/governed-operation/internal/workerprotocol"
+	"golang.org/x/sys/windows"
 )
 
 func TestMain(testingMain *testing.M) {
@@ -104,7 +106,7 @@ func TestOperationVerifiesWorker(t *testing.T) {
 }
 
 func TestOperationRejectsBeforeExecution(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "evidence")
+	root := testEvidenceRoot(t)
 	operation, err := New(testWorker(t), root)
 	if err != nil {
 		t.Fatalf("new operation: %v", err)
@@ -127,7 +129,7 @@ func TestOperationRejectsBeforeExecution(t *testing.T) {
 }
 
 func TestOperationReportsStagingFailure(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "evidence")
+	root := testEvidenceRoot(t)
 	operation, err := New(testWorker(t), root)
 	if err != nil {
 		t.Fatalf("new operation: %v", err)
@@ -473,7 +475,34 @@ func admittedFixture(t *testing.T, admittedAt time.Time) urladmission.Accepted {
 
 func newTestOperation(t *testing.T, worker string) (*Operation, error) {
 	t.Helper()
-	return New(worker, filepath.Join(t.TempDir(), "evidence"))
+	return New(worker, testEvidenceRoot(t))
+}
+
+func testEvidenceRoot(tb testing.TB) string {
+	tb.Helper()
+	parent := filepath.Join(tb.TempDir(), "owned")
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		tb.Fatalf("current user: %v", err)
+	}
+	descriptor, err := windows.SecurityDescriptorFromString(
+		fmt.Sprintf("O:%sD:P(A;OICI;FA;;;%s)", user.User.Sid, user.User.Sid),
+	)
+	if err != nil {
+		tb.Fatalf("evidence parent descriptor: %v", err)
+	}
+	pointer, err := windows.UTF16PtrFromString(parent)
+	if err != nil {
+		tb.Fatalf("evidence parent path: %v", err)
+	}
+	attributes := windows.SecurityAttributes{
+		Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
+		SecurityDescriptor: descriptor,
+	}
+	if err := windows.CreateDirectory(pointer, &attributes); err != nil {
+		tb.Fatalf("create evidence parent: %v", err)
+	}
+	return filepath.Join(parent, "evidence")
 }
 
 func testWorker(t *testing.T) string {
@@ -548,7 +577,7 @@ func TestPublicationFailureOverridesReleaseFailure(t *testing.T) {
 func BenchmarkOperation(b *testing.B) {
 	operation, err := New(
 		locateWorker(b, "celestia-url-reference.exe"),
-		filepath.Join(b.TempDir(), "evidence"),
+		testEvidenceRoot(b),
 	)
 	if err != nil {
 		b.Fatalf("new operation: %v", err)
