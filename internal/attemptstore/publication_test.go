@@ -92,6 +92,30 @@ func TestInspectRefusesOwnedPublication(t *testing.T) {
 	}
 }
 
+func TestInspectRequiresCurrentOwnership(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	t.Cleanup(func() { _ = attempt.Close() })
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	marker := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+ownershipMarkerSuffix,
+	)
+	if err := os.Remove(marker); err != nil {
+		t.Fatalf("remove ownership marker: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrMigrationRequired) {
+		t.Fatalf("unowned publication inspected: %v", err)
+	}
+}
+
 func TestPublishedIdentityCannotRestage(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
