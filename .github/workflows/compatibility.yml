@@ -65,6 +65,35 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/windows-shellcheck.ps1
 
+  plan9-compile:
+    name: Plan 9 AMD64 Compile
+    needs: classify
+    if: >-
+      needs.classify.outputs.full == 'true' ||
+      needs.classify.outputs.compatibility == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Compile
+        shell: bash
+        env:
+          CGO_ENABLED: '0'
+          GOARCH: amd64
+          GOOS: plan9
+          GOTOOLCHAIN: local
+        run: |
+          go build ./...
+          go test -c -o "$RUNNER_TEMP/attemptstore-plan9.test" \
+            ./internal/attemptstore
+
   bsd-bootstrap:
     name: ${{ matrix.name }} ${{ matrix.version }} Guest Bootstrap
     needs: classify

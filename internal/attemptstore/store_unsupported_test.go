@@ -9,36 +9,17 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build js || wasip1 || plan9
+//go:build js || plan9 || wasip1
 
 package attemptstore
 
 import (
 	"errors"
-	"os"
+	"testing"
 )
 
-var (
-	errLockHeld        = errors.New("attempt lock held")
-	errLockUnsupported = errors.New("attempt locks unsupported")
-)
-
-func lockAttemptFile(_ *os.File) error {
-	return errLockUnsupported
-}
-
-func unlockAttemptFile(_ *os.File) error {
-	return nil
-}
-
-func secureLockFile(_ *os.File, _ os.FileInfo) error {
-	return nil
-}
-
-func syncAttemptLockDirectory(_ string) error {
-	return nil
-}
-
-func validateAttemptStorePlatform() error {
-	return ErrUnsupported
+func TestStoreRejectsUnsupportedPlatform(t *testing.T) {
+	if _, err := New("/celestia-evidence"); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("unsupported platform result: %v", err)
+	}
 }

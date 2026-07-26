@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -133,9 +134,7 @@ func TestRecoverAfterOwnerProcessDeath(t *testing.T) {
 		_ = command.Wait()
 		t.Fatalf("recovered before owner death: %v", err)
 	}
-	if err := command.Process.Kill(); err != nil {
-		t.Fatalf("kill helper: %v", err)
-	}
+	_ = command.Process.Kill()
 	if err := command.Wait(); err == nil {
 		t.Fatal("killed helper exited successfully")
 	}
@@ -173,7 +172,10 @@ func TestAttemptLockHelper(t *testing.T) {
 			_ = attempt.Close()
 		}()
 		fmt.Println("staged")
-		select {}
+		interrupt := make(chan os.Signal, 1)
+		signal.Notify(interrupt, os.Interrupt)
+		defer signal.Stop(interrupt)
+		<-interrupt
 	default:
 		t.Fatalf("unknown helper mode %q", mode)
 	}

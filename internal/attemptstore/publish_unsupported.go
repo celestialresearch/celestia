@@ -9,36 +9,28 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build js || wasip1 || plan9
+//go:build js || plan9 || wasip1
 
 package attemptstore
 
-import (
-	"errors"
-	"os"
-)
+import "os"
 
-var (
-	errLockHeld        = errors.New("attempt lock held")
-	errLockUnsupported = errors.New("attempt locks unsupported")
-)
-
-func lockAttemptFile(_ *os.File) error {
-	return errLockUnsupported
+func publishFile(_, _, _ string) error {
+	return ErrUnsupported
 }
 
-func unlockAttemptFile(_ *os.File) error {
-	return nil
+func publishDirectory(_, _, _ string) error {
+	return ErrUnsupported
 }
 
-func secureLockFile(_ *os.File, _ os.FileInfo) error {
-	return nil
+func secureEvidenceTree(_ string) error {
+	return ErrUnsupported
 }
 
-func syncAttemptLockDirectory(_ string) error {
-	return nil
+func pathIsLinked(_ string, _ os.FileInfo) bool {
+	return true
 }
 
-func validateAttemptStorePlatform() error {
+func syncDirectory(_ string) error {
 	return ErrUnsupported
 }
