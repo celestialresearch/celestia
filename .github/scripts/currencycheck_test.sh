@@ -23,25 +23,22 @@ case "$work_dir" in
 esac
 trap 'rm -rf -- "$work_dir"' EXIT HUP INT TERM
 exceptions="$work_dir/exceptions"
-rustup_fixture="$work_dir/rustup"
-cargo_fixture="$work_dir/cargo"
 crate_versions="$work_dir/crate-versions"
 
-cat >"$rustup_fixture" <<'EOF'
-#!/bin/sh
-printf '%s\n' "${RUSTUP_TEST_OUTPUT:-}"
-exit "${RUSTUP_TEST_STATUS:-0}"
-EOF
-chmod +x "$rustup_fixture"
-cat >"$cargo_fixture" <<'EOF'
-#!/bin/sh
-component=${2:-}
-version=$(awk -F'|' -v component="$component" '$1 == component { print $2; exit }' \
-  "$CARGO_TEST_VERSIONS")
-[ -n "$version" ] || exit 1
-printf '%s = "%s" # fixture\n' "$component" "$version"
-EOF
-chmod +x "$cargo_fixture"
+celestia_test_rustup() {
+  printf '%s\n' "${RUSTUP_TEST_OUTPUT:-}"
+  return "${RUSTUP_TEST_STATUS:-0}"
+}
+
+celestia_test_cargo() {
+  component=${2:-}
+  version=$(awk -F'|' -v component="$component" '$1 == component { print $2; exit }' \
+    "$CARGO_TEST_VERSIONS")
+  [ -n "$version" ] || return 1
+  printf '%s = "%s" # fixture\n' "$component" "$version"
+}
+
+export -f celestia_test_rustup celestia_test_cargo
 
 awk '
   /^\[workspace.dependencies\]$/ { active = 1; next }
@@ -107,10 +104,10 @@ expect_toolchain() {
 
   set +e
   result=$(
-      RUSTUP_BIN="$rustup_fixture" \
+      RUSTUP_BIN=celestia_test_rustup \
       RUSTUP_TEST_OUTPUT="$output" \
       RUSTUP_TEST_STATUS="$fixture_status" \
-      CARGO_BIN="$cargo_fixture" \
+      CARGO_BIN=celestia_test_cargo \
       CARGO_TEST_VERSIONS="$crate_versions" \
       CURRENCY_EXCEPTIONS_FILE="$exceptions" \
       bash "$root/.github/scripts/currencycheck.sh" currency 2>&1
@@ -198,10 +195,10 @@ expect_toolchain \
 
 set +e
 result=$(
-  RUSTUP_BIN="$rustup_fixture" \
+  RUSTUP_BIN=celestia_test_rustup \
   RUSTUP_TEST_STATUS=1 \
   RUSTUP_TEST_OUTPUT='rustup failed' \
-  CARGO_BIN="$cargo_fixture" \
+  CARGO_BIN=celestia_test_cargo \
   CARGO_TEST_VERSIONS="$crate_versions" \
     CURRENCY_EXCEPTIONS_FILE="$exceptions" \
     bash "$root/.github/scripts/currencycheck.sh" currency 2>&1
