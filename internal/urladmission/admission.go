@@ -62,6 +62,9 @@ func admit(
 	if err != nil {
 		return Accepted{}, fmt.Errorf("generate request nonce: %w", err)
 	}
+	if nonce == attemptID {
+		return Accepted{}, errors.New("request nonce repeated attempt identity")
+	}
 	inputHash := sha256.Sum256([]byte(input))
 	request := workerprotocol.Request{
 		ProtocolVersion:  workerprotocol.ProtocolVersion,
