@@ -53,9 +53,10 @@ durable terminal outcome.
 - Every record is flushed then published to its final name without replacement.
   Windows uses a write-through move; Unix-like systems link then sync the
   containing directory.
-- Under exclusive recovery ownership, Unix-like systems remove only recognised
-  writer temporary names left by an interrupted record publication. Linked
-  targets must identify the same owner-only regular file before repair.
+- Under exclusive recovery ownership, Windows and Unix-like systems remove only
+  recognised writer temporary names left by an interrupted record publication.
+  Unix linked targets must identify the same owner-only regular file before
+  repair.
 - A receipt is published only after both referenced records are readable and
   hashed.
 - The complete bundle is moved into the published namespace before
