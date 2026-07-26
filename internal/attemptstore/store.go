@@ -36,7 +36,8 @@ const (
 	observationFile   = "observation.json"
 	recoveryFile      = "recovery.json"
 
-	maxRecordBytes = 256 * 1024
+	maxRecordBytes         = 256 * 1024
+	maxRecoveryReasonBytes = 512
 )
 
 var (
@@ -307,7 +308,7 @@ func (attempt *Attempt) publishLocked(observation Observation) error {
 }
 
 func (store *Store) Recover(attemptID, reason string) (err error) {
-	if reason == "" {
+	if !validRecoveryReason(reason) {
 		return fmt.Errorf("%w: recovery reason", ErrInvalid)
 	}
 	if _, _, err := store.recoverablePath(attemptID); err != nil {
@@ -343,7 +344,7 @@ func (store *Store) Recover(attemptID, reason string) (err error) {
 // MigrateV0 explicitly adopts a pre-lock v0 attempt after its caller has
 // quiesced every writer that could still own the legacy bundle.
 func (store *Store) MigrateV0(attemptID, reason string) (err error) {
-	if reason == "" {
+	if !validRecoveryReason(reason) {
 		return fmt.Errorf("%w: migration reason", ErrInvalid)
 	}
 	legacy, err := store.migrationRequired(attemptID)
