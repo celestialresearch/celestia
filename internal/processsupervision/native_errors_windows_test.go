@@ -62,6 +62,37 @@ func TestContainerCloseReportsIdentity(t *testing.T) {
 	}
 }
 
+func TestContainerCloseRetriesSIDRelease(t *testing.T) {
+	sid, err := windows.StringToSid("S-1-0-0")
+	if err != nil {
+		t.Fatalf("create SID: %v", err)
+	}
+	container := appContainer{
+		name:           "test",
+		sid:            sid,
+		profileDeleted: true,
+	}
+	releaseErr := errors.New("release SID")
+	if err := container.closeWith(
+		func(*windows.SID) error { return releaseErr },
+		func(string) error { return nil },
+	); !errors.Is(err, releaseErr) {
+		t.Fatalf("failed release hidden: %v", err)
+	}
+	if container.sid == nil || container.sidReleased {
+		t.Fatal("failed SID release marked complete")
+	}
+	if err := container.closeWith(
+		func(*windows.SID) error { return nil },
+		func(string) error { return nil },
+	); err != nil {
+		t.Fatalf("retry SID release: %v", err)
+	}
+	if container.sid != nil || !container.sidReleased {
+		t.Fatal("successful SID release not retained")
+	}
+}
+
 func TestSupervisorDetectsWorkerChange(t *testing.T) {
 	source := os.Getenv("CELESTIA_TEST_HOSTILE_WORKER")
 	worker := filepath.Join(t.TempDir(), "worker.exe")
