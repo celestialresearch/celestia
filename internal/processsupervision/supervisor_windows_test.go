@@ -103,7 +103,7 @@ func TestMain(testingMain *testing.M) {
 func TestSupervisorRunsWorker(t *testing.T) {
 	worker := os.Getenv("CELESTIA_TEST_WORKER")
 	if worker == "" {
-		t.Skip("CELESTIA_TEST_WORKER is not set")
+		t.Fatal("CELESTIA_TEST_WORKER is not set")
 	}
 	supervisor, err := processsupervision.New(worker, testLimits())
 	if err != nil {
@@ -132,7 +132,7 @@ func TestSupervisorRunsWorker(t *testing.T) {
 func TestSupervisorAllowsProtocolExits(t *testing.T) {
 	worker := os.Getenv("CELESTIA_TEST_WORKER")
 	if worker == "" {
-		t.Skip("CELESTIA_TEST_WORKER is not set")
+		t.Fatal("CELESTIA_TEST_WORKER is not set")
 	}
 	supervisor, err := processsupervision.New(worker, testLimits())
 	if err != nil {
@@ -426,7 +426,7 @@ func assertDescendantCleaned(t *testing.T, mode string, processes uint32) {
 	if outcome.Status == processsupervision.Completed &&
 		strings.TrimSpace(string(outcome.Stdout)) == "blocked" &&
 		outcome.CleanupComplete {
-		t.Skip("host denied child creation; cleanup path was not exercised")
+		t.Fatal("host denied child creation; cleanup path was not exercised")
 	}
 	if outcome.Status != processsupervision.TimedOut {
 		t.Fatalf("status=%s stdout=%q error=%v", outcome.Status, outcome.Stdout, outcome.Err)
@@ -485,7 +485,7 @@ func hostileWorker(t *testing.T) string {
 	t.Helper()
 	value := os.Getenv("CELESTIA_TEST_HOSTILE_WORKER")
 	if value == "" {
-		t.Skip("CELESTIA_TEST_HOSTILE_WORKER is not set")
+		t.Fatal("CELESTIA_TEST_HOSTILE_WORKER is not set")
 	}
 	return value
 }
