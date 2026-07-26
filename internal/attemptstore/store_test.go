@@ -47,7 +47,7 @@ func TestStoreRejectsInvalidEvidenceRoots(t *testing.T) {
 	if _, err := New(nested); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("missing evidence parent accepted: %v", err)
 	}
-	root := filepath.Join(t.TempDir(), "evidence")
+	root := newTestEvidenceRoot(t)
 	if _, err := New(root); err != nil {
 		t.Fatalf("existing evidence parent rejected: %v", err)
 	}
@@ -677,11 +677,20 @@ func TestAttemptPathRejectsFile(t *testing.T) {
 
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
-	store, err := New(filepath.Join(t.TempDir(), "evidence"))
+	store, err := New(newTestEvidenceRoot(t))
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
 	return store
+}
+
+func newTestEvidenceRoot(t *testing.T) string {
+	t.Helper()
+	parent := filepath.Join(t.TempDir(), "owned")
+	if err := createEvidenceDirectory(parent); err != nil {
+		t.Fatalf("create evidence parent: %v", err)
+	}
+	return filepath.Join(parent, "evidence")
 }
 
 func testAccepted(t *testing.T) (urladmission.Accepted, time.Time) {
