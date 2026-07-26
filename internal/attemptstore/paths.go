@@ -35,9 +35,49 @@ func (store *Store) finalPath(attemptID string) string {
 	return filepath.Join(store.attemptsPath(), attemptID)
 }
 
+func (store *Store) prepareAttemptDirectories(
+	attemptID string,
+	createDirectory func(string) error,
+) (string, string, error) {
+	if exists, err := pathExists(store.finalPath(attemptID)); err != nil {
+		return "", "", fmt.Errorf("inspect published attempt: %w", err)
+	} else if exists {
+		return "", "", ErrDuplicate
+	}
+	pendingPath := store.pendingPath(attemptID)
+	if err := createDirectory(pendingPath); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return "", "", ErrDuplicate
+		}
+		return "", "", fmt.Errorf("create attempt: %w", err)
+	}
+	path := filepath.Join(pendingPath, bundleDirectory)
+	if err := createDirectory(path); err != nil {
+		return pendingPath, "", fmt.Errorf("create attempt bundle: %w", err)
+	}
+	return pendingPath, path, nil
+}
+
 func removeStagedAttempt(path string) error {
 	if err := os.RemoveAll(path); err != nil {
 		return fmt.Errorf("roll back staged attempt: %w", err)
+	}
+	return nil
+}
+
+func (store *Store) rollbackStage(
+	attemptID string,
+	pendingPath string,
+	markerCreated bool,
+	removePending func(string) error,
+) error {
+	if pendingPath != "" {
+		if err := removePending(pendingPath); err != nil {
+			return err
+		}
+	}
+	if markerCreated {
+		return store.removeOwnershipMarker(attemptID)
 	}
 	return nil
 }
