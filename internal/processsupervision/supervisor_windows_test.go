@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -288,6 +289,14 @@ func TestSupervisorCancelsRunningWorker(t *testing.T) {
 
 func TestSupervisorRejectsInvalidConfiguration(t *testing.T) {
 	limits := testLimits()
+	maximumInput := limits
+	maximumInput.InputBytes = math.MaxInt
+	maximumOutput := limits
+	maximumOutput.OutputBytes = math.MaxInt
+	maximumError := limits
+	maximumError.ErrorBytes = math.MaxInt
+	subTickTimeout := limits
+	subTickTimeout.Timeout = time.Nanosecond
 	tests := []struct {
 		name   string
 		worker string
@@ -298,6 +307,10 @@ func TestSupervisorRejectsInvalidConfiguration(t *testing.T) {
 		{name: "zero limits", worker: hostileWorker(t)},
 		{name: "missing worker", worker: filepath.Join(t.TempDir(), "missing.exe"), limits: limits},
 		{name: "directory", worker: t.TempDir(), limits: limits},
+		{name: "maximum input", worker: hostileWorker(t), limits: maximumInput},
+		{name: "maximum output", worker: hostileWorker(t), limits: maximumOutput},
+		{name: "maximum diagnostics", worker: hostileWorker(t), limits: maximumError},
+		{name: "sub-tick process time", worker: hostileWorker(t), limits: subTickTimeout},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
