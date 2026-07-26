@@ -10,7 +10,7 @@
 #
 # See the LICENSE file at the repository root for the complete terms.
 
-set -eu
+set -euo pipefail
 
 mode=${1:-config}
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
