@@ -73,6 +73,25 @@ func TestSupervisorRejectsReparseWorker(t *testing.T) {
 	}
 }
 
+func TestWorkerPathPolicy(t *testing.T) {
+	tests := map[string]struct {
+		path string
+		want bool
+	}{
+		"local":    {path: filepath.Join(t.TempDir(), "worker.exe"), want: true},
+		"relative": {path: "worker.exe"},
+		"UNC":      {path: `\\invalid.example\share\worker.exe`},
+		"device":   {path: `\\?\C:\worker.exe`},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if actual := validWorkerPath(test.path); actual != test.want {
+				t.Fatalf("validWorkerPath(%q) = %t, want %t", test.path, actual, test.want)
+			}
+		})
+	}
+}
+
 func TestContainerCloseReportsIdentity(t *testing.T) {
 	container := appContainer{name: "invalid\x00name"}
 	err := container.close()

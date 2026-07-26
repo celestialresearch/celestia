@@ -5,6 +5,8 @@ Status: implemented and locally qualified for the probes below on Windows.
 ## Profile
 - A unique AppContainer profile is created for each attempt with no capabilities.
 - The worker image is copied into that profile then rehashed under a read lock.
+- The configured worker must use a local drive-letter path. UNC and device
+  paths are rejected before filesystem access.
 - The process starts suspended and enters a Job Object before execution.
 - The Job Object forbids breakaway and enforces process count, job-tree memory,
   CPU time and kill-on-close.
