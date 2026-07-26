@@ -57,6 +57,20 @@ func TestSecureEvidenceTreeRejectsNonDirectory(t *testing.T) {
 	}
 }
 
+func TestStageRejectsLinkedAttemptPath(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	if err := os.Symlink(
+		t.TempDir(),
+		store.finalPath(accepted.Request.AttemptID),
+	); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("linked attempt path accepted: %v", err)
+	}
+}
+
 func TestPublishFileRejectsDuplicate(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "source")
