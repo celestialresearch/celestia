@@ -34,7 +34,7 @@ import (
 
 const (
 	lockHelperMode = "CELESTIA_LOCK_HELPER"
-	lockFixtureDir = "celestia-attemptstore-lock-test"
+	lockHelperRoot = "CELESTIA_LOCK_ROOT"
 )
 
 func TestRecoverRejectsActiveAttempt(t *testing.T) {
@@ -156,7 +156,7 @@ func TestAttemptLockCrossProcess(t *testing.T) {
 	defer func() {
 		_ = attempt.Close()
 	}()
-	command := lockHelperCommand(t.Context(), "recover")
+	command := lockHelperCommand(t.Context(), "recover", store.root)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("run recovery helper: %v: %s", err, output)
@@ -168,7 +168,7 @@ func TestAttemptLockCrossProcess(t *testing.T) {
 
 func TestRecoverAfterOwnerProcessDeath(t *testing.T) {
 	store, accepted, _ := lockProcessFixture(t)
-	command := lockHelperCommand(t.Context(), "stage")
+	command := lockHelperCommand(t.Context(), "stage", store.root)
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatalf("open helper stdout: %v", err)
@@ -234,30 +234,22 @@ func TestAttemptLockHelper(t *testing.T) {
 	}
 }
 
-func lockHelperCommand(ctx context.Context, mode string) *exec.Cmd {
+func lockHelperCommand(ctx context.Context, mode, root string) *exec.Cmd {
 	// #nosec G204,G702 -- os.Args[0] is the current Go test binary.
 	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestAttemptLockHelper$")
 	command.Env = append(
 		os.Environ(),
 		lockHelperMode+"="+mode,
+		lockHelperRoot+"="+root,
 	)
 	return command
 }
 
 func lockProcessFixture(t *testing.T) (*Store, urladmission.Accepted, time.Time) {
 	t.Helper()
-	processID := os.Getpid()
-	if os.Getenv(lockHelperMode) != "" {
-		processID = os.Getppid()
-	}
-	root := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%d", lockFixtureDir, processID))
-	if os.Getenv(lockHelperMode) == "" {
-		if err := os.RemoveAll(root); err != nil {
-			t.Fatalf("clear lock fixture: %v", err)
-		}
-		t.Cleanup(func() {
-			_ = os.RemoveAll(root)
-		})
+	root := os.Getenv(lockHelperRoot)
+	if root == "" {
+		root = filepath.Join(t.TempDir(), "evidence")
 	}
 	store, err := New(root)
 	if err != nil {
