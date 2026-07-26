@@ -619,12 +619,12 @@ func TestExecutionAllowanceStartsAtResume(t *testing.T) {
 func TestAwaitInputStates(t *testing.T) {
 	input := make(chan inputResult, 1)
 	input <- inputResult{}
-	if result := awaitInput(input, time.Second); result != (inputResult{}) {
+	if result := awaitInput(input, time.Now().Add(time.Second)); result != (inputResult{}) {
 		t.Fatalf("completed input: %+v", result)
 	}
 	if result := awaitInput(
 		make(chan inputResult),
-		time.Millisecond,
+		time.Now().Add(time.Millisecond),
 	); result.cleanupErr == nil {
 		t.Fatal("blocked input join did not time out")
 	}
