@@ -46,12 +46,18 @@ verify() {
   local seen=$'\n'
   local status=0
   local version
+  local inventory
 
   [[ -f "$exceptions" ]] || {
     printf 'Missing currency exception file: %s\n' "$exceptions" >&2
     return 1
   }
-  records >/dev/null
+  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-currency-records.XXXXXX")
+  if ! records >"$inventory"; then
+    rm -f -- "$inventory"
+    printf 'Failed to read currency exceptions\n' >&2
+    return 1
+  fi
   while IFS='|' read -r ecosystem component version expires reason extra; do
     if [[ -n "${extra:-}" || -z "$ecosystem" ||
       ! "$component" =~ ^[^[:space:]\|]+$ ||
@@ -86,7 +92,8 @@ verify() {
       status=1
     fi
     seen+="$key"$'\n'
-  done < <(records)
+  done <"$inventory"
+  rm -f -- "$inventory"
   return "$status"
 }
 
@@ -218,7 +225,14 @@ check_crates() {
   local current
   local latest
   local status=0
+  local inventory
 
+  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-currency-crates.XXXXXX")
+  if ! manifest_dependencies >"$inventory"; then
+    rm -f -- "$inventory"
+    printf 'Failed to inventory Cargo dependencies\n' >&2
+    return 1
+  fi
   while IFS='|' read -r component current; do
     [[ -n "$component" && -n "$current" ]] || continue
     latest=$(latest_crate "$component")
@@ -229,7 +243,8 @@ check_crates() {
       continue
     fi
     accept_or_fail cargo "$component" "$current" "$latest" || status=1
-  done < <(manifest_dependencies)
+  done <"$inventory"
+  rm -f -- "$inventory"
   return "$status"
 }
 
@@ -238,7 +253,14 @@ check_helpers() {
   local current
   local latest
   local status=0
+  local inventory
 
+  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-currency-helpers.XXXXXX")
+  if ! workflow_helpers >"$inventory"; then
+    rm -f -- "$inventory"
+    printf 'Failed to inventory Cargo helpers\n' >&2
+    return 1
+  fi
   while IFS='|' read -r component current; do
     [[ -n "$component" && -n "$current" ]] || continue
     latest=$(latest_crate "$component")
@@ -249,15 +271,14 @@ check_helpers() {
       continue
     fi
     accept_or_fail rust-tool "$component" "$current" "$latest" || status=1
-  done < <(workflow_helpers)
+  done <"$inventory"
+  rm -f -- "$inventory"
   return "$status"
 }
 
 currency() {
   local status=0
 
-  manifest_dependencies >/dev/null
-  workflow_helpers >/dev/null
   verify || status=1
   check_toolchain || status=1
   check_crates || status=1

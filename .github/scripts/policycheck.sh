@@ -15,6 +15,8 @@ set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
 status=0
+source_inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-policy.XXXXXX")
+trap 'rm -f -- "$source_inventory"' EXIT
 
 fail() {
   printf '%s\n' "$1" >&2
@@ -125,11 +127,14 @@ check_source_files() {
       fi
       ;;
     esac
-  done < <(git ls-files -co --exclude-standard -z)
+  done <"$source_inventory"
 }
 
 check_module
-git ls-files -co --exclude-standard -z >/dev/null
+if ! git ls-files -co --exclude-standard -z >"$source_inventory"; then
+  printf 'Failed to inventory repository files\n' >&2
+  exit 1
+fi
 check_markers
 check_private_keys
 check_source_files
