@@ -290,6 +290,9 @@ func (attempt *Attempt) publishLocked(observation Observation) error {
 		observation.AttemptID != attempt.admitted.AttemptID {
 		return fmt.Errorf("%w: observation", ErrInvalid)
 	}
+	if err := validateObservationEvidence(attempt.admitted, observation); err != nil {
+		return fmt.Errorf("%w: observation evidence", ErrInvalid)
+	}
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		return fmt.Errorf("write observation: %w", err)
 	}
@@ -515,6 +518,10 @@ func readBundle(path, attemptID string) (Records, error) {
 	}
 	if err := loadTerminal(path, &records); err != nil {
 		return Records{}, err
+	}
+	if records.Observation != nil &&
+		validateObservationEvidence(records.Admitted, *records.Observation) != nil {
+		return Records{}, ErrCorrupt
 	}
 	return records, nil
 }

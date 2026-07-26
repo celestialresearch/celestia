@@ -14,13 +14,14 @@ package urloperation
 import (
 	"errors"
 
+	"celestia.research/governed-operation/internal/attemptstore"
 	"celestia.research/governed-operation/internal/processsupervision"
 	"celestia.research/governed-operation/internal/workerprotocol"
 )
 
 const (
-	VerifierID      = "go-url-reference"
-	VerifierVersion = "0"
+	VerifierID      = attemptstore.URLVerifierID
+	VerifierVersion = attemptstore.URLVerifierVersion
 )
 
 var (

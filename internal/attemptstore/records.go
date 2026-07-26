@@ -25,6 +25,14 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"celestia.research/governed-operation/internal/urlreference"
+	"celestia.research/governed-operation/internal/workerprotocol"
+)
+
+const (
+	URLVerifierID      = "go-url-reference"
+	URLVerifierVersion = "0"
 )
 
 func invalidRecordFile(path string, info os.FileInfo) bool {
@@ -148,6 +156,71 @@ func validateObservation(record Observation) error {
 		return ErrCorrupt
 	}
 	return validateObservationTransition(record)
+}
+
+func validateObservationEvidence(admitted Admitted, observation Observation) error {
+	if len(observation.Stdout) > workerprotocol.MaxResponseBytes ||
+		len(observation.Stderr) > workerprotocol.StderrBytes {
+		return ErrCorrupt
+	}
+	if observation.ProtocolStatus == "not_run" {
+		return nil
+	}
+	request, response, responseErr := decodeObservationEvidence(admitted, observation)
+	switch observation.ProtocolStatus {
+	case "valid":
+		if responseErr != nil {
+			return ErrCorrupt
+		}
+		return validateVerificationEvidence(request, response, observation)
+	case "rejected":
+		if responseErr == nil {
+			return ErrCorrupt
+		}
+	}
+	return nil
+}
+
+func decodeObservationEvidence(
+	admitted Admitted,
+	observation Observation,
+) (workerprotocol.Request, workerprotocol.Response, error) {
+	admittedAt, err := time.Parse(time.RFC3339Nano, admitted.AdmittedAt)
+	if err != nil {
+		return workerprotocol.Request{}, workerprotocol.Response{}, err
+	}
+	request, correlation, err := workerprotocol.DecodeRequest(admitted.RequestFrame, admittedAt)
+	if err != nil {
+		return workerprotocol.Request{}, workerprotocol.Response{}, err
+	}
+	response, err := workerprotocol.DecodeResponse(
+		observation.Stdout,
+		correlation,
+		int(observation.ExitCode),
+	)
+	return request, response, err
+}
+
+func validateVerificationEvidence(
+	request workerprotocol.Request,
+	response workerprotocol.Response,
+	observation Observation,
+) error {
+	if response.Status != workerprotocol.Completed {
+		return nil
+	}
+	expected, err := urlreference.Transform(
+		request.Input,
+		urlreference.Mode(request.Mode),
+	)
+	if err != nil ||
+		observation.VerificationID != URLVerifierID ||
+		observation.VerificationVer != URLVerifierVersion ||
+		observation.ExpectedOutput != expected ||
+		observation.VerificationPass != (*response.Output == expected) {
+		return ErrCorrupt
+	}
+	return nil
 }
 
 func validateObservationTransition(record Observation) error {
