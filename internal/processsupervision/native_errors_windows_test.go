@@ -330,14 +330,26 @@ func TestNativeWaitRejectsInvalidState(t *testing.T) {
 			t.Fatal("invalid wait handles were accepted")
 		}
 	})
-	t.Run("wait bounds", func(t *testing.T) {
-		if waitMilliseconds(time.Millisecond) != 1 {
-			t.Fatal("ordinary wait conversion failed")
-		}
-		if waitMilliseconds(time.Duration(1<<63-1)) != ^uint32(0)-1 {
-			t.Fatal("large wait was not clamped")
-		}
-	})
+}
+
+func TestWaitMillisecondsRoundsUp(t *testing.T) {
+	tests := []struct {
+		name    string
+		timeout time.Duration
+		want    uint32
+	}{
+		{name: "whole", timeout: time.Millisecond, want: 1},
+		{name: "sub-millisecond", timeout: time.Nanosecond, want: 1},
+		{name: "fractional", timeout: time.Millisecond + time.Nanosecond, want: 2},
+		{name: "clamped", timeout: time.Duration(1<<63 - 1), want: ^uint32(0) - 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := waitMilliseconds(test.timeout); got != test.want {
+				t.Fatalf("waitMilliseconds(%s) = %d, want %d", test.timeout, got, test.want)
+			}
+		})
+	}
 }
 
 func TestStreamCancelClosesUnwrappedHandle(t *testing.T) {

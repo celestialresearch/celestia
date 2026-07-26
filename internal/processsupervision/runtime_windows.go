@@ -103,6 +103,9 @@ func waitCleanup(process, job windows.Handle, timeout time.Duration) (bool, erro
 
 func waitMilliseconds(timeout time.Duration) uint32 {
 	milliseconds := uint64(timeout / time.Millisecond) // #nosec G115 -- valid limits require a positive duration.
+	if timeout%time.Millisecond != 0 {
+		milliseconds++
+	}
 	if milliseconds >= uint64(^uint32(0)-1) {
 		return ^uint32(0) - 1
 	}
