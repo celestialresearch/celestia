@@ -660,14 +660,35 @@ func TestExecutionAllowanceStartsAtResume(t *testing.T) {
 func TestAwaitInputStates(t *testing.T) {
 	input := make(chan inputResult, 1)
 	input <- inputResult{}
-	if result := awaitInput(input, time.Now().Add(time.Second)); result != (inputResult{}) {
+	if result := awaitInput(nil, input, time.Now().Add(time.Second)); result != (inputResult{}) {
 		t.Fatalf("completed input: %+v", result)
 	}
 	if result := awaitInput(
+		nil,
 		make(chan inputResult),
 		time.Now().Add(time.Millisecond),
 	); result.cleanupErr == nil {
 		t.Fatal("blocked input join did not time out")
+	}
+}
+
+func TestAwaitInputCancelsBlockedWrite(t *testing.T) {
+	read, write := nativePipe(t)
+	defer closeNativeHandle(t, read)
+	writer := newInputWriter(write)
+	result := make(chan inputResult, 1)
+	go func() {
+		result <- writer.write(make([]byte, 1<<20))
+	}()
+	observation := awaitInput(writer, result, time.Now().Add(time.Millisecond))
+	if observation.cleanupErr == nil ||
+		!strings.Contains(observation.cleanupErr.Error(), "join worker input") {
+		t.Fatalf("input result=%v, want bounded join error", observation.cleanupErr)
+	}
+	select {
+	case <-writer.done:
+	default:
+		t.Fatal("input writer remained active")
 	}
 }
 
