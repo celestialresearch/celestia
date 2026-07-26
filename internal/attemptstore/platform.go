@@ -9,32 +9,10 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build js || wasip1 || plan9
+//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris || windows
 
 package attemptstore
 
-import (
-	"errors"
-	"os"
-)
-
-var (
-	errLockHeld        = errors.New("attempt lock held")
-	errLockUnsupported = errors.New("attempt locks unsupported")
-)
-
-func lockAttemptFile(_ *os.File) error {
-	return errLockUnsupported
-}
-
-func unlockAttemptFile(_ *os.File) error {
-	return nil
-}
-
-func secureLockFile(_ *os.File, _ os.FileInfo) error {
-	return nil
-}
-
-func syncAttemptLockDirectory(_ string) error {
-	return nil
+func resolveEvidenceRoot(path string) (string, error) {
+	return canonicalEvidenceRoot(path)
 }

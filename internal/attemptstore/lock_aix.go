@@ -51,7 +51,3 @@ func secureLockFile(_ *os.File, info os.FileInfo) error {
 func syncAttemptLockDirectory(directory string) error {
 	return syncDirectory(directory)
 }
-
-func validateAttemptStorePlatform() error {
-	return nil
-}
