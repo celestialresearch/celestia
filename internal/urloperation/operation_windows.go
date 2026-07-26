@@ -57,6 +57,15 @@ func (operation *Operation) Execute(
 	input string,
 	mode urlreference.Mode,
 ) Result {
+	if ctx == nil {
+		return Result{
+			Status: Rejected,
+			Err: fmt.Errorf(
+				"%w: nil execution context",
+				urladmission.ErrRejected,
+			),
+		}
+	}
 	admittedAt := time.Now().UTC()
 	accepted, err := urladmission.Admit(input, mode, admittedAt)
 	if err != nil {
