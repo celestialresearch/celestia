@@ -572,6 +572,40 @@ fn sha256(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{Mode, transform, valid_deadline, valid_identity};
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ConformanceFixture {
+        version: u8,
+        accepted: Vec<ConformanceCase>,
+        rejected: Vec<String>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ConformanceCase {
+        input: String,
+        fang: String,
+        defang: String,
+    }
+
+    #[test]
+    fn matches_conformance_fixture() {
+        let fixture: ConformanceFixture =
+            serde_json::from_str(include_str!("../../../testdata/url-reference-v0.json"))
+                .expect("valid conformance fixture");
+        assert_eq!(fixture.version, 0);
+        assert!(!fixture.accepted.is_empty());
+        assert!(!fixture.rejected.is_empty());
+        for case in fixture.accepted {
+            assert_eq!(transform(&case.input, &Mode::Fang), Ok(case.fang));
+            assert_eq!(transform(&case.input, &Mode::Defang), Ok(case.defang));
+        }
+        for input in fixture.rejected {
+            assert_eq!(transform(&input, &Mode::Defang), Err(()), "{input}");
+        }
+    }
 
     #[test]
     fn transforms_references() {
