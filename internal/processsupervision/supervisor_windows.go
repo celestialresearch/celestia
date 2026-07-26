@@ -234,21 +234,15 @@ func (supervisor *Supervisor) prepareLaunch(
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
-		pipes.close()
-		cleanupErr := errors.Join(image.Close(), container.close())
+		cleanupErr := errors.Join(pipes.close(), image.Close(), container.close())
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	job, err := createJob(supervisor.limits)
 	if err != nil {
-		pipes.close()
-		cleanupErr := errors.Join(image.Close(), container.close())
+		cleanupErr := errors.Join(pipes.close(), image.Close(), container.close())
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
-	if err := checkStartupDeadline(startupDeadline); err != nil {
-		cleanupErr := errors.Join(windows.CloseHandle(job), image.Close(), container.close())
-		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
-	}
-	return &launchResources{
+	resources := &launchResources{
 		container: container,
 		image:     image,
 		imagePath: imagePath,
@@ -256,7 +250,19 @@ func (supervisor *Supervisor) prepareLaunch(
 		pipes:     pipes,
 		job:       job,
 		cleanup:   supervisor.limits.CleanupTimeout,
-	}, true, nil
+	}
+	return finishLaunchPreparation(resources, startupDeadline)
+}
+
+func finishLaunchPreparation(
+	resources *launchResources,
+	startupDeadline time.Time,
+) (*launchResources, bool, error) {
+	if err := checkStartupDeadline(startupDeadline); err != nil {
+		cleanupErr := resources.close()
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
+	}
+	return resources, true, nil
 }
 
 func (resources *launchResources) start(
@@ -277,7 +283,10 @@ func (resources *launchResources) start(
 			stopErr,
 		)
 	}
-	resources.pipes.closeChildEnds()
+	if err := resources.pipes.closeChildEnds(); err != nil {
+		stopErr := resources.stopStart(info, true)
+		return nil, stopErr == nil, errors.Join(err, stopErr)
+	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
 		cleanupErr := resources.stopStart(info, true)
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
@@ -306,7 +315,7 @@ func (resources *launchResources) stopStart(
 	info windows.ProcessInformation,
 	assigned bool,
 ) error {
-	resources.pipes.closeChildEnds()
+	pipeErr := resources.pipes.closeChildEnds()
 	var stopErr error
 	if assigned {
 		stopErr = windows.TerminateJobObject(resources.job, 1)
@@ -322,6 +331,7 @@ func (resources *launchResources) stopStart(
 		waitErr = errors.New("startup cleanup incomplete")
 	}
 	return errors.Join(
+		pipeErr,
 		stopErr,
 		waitErr,
 		windows.CloseHandle(info.Thread),
@@ -330,8 +340,7 @@ func (resources *launchResources) stopStart(
 }
 
 func (resources *launchResources) close() error {
-	resources.pipes.close()
-	var closeErr error
+	closeErr := resources.pipes.close()
 	if resources.job != 0 {
 		closeErr = errors.Join(closeErr, windows.CloseHandle(resources.job))
 	}
@@ -657,17 +666,23 @@ func newPipes() (pipeSet, error) {
 		return pipes, fmt.Errorf("create stdin pipe: %w", err)
 	}
 	if err := windows.CreatePipe(&pipes.stdoutRead, &pipes.stdoutWrite, &security, 0); err != nil {
-		pipes.close()
-		return pipes, fmt.Errorf("create stdout pipe: %w", err)
+		return pipes, errors.Join(
+			fmt.Errorf("create stdout pipe: %w", err),
+			pipes.close(),
+		)
 	}
 	if err := windows.CreatePipe(&pipes.stderrRead, &pipes.stderrWrite, &security, 0); err != nil {
-		pipes.close()
-		return pipes, fmt.Errorf("create stderr pipe: %w", err)
+		return pipes, errors.Join(
+			fmt.Errorf("create stderr pipe: %w", err),
+			pipes.close(),
+		)
 	}
 	for _, handle := range []windows.Handle{pipes.stdinWrite, pipes.stdoutRead, pipes.stderrRead} {
 		if err := windows.SetHandleInformation(handle, windows.HANDLE_FLAG_INHERIT, 0); err != nil {
-			pipes.close()
-			return pipes, fmt.Errorf("restrict parent pipe: %w", err)
+			return pipes, errors.Join(
+				fmt.Errorf("restrict parent pipe: %w", err),
+				pipes.close(),
+			)
 		}
 	}
 	return pipes, nil
@@ -747,8 +762,7 @@ func failedOutcome(status Status, started time.Time, err error) Outcome {
 }
 
 func (process *launchedProcess) close() error {
-	process.pipes.close()
-	var closeErr error
+	closeErr := process.pipes.close()
 	if err := windows.CloseHandle(process.info.Process); err != nil {
 		closeErr = errors.Join(closeErr, fmt.Errorf("close worker process: %w", err))
 	}
@@ -762,26 +776,4 @@ func (process *launchedProcess) close() error {
 		closeErr = errors.Join(closeErr, err)
 	}
 	return closeErr
-}
-
-func (pipes *pipeSet) closeChildEnds() {
-	closeHandle(&pipes.stdinRead)
-	closeHandle(&pipes.stdoutWrite)
-	closeHandle(&pipes.stderrWrite)
-}
-
-func (pipes *pipeSet) close() {
-	closeHandle(&pipes.stdinRead)
-	closeHandle(&pipes.stdinWrite)
-	closeHandle(&pipes.stdoutRead)
-	closeHandle(&pipes.stdoutWrite)
-	closeHandle(&pipes.stderrRead)
-	closeHandle(&pipes.stderrWrite)
-}
-
-func closeHandle(handle *windows.Handle) {
-	if *handle != 0 {
-		_ = windows.CloseHandle(*handle)
-		*handle = 0
-	}
 }
