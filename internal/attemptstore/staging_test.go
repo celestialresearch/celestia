@@ -17,7 +17,7 @@ import (
 	"testing"
 )
 
-func TestStageRollsBackUnrecoverableState(t *testing.T) {
+func TestStageFailurePreservesAttemptOwnership(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
 	request, err := validateAccepted(accepted, admittedAt)
@@ -42,18 +42,14 @@ func TestStageRollsBackUnrecoverableState(t *testing.T) {
 	if err := owner.release(); err != nil {
 		t.Fatalf("release failed attempt: %v", err)
 	}
-	if marker, err := store.hasOwnershipMarker(request.AttemptID); err != nil || marker {
-		t.Fatalf("ownership marker retained: present=%t error=%v", marker, err)
+	if marker, err := store.hasOwnershipMarker(request.AttemptID); err != nil || !marker {
+		t.Fatalf("ownership marker lost: present=%t error=%v", marker, err)
 	}
 	if _, err := os.Lstat(store.pendingPath(request.AttemptID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("pending attempt retained: %v", err)
 	}
-	attempt, err := store.Stage(accepted, admittedAt)
-	if err != nil {
-		t.Fatalf("retry stage: %v", err)
-	}
-	if err := attempt.Close(); err != nil {
-		t.Fatalf("close retried attempt: %v", err)
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("failed attempt reused: %v", err)
 	}
 }
 
@@ -64,7 +60,6 @@ func TestStageRejectsMarkerOnlyAttempt(t *testing.T) {
 	if err := store.createOwnershipMarker(attemptID); err != nil {
 		t.Fatalf("create ownership marker: %v", err)
 	}
-	t.Cleanup(func() { _ = store.removeOwnershipMarker(attemptID) })
 	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("marker-only attempt reused: %v", err)
 	}
@@ -106,12 +101,9 @@ func TestStageRollbackKeepsMarkerWhenPendingSurvives(t *testing.T) {
 	if err := store.createOwnershipMarker(attemptID); err != nil {
 		t.Fatalf("create ownership marker: %v", err)
 	}
-	t.Cleanup(func() { _ = store.removeOwnershipMarker(attemptID) })
 	removeErr := errors.New("injected pending rollback failure")
 	err := store.rollbackStage(
-		attemptID,
 		store.pendingPath(attemptID),
-		true,
 		func(string) error { return removeErr },
 	)
 	if !errors.Is(err, removeErr) {

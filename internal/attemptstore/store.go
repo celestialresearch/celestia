@@ -193,15 +193,12 @@ func (store *Store) stageOwned(
 	owner *attemptLock,
 	write func(string, string, any) error,
 ) (attempt *Attempt, err error) {
-	markerCreated := false
 	pendingPath := ""
 	defer func() {
 		err = errors.Join(
 			err,
 			store.rollbackStage(
-				request.AttemptID,
 				pendingPath,
-				markerCreated,
 				removeStagedAttempt,
 			),
 		)
@@ -209,15 +206,11 @@ func (store *Store) stageOwned(
 	if err := store.createOwnershipMarker(request.AttemptID); err != nil {
 		return nil, err
 	}
-	markerCreated = true
 	pendingPath, path, err := store.prepareAttemptDirectories(
 		request.AttemptID,
 		createEvidenceDirectory,
 	)
 	if err != nil {
-		if errors.Is(err, ErrDuplicate) {
-			markerCreated = false
-		}
 		return nil, err
 	}
 	admitted := admittedRecord(request, accepted.Frame, admittedAt)
@@ -232,7 +225,6 @@ func (store *Store) stageOwned(
 		owner:       owner,
 	}
 	pendingPath = ""
-	markerCreated = false
 	return attempt, nil
 }
 
