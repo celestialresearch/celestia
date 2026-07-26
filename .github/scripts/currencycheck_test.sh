@@ -101,13 +101,15 @@ expect_failure() {
 expect_toolchain() {
   local output=$1
   local expected=$2
+  local fixture_status=${3:-0}
   local status
   local result
 
   set +e
   result=$(
-    RUSTUP_BIN="$rustup_fixture" \
+      RUSTUP_BIN="$rustup_fixture" \
       RUSTUP_TEST_OUTPUT="$output" \
+      RUSTUP_TEST_STATUS="$fixture_status" \
       CARGO_BIN="$cargo_fixture" \
       CARGO_TEST_VERSIONS="$crate_versions" \
       CURRENCY_EXCEPTIONS_FILE="$exceptions" \
@@ -185,9 +187,14 @@ expect_toolchain \
   pass
 expect_toolchain \
   'stable-x86_64-pc-windows-msvc - Update Available : 1.94.1 (...) -> 1.95.0 (...)' \
-  pass
+  pass \
+  100
 expect_toolchain 'stable toolchain status unknown' \
   'Could not determine the latest stable Rust toolchain'
+expect_toolchain \
+  'stable-x86_64-pc-windows-msvc - Update Available : 1.94.1 (...) -> 1.95.0 (...)' \
+  'Rust toolchain currency check failed' \
+  1
 
 set +e
 result=$(

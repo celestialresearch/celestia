@@ -159,14 +159,14 @@ func (supervisor *Supervisor) run(
 		startDeadline,
 		time.Now().Add(supervisor.limits.StartupTimeout),
 	)
-	process, hash, err := supervisor.launch(startupDeadline)
+	process, hash, cleanupComplete, err := supervisor.launch(startupDeadline)
 	if err != nil {
-		outcome := failedOutcome(StartFailed, started, err)
+		outcome := failedLaunchOutcome(started, cleanupComplete, err)
 		outcome.WorkerSHA256 = supervisor.workerHash
 		if hash != ([32]byte{}) {
 			outcome.WorkerSHA256 = hash
 		}
-		outcome.CleanupComplete = true
+		outcome.CleanupComplete = cleanupComplete
 		return outcome
 	}
 	outcome := supervisor.observe(ctx, process, frame, supervisor.limits.Timeout)
@@ -175,65 +175,73 @@ func (supervisor *Supervisor) run(
 	return outcome
 }
 
-func earliestDeadline(first, second time.Time) time.Time {
-	if first.Before(second) {
-		return first
+func (supervisor *Supervisor) launch(
+	startupDeadline time.Time,
+) (*launchedProcess, [32]byte, bool, error) {
+	resources, cleanupComplete, err := supervisor.prepareLaunch(startupDeadline)
+	if err != nil {
+		return nil, [32]byte{}, cleanupComplete, err
 	}
-	return second
+	process, cleanupComplete, err := resources.start(startupDeadline)
+	if err != nil {
+		closeErr := resources.close()
+		return nil,
+			resources.imageHash,
+			cleanupComplete && closeErr == nil,
+			errors.Join(err, closeErr)
+	}
+	return process, resources.imageHash, true, nil
 }
 
-func (supervisor *Supervisor) launch(startupDeadline time.Time) (*launchedProcess, [32]byte, error) {
-	resources, err := supervisor.prepareLaunch(startupDeadline)
-	if err != nil {
-		return nil, [32]byte{}, err
-	}
-	process, err := resources.start(startupDeadline)
-	if err != nil {
-		return nil, resources.imageHash, errors.Join(err, resources.close())
-	}
-	return process, resources.imageHash, nil
-}
-
-func (supervisor *Supervisor) prepareLaunch(startupDeadline time.Time) (*launchResources, error) {
+func (supervisor *Supervisor) prepareLaunch(
+	startupDeadline time.Time,
+) (*launchResources, bool, error) {
 	container, err := createContainerName()
 	if err != nil {
 		if container.name != "" {
-			err = errors.Join(err, container.close())
+			cleanupErr := container.close()
+			return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 		}
-		return nil, err
+		return nil, true, err
 	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
-		return nil, errors.Join(err, container.close())
+		cleanupErr := container.close()
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	image, hash, imagePath, err := stageImage(container.folder, supervisor.workerPath)
 	if err != nil {
-		return nil, errors.Join(err, container.close())
+		cleanupErr := container.close()
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
-		return nil, errors.Join(err, image.Close(), container.close())
+		cleanupErr := errors.Join(image.Close(), container.close())
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	if hash != supervisor.workerHash {
-		return nil, errors.Join(
-			errors.New("configured worker identity changed"),
-			image.Close(),
-			container.close(),
-		)
+		cleanupErr := errors.Join(image.Close(), container.close())
+		return nil,
+			cleanupErr == nil,
+			errors.Join(errors.New("configured worker identity changed"), cleanupErr)
 	}
 	pipes, err := newPipes()
 	if err != nil {
-		return nil, errors.Join(err, image.Close(), container.close())
+		cleanupErr := errors.Join(image.Close(), container.close())
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
 		pipes.close()
-		return nil, errors.Join(err, image.Close(), container.close())
+		cleanupErr := errors.Join(image.Close(), container.close())
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	job, err := createJob(supervisor.limits)
 	if err != nil {
 		pipes.close()
-		return nil, errors.Join(err, image.Close(), container.close())
+		cleanupErr := errors.Join(image.Close(), container.close())
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
-		return nil, errors.Join(err, windows.CloseHandle(job), image.Close(), container.close())
+		cleanupErr := errors.Join(windows.CloseHandle(job), image.Close(), container.close())
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	return &launchResources{
 		container: container,
@@ -243,31 +251,35 @@ func (supervisor *Supervisor) prepareLaunch(startupDeadline time.Time) (*launchR
 		pipes:     pipes,
 		job:       job,
 		cleanup:   supervisor.limits.CleanupTimeout,
-	}, nil
+	}, true, nil
 }
 
-func (resources *launchResources) start(startupDeadline time.Time) (*launchedProcess, error) {
+func (resources *launchResources) start(
+	startupDeadline time.Time,
+) (*launchedProcess, bool, error) {
 	info, err := startSuspended(resources.container, resources.imagePath, resources.pipes)
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
-		return nil, errors.Join(err, resources.stopStart(info, false))
+		cleanupErr := resources.stopStart(info, false)
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	if err := windows.AssignProcessToJobObject(resources.job, info.Process); err != nil {
 		stopErr := resources.stopStart(info, false)
-		return nil, errors.Join(
+		return nil, stopErr == nil, errors.Join(
 			fmt.Errorf("assign worker job: %w", err),
 			stopErr,
 		)
 	}
 	resources.pipes.closeChildEnds()
 	if err := checkStartupDeadline(startupDeadline); err != nil {
-		return nil, errors.Join(err, resources.stopStart(info, true))
+		cleanupErr := resources.stopStart(info, true)
+		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	if _, err := windows.ResumeThread(info.Thread); err != nil {
 		stopErr := resources.stopStart(info, true)
-		return nil, errors.Join(
+		return nil, stopErr == nil, errors.Join(
 			fmt.Errorf("resume worker: %w", err),
 			stopErr,
 		)
@@ -281,14 +293,7 @@ func (resources *launchResources) start(startupDeadline time.Time) (*launchedPro
 		container: resources.container,
 		image:     resources.image,
 		started:   time.Now(),
-	}, nil
-}
-
-func checkStartupDeadline(deadline time.Time) error {
-	if !time.Now().Before(deadline) {
-		return context.DeadlineExceeded
-	}
-	return nil
+	}, true, nil
 }
 
 func (resources *launchResources) stopStart(

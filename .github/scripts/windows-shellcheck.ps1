@@ -73,8 +73,8 @@ $deadline = [DateTime]::UtcNow + $shellDeadline
 
 try {
     foreach ($check in $checks) {
-        $shellID = $check.Name.Replace(' ', '-').ToLowerInvariant()
-        $shellRoot = Join-Path $mutableRoot $shellID
+        $shellName = $check.Name.Replace(' ', '-').ToLowerInvariant()
+        $shellRoot = Join-Path $mutableRoot $shellName
         [System.IO.Directory]::CreateDirectory(
             (Join-Path $shellRoot 'cache')
         ) | Out-Null
@@ -84,8 +84,8 @@ try {
         [System.IO.Directory]::CreateDirectory(
             (Join-Path $shellRoot 'tmp')
         ) | Out-Null
-        $relativeRoot = ".cache/windows-shell/$runID/$shellID"
-        $log = Join-Path $logRoot "$shellID.log"
+        $relativeRoot = ".cache/windows-shell/$runID/$shellName"
+        $log = Join-Path $logRoot "$shellName.log"
         $start = [System.Diagnostics.ProcessStartInfo]::new()
         $start.FileName = $check.File
         $start.WorkingDirectory = $root

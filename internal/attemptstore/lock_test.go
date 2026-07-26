@@ -59,6 +59,59 @@ func TestRecoverRejectsActiveAttempt(t *testing.T) {
 	}
 }
 
+func TestStageCreatesOwnershipMarker(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	defer func() {
+		_ = attempt.Close()
+	}()
+	present, err := store.hasOwnershipMarker(accepted.Request.AttemptID)
+	if err != nil || !present {
+		t.Fatalf("ownership marker: present=%t error=%v", present, err)
+	}
+	if err := store.createOwnershipMarker(accepted.Request.AttemptID); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("duplicate ownership marker: %v", err)
+	}
+	markerPath := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+ownershipMarkerSuffix,
+	)
+	if err := os.WriteFile(markerPath, []byte("corrupt"), 0o600); err != nil {
+		t.Fatalf("corrupt ownership marker: %v", err)
+	}
+	if _, err := store.hasOwnershipMarker(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("non-empty ownership marker accepted: %v", err)
+	}
+	if legacy, err := store.legacyLockMissing("invalid"); err != nil || legacy {
+		t.Fatalf("invalid identity classified as legacy: legacy=%t error=%v", legacy, err)
+	}
+}
+
+func TestOwnershipMarkerRejectsDirectory(t *testing.T) {
+	store := newTestStore(t)
+	accepted, _ := testAccepted(t)
+	present, err := store.hasOwnershipMarker(accepted.Request.AttemptID)
+	if err != nil || present {
+		t.Fatalf("missing marker: present=%t error=%v", present, err)
+	}
+	path := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+ownershipMarkerSuffix,
+	)
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("create marker directory: %v", err)
+	}
+	if _, err := store.hasOwnershipMarker(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("marker directory accepted: %v", err)
+	}
+}
+
 func TestReleasedAttemptCannotPublish(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
