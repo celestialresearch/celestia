@@ -227,7 +227,9 @@ func validFailedObservation(record Observation) bool {
 		return validCleanupFailure(record)
 	case "start_failed":
 		return validStartFailure(record)
-	case "output_overflow", "error_overflow", "exit_failed":
+	case "exit_failed":
+		return validExitFailure(record)
+	case "output_overflow", "error_overflow":
 		return validProcessFailure(record)
 	default:
 		return false
@@ -240,7 +242,7 @@ func validCompletedFailure(record Observation) bool {
 	}
 	switch record.ProtocolStatus {
 	case "valid":
-		return record.ExitCode == 2 || record.ExitCode == 3
+		return record.ExitCode == 2
 	case "rejected":
 		return record.ExitCode == 0 ||
 			record.ExitCode == 2 ||
@@ -248,6 +250,16 @@ func validCompletedFailure(record Observation) bool {
 	default:
 		return false
 	}
+}
+
+func validExitFailure(record Observation) bool {
+	if record.ProcessError == "" || !record.CleanupComplete {
+		return false
+	}
+	if record.ProtocolStatus == "valid" {
+		return record.ExitCode == 3
+	}
+	return record.ProtocolStatus == "not_run"
 }
 
 func validCleanupFailure(record Observation) bool {

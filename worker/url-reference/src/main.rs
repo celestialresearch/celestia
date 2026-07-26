@@ -464,9 +464,6 @@ fn validate_host(host: &str) -> Result<Option<bool>, ()> {
     if trailing_root {
         labels.pop();
     }
-    if labels.is_empty() {
-        return Err(());
-    }
     let mut all_decimal = labels.len() == 4;
     for label in &labels {
         validate_label(label)?;
