@@ -173,6 +173,9 @@ check_release_artefacts() (
 
   for path in "$release_dir"/*; do
     file=${path##*/}
+    if [[ -d "$path" && ! -L "$path" ]]; then
+      continue
+    fi
     case "$file" in
     *.d | *.pdb)
       if [[ ! -f "$path" || -L "$path" || -x "$path" ]]; then

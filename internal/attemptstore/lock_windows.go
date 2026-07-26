@@ -79,3 +79,7 @@ func syncAttemptLockDirectory(directory string) error {
 	}()
 	return windows.FlushFileBuffers(handle)
 }
+
+func validateAttemptStorePlatform() error {
+	return nil
+}

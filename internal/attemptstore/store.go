@@ -47,11 +47,12 @@ const (
 )
 
 var (
-	ErrInvalid   = errors.New("invalid attempt evidence")
-	ErrDuplicate = errors.New("duplicate attempt")
-	ErrCorrupt   = errors.New("corrupt attempt evidence")
-	ErrActive    = errors.New("attempt is active")
-	ErrRelease   = errors.New("attempt ownership release failed")
+	ErrInvalid     = errors.New("invalid attempt evidence")
+	ErrDuplicate   = errors.New("duplicate attempt")
+	ErrCorrupt     = errors.New("corrupt attempt evidence")
+	ErrActive      = errors.New("attempt is active")
+	ErrRelease     = errors.New("attempt ownership release failed")
+	ErrUnsupported = errors.New("attempt evidence is unsupported")
 )
 
 type Admitted struct {
@@ -129,15 +130,9 @@ type Attempt struct {
 }
 
 func New(root string) (*Store, error) {
-	if root == "" || !filepath.IsAbs(root) {
-		return nil, fmt.Errorf("%w: evidence root", ErrInvalid)
-	}
-	clean, err := canonicalEvidenceRoot(root)
+	clean, err := validateStoreRoot(root)
 	if err != nil {
-		return nil, fmt.Errorf("resolve evidence root: %w", err)
-	}
-	if err := rejectLinkedAncestors(clean); err != nil {
-		return nil, fmt.Errorf("inspect evidence root: %w", err)
+		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Join(clean, attemptsDirectory, pendingDirectory), 0o700); err != nil {
 		return nil, fmt.Errorf("create evidence root: %w", err)
@@ -166,6 +161,23 @@ func New(root string) (*Store, error) {
 		return nil, fmt.Errorf("inspect attempt locks: %w", err)
 	}
 	return &Store{root: clean, lockIdentity: lockIdentity}, nil
+}
+
+func validateStoreRoot(root string) (string, error) {
+	if root == "" || !filepath.IsAbs(root) {
+		return "", fmt.Errorf("%w: evidence root", ErrInvalid)
+	}
+	if err := validateAttemptStorePlatform(); err != nil {
+		return "", err
+	}
+	clean, err := canonicalEvidenceRoot(root)
+	if err != nil {
+		return "", fmt.Errorf("resolve evidence root: %w", err)
+	}
+	if err := rejectLinkedAncestors(clean); err != nil {
+		return "", fmt.Errorf("inspect evidence root: %w", err)
+	}
+	return clean, nil
 }
 
 func createLockDirectory(root string) (bool, error) {
