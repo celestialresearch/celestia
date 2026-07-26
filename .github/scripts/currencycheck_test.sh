@@ -240,3 +240,30 @@ printf '%s\n' 'multiline-probe|1.0.0' >"$manifest_dir/crate-versions"
     CARGO_TEST_VERSIONS="$manifest_dir/crate-versions" \
     bash .github/scripts/currencycheck.sh currency
 )
+
+mkdir -p "$manifest_dir/failing-bin"
+cat >"$manifest_dir/failing-bin/sort" <<'EOF'
+#!/usr/bin/env bash
+exit 2
+EOF
+chmod +x "$manifest_dir/failing-bin/sort"
+set +e
+result=$(
+  cd "$manifest_dir" &&
+    PATH="$manifest_dir/failing-bin:$PATH" \
+      RUSTUP_BIN=celestia_test_rustup \
+      RUSTUP_TEST_OUTPUT='stable-probe - up to date : 1.0.0' \
+      CARGO_BIN=celestia_test_cargo \
+      CARGO_TEST_VERSIONS="$manifest_dir/crate-versions" \
+      bash .github/scripts/currencycheck.sh currency 2>&1
+)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'currency check ignored a failed dependency inventory\n' >&2
+  exit 1
+}
+grep -Fq 'Failed to inventory Cargo dependencies' <<<"$result" || {
+  printf 'currency check hid dependency inventory failure:\n%s\n' "$result" >&2
+  exit 1
+}

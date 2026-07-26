@@ -14,6 +14,9 @@ set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
+file_inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-licence-files.XXXXXX")
+eligible_inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-licence-eligible.XXXXXX")
+trap 'rm -f -- "$file_inventory" "$eligible_inventory"' EXIT
 
 usage() {
   printf 'Usage: %s verify|diff|cached-diff|update|apply\n' "${0##*/}" >&2
@@ -31,14 +34,14 @@ expected=$(printf '%s\n' \
   '' \
   'See the LICENSE file at the repository root for the complete terms.')
 
-eligible_files() {
+build_eligible_inventory() {
   local file
 
   while IFS= read -r -d '' file; do
     [[ -f "$file" ]] || continue
     [[ -n "$(style_for "$file")" ]] || continue
     printf '%s\0' "$file"
-  done < <(git ls-files -co --exclude-standard -z)
+  done <"$file_inventory"
 }
 
 style_for() {
@@ -127,7 +130,7 @@ verify_files() {
       printf '%s: missing or incorrect proprietary header\n' "$file" >&2
       status=1
     fi
-  done < <(eligible_files)
+  done <"$eligible_inventory"
   return "$status"
 }
 
@@ -149,7 +152,7 @@ diff_files() {
       "$file" "$temporary" || true
     rm -f -- "$temporary"
     status=1
-  done < <(eligible_files)
+  done <"$eligible_inventory"
   return "$status"
 }
 
@@ -168,7 +171,7 @@ update_files() {
         "$file" >&2
       return 1
     fi
-  done < <(eligible_files)
+  done <"$eligible_inventory"
 
   while IFS= read -r -d '' file; do
     style=$(style_for "$file")
@@ -180,7 +183,7 @@ update_files() {
     chmod "$mode" "$temporary"
     mv -f -- "$temporary" "$file"
     printf 'updated %s\n' "$file"
-  done < <(eligible_files)
+  done <"$eligible_inventory"
 }
 
 cache_key() {
@@ -189,7 +192,7 @@ cache_key() {
   {
     while IFS= read -r -d '' file; do
       git hash-object "$file"
-    done < <(eligible_files)
+    done <"$eligible_inventory"
     git hash-object .github/scripts/licencecheck.sh
   } | git hash-object --stdin
 }
@@ -219,7 +222,11 @@ if (($# != 1)); then
   exit 2
 fi
 
-git ls-files -co --exclude-standard -z >/dev/null
+if ! git ls-files -co --exclude-standard -z >"$file_inventory"; then
+  printf 'Failed to inventory repository files\n' >&2
+  exit 1
+fi
+build_eligible_inventory >"$eligible_inventory"
 
 case "$1" in
 verify)
