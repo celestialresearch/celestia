@@ -18,6 +18,7 @@ main() (
   local output
   local repo_dir
   local licence_dir
+  local metadata_probe
   local rust_dir
   local status
   local work_dir
@@ -221,6 +222,9 @@ build)
   : >"$release_dir/celestia-url-reference$suffix"
   chmod +x "$release_dir/celestia-url-reference$suffix"
   : >"$release_dir/celestia-url-reference.d"
+  if [[ "${RUSTCHECK_EXECUTABLE_METADATA:-false}" == true ]]; then
+    chmod +x "$release_dir/celestia-url-reference.d"
+  fi
   if [[ -n "${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE:-}" ]]; then
     : >"$release_dir/${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE}${suffix}"
     chmod +x "$release_dir/${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE}${suffix}"
@@ -339,6 +343,29 @@ EOF
       "$output" >&2
     return 1
   }
+  metadata_probe="$rust_dir/executable.d"
+  : >"$metadata_probe"
+  chmod +x "$metadata_probe"
+  if [[ -x "$metadata_probe" ]]; then
+    set +e
+    output=$(
+      cd "$rust_dir" &&
+        PATH="$rust_dir/bin:$PATH" RUSTCHECK_EXECUTABLE_METADATA=true \
+          bash .github/scripts/rustcheck.sh artefacts 2>&1
+    )
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'Rust artefact check accepted executable metadata\n' >&2
+      return 1
+    }
+    grep -Fq 'Invalid release metadata: celestia-url-reference.d' \
+      <<<"$output" || {
+      printf 'Rust artefact check omitted executable metadata:\n%s\n' \
+        "$output" >&2
+      return 1
+    }
+  fi
 
   repo_dir="$work_dir/repo"
   mkdir -p "$repo_dir"

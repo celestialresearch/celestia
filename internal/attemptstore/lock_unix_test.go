@@ -14,9 +14,11 @@
 package attemptstore
 
 import (
+	"bufio"
 	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -102,5 +104,51 @@ func TestRecoverRejectsReplacedLockDirectory(t *testing.T) {
 				t.Fatalf("replaced lock directory accepted: %v", err)
 			}
 		})
+	}
+}
+
+func TestStageDoesNotRecreateMissingActiveLock(t *testing.T) {
+	store, accepted, admittedAt := lockProcessFixture(t)
+	command := lockHelperCommand(t.Context(), "stage")
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatalf("open helper stdout: %v", err)
+	}
+	if err := command.Start(); err != nil {
+		t.Fatalf("start helper: %v", err)
+	}
+	defer func() {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+	}()
+	scanner := bufio.NewScanner(stdout)
+	if !scanner.Scan() || scanner.Text() != "staged" {
+		t.Fatalf("helper did not stage: %v", scanner.Err())
+	}
+	if err := command.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Fatalf("helper exited before test: %v", err)
+	}
+	lockPath := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+".lock",
+	)
+	if err := os.Remove(lockPath); err != nil {
+		t.Fatalf("remove active lock path: %v", err)
+	}
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("duplicate stage result: %v", err)
+	}
+	if _, err := os.Lstat(lockPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("duplicate stage recreated lock: %v", err)
+	}
+	if err := store.Recover(
+		accepted.Request.AttemptID,
+		"missing active lock",
+	); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("missing active lock recovered: %v", err)
+	}
+	if err := command.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Fatalf("helper exited during test: %v", err)
 	}
 }
