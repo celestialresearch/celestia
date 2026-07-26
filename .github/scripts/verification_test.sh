@@ -682,6 +682,50 @@ EOF
   (cd "$licence_dir" &&
     bash .github/scripts/licencecheck.sh verify >/dev/null)
 
+  rust_dir="$work_dir/rust"
+  rust_bin="$rust_dir/bin"
+  mkdir -p "$rust_bin"
+  cp "$root/.github/scripts/rustcheck.sh" "$rust_dir/rustcheck.sh"
+  cat >"$rust_bin/cargo" <<'EOF'
+#!/usr/bin/env bash
+while (($#)); do
+  if [[ "$1" == --target-dir ]]; then
+    shift
+    target_dir=$1
+  fi
+  shift
+done
+mkdir -p "$target_dir/release"
+case "$(uname -s 2>/dev/null)" in
+CYGWIN* | MINGW* | MSYS*) suffix=.exe ;;
+*) suffix= ;;
+esac
+: >"$target_dir/release/celestia-url-reference$suffix"
+chmod +x "$target_dir/release/celestia-url-reference$suffix"
+EOF
+  cat >"$rust_bin/find" <<'EOF'
+#!/usr/bin/env bash
+exit 2
+EOF
+  chmod +x "$rust_bin/cargo" "$rust_bin/find"
+  set +e
+  output=$(
+    cd "$rust_dir" &&
+      CARGO_BIN="$rust_bin/cargo" PATH="$rust_bin:$PATH" \
+        bash ./rustcheck.sh artefacts 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust release check ignored a failed artefact inventory\n' >&2
+    return 1
+  }
+  grep -Fq 'Failed to inventory release artefacts' <<<"$output" || {
+    printf 'Rust release output omitted the inventory failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+
   wait "$change_pid"
   change_pid=
   wait "$currency_pid"

@@ -169,6 +169,8 @@ release_exe_suffix() {
 }
 
 check_release_artefacts() (
+  local inventory
+
   cargo_bin=${CARGO_BIN:-cargo}
   mkdir -p "$cache_root"
   target_dir=$(mktemp -d "$cache_root/release-artefacts.XXXXXX")
@@ -196,6 +198,11 @@ check_release_artefacts() (
   expected_metadata=("celestia-url-reference.d")
   if [[ "$expected" == *.exe ]]; then
     expected_metadata+=("celestia_url_reference.pdb")
+  fi
+  inventory=$target_dir/release-inventory
+  if ! find "$release_dir" -mindepth 1 -print0 >"$inventory"; then
+    printf 'Failed to inventory release artefacts\n' >&2
+    return 1
   fi
   seen=false
   while IFS= read -r -d '' path; do
@@ -240,7 +247,7 @@ check_release_artefacts() (
       printf 'Unexpected release artefact: %s\n' "$file"
     fi
     return 1
-  done < <(find "$release_dir" -mindepth 1 -print0)
+  done <"$inventory"
 
   if [[ "$seen" != true ]]; then
     printf 'Missing release executable: %s\n' "$expected"
