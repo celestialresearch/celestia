@@ -66,6 +66,12 @@ func TestInspectRejectsUnexpectedRecord(t *testing.T) {
 	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("unexpected record inspected: %v", err)
 	}
+	if err := store.Recover(
+		accepted.Request.AttemptID,
+		"unexpected record",
+	); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("unexpected record recovered: %v", err)
+	}
 }
 
 func TestInspectRefusesOwnedPublication(t *testing.T) {
