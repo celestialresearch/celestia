@@ -69,6 +69,11 @@ main() (
     printf 'Windows shell check uses an unowned output pipeline\n' >&2
     return 1
   fi
+  if grep -Eq "find .*'-name '\\*\\.go'.*\\|.*grep" \
+    "$root/.github/workflows/compatibility.yml"; then
+    printf 'compatibility check masks Go inventory failures\n' >&2
+    return 1
+  fi
   for variable in CELESTIA_SHELL_CACHE CELESTIA_SHELL_TARGET \
     CELESTIA_SHELL_TMP; do
     grep -Fq "\$start.Environment['$variable']" "$shellcheck_script" || {
