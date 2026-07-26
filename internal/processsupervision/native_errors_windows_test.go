@@ -289,9 +289,9 @@ func TestStartupCleanupJoinsWorker(t *testing.T) {
 }
 
 func TestExpiredLaunchPreparationClosesPipes(t *testing.T) {
-	pipes, err := newPipes()
-	if err != nil {
-		t.Fatalf("create pipes: %v", err)
+	pipes, complete, err := newPipes()
+	if err != nil || !complete {
+		t.Fatalf("create pipes: complete=%t error=%v", complete, err)
 	}
 	resources := &launchResources{
 		container: appContainer{
@@ -317,9 +317,10 @@ func TestPipeCloseReportsFailure(t *testing.T) {
 	if err := windows.CloseHandle(handle); err != nil {
 		t.Fatalf("close event: %v", err)
 	}
-	pipes := pipeSet{stdinRead: handle}
-	if err := pipes.close(); err == nil {
-		t.Fatal("already-closed pipe handle reported success")
+	operationErr := errors.New("injected pipe creation failure")
+	pipes, complete, err := failedPipes(pipeSet{stdinRead: handle}, operationErr)
+	if complete || !errors.Is(err, operationErr) {
+		t.Fatalf("complete=%t error=%v", complete, err)
 	}
 	if pipes != (pipeSet{}) {
 		t.Fatalf("closed pipe handles retained: %#v", pipes)
@@ -525,9 +526,9 @@ func TestStartRejectsInvalidImage(t *testing.T) {
 		t.Fatalf("create container: %v", err)
 	}
 	defer closeContainer(t, &container)
-	pipes, err := newPipes()
-	if err != nil {
-		t.Fatalf("create pipes: %v", err)
+	pipes, complete, err := newPipes()
+	if err != nil || !complete {
+		t.Fatalf("create pipes: complete=%t error=%v", complete, err)
 	}
 	defer func() {
 		if err := pipes.close(); err != nil {

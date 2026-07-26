@@ -228,10 +228,12 @@ func (supervisor *Supervisor) prepareLaunch(
 			cleanupErr == nil,
 			errors.Join(errors.New("configured worker identity changed"), cleanupErr)
 	}
-	pipes, err := newPipes()
+	pipes, pipeCleanupComplete, err := newPipes()
 	if err != nil {
 		cleanupErr := errors.Join(image.Close(), container.close())
-		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
+		return nil,
+			pipeCleanupComplete && cleanupErr == nil,
+			errors.Join(err, cleanupErr)
 	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
 		cleanupErr := errors.Join(pipes.close(), image.Close(), container.close())
@@ -656,36 +658,32 @@ func openLocked(path string, access, disposition uint32) (*os.File, error) {
 	return os.NewFile(uintptr(handle), path), nil
 }
 
-func newPipes() (pipeSet, error) {
+func newPipes() (pipeSet, bool, error) {
 	var pipes pipeSet
 	security := windows.SecurityAttributes{
 		Length:        uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
 		InheritHandle: 1,
 	}
 	if err := windows.CreatePipe(&pipes.stdinRead, &pipes.stdinWrite, &security, 0); err != nil {
-		return pipes, fmt.Errorf("create stdin pipe: %w", err)
+		return pipes, true, fmt.Errorf("create stdin pipe: %w", err)
 	}
 	if err := windows.CreatePipe(&pipes.stdoutRead, &pipes.stdoutWrite, &security, 0); err != nil {
-		return pipes, errors.Join(
-			fmt.Errorf("create stdout pipe: %w", err),
-			pipes.close(),
-		)
+		return failedPipes(pipes, fmt.Errorf("create stdout pipe: %w", err))
 	}
 	if err := windows.CreatePipe(&pipes.stderrRead, &pipes.stderrWrite, &security, 0); err != nil {
-		return pipes, errors.Join(
-			fmt.Errorf("create stderr pipe: %w", err),
-			pipes.close(),
-		)
+		return failedPipes(pipes, fmt.Errorf("create stderr pipe: %w", err))
 	}
 	for _, handle := range []windows.Handle{pipes.stdinWrite, pipes.stdoutRead, pipes.stderrRead} {
 		if err := windows.SetHandleInformation(handle, windows.HANDLE_FLAG_INHERIT, 0); err != nil {
-			return pipes, errors.Join(
-				fmt.Errorf("restrict parent pipe: %w", err),
-				pipes.close(),
-			)
+			return failedPipes(pipes, fmt.Errorf("restrict parent pipe: %w", err))
 		}
 	}
-	return pipes, nil
+	return pipes, true, nil
+}
+
+func failedPipes(pipes pipeSet, operationErr error) (pipeSet, bool, error) {
+	closeErr := pipes.close()
+	return pipes, closeErr == nil, errors.Join(operationErr, closeErr)
 }
 
 func startSuspended(
