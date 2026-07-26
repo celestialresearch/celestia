@@ -88,7 +88,7 @@ type jobAccounting struct {
 }
 
 func newSupervisor(workerPath string, limits Limits) (*Supervisor, error) {
-	if workerPath == "" || !filepath.IsAbs(workerPath) || !validLimits(limits) {
+	if !validWorkerPath(workerPath) || !validLimits(limits) {
 		return nil, fmt.Errorf("%w: worker path or limits", ErrInvalid)
 	}
 	cleanPath := filepath.Clean(workerPath)
@@ -106,6 +106,17 @@ func newSupervisor(workerPath string, limits Limits) (*Supervisor, error) {
 		workerHash: hash,
 		limits:     limits,
 	}, nil
+}
+
+func validWorkerPath(path string) bool {
+	if path == "" || !filepath.IsAbs(path) {
+		return false
+	}
+	volume := filepath.VolumeName(path)
+	return len(volume) == 2 &&
+		((volume[0] >= 'A' && volume[0] <= 'Z') ||
+			(volume[0] >= 'a' && volume[0] <= 'z')) &&
+		volume[1] == ':'
 }
 
 func validLimits(limits Limits) bool {
