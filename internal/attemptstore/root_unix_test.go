@@ -17,6 +17,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -115,5 +116,85 @@ func TestSyncDirectoryRejectsMissingDirectory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing")
 	if err := syncDirectory(path); err == nil {
 		t.Fatal("missing directory accepted")
+	}
+}
+
+func TestRecoverRepairsLinkedRecord(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("Stage() error = %v", err)
+	}
+	path := attempt.path
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	temporary := filepath.Join(path, "."+admittedFile+"."+strings.Repeat("a", 32))
+	if err := os.Link(filepath.Join(path, admittedFile), temporary); err != nil {
+		t.Fatalf("link interrupted record: %v", err)
+	}
+
+	if err := store.Recover(accepted.Request.AttemptID, "writer interrupted"); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if _, err := os.Lstat(temporary); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary record remains: %v", err)
+	}
+	records, err := store.Inspect(accepted.Request.AttemptID)
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if records.Recovery == nil {
+		t.Fatal("recovery record is missing")
+	}
+}
+
+func TestRecoverRemovesOrphanRecordTemp(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("Stage() error = %v", err)
+	}
+	path := attempt.path
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	temporary := filepath.Join(path, "."+observationFile+"."+strings.Repeat("b", 32))
+	if err := os.WriteFile(temporary, []byte("partial"), 0o600); err != nil {
+		t.Fatalf("write interrupted record: %v", err)
+	}
+
+	if err := store.Recover(accepted.Request.AttemptID, "writer interrupted"); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if _, err := os.Lstat(temporary); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("temporary record remains: %v", err)
+	}
+}
+
+func TestRepairValidatesBeforeRemoval(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir()
+	valid := filepath.Join(path, "."+admittedFile+"."+strings.Repeat("c", 32))
+	invalid := filepath.Join(path, "."+receiptFile+"."+strings.Repeat("d", 32))
+	if err := os.WriteFile(valid, []byte("partial"), 0o600); err != nil {
+		t.Fatalf("write valid temporary record: %v", err)
+	}
+	if err := os.Mkdir(invalid, 0o700); err != nil {
+		t.Fatalf("write invalid temporary record: %v", err)
+	}
+
+	if err := repairInterruptedRecords(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("repair error = %v, want ErrCorrupt", err)
+	}
+	if _, err := os.Lstat(valid); err != nil {
+		t.Fatalf("valid temporary record was removed: %v", err)
 	}
 }

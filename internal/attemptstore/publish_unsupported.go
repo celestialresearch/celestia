@@ -46,3 +46,7 @@ func syncDirectory(_ string) error {
 func confirmPublication(_ string) error {
 	return ErrUnsupported
 }
+
+func repairInterruptedRecords(string) error {
+	return ErrUnsupported
+}
