@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -29,6 +30,18 @@ func TestPublishFileRejectsInvalidPaths(t *testing.T) {
 	}
 	if err := publishFile("source", "invalid\x00target", t.TempDir()); err == nil {
 		t.Fatal("invalid target path accepted")
+	}
+}
+
+func TestEvidenceACERejectsTruncatedSID(t *testing.T) {
+	userSID, err := currentUserSID()
+	if err != nil {
+		t.Fatalf("currentUserSID() error = %v", err)
+	}
+	ace := windows.ACCESS_ALLOWED_ACE{}
+	ace.Header.AceSize = uint16(unsafe.Offsetof(ace.SidStart) + 7)
+	if evidenceACEIdentifies(&ace, userSID) {
+		t.Fatal("truncated ACE accepted")
 	}
 }
 
