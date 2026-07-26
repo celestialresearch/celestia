@@ -59,6 +59,23 @@ func TestStageRejectsAcceptedFrameMismatch(t *testing.T) {
 	}
 }
 
+func TestStageOwnsRequestFrame(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	observation := testObservationFor(t, accepted)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("Stage() error = %v", err)
+	}
+	accepted.Frame[0] ^= 0xff
+	if err := attempt.Publish(observation); err != nil {
+		t.Fatalf("Publish() after caller mutation error = %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+}
+
 func TestPublishRejectsUnverifiableProtocolEvidence(t *testing.T) {
 	tests := map[string]func(*Observation){
 		"response": func(observation *Observation) {
