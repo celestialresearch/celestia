@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 )
 
@@ -221,19 +220,6 @@ func recordNames() []string {
 		receiptFile,
 		publicationFile,
 	}
-}
-
-func temporaryRecordName(record, candidate string) bool {
-	suffix, found := strings.CutPrefix(candidate, "."+record+".")
-	if !found || len(suffix) != 32 {
-		return false
-	}
-	for _, value := range suffix {
-		if value < '0' || value > '9' && value < 'a' || value > 'f' {
-			return false
-		}
-	}
-	return true
 }
 
 func validInterruptedRecord(info os.FileInfo) bool {

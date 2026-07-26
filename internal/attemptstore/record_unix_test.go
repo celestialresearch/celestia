@@ -14,26 +14,23 @@
 package attemptstore
 
 import (
-	"errors"
-	"os"
 	"path/filepath"
+	"testing"
 )
 
-func createRecordTemp(path, name string) (*os.File, error) {
-	for range 8 {
-		temporaryName, err := recordTempName(name)
-		if err != nil {
-			return nil, err
-		}
-		file, err := os.OpenFile(
-			filepath.Join(path, temporaryName),
-			os.O_RDWR|os.O_CREATE|os.O_EXCL,
-			0o600,
-		)
-		if errors.Is(err, os.ErrExist) {
-			continue
-		}
-		return file, err
+func TestRecordTempSupportsRecovery(t *testing.T) {
+	t.Parallel()
+
+	file, err := createRecordTemp(t.TempDir(), admittedFile)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return nil, errors.New("create unique record file")
+	t.Cleanup(func() {
+		if err := file.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if name := filepath.Base(file.Name()); !temporaryRecordName(admittedFile, name) {
+		t.Fatalf("createRecordTemp() name = %q is not recoverable", name)
+	}
 }
