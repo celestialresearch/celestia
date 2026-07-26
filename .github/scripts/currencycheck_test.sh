@@ -149,6 +149,12 @@ fi
 
 printf '%s\n' 'cargo|probe|1.0.0|2000-01-01|Expired' >"$exceptions"
 expect_failure 'Expired currency exception'
+if CURRENCY_EXCEPTIONS_FILE="$exceptions" \
+  bash "$root/.github/scripts/currencycheck.sh" \
+  allows cargo probe 1.0.0; then
+  printf 'currency check allowed an expired matching exception\n' >&2
+  exit 1
+fi
 
 printf '%s\n' 'unknown|probe|1.0.0|2099-12-31|Unknown ecosystem' >"$exceptions"
 expect_failure 'Unknown currency exception ecosystem'
