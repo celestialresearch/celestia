@@ -459,19 +459,23 @@ func (store *Store) Inspect(attemptID string) (records Records, err error) {
 	if err != nil {
 		return Records{}, err
 	}
-	var owner *attemptLock
-	if current {
-		owner, err = store.acquireAttemptLock(attemptID, false)
-		if err != nil {
-			return Records{}, err
-		}
-		defer func() {
-			if releaseErr := owner.release(); releaseErr != nil {
-				records = Records{}
-				err = errors.Join(err, releaseError(releaseErr))
-			}
-		}()
+	if !current {
+		return Records{}, fmt.Errorf(
+			"%w: attempt %s has no current ownership marker",
+			ErrMigrationRequired,
+			attemptID,
+		)
 	}
+	owner, err := store.acquireAttemptLock(attemptID, false)
+	if err != nil {
+		return Records{}, err
+	}
+	defer func() {
+		if releaseErr := owner.release(); releaseErr != nil {
+			records = Records{}
+			err = errors.Join(err, releaseError(releaseErr))
+		}
+	}()
 	if err := confirmPublication(store.attemptsPath()); err != nil {
 		return Records{}, fmt.Errorf("confirm attempt publication: %w", err)
 	}
