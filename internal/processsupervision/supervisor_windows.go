@@ -91,18 +91,6 @@ func newSupervisor(workerPath string, limits Limits) (*Supervisor, error) {
 	if workerPath == "" || !filepath.IsAbs(workerPath) || !validLimits(limits) {
 		return nil, fmt.Errorf("%w: worker path or limits", ErrInvalid)
 	}
-	pathPointer, err := windows.UTF16PtrFromString(workerPath)
-	if err != nil {
-		return nil, fmt.Errorf("%w: worker path encoding", ErrInvalid)
-	}
-	attributes, err := windows.GetFileAttributes(pathPointer)
-	if err != nil {
-		return nil, fmt.Errorf("%w: inspect worker: %w", ErrInvalid, err)
-	}
-	if attributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0 ||
-		attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-		return nil, fmt.Errorf("%w: worker must be a regular non-reparse file", ErrInvalid)
-	}
 	cleanPath := filepath.Clean(workerPath)
 	worker, err := openLocked(cleanPath, windows.GENERIC_READ, windows.OPEN_EXISTING)
 	if err != nil {
