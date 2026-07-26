@@ -37,6 +37,9 @@ durable terminal outcome.
   On Unix the parent must be owned by the current user and not group or world
   writable. On Windows the parent must have the protected single-user ACL used
   by evidence directories. `New` does not create missing ancestor directories.
+- Windows evidence roots require a local drive-letter path. UNC and device
+  paths are rejected before filesystem access. Network-mounted Unix filesystems
+  are not qualified by v0.
 - Each attempt has a permanent lock file. Its operating-system exclusive lock
   is held from staging through terminal publication.
 - Current writers create a permanent ownership-era marker before staging.
