@@ -212,12 +212,20 @@ func projectDiagnostics(values []workerprotocol.Diagnostic) []Diagnostic {
 	}
 	diagnostics := make([]Diagnostic, len(values))
 	for index, value := range values {
+		code := diagnosticCode(value.Code)
 		diagnostics[index] = Diagnostic{
-			Code:    value.Code,
-			Message: diagnosticMessage(value.Code),
+			Code:    code,
+			Message: diagnosticMessage(code),
 		}
 	}
 	return diagnostics
+}
+
+func diagnosticCode(code string) string {
+	if code == "invalid_reference" {
+		return code
+	}
+	return "worker_failure"
 }
 
 func diagnosticMessage(code string) string {
