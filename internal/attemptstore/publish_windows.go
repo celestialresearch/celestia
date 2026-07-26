@@ -89,23 +89,10 @@ func secureOwnedPath(path string) error {
 }
 
 func secureEvidenceFile(path string) error {
-	userSID, err := currentUserSID()
-	if err != nil {
+	if err := secureOwnedPath(path); err != nil {
 		return err
 	}
-	descriptor, err := windows.GetNamedSecurityInfo(
-		path,
-		windows.SE_FILE_OBJECT,
-		windows.OWNER_SECURITY_INFORMATION,
-	)
-	if err != nil {
-		return err
-	}
-	owner, _, err := descriptor.Owner()
-	if err != nil || owner == nil || !owner.Equals(userSID) {
-		return ErrCorrupt
-	}
-	return nil
+	return secureDirectoryACL(path)
 }
 
 func secureDirectoryACL(path string) error {

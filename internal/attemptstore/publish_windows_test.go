@@ -187,3 +187,44 @@ func TestWindowsSecurityHelpersRejectReadOnlyDirectory(t *testing.T) {
 		t.Fatalf("read-only evidence root accepted: %v", err)
 	}
 }
+
+func TestSecureEvidenceFileRejectsReadOnlyDACL(t *testing.T) {
+	store := newTestStore(t)
+	file, err := createRecordTemp(store.root, "record.json")
+	if err != nil {
+		t.Fatalf("create record: %v", err)
+	}
+	path := file.Name()
+	if err := file.Close(); err != nil {
+		t.Fatalf("close record: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(path) })
+	sid, err := currentUserSID()
+	if err != nil {
+		t.Fatalf("current user SID: %v", err)
+	}
+	descriptor, err := windows.SecurityDescriptorFromString(
+		fmt.Sprintf("O:%sD:P(A;OICI;FR;;;%s)", sid, sid),
+	)
+	if err != nil {
+		t.Fatalf("create read-only descriptor: %v", err)
+	}
+	dacl, _, err := descriptor.DACL()
+	if err != nil {
+		t.Fatalf("read descriptor DACL: %v", err)
+	}
+	if err := windows.SetNamedSecurityInfo(
+		path,
+		windows.SE_FILE_OBJECT,
+		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		nil,
+		nil,
+		dacl,
+		nil,
+	); err != nil {
+		t.Fatalf("apply read-only DACL: %v", err)
+	}
+	if err := secureEvidenceFile(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("read-only evidence file accepted: %v", err)
+	}
+}
