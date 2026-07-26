@@ -339,7 +339,7 @@ func (store *Store) Recover(attemptID, reason string) (err error) {
 			releaseError(owner.release()),
 		)
 	}
-	return store.recoverOwned(attemptID, reason, owner)
+	return store.recoverOwned(attemptID, reason, owner, false)
 }
 
 // MigrateV0 explicitly adopts a pre-lock v0 attempt after its caller has
@@ -362,10 +362,15 @@ func (store *Store) MigrateV0(attemptID, reason string) (err error) {
 	if err := store.createOwnershipMarker(attemptID); err != nil {
 		return publishResult(err, owner.release())
 	}
-	return store.recoverOwned(attemptID, reason, owner)
+	return store.recoverOwned(attemptID, reason, owner, true)
 }
 
-func (store *Store) recoverOwned(attemptID, reason string, owner *attemptLock) (err error) {
+func (store *Store) recoverOwned(
+	attemptID,
+	reason string,
+	owner *attemptLock,
+	acceptPublished bool,
+) (err error) {
 	defer func() {
 		err = publishResult(err, owner.release())
 	}()
@@ -379,6 +384,9 @@ func (store *Store) recoverOwned(attemptID, reason string, owner *attemptLock) (
 	if published, err := publicationExists(path, attemptID); err != nil {
 		return err
 	} else if published {
+		if acceptPublished {
+			return nil
+		}
 		return ErrDuplicate
 	}
 	if err := store.ensureTerminal(path, attemptID, reason); err != nil {

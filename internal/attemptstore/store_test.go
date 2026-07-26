@@ -249,6 +249,41 @@ func TestStoreMigratesFrozenPreLockV0Attempt(t *testing.T) {
 	}
 }
 
+func TestStoreAdoptsPublishedPreLockV0Attempt(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+ownershipMarkerSuffix,
+	)
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MigrateV0(
+		accepted.Request.AttemptID,
+		"operator quiesced published legacy attempt",
+	); err != nil {
+		t.Fatalf("adopt published v0 attempt: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
+		t.Fatalf("inspect adopted attempt: %v", err)
+	}
+	if err := store.Recover(
+		accepted.Request.AttemptID,
+		"repeat recovery",
+	); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("repeat recovery: %v", err)
+	}
+}
+
 func frozenV0Admitted(t *testing.T) (Admitted, string) {
 	t.Helper()
 	root, err := os.OpenRoot(filepath.Join("testdata", "pre-lock-v0"))
