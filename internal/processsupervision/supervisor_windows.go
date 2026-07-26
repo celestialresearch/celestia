@@ -16,7 +16,6 @@ package processsupervision
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -213,10 +212,15 @@ func (supervisor *Supervisor) prepareLaunch(
 		cleanupErr := container.close()
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
-	image, hash, imagePath, err := stageImage(container.folder, supervisor.workerPath)
+	image, hash, imagePath, imageCleanupComplete, err := stageImage(
+		container.folder,
+		supervisor.workerPath,
+	)
 	if err != nil {
 		cleanupErr := container.close()
-		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
+		return nil,
+			cleanupSucceeded(imageCleanupComplete, cleanupErr),
+			errors.Join(err, cleanupErr)
 	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
 		cleanupErr := errors.Join(image.Close(), container.close())
@@ -232,17 +236,19 @@ func (supervisor *Supervisor) prepareLaunch(
 	if err != nil {
 		cleanupErr := errors.Join(image.Close(), container.close())
 		return nil,
-			pipeCleanupComplete && cleanupErr == nil,
+			cleanupSucceeded(pipeCleanupComplete, cleanupErr),
 			errors.Join(err, cleanupErr)
 	}
 	if err := checkStartupDeadline(startupDeadline); err != nil {
 		cleanupErr := errors.Join(pipes.close(), image.Close(), container.close())
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
-	job, err := createJob(supervisor.limits)
+	job, jobCleanupComplete, err := createJob(supervisor.limits)
 	if err != nil {
 		cleanupErr := errors.Join(pipes.close(), image.Close(), container.close())
-		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
+		return nil,
+			cleanupSucceeded(jobCleanupComplete, cleanupErr),
+			errors.Join(err, cleanupErr)
 	}
 	resources := &launchResources{
 		container: container,
@@ -265,6 +271,10 @@ func finishLaunchPreparation(
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	return resources, true, nil
+}
+
+func cleanupSucceeded(previous bool, err error) bool {
+	return previous && err == nil
 }
 
 func (resources *launchResources) start(
@@ -301,8 +311,6 @@ func (resources *launchResources) start(
 			stopErr,
 		)
 	}
-	_ = windows.CloseHandle(info.Thread)
-	info.Thread = 0
 	return &launchedProcess{
 		info:      info,
 		job:       resources.job,
@@ -578,86 +586,6 @@ func createContainerName() (appContainer, error) {
 	return createContainer("celestia.worker." + hex.EncodeToString(random[:]))
 }
 
-func stageImage(folder, source string) (*os.File, [32]byte, string, error) {
-	var hash [32]byte
-	if err := os.MkdirAll(folder, 0o700); err != nil {
-		return nil, hash, "", fmt.Errorf("prepare AppContainer folder: %w", err)
-	}
-	sourceFile, err := openLocked(source, windows.GENERIC_READ, windows.OPEN_EXISTING)
-	if err != nil {
-		return nil, hash, "", fmt.Errorf("open worker: %w", err)
-	}
-	defer func() {
-		_ = sourceFile.Close()
-	}()
-	target := filepath.Join(folder, "worker.exe")
-	writer, err := openLocked(target, windows.GENERIC_READ|windows.GENERIC_WRITE, windows.CREATE_NEW)
-	if err != nil {
-		return nil, hash, "", fmt.Errorf("create staged worker: %w", err)
-	}
-	digest := sha256.New()
-	if _, err := io.Copy(io.MultiWriter(writer, digest), sourceFile); err != nil {
-		_ = writer.Close()
-		return nil, hash, "", fmt.Errorf("stage worker: %w", err)
-	}
-	if err := writer.Sync(); err != nil {
-		_ = writer.Close()
-		return nil, hash, "", fmt.Errorf("flush staged worker: %w", err)
-	}
-	err = writer.Close()
-	if err != nil {
-		return nil, hash, "", fmt.Errorf("close staged worker: %w", err)
-	}
-	reader, err := openLocked(target, windows.GENERIC_READ, windows.OPEN_EXISTING)
-	if err != nil {
-		return nil, hash, "", fmt.Errorf("lock staged worker: %w", err)
-	}
-	copy(hash[:], digest.Sum(nil))
-	stagedHash, err := hashFile(reader)
-	if err != nil {
-		_ = reader.Close()
-		return nil, hash, "", err
-	}
-	if stagedHash != hash {
-		_ = reader.Close()
-		return nil, hash, "", errors.New("staged worker changed before execution lock")
-	}
-	return reader, hash, target, nil
-}
-
-func hashFile(file *os.File) ([32]byte, error) {
-	var result [32]byte
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return result, fmt.Errorf("rewind staged worker: %w", err)
-	}
-	digest := sha256.New()
-	if _, err := io.Copy(digest, file); err != nil {
-		return result, fmt.Errorf("hash staged worker: %w", err)
-	}
-	copy(result[:], digest.Sum(nil))
-	return result, nil
-}
-
-func openLocked(path string, access, disposition uint32) (*os.File, error) {
-	pointer, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return nil, err
-	}
-	handle, err := windows.CreateFile(
-		pointer,
-		access,
-		windows.FILE_SHARE_READ,
-		nil,
-		disposition,
-		windows.FILE_ATTRIBUTE_NORMAL,
-		0,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return os.NewFile(uintptr(handle), path), nil
-}
-
 func newPipes() (pipeSet, bool, error) {
 	var pipes pipeSet
 	security := windows.SecurityAttributes{
@@ -761,6 +689,9 @@ func failedOutcome(status Status, started time.Time, err error) Outcome {
 
 func (process *launchedProcess) close() error {
 	closeErr := process.pipes.close()
+	if err := windows.CloseHandle(process.info.Thread); err != nil {
+		closeErr = errors.Join(closeErr, fmt.Errorf("close worker thread: %w", err))
+	}
 	if err := windows.CloseHandle(process.info.Process); err != nil {
 		closeErr = errors.Join(closeErr, fmt.Errorf("close worker process: %w", err))
 	}

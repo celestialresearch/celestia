@@ -151,15 +151,27 @@ func TestStageImageRejectsFailures(t *testing.T) {
 		t.Fatalf("create container: %v", err)
 	}
 	defer closeContainer(t, &container)
-	if _, _, _, err := stageImage(container.folder, filepath.Join(t.TempDir(), "missing")); err == nil {
+	if _, _, _, _, err := stageImage(
+		container.folder,
+		filepath.Join(t.TempDir(), "missing"),
+	); err == nil {
 		t.Fatal("missing worker was staged")
 	}
-	image, _, _, err := stageImage(container.folder, os.Getenv("CELESTIA_TEST_HOSTILE_WORKER"))
+	image, _, _, complete, err := stageImage(
+		container.folder,
+		os.Getenv("CELESTIA_TEST_HOSTILE_WORKER"),
+	)
 	if err != nil {
 		t.Fatalf("stage worker: %v", err)
 	}
+	if !complete {
+		t.Fatal("successful staging reported incomplete cleanup")
+	}
 	defer closeFile(t, image)
-	if _, _, _, err := stageImage(container.folder, os.Getenv("CELESTIA_TEST_HOSTILE_WORKER")); err == nil {
+	if _, _, _, _, err := stageImage(
+		container.folder,
+		os.Getenv("CELESTIA_TEST_HOSTILE_WORKER"),
+	); err == nil {
 		t.Fatal("staging collision was accepted")
 	}
 }
@@ -180,6 +192,18 @@ func TestNativeHelpersRejectInvalidState(t *testing.T) {
 		}
 		if _, err := hashFile(file); err == nil {
 			t.Fatal("closed file was hashed")
+		}
+	})
+	t.Run("closed file cleanup", func(t *testing.T) {
+		file, err := os.CreateTemp(t.TempDir(), "closed")
+		if err != nil {
+			t.Fatalf("create file: %v", err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatalf("close file: %v", err)
+		}
+		if err := closeFiles(file); err == nil {
+			t.Fatal("failed file cleanup was reported complete")
 		}
 	})
 	t.Run("environment", func(t *testing.T) {
@@ -211,9 +235,12 @@ func TestNativeWaitRejectsInvalidState(t *testing.T) {
 			t.Fatalf("create event: %v", err)
 		}
 		defer closeNativeHandle(t, event)
-		job, err := createJob(testNativeLimits())
+		job, complete, err := createJob(testNativeLimits())
 		if err != nil {
 			t.Fatalf("create job: %v", err)
+		}
+		if !complete {
+			t.Fatal("successful job creation reported incomplete cleanup")
 		}
 		defer closeNativeHandle(t, job)
 		if complete, err := waitCleanup(event, job, time.Millisecond); complete || err == nil {
@@ -324,6 +351,65 @@ func TestPipeCloseReportsFailure(t *testing.T) {
 	}
 	if pipes != (pipeSet{}) {
 		t.Fatalf("closed pipe handles retained: %#v", pipes)
+	}
+}
+
+func TestJobCloseReportsFailure(t *testing.T) {
+	handle, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	if err := windows.CloseHandle(handle); err != nil {
+		t.Fatalf("close event: %v", err)
+	}
+	operationErr := errors.New("injected job configuration failure")
+	job, complete, err := failedJob(handle, operationErr)
+	if job != 0 || complete || !errors.Is(err, operationErr) {
+		t.Fatalf("job=%v complete=%t error=%v", job, complete, err)
+	}
+}
+
+func TestProcessCloseReportsThreadFailure(t *testing.T) {
+	thread, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		t.Fatalf("create thread handle: %v", err)
+	}
+	processHandle, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		closeNativeHandle(t, thread)
+		t.Fatalf("create process handle: %v", err)
+	}
+	job, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		closeNativeHandle(t, thread)
+		closeNativeHandle(t, processHandle)
+		t.Fatalf("create job handle: %v", err)
+	}
+	image, err := os.CreateTemp(t.TempDir(), "image")
+	if err != nil {
+		closeNativeHandle(t, thread)
+		closeNativeHandle(t, processHandle)
+		closeNativeHandle(t, job)
+		t.Fatalf("create image: %v", err)
+	}
+	if err := windows.CloseHandle(thread); err != nil {
+		t.Fatalf("close thread handle: %v", err)
+	}
+	process := launchedProcess{
+		info: windows.ProcessInformation{
+			Process: processHandle,
+			Thread:  thread,
+		},
+		job:   job,
+		image: image,
+		container: appContainer{
+			sidReleased:    true,
+			profileDeleted: true,
+		},
+	}
+	if err := process.close(); err == nil ||
+		!strings.Contains(err.Error(), "close worker thread") {
+		t.Fatalf("thread cleanup failure hidden: %v", err)
 	}
 }
 

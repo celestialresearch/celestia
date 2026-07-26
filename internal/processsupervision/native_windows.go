@@ -179,10 +179,10 @@ func deleteContainer(name string) error {
 	return nil
 }
 
-func createJob(limits Limits) (windows.Handle, error) {
+func createJob(limits Limits) (windows.Handle, bool, error) {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
-		return 0, fmt.Errorf("create job: %w", err)
+		return 0, true, fmt.Errorf("create job: %w", err)
 	}
 	information := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
 	information.BasicLimitInformation.PerProcessUserTimeLimit = limits.Timeout.Nanoseconds() / 100
@@ -200,8 +200,12 @@ func createJob(limits Limits) (windows.Handle, error) {
 		uint32(unsafe.Sizeof(information)),
 	)
 	if err != nil {
-		_ = windows.CloseHandle(job)
-		return 0, fmt.Errorf("configure job: %w", err)
+		return failedJob(job, fmt.Errorf("configure job: %w", err))
 	}
-	return job, nil
+	return job, true, nil
+}
+
+func failedJob(job windows.Handle, operationErr error) (windows.Handle, bool, error) {
+	closeErr := windows.CloseHandle(job)
+	return 0, closeErr == nil, errors.Join(operationErr, closeErr)
 }
