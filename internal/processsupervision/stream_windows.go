@@ -58,7 +58,9 @@ func closeHandle(handle *windows.Handle) error {
 		return nil
 	}
 	err := windows.CloseHandle(*handle)
-	*handle = 0
+	if err == nil {
+		*handle = 0
+	}
 	return err
 }
 
@@ -80,13 +82,19 @@ func (reader *streamReader) read(
 	result chan<- streamResult,
 	overflow chan<- Status,
 ) {
-	defer func() {
-		_ = reader.cancel()
-		close(reader.done)
-	}()
+	value := reader.readResult(limit, overflowStatus, overflow)
+	value.cleanupErr = reader.cancel()
+	close(reader.done)
+	result <- value
+}
+
+func (reader *streamReader) readResult(
+	limit int,
+	overflowStatus Status,
+	overflow chan<- Status,
+) streamResult {
 	if reader.file == nil {
-		result <- streamResult{err: errors.New("create worker stream")}
-		return
+		return streamResult{err: errors.New("create worker stream")}
 	}
 	var buffer bytes.Buffer
 	_, err := io.CopyN(&buffer, reader.file, int64(limit)+1)
@@ -95,17 +103,15 @@ func (reader *streamReader) read(
 		case overflow <- overflowStatus:
 		default:
 		}
-		result <- streamResult{
+		return streamResult{
 			data: buffer.Bytes()[:min(buffer.Len(), limit)],
 			err:  errStreamLimit,
 		}
-		return
 	}
 	if !errors.Is(err, io.EOF) {
-		result <- streamResult{data: buffer.Bytes(), err: err}
-		return
+		return streamResult{data: buffer.Bytes(), err: err}
 	}
-	result <- streamResult{data: buffer.Bytes()}
+	return streamResult{data: buffer.Bytes()}
 }
 
 func (reader *streamReader) cancel() error {
@@ -145,19 +151,22 @@ func awaitStream(
 	case value := <-result:
 		return value
 	case <-timer.C:
-		err := fmt.Errorf("join worker %s: cleanup deadline exceeded", reader.name)
+		cleanupErr := fmt.Errorf("join worker %s: cleanup deadline exceeded", reader.name)
 		if closeErr := reader.cancel(); closeErr != nil {
-			err = errors.Join(err, fmt.Errorf("close worker %s: %w", reader.name, closeErr))
+			cleanupErr = errors.Join(
+				cleanupErr,
+				fmt.Errorf("close worker %s: %w", reader.name, closeErr),
+			)
 		}
 		joinTimer := time.NewTimer(100 * time.Millisecond)
 		defer joinTimer.Stop()
 		select {
 		case <-reader.done:
 			value := <-result
-			value.err = errors.Join(err, value.err)
+			value.cleanupErr = errors.Join(cleanupErr, value.cleanupErr)
 			return value
 		case <-joinTimer.C:
-			return streamResult{err: err}
+			return streamResult{cleanupErr: cleanupErr}
 		}
 	}
 }

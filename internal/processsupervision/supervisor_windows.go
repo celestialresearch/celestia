@@ -66,8 +66,14 @@ type launchResources struct {
 }
 
 type streamResult struct {
-	data []byte
-	err  error
+	data       []byte
+	err        error
+	cleanupErr error
+}
+
+type inputResult struct {
+	err        error
+	cleanupErr error
 }
 
 type jobAccounting struct {
@@ -378,8 +384,8 @@ func (supervisor *Supervisor) observe(
 	stderrReader := newStreamReader("diagnostics", stderrHandle)
 	go stdoutReader.read(supervisor.limits.OutputBytes, OutputOverflow, stdout, overflow)
 	go stderrReader.read(supervisor.limits.ErrorBytes, ErrorOverflow, stderr, overflow)
-	input := make(chan error, 1)
-	inputDone := make(chan error, 1)
+	input := make(chan inputResult, 1)
+	inputDone := make(chan inputResult, 1)
 	stdinHandle := process.pipes.stdinWrite
 	process.pipes.stdinWrite = 0
 	go func() {
@@ -415,13 +421,13 @@ func (supervisor *Supervisor) observe(
 		status = CleanupFailed
 		cause = errors.Join(cause, waitErr)
 	}
-	inputErr := awaitInput(inputDone, supervisor.limits.CleanupTimeout)
-	if inputErr != nil {
-		if status == Completed {
-			status = ExitFailed
-		}
-		cause = errors.Join(cause, inputErr)
-	}
+	inputResult := awaitInput(inputDone, supervisor.limits.CleanupTimeout)
+	status, cause, cleanupComplete = applyInputResult(
+		status,
+		cause,
+		cleanupComplete,
+		inputResult,
+	)
 	streamDeadline := time.Now().Add(supervisor.limits.CleanupTimeout)
 	out := awaitStream(stdoutReader, stdout, streamDeadline)
 	diagnostics := awaitStream(stderrReader, stderr, streamDeadline)
@@ -434,14 +440,16 @@ func (supervisor *Supervisor) observe(
 	return outcome
 }
 
-func awaitInput(input <-chan error, timeout time.Duration) error {
+func awaitInput(input <-chan inputResult, timeout time.Duration) inputResult {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
-	case err := <-input:
-		return err
+	case result := <-input:
+		return result
 	case <-timer.C:
-		return errors.New("join worker input: cleanup deadline exceeded")
+		return inputResult{
+			cleanupErr: errors.New("join worker input: cleanup deadline exceeded"),
+		}
 	}
 }
 
@@ -450,7 +458,7 @@ func awaitProcess(
 	timeout <-chan time.Time,
 	waited <-chan error,
 	overflow <-chan Status,
-	input <-chan error,
+	input <-chan inputResult,
 ) (Status, error) {
 	for {
 		if status, cause, ready := readWaitResult(waited); ready {
@@ -468,9 +476,12 @@ func awaitProcess(
 			return resolveProcessTimeout(waited)
 		case status := <-overflow:
 			return status, errStreamLimit
-		case cause := <-input:
-			if cause != nil {
-				return ExitFailed, cause
+		case result := <-input:
+			if result.cleanupErr != nil {
+				return CleanupFailed, errors.Join(result.err, result.cleanupErr)
+			}
+			if result.err != nil {
+				return ExitFailed, result.err
 			}
 			input = nil
 		}
@@ -520,8 +531,22 @@ func finishOutcome(
 	out streamResult,
 	diagnostics streamResult,
 ) Outcome {
-	status, cause = applyStreamResult(status, cause, out, "output", OutputOverflow)
-	status, cause = applyStreamResult(status, cause, diagnostics, "diagnostics", ErrorOverflow)
+	status, cause, cleanupComplete = applyStreamResult(
+		status,
+		cause,
+		cleanupComplete,
+		out,
+		"output",
+		OutputOverflow,
+	)
+	status, cause, cleanupComplete = applyStreamResult(
+		status,
+		cause,
+		cleanupComplete,
+		diagnostics,
+		"diagnostics",
+		ErrorOverflow,
+	)
 	status, exitCode, cause := readExit(process.info.Process, status, cause)
 	return Outcome{
 		Status:          status,
@@ -537,15 +562,24 @@ func finishOutcome(
 func applyStreamResult(
 	status Status,
 	cause error,
+	cleanupComplete bool,
 	result streamResult,
 	name string,
 	overflowStatus Status,
-) (Status, error) {
+) (Status, error, bool) {
+	if result.cleanupErr != nil {
+		status = CleanupFailed
+		cause = errors.Join(
+			cause,
+			fmt.Errorf("clean up worker %s: %w", name, result.cleanupErr),
+		)
+		cleanupComplete = false
+	}
 	if errors.Is(result.err, errStreamLimit) && status == Completed {
 		status = overflowStatus
 	}
 	if errors.Is(result.err, errStreamLimit) {
-		return status, errors.Join(cause, result.err)
+		return status, errors.Join(cause, result.err), cleanupComplete
 	}
 	if result.err != nil {
 		if status != CleanupFailed {
@@ -553,7 +587,27 @@ func applyStreamResult(
 		}
 		cause = errors.Join(cause, fmt.Errorf("read worker %s: %w", name, result.err))
 	}
-	return status, cause
+	return status, cause, cleanupComplete
+}
+
+func applyInputResult(
+	status Status,
+	cause error,
+	cleanupComplete bool,
+	result inputResult,
+) (Status, error, bool) {
+	if result.cleanupErr != nil {
+		return CleanupFailed,
+			errors.Join(cause, result.err, result.cleanupErr),
+			false
+	}
+	if result.err != nil {
+		if status == Completed {
+			status = ExitFailed
+		}
+		cause = errors.Join(cause, result.err)
+	}
+	return status, cause, cleanupComplete
 }
 
 func readExit(process windows.Handle, status Status, cause error) (Status, uint32, error) {

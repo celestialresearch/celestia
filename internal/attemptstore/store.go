@@ -628,7 +628,7 @@ func publishMarker(path, attemptID string) error {
 	return nil
 }
 
-func writeRecord(path, name string, value any) error {
+func writeRecord(path, name string, value any) (err error) {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return err
@@ -642,19 +642,19 @@ func writeRecord(path, name string, value any) error {
 	}
 	temporaryName := temporary.Name()
 	defer func() {
-		_ = os.Remove(temporaryName)
+		removeErr := os.Remove(temporaryName)
+		if !errors.Is(removeErr, os.ErrNotExist) {
+			err = errors.Join(err, removeErr)
+		}
 	}()
 	if err := temporary.Chmod(0o600); err != nil {
-		_ = temporary.Close()
-		return err
+		return errors.Join(err, temporary.Close())
 	}
 	if _, err := temporary.Write(data); err != nil {
-		_ = temporary.Close()
-		return err
+		return errors.Join(err, temporary.Close())
 	}
 	if err := temporary.Sync(); err != nil {
-		_ = temporary.Close()
-		return err
+		return errors.Join(err, temporary.Close())
 	}
 	if err := temporary.Close(); err != nil {
 		return err
@@ -729,7 +729,7 @@ func fileHash(path, name string) (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
-func readRooted(path, name string) ([]byte, error) {
+func readRooted(path, name string) (data []byte, err error) {
 	if err := rejectLinkedAncestors(path); err != nil {
 		return nil, err
 	}
@@ -738,7 +738,7 @@ func readRooted(path, name string) ([]byte, error) {
 		return nil, err
 	}
 	defer func() {
-		_ = root.Close()
+		err = errors.Join(err, root.Close())
 	}()
 	info, err := root.Lstat(name)
 	if err != nil {
@@ -752,7 +752,7 @@ func readRooted(path, name string) ([]byte, error) {
 		return nil, err
 	}
 	defer func() {
-		_ = file.Close()
+		err = errors.Join(err, file.Close())
 	}()
 	info, err = file.Stat()
 	if err != nil {
@@ -761,7 +761,7 @@ func readRooted(path, name string) ([]byte, error) {
 	if invalidRecordFile(filepath.Join(path, name), info) {
 		return nil, ErrCorrupt
 	}
-	data, err := io.ReadAll(io.LimitReader(file, maxRecordBytes+1))
+	data, err = io.ReadAll(io.LimitReader(file, maxRecordBytes+1))
 	if err != nil {
 		return nil, err
 	}

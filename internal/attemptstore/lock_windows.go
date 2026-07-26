@@ -117,7 +117,7 @@ func secureLockFile(file *os.File, _ os.FileInfo) error {
 	return nil
 }
 
-func syncAttemptLockDirectory(directory string) error {
+func syncAttemptLockDirectory(directory string) (err error) {
 	path, err := windows.UTF16PtrFromString(directory)
 	if err != nil {
 		return err
@@ -135,7 +135,7 @@ func syncAttemptLockDirectory(directory string) error {
 		return err
 	}
 	defer func() {
-		_ = windows.CloseHandle(handle)
+		err = errors.Join(err, windows.CloseHandle(handle))
 	}()
 	return windows.FlushFileBuffers(handle)
 }
