@@ -396,8 +396,9 @@ func (supervisor *Supervisor) observe(
 	inputDone := make(chan inputResult, 1)
 	stdinHandle := process.pipes.stdinWrite
 	process.pipes.stdinWrite = 0
+	inputWriter := newInputWriter(stdinHandle)
 	go func() {
-		result := writeFrame(stdinHandle, frame)
+		result := inputWriter.write(frame)
 		input <- result
 		inputDone <- result
 	}()
@@ -430,7 +431,7 @@ func (supervisor *Supervisor) observe(
 		status = CleanupFailed
 		cause = errors.Join(cause, waitErr)
 	}
-	inputResult := awaitInput(inputDone, cleanupDeadline)
+	inputResult := awaitInput(inputWriter, inputDone, cleanupDeadline)
 	status, cause, cleanupComplete = applyInputResult(
 		status,
 		cause,
@@ -448,15 +449,33 @@ func (supervisor *Supervisor) observe(
 	return outcome
 }
 
-func awaitInput(input <-chan inputResult, deadline time.Time) inputResult {
+func awaitInput(
+	writer *inputWriter,
+	input <-chan inputResult,
+	deadline time.Time,
+) inputResult {
 	timer := time.NewTimer(cleanupRemaining(deadline))
 	defer timer.Stop()
 	select {
 	case result := <-input:
 		return result
 	case <-timer.C:
-		return inputResult{
-			cleanupErr: errors.New("join worker input: cleanup deadline exceeded"),
+		cleanupErr := errors.New("join worker input: cleanup deadline exceeded")
+		if writer == nil {
+			return inputResult{cleanupErr: cleanupErr}
+		}
+		if closeErr := writer.cancel(); closeErr != nil {
+			cleanupErr = errors.Join(cleanupErr, closeErr)
+		}
+		joinTimer := time.NewTimer(100 * time.Millisecond)
+		defer joinTimer.Stop()
+		select {
+		case <-writer.done:
+			result := <-input
+			result.cleanupErr = errors.Join(cleanupErr, result.cleanupErr)
+			return result
+		case <-joinTimer.C:
+			return inputResult{cleanupErr: cleanupErr}
 		}
 	}
 }
