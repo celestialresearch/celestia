@@ -265,7 +265,8 @@ func validTimedOutObservation(record Observation) bool {
 		record.CleanupComplete &&
 		record.ProtocolStatus == "not_run" &&
 		noVerification(record) &&
-		(record.ProcessStatus != "start_failed" || record.ExitCode == 0)
+		(record.ProcessStatus != "start_failed" ||
+			record.ExitCode == 0 && noProcessStreams(record))
 }
 
 func validVerifiedObservation(record Observation) bool {
@@ -348,7 +349,8 @@ func validStartFailure(record Observation) bool {
 	return record.ProtocolStatus == "not_run" &&
 		record.ProcessError != "" &&
 		record.CleanupComplete &&
-		record.ExitCode == 0
+		record.ExitCode == 0 &&
+		noProcessStreams(record)
 }
 
 func validProcessFailure(record Observation) bool {
@@ -362,6 +364,10 @@ func noVerification(record Observation) bool {
 		record.VerificationVer == "" &&
 		record.ExpectedOutput == "" &&
 		!record.VerificationPass
+}
+
+func noProcessStreams(record Observation) bool {
+	return len(record.Stdout) == 0 && len(record.Stderr) == 0
 }
 
 func validateRecovery(record Recovery) error {
