@@ -200,9 +200,11 @@ foreach ($run in $running) {
 }
 
 $cleanupFailures = @(
-    Remove-Directory -Path $logRoot
-    Remove-Directory -Path $mutableRoot
-) | Where-Object { $_ }
+    @(
+        Remove-Directory -Path $logRoot
+        Remove-Directory -Path $mutableRoot
+    ) | Where-Object { $_ }
+)
 if ($cleanupFailures.Count -gt 0) {
     $cleanupFailure = 'Windows shell cleanup failed: ' + (
         $cleanupFailures -join '; '

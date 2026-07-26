@@ -79,6 +79,17 @@ main() (
     printf 'Windows shell check does not own devcheck\n' >&2
     return 1
   }
+  # shellcheck disable=SC2016 # These probes match literal source.
+  grep -Fq '$cleanupFailures = @(' "$shellcheck_script" || {
+    printf 'Windows shell check does not retain cleanup failures as an array\n' >&2
+    return 1
+  }
+  # shellcheck disable=SC2016 # These probes match literal source.
+  grep -Fq 'CYGWIN*) go_profile=$(cygpath -w "$profile")' \
+    "$root/.github/scripts/coveragecheck.sh" || {
+    printf 'coverage check omits Cygwin Go-path conversion\n' >&2
+    return 1
+  }
 
   mkdir -p "$work_dir/.github/scripts" "$work_dir/a" "$work_dir/b"
   cp "$root/.github/scripts/coveragecheck.sh" \

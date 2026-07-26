@@ -30,13 +30,14 @@ fi
 
 repo_dir=/usr/local/etc/pkg/repos
 default_repo="$repo_dir/df-latest.conf"
+celestia_repo="$repo_dir/celestia.conf"
 
 sudo mkdir -p "$repo_dir"
 if [[ -f "$default_repo" ]]; then
   sudo mv "$default_repo" "$default_repo.disabled"
 fi
 
-sudo tee "$repo_dir/celestia-auto.conf" >/dev/null <<'EOF'
+sudo tee "$celestia_repo" >/dev/null <<'EOF'
 AUTO: {
     url: "https://pkg.dragonflybsd.org/pkg/${ABI}/LATEST",
     mirror_type: "HTTP",
@@ -44,5 +45,14 @@ AUTO: {
 }
 EOF
 
-retry sudo pkg update -f
+if ! retry sudo pkg update -f; then
+  sudo tee "$celestia_repo" >/dev/null <<'EOF'
+Avalon: {
+    url: "https://avalon.dragonflybsd.org/dports/${ABI}/LATEST",
+    mirror_type: "NONE",
+    enabled: yes
+}
+EOF
+  retry sudo pkg update -f
+fi
 retry sudo pkg install -y go
