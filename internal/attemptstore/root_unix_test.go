@@ -67,6 +67,22 @@ func TestSecureEvidenceTreeRejectsNonDirectory(t *testing.T) {
 	}
 }
 
+func TestSecureEvidenceFileRejectsLooseMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "record")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	if err := secureEvidenceFile(path); err != nil {
+		t.Fatalf("secure record rejected: %v", err)
+	}
+	if err := syscall.Chmod(path, 0o644); err != nil {
+		t.Fatalf("loosen record: %v", err)
+	}
+	if err := secureEvidenceFile(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("loosely readable record accepted: %v", err)
+	}
+}
+
 func TestStageRejectsLinkedAttemptPath(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)

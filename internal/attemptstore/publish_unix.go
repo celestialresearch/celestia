@@ -78,7 +78,18 @@ func validateEvidenceDirectory(path string, info os.FileInfo) error {
 	return nil
 }
 
-func secureEvidenceFile(_ string) error {
+func secureEvidenceFile(path string) error {
+	info, err := lstatEvidencePath(path)
+	if err != nil {
+		return err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok ||
+		int64(stat.Uid) != int64(os.Geteuid()) ||
+		stat.Nlink != 1 ||
+		info.Mode().Perm() != 0o600 {
+		return ErrCorrupt
+	}
 	return nil
 }
 
