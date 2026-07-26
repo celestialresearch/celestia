@@ -52,7 +52,7 @@ func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptL
 		return nil, err
 	}
 	defer reservation.abandon()
-	file, err := openAttemptLockFile(root, name, create)
+	file, err := openAttemptLockFile(root, directory, name, create)
 	if err != nil {
 		return nil, err
 	}
@@ -124,27 +124,6 @@ func (reservation *lockReservation) abandon() {
 	if !reservation.keep {
 		activeAttemptLocks.Delete(reservation.key)
 	}
-}
-
-func openAttemptLockFile(root *os.Root, name string, create bool) (*os.File, error) {
-	file, err := root.OpenFile(name, os.O_RDWR, 0o600)
-	if err == nil {
-		return file, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("open attempt lock: %w", err)
-	}
-	if !create {
-		return nil, ErrCorrupt
-	}
-	file, err = root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		return root.OpenFile(name, os.O_RDWR, 0o600)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("create attempt lock: %w", err)
-	}
-	return file, nil
 }
 
 func syncAttemptLock(file *os.File, directory string) error {

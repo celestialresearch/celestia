@@ -41,6 +41,7 @@ type Limits struct {
 	ErrorBytes     int
 	MemoryBytes    int
 	Processes      uint32
+	StartupTimeout time.Duration
 	Timeout        time.Duration
 	CleanupTimeout time.Duration
 }
@@ -61,5 +62,17 @@ func New(workerPath string, limits Limits) (*Supervisor, error) {
 }
 
 func (supervisor *Supervisor) Run(ctx context.Context, frame []byte) Outcome {
-	return supervisor.run(ctx, frame)
+	return supervisor.run(
+		ctx,
+		frame,
+		time.Now().Add(supervisor.limits.StartupTimeout),
+	)
+}
+
+func (supervisor *Supervisor) RunBefore(
+	ctx context.Context,
+	frame []byte,
+	startDeadline time.Time,
+) Outcome {
+	return supervisor.run(ctx, frame, startDeadline)
 }

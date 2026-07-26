@@ -31,6 +31,20 @@ func TestPublishFileRejectsInvalidPaths(t *testing.T) {
 	}
 }
 
+func TestPublishFileRejectsDuplicate(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	target := filepath.Join(root, "target")
+	for _, path := range []string{source, target} {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatalf("write %s: %v", filepath.Base(path), err)
+		}
+	}
+	if err := publishFile(source, target, root); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("duplicate target accepted: %v", err)
+	}
+}
+
 func TestNewSetsWindowsOwnerDACL(t *testing.T) {
 	store := newTestStore(t)
 	descriptor, err := windows.GetNamedSecurityInfo(
@@ -63,5 +77,71 @@ func TestWindowsSecurityHelpersRejectFilesAndInvalidPaths(t *testing.T) {
 	}
 	if err := secureEvidenceTree(filepath.Join(t.TempDir(), "missing")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing directory secured: %v", err)
+	}
+	if err := secureEvidenceFile(filepath.Join(t.TempDir(), "missing-file")); err == nil {
+		t.Fatal("missing evidence file secured")
+	}
+}
+
+func TestRecordTempRejectsMissingDirectory(t *testing.T) {
+	store := newTestStore(t)
+	temporary, err := createRecordTemp(store.root, "record.json")
+	if err != nil {
+		t.Fatalf("create protected record temporary file: %v", err)
+	}
+	name := temporary.Name()
+	t.Cleanup(func() { _ = os.Remove(name) })
+	if err := temporary.Close(); err != nil {
+		t.Fatalf("close protected record temporary file: %v", err)
+	}
+	if err := secureEvidenceFile(name); err != nil {
+		t.Fatalf("protected record temporary file rejected: %v", err)
+	}
+	_, err = createRecordTemp(filepath.Join(t.TempDir(), "missing"), "record.json")
+	if err == nil {
+		t.Fatal("record temporary file created in a missing directory")
+	}
+	if _, err := createRecordTemp("invalid\x00path", "record.json"); err == nil {
+		t.Fatal("record temporary file accepted an invalid path")
+	}
+	if err := createEvidenceDirectory(t.TempDir()); err == nil {
+		t.Fatal("existing evidence directory recreated")
+	}
+}
+
+func TestWindowsSecurityHelpersRejectInvalidPaths(t *testing.T) {
+	if err := secureEvidenceTree("invalid\x00path"); err == nil {
+		t.Fatal("invalid evidence tree path accepted")
+	}
+	if err := secureOwnedPath("invalid\x00path"); err == nil {
+		t.Fatal("invalid ownership path accepted")
+	}
+	if err := secureOwnedPath(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("missing ownership path accepted")
+	}
+	if err := secureDirectoryACL("invalid\x00path"); err == nil {
+		t.Fatal("invalid ACL path accepted")
+	}
+	if err := secureDirectoryACL(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("missing ACL path accepted")
+	}
+	if err := secureEvidenceFile("invalid\x00path"); err == nil {
+		t.Fatal("invalid evidence file path accepted")
+	}
+	if err := createEvidenceDirectory("invalid\x00path"); err == nil {
+		t.Fatal("invalid evidence directory path accepted")
+	}
+	if !pathIsLinked(filepath.Join(t.TempDir(), "missing"), nil) {
+		t.Fatal("missing Windows path treated as unlinked")
+	}
+}
+
+func TestWindowsSecurityHelpersRejectUnmanagedDirectory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "unmanaged")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("create unmanaged directory: %v", err)
+	}
+	if err := secureEvidenceTree(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("unmanaged directory accepted: %v", err)
 	}
 }

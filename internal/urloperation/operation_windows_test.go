@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows && amd64
 
 package urloperation
 
@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -44,15 +45,31 @@ func TestMain(testingMain *testing.M) {
 		"build",
 		"--workspace",
 		"--all-targets",
-		"--features",
-		"qualification-fixtures",
 		"--locked",
 	)
 	command.Dir = root
 	command.Stdout = os.Stderr
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "build worker fixtures: %v\n", err)
+		fmt.Fprintf(os.Stderr, "build production worker: %v\n", err)
+		os.Exit(1)
+	}
+	// The test invokes the repository-pinned Cargo tool with fixed arguments;
+	// the path is derived only from the checked-out repository root.
+	qualification := exec.CommandContext( //nolint:gosec // fixed test-tool invocation
+		ctx,
+		"cargo",
+		"build",
+		"--manifest-path",
+		filepath.Join(root, "worker", "qualification-fixtures", "Cargo.toml"),
+		"--bins",
+		"--locked",
+	)
+	qualification.Dir = root
+	qualification.Stdout = os.Stderr
+	qualification.Stderr = os.Stderr
+	if err := qualification.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "build qualification fixtures: %v\n", err)
 		os.Exit(1)
 	}
 	os.Exit(testingMain.Run())
@@ -148,7 +165,7 @@ func TestObservationPreservesProcessFailure(t *testing.T) {
 		Err: ErrProtocol,
 	}
 	observation := observationFrom(result)
-	if observation.ProtocolStatus != protocolRejected ||
+	if observation.ProtocolStatus != protocolNotRun ||
 		observation.ProcessError == "" ||
 		observation.TerminalStatus != string(Failed) {
 		t.Fatalf("observation=%+v", observation)
@@ -172,6 +189,9 @@ func TestObservationMapsProtocolState(t *testing.T) {
 		{
 			name: "rejected",
 			result: Result{
+				Process: processsupervision.Outcome{
+					Status: processsupervision.Completed,
+				},
 				Err: ErrProtocol,
 			},
 			expected: protocolRejected,
@@ -244,13 +264,13 @@ func TestOperationPreservesTermination(t *testing.T) {
 }
 
 func TestOperationRejectsInvalidContext(t *testing.T) {
-	if _, _, err := admittedContext(
+	if _, err := admittedStartDeadline(
 		nilContext(),
 		time.Now().UTC().Format(time.RFC3339Nano),
 	); err == nil {
 		t.Fatal("nil context accepted")
 	}
-	if _, _, err := admittedContext(context.Background(), "invalid"); err == nil {
+	if _, err := admittedStartDeadline(context.Background(), "invalid"); err == nil {
 		t.Fatal("invalid deadline accepted")
 	}
 }
@@ -356,10 +376,18 @@ func assertWorkerFailure(t *testing.T, result Result, status workerprotocol.Stat
 	t.Helper()
 	if result.Status != Failed ||
 		result.Process.Status != processsupervision.Completed ||
+		len(result.Process.Stdout) != 0 ||
+		len(result.Process.Stderr) != 0 ||
 		result.Response == nil ||
 		result.Response.Status != status ||
+		len(result.Response.Diagnostics) != 0 ||
+		len(result.Diagnostics) != 1 ||
+		result.Diagnostics[0].Message != "The worker reported a failure" ||
 		result.Verification.VerifierID != "" {
 		t.Fatalf("result=%+v", result)
+	}
+	if strings.Contains(result.Diagnostics[0].Message, "hostile fixture") {
+		t.Fatalf("worker-controlled message exposed: %+v", result.Diagnostics)
 	}
 }
 
@@ -421,7 +449,11 @@ func testHostileWorker(t *testing.T) string {
 func locateWorker(tb testing.TB, name string) string {
 	tb.Helper()
 	root := filepath.Clean(filepath.Join(testWorkingDirectory(tb), "..", ".."))
-	path := filepath.Join(root, "target", "debug", name)
+	binaryDirectory := filepath.Join(root, "target", "debug")
+	if name == "celestia-hostile-worker.exe" || name == "celestia-blocked-input-worker.exe" {
+		binaryDirectory = filepath.Join(root, "worker", "qualification-fixtures", "target", "debug")
+	}
+	path := filepath.Join(binaryDirectory, name)
 	if _, err := os.Stat(path); err != nil {
 		tb.Fatalf("worker %s is unavailable: %v", name, err)
 	}

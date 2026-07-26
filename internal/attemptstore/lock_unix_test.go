@@ -60,8 +60,11 @@ func TestRecoverRejectsMissingLock(t *testing.T) {
 	if err := store.Recover(
 		accepted.Request.AttemptID,
 		"missing lock",
-	); !errors.Is(err, ErrCorrupt) {
+	); !errors.Is(err, ErrMigrationRequired) {
 		t.Fatalf("missing lock recovered: %v", err)
+	}
+	if err := store.MigrateV0(accepted.Request.AttemptID, "operator quiesced legacy attempt"); err != nil {
+		t.Fatalf("migrate legacy attempt: %v", err)
 	}
 }
 

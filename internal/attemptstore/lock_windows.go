@@ -16,11 +16,68 @@ package attemptstore
 import (
 	"errors"
 	"os"
+	"path/filepath"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
 
 var errLockHeld = errors.New("attempt lock held")
+
+func openAttemptLockFile(_ *os.Root, directory, name string, create bool) (*os.File, error) {
+	path := filepath.Join(directory, name)
+	disposition := uint32(windows.OPEN_EXISTING)
+	var attributes *windows.SecurityAttributes
+	var descriptor *windows.SECURITY_DESCRIPTOR
+	var err error
+	if create {
+		disposition = windows.CREATE_NEW
+		descriptor, err = secureDirectoryDescriptor()
+		if err != nil {
+			return nil, err
+		}
+		attributes = &windows.SecurityAttributes{
+			Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
+			SecurityDescriptor: descriptor,
+		}
+	}
+	pointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, err
+	}
+	handle, err := windows.CreateFile(
+		pointer,
+		windows.GENERIC_READ|windows.GENERIC_WRITE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
+		attributes,
+		disposition,
+		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_WRITE_THROUGH,
+		0,
+	)
+	if errors.Is(err, windows.ERROR_FILE_EXISTS) ||
+		errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+		if !create {
+			return nil, err
+		}
+		handle, err = windows.CreateFile(
+			pointer,
+			windows.GENERIC_READ|windows.GENERIC_WRITE,
+			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
+			nil,
+			windows.OPEN_EXISTING,
+			windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_WRITE_THROUGH,
+			0,
+		)
+	}
+	if err != nil {
+		if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) ||
+			errors.Is(err, windows.ERROR_PATH_NOT_FOUND) {
+			return nil, os.ErrNotExist
+		}
+		return nil, err
+	}
+	return os.NewFile(uintptr(handle), path), nil
+}
 
 func lockAttemptFile(file *os.File) error {
 	var overlapped windows.Overlapped
@@ -44,6 +101,9 @@ func unlockAttemptFile(file *os.File) error {
 }
 
 func secureLockFile(file *os.File, _ os.FileInfo) error {
+	if err := secureOwnedPath(file.Name()); err != nil {
+		return err
+	}
 	var information windows.ByHandleFileInformation
 	if err := windows.GetFileInformationByHandle(
 		windows.Handle(file.Fd()),

@@ -13,6 +13,7 @@
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
+cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
 usage() {
   printf 'Usage: %s verify|diff|cached-diff|update\n' "${0##*/}" >&2
@@ -77,7 +78,7 @@ compare_file() {
 
 check_update_diff() (
   local status=0
-  local work_dir
+  local work_dir file
 
   work_dir=$(mktemp -d "${TMPDIR:-/tmp}/celestia-modcheck.XXXXXX")
   case "$work_dir" in
@@ -89,7 +90,10 @@ check_update_diff() (
   esac
   trap 'rm -rf -- "$work_dir"' EXIT HUP INT TERM
 
-  git ls-files -co --exclude-standard -z |
+  while IFS= read -r -d '' file; do
+    [[ -f "$file" ]] || continue
+    printf '%s\0' "$file"
+  done < <(git ls-files -co --exclude-standard -z) |
     tar --null -T - -cf - |
     tar -xf - -C "$work_dir"
   if ! (
@@ -130,7 +134,7 @@ check_cached_update_diff() {
   fi
 
   cache_key_value=$(cache_key)
-  cache_file=".cache/modcheck/$cache_key_value"
+  cache_file="$cache_root/modcheck/$cache_key_value"
   if ((max_age_minutes > 0)) &&
     [[ -n "$(find "$cache_file" -mmin "-$max_age_minutes" -print 2>/dev/null)" ]]; then
     printf 'module currency cached\n'

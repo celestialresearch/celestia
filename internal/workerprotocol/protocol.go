@@ -125,7 +125,7 @@ func DecodeResponse(data []byte, correlation Correlation, exitCode int) (Respons
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&response); err != nil {
-		return Response{}, protocolError("decode: %v", err)
+		return Response{}, protocolError("decode")
 	}
 	if err := validateFields(data, response.Status); err != nil {
 		return Response{}, err
@@ -143,7 +143,7 @@ func EncodeRequest(request Request, admittedAt time.Time) ([]byte, Correlation, 
 	}
 	data, err := json.Marshal(request)
 	if err != nil {
-		return nil, Correlation{}, protocolError("encode request: %v", err)
+		return nil, Correlation{}, protocolError("encode request")
 	}
 	return data, correlation, nil
 }
@@ -162,7 +162,7 @@ func DecodeRequest(data []byte, admittedAt time.Time) (Request, Correlation, err
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
-		return Request{}, Correlation{}, protocolError("decode request: %v", err)
+		return Request{}, Correlation{}, protocolError("decode request")
 	}
 	correlation, err := ValidateRequest(request, admittedAt)
 	if err != nil {
@@ -256,7 +256,7 @@ func validIdentity(value string) bool {
 func validateRequestFields(data []byte) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
-		return protocolError("request field set: %v", err)
+		return protocolError("request field set")
 	}
 	required := []string{
 		"protocol_version",
@@ -330,7 +330,7 @@ func requireFields(fields map[string]json.RawMessage, required []string) error {
 func validateFields(data []byte, status Status) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
-		return protocolError("field set: %v", err)
+		return protocolError("field set")
 	}
 	required := []string{
 		"protocol_version",
@@ -571,7 +571,7 @@ func decodeHex4(data []byte) (uint16, bool) {
 func scanValue(decoder *json.Decoder) error {
 	token, err := decoder.Token()
 	if err != nil {
-		return protocolError("token: %v", err)
+		return protocolError("token")
 	}
 	delimiter, ok := token.(json.Delim)
 	if !ok {
@@ -592,7 +592,7 @@ func scanObject(decoder *json.Decoder) error {
 	for decoder.More() {
 		token, err := decoder.Token()
 		if err != nil {
-			return protocolError("object key: %v", err)
+			return protocolError("object key")
 		}
 		key, ok := token.(string)
 		if !ok {
@@ -621,7 +621,7 @@ func scanArray(decoder *json.Decoder) error {
 func expectDelimiter(decoder *json.Decoder, expected json.Delim) error {
 	token, err := decoder.Token()
 	if err != nil {
-		return protocolError("closing delimiter: %v", err)
+		return protocolError("closing delimiter")
 	}
 	if delimiter, ok := token.(json.Delim); !ok || delimiter != expected {
 		return protocolError("closing delimiter")

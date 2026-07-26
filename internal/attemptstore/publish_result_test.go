@@ -29,7 +29,7 @@ func TestPublishResultDistinguishesReleaseFailure(t *testing.T) {
 		t.Fatalf("release failure not classified: %v", err)
 	}
 	err := publishResult(publicationErr, releaseErr)
-	if !errors.Is(err, publicationErr) || errors.Is(err, ErrRelease) {
+	if !errors.Is(err, publicationErr) || !errors.Is(err, ErrRelease) {
 		t.Fatalf("combined failure lost: %v", err)
 	}
 }

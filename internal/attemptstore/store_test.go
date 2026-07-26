@@ -13,18 +13,92 @@ package attemptstore
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"celestia.research/governed-operation/internal/urladmission"
 	"celestia.research/governed-operation/internal/urlreference"
 )
+
+func TestStoreRejectsInvalidEvidenceRoots(t *testing.T) {
+	for _, root := range []string{"", "relative-evidence-root"} {
+		t.Run(root, func(t *testing.T) {
+			if _, err := New(root); !errors.Is(err, ErrInvalid) {
+				t.Fatalf("invalid evidence root accepted: %v", err)
+			}
+		})
+	}
+	file := filepath.Join(t.TempDir(), "evidence")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatalf("write file root: %v", err)
+	}
+	if _, err := New(file); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("file evidence root accepted: %v", err)
+	}
+	nested := filepath.Join(t.TempDir(), "missing", "evidence")
+	if _, err := New(nested); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("missing evidence parent accepted: %v", err)
+	}
+	root := filepath.Join(t.TempDir(), "evidence")
+	if _, err := New(root); err != nil {
+		t.Fatalf("existing evidence parent rejected: %v", err)
+	}
+}
+
+func TestStoreRejectsPendingPathReplacementDuringCleanup(t *testing.T) {
+	if err := removePendingDirectory(filepath.Join(t.TempDir(), "missing")); err != nil {
+		t.Fatalf("missing pending path: %v", err)
+	}
+	directory := filepath.Join(t.TempDir(), "pending-directory")
+	if err := createEvidenceDirectory(directory); err != nil {
+		t.Fatalf("create pending directory: %v", err)
+	}
+	if err := removePendingDirectory(directory); err != nil {
+		t.Fatalf("remove pending directory: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "pending")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("write pending replacement: %v", err)
+	}
+	if err := removePendingDirectory(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("pending file replacement accepted: %v", err)
+	}
+}
+
+func TestStoreRejectsUnknownRecoveryIdentity(t *testing.T) {
+	store := newTestStore(t)
+	if err := store.MigrateV0("invalid", "legacy"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid migration identity returned %v", err)
+	}
+	if err := store.Recover("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "missing"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unknown recovery identity returned %v", err)
+	}
+}
+
+func TestStoreRejectsRecordOutsideEvidenceBundle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-bundle")
+	if err := writeRecord(path, admittedFile, Admitted{}); err == nil {
+		t.Fatal("record written outside an evidence bundle")
+	}
+}
+
+func TestStoreRejectsUnserialisableRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bundle")
+	if err := createEvidenceDirectory(path); err != nil {
+		t.Fatalf("create record bundle: %v", err)
+	}
+	if err := writeRecord(path, "invalid.json", make(chan int)); err == nil {
+		t.Fatal("unserialisable record accepted")
+	}
+}
 
 func TestStorePublishesAndInspects(t *testing.T) {
 	store := newTestStore(t)
@@ -75,6 +149,114 @@ func TestStoreRecoversPendingAttempt(t *testing.T) {
 	if err := store.Recover(accepted.Request.AttemptID, "again"); !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("repeat recovery: %v", err)
 	}
+}
+
+func TestStoreRequiresExplicitV0Migration(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release interrupted attempt: %v", err)
+	}
+	if err := store.MigrateV0(accepted.Request.AttemptID, ""); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("empty migration reason accepted: %v", err)
+	}
+	if err := store.MigrateV0(accepted.Request.AttemptID, "lock still present"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("current lock migrated as legacy: %v", err)
+	}
+	lockPath := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+".lock",
+	)
+	if err := os.Remove(lockPath); err != nil {
+		t.Fatalf("remove legacy lock: %v", err)
+	}
+	if err := store.Recover(accepted.Request.AttemptID, "legacy"); !errors.Is(err, ErrMigrationRequired) {
+		t.Fatalf("legacy attempt recovered without migration: %v", err)
+	}
+	if err := store.MigrateV0(accepted.Request.AttemptID, "operator quiesced legacy attempt"); err != nil {
+		t.Fatalf("migrate legacy attempt: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
+		t.Fatalf("inspect migrated attempt: %v", err)
+	}
+}
+
+func TestStoreMigratesFrozenPreLockV0Attempt(t *testing.T) {
+	const attemptID = "u-E-mAG_fEAmsIQlu9c-Ha4JgGaejo4G2l5om4o94Wc"
+	store := newTestStore(t)
+	admitted, fixtureHash := frozenV0Admitted(t)
+	bundlePath := filepath.Join(
+		store.root,
+		attemptsDirectory,
+		pendingDirectory,
+		attemptID,
+		bundleDirectory,
+	)
+	if err := createEvidenceDirectory(filepath.Dir(bundlePath)); err != nil {
+		t.Fatalf("create frozen attempt directory: %v", err)
+	}
+	if err := createEvidenceDirectory(bundlePath); err != nil {
+		t.Fatalf("create frozen bundle directory: %v", err)
+	}
+	if err := writeRecord(bundlePath, admittedFile, admitted); err != nil {
+		t.Fatalf("write frozen v0 fixture: %v", err)
+	}
+	if err := verifyHash(bundlePath, admittedFile, fixtureHash); err != nil {
+		t.Fatalf("frozen v0 fixture changed during secure publication: %v", err)
+	}
+	if err := store.Recover(attemptID, "legacy"); !errors.Is(err, ErrMigrationRequired) {
+		t.Fatalf("frozen v0 attempt recovered without migration: %v", err)
+	}
+	if err := store.MigrateV0(attemptID, "operator quiesced legacy attempt"); err != nil {
+		t.Fatalf("migrate frozen v0 attempt: %v", err)
+	}
+	records, err := store.Inspect(attemptID)
+	if err != nil {
+		t.Fatalf("inspect migrated frozen v0 attempt: %v", err)
+	}
+	if records.Recovery == nil || records.Recovery.TerminalStatus != "indeterminate" {
+		t.Fatalf("migrated frozen records=%+v", records)
+	}
+}
+
+func frozenV0Admitted(t *testing.T) (Admitted, string) {
+	t.Helper()
+	root, err := os.OpenRoot(filepath.Join("testdata", "pre-lock-v0"))
+	if err != nil {
+		t.Fatalf("open frozen v0 fixtures: %v", err)
+	}
+	defer func() {
+		if err := root.Close(); err != nil {
+			t.Errorf("close frozen v0 fixtures: %v", err)
+		}
+	}()
+	encoded, err := root.ReadFile("admitted.json.b64")
+	if err != nil {
+		t.Fatalf("read frozen v0 fixture: %v", err)
+	}
+	fixture, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(encoded)))
+	if err != nil {
+		t.Fatalf("decode frozen v0 fixture: %v", err)
+	}
+	sum := sha256.Sum256(fixture)
+	hash := hex.EncodeToString(sum[:])
+	const expectedHash = "4cb55d105f0198e45b4549336824d482688a0b3fc751ff415cd28439ee1eb61d"
+	if hash != expectedHash {
+		t.Fatalf("frozen v0 fixture hash=%s want=%s", hash, expectedHash)
+	}
+	var admitted Admitted
+	if err := json.Unmarshal(fixture, &admitted); err != nil {
+		t.Fatalf("decode frozen v0 admitted record: %v", err)
+	}
+	if err := validateAdmitted(admitted); err != nil {
+		t.Fatalf("validate frozen v0 admitted record: %v", err)
+	}
+	return admitted, hash
 }
 
 func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
@@ -205,9 +387,11 @@ func TestStoreRejectsInvalidConfiguration(t *testing.T) {
 func TestRecoveryRejectsInvalidReceiptState(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
-	if _, err := store.Stage(accepted, admittedAt); err != nil {
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
+	t.Cleanup(func() { _ = attempt.Close() })
 	receiptPath := filepath.Join(store.pendingPath(accepted.Request.AttemptID), bundleDirectory, receiptFile)
 	if err := os.Mkdir(receiptPath, 0o700); err != nil {
 		t.Fatalf("create receipt directory: %v", err)
@@ -224,6 +408,7 @@ func TestStoreReportsWriteFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
+	t.Cleanup(func() { _ = attempt.Close() })
 	if err := os.Rename(attempt.path, attempt.path+".moved"); err != nil {
 		t.Fatalf("move attempt: %v", err)
 	}
@@ -274,9 +459,11 @@ func TestStoreRejectsMalformedRecords(t *testing.T) {
 func TestStoreRejectsIncompleteAttempts(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
-	if _, err := store.Stage(accepted, admittedAt); err != nil {
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
+	t.Cleanup(func() { _ = attempt.Close() })
 	if _, err := store.Inspect(accepted.Request.AttemptID); err == nil {
 		t.Fatal("pending attempt inspected as terminal")
 	}
@@ -364,6 +551,20 @@ func TestWriteRecordRejectsDuplicate(t *testing.T) {
 	}
 	if err := writeRecord(filepath.Join(root, "missing"), "record.json", struct{}{}); err == nil {
 		t.Fatal("missing directory accepted write")
+	}
+}
+
+func TestWriteRecordRejectsOversizedEncodingBeforeTemporaryFile(t *testing.T) {
+	root := t.TempDir()
+	if err := writeRecord(root, "large.json", strings.Repeat("x", maxRecordBytes)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("oversized record: %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(root, ".large.json.*"))
+	if err != nil {
+		t.Fatalf("glob temporary records: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("oversized record left temporary files: %v", matches)
 	}
 }
 

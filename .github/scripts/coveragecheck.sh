@@ -13,6 +13,7 @@
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
+cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
 policy=.github/.coverage
 
@@ -91,8 +92,9 @@ cache_key() {
     git hash-object "$policy" .github/scripts/coveragecheck.sh go.mod
     [[ ! -f go.sum ]] || git hash-object go.sum
     while IFS= read -r -d '' file; do
+      [[ -f "$file" ]] || continue
       git hash-object "$file"
-    done < <(git ls-files -co --exclude-standard -z -- '*.go')
+    done < <(git ls-files -co --exclude-standard -z -- '*.go' '*.rs' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml')
     go env GOVERSION GOOS GOARCH CGO_ENABLED CC CXX GOFLAGS
   } | git hash-object --stdin
 }
@@ -165,7 +167,7 @@ enforce_report() {
 }
 
 run_check() {
-  local cache_file key profile report
+  local cache_file key profile report temporary_cache
   local packages
   local status=0
   local use_cache=$1
@@ -178,21 +180,31 @@ run_check() {
   fi
 
   key=$(cache_key)
-  cache_file=".cache/coverage/$key.tsv"
+  cache_file="$cache_root/coverage/$key.tsv"
   if [[ "$use_cache" == true && "$cache_max_age" -gt 0 &&
     -n "$(find "$cache_file" -mmin "-$cache_max_age" -print 2>/dev/null)" ]]; then
     enforce_report "$cache_file"
     return
   fi
 
-  mkdir -p .cache
-  profile=$(mktemp ".cache/coverage.XXXXXX")
-  report=$(mktemp ".cache/coverage-report.XXXXXX")
+  mkdir -p "$cache_root"
+  profile=$(mktemp "$cache_root/coverage.XXXXXX")
+  report=$(mktemp "$cache_root/coverage-report.XXXXXX")
   trap 'rm -f -- "${profile:-}" "${report:-}"' EXIT
   create_report "$profile" "$report" "$packages"
   enforce_report "$report" || status=1
   mkdir -p -- "$(dirname -- "$cache_file")"
-  cp -- "$report" "$cache_file"
+  temporary_cache=$(mktemp "$(dirname -- "$cache_file")/.coverage.XXXXXX")
+  if ! cp -- "$report" "$temporary_cache"; then
+    rm -f -- "$temporary_cache" "$profile" "$report"
+    trap - EXIT
+    return 1
+  fi
+  if ! mv -f -- "$temporary_cache" "$cache_file"; then
+    rm -f -- "$temporary_cache" "$profile" "$report"
+    trap - EXIT
+    return 1
+  fi
   rm -f -- "$profile" "$report"
   trap - EXIT
   return "$status"

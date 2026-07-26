@@ -15,30 +15,6 @@ package attemptstore
 
 import "os"
 
-func publishFile(_, _, _ string) error {
-	return ErrUnsupported
-}
-
-func publishDirectory(_, _, _ string) error {
-	return ErrUnsupported
-}
-
-func secureEvidenceTree(_ string) error {
-	return ErrUnsupported
-}
-
-func secureEvidenceFile(_ string) error {
-	return ErrUnsupported
-}
-
-func createEvidenceDirectory(_ string) error {
-	return ErrUnsupported
-}
-
-func pathIsLinked(_ string, _ os.FileInfo) bool {
-	return true
-}
-
-func syncDirectory(_ string) error {
-	return ErrUnsupported
+func createRecordTemp(_, _ string) (*os.File, error) {
+	return nil, ErrUnsupported
 }

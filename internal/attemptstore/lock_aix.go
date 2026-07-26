@@ -15,6 +15,7 @@ package attemptstore
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"syscall"
 
@@ -22,6 +23,27 @@ import (
 )
 
 var errLockHeld = errors.New("attempt lock held")
+
+func openAttemptLockFile(root *os.Root, _ string, name string, create bool) (*os.File, error) {
+	file, err := root.OpenFile(name, os.O_RDWR, 0o600)
+	if err == nil {
+		return file, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("open attempt lock: %w", err)
+	}
+	if !create {
+		return nil, ErrCorrupt
+	}
+	file, err = root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return root.OpenFile(name, os.O_RDWR, 0o600)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("create attempt lock: %w", err)
+	}
+	return file, nil
+}
 
 func lockAttemptFile(file *os.File) error {
 	lock := unix.Flock_t{Type: unix.F_WRLCK}

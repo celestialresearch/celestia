@@ -13,6 +13,7 @@
 set -eu
 
 mode=${1:-config}
+cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
 rust_version() {
   awk -F'"' '$1 ~ /^[[:space:]]*rust-version/ { print $2; exit }' Cargo.toml
@@ -153,13 +154,13 @@ release_exe_suffix() {
 }
 
 check_release_artefacts() (
-  mkdir -p .cache
-  target_dir=$(mktemp -d .cache/release-artefacts.XXXXXX)
+  mkdir -p "$cache_root"
+  target_dir=$(mktemp -d "$cache_root/release-artefacts.XXXXXX")
 
   # shellcheck disable=SC2329 # Invoked by the EXIT and signal trap.
   cleanup() {
     case "$target_dir" in
-    .cache/release-artefacts.*) rm -rf -- "$target_dir" ;;
+    "$cache_root"/release-artefacts.*) rm -rf -- "$target_dir" ;;
     esac
   }
 
@@ -167,29 +168,35 @@ check_release_artefacts() (
   cargo build --workspace --release --locked --target-dir "$target_dir"
 
   release_dir=$target_dir/release
+  # Cargo keeps build metadata beside the release outputs. It is not part of
+  # the distributable directory and must not weaken the allowlist below.
+  rm -rf -- "$release_dir/.fingerprint" "$release_dir/build" \
+    "$release_dir/deps" "$release_dir/examples" "$release_dir/incremental"
+  # Cargo's build lock is coordination state, not a distributable artefact.
+  rm -f -- "$release_dir/.cargo-artifact-lock" \
+    "$release_dir/.cargo-build-lock" \
+    "$release_dir/.cargo-lock"
   expected=celestia-url-reference$(release_exe_suffix)
+  expected_metadata=("celestia-url-reference.d")
+  if [[ "$expected" == *.exe ]]; then
+    expected_metadata+=("celestia_url_reference.pdb")
+  fi
   seen=false
-  unexpected=
-
-  for path in "$release_dir"/*; do
-    file=${path##*/}
-    if [[ -d "$path" && ! -L "$path" ]]; then
-      continue
+  while IFS= read -r -d '' path; do
+    file=${path#"$release_dir/"}
+    if [[ -d "$path" ]]; then
+      printf 'Unexpected release directory: %s\n' "$file"
+      return 1
     fi
-    case "$file" in
-    *.d | *.pdb)
-      if [[ ! -f "$path" || -L "$path" || -x "$path" ]]; then
-        printf 'Invalid release metadata: %s\n' "$file"
-        return 1
-      fi
-      continue
-      ;;
-    esac
+    if [[ -L "$path" ]]; then
+      printf 'Unexpected release symlink: %s\n' "$file"
+      return 1
+    fi
+    if [[ ! -f "$path" ]]; then
+      printf 'Unexpected release artefact: %s\n' "$file"
+      return 1
+    fi
     if [[ "$file" == "$expected" ]]; then
-      if [[ ! -f "$path" || -L "$path" ]]; then
-        printf 'Release artefact is not a regular file: %s\n' "$expected"
-        return 1
-      fi
       if [[ ! -x "$path" && "$file" != *.exe ]]; then
         printf 'Release artefact is not executable: %s\n' "$expected"
         return 1
@@ -197,17 +204,30 @@ check_release_artefacts() (
       seen=true
       continue
     fi
-    if [[ -x "$path" || "$file" == *.exe || -L "$path" ]]; then
-      unexpected="${unexpected}${unexpected:+ }$file"
+    metadata=false
+    for allowed in "${expected_metadata[@]}"; do
+      if [[ "$file" == "$allowed" ]]; then
+        metadata=true
+        break
+      fi
+    done
+    if [[ "$metadata" == true ]]; then
+      if [[ -x "$path" ]]; then
+        printf 'Invalid release metadata: %s\n' "$file"
+        return 1
+      fi
+      continue
     fi
-  done
+    if [[ -x "$path" || "$file" == *.exe ]]; then
+      printf 'Unexpected release executable: %s\n' "$file"
+    else
+      printf 'Unexpected release artefact: %s\n' "$file"
+    fi
+    return 1
+  done < <(find "$release_dir" -mindepth 1 -print0)
 
   if [[ "$seen" != true ]]; then
     printf 'Missing release executable: %s\n' "$expected"
-    return 1
-  fi
-  if [[ -n "$unexpected" ]]; then
-    printf 'Unexpected release executable: %s\n' "$unexpected"
     return 1
   fi
 )

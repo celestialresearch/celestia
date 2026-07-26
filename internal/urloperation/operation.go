@@ -50,11 +50,18 @@ type Verification struct {
 	Matched         bool
 }
 
+type Diagnostic struct {
+	Code    string
+	Message string
+}
+
 type Result struct {
 	Status       Status
 	Process      processsupervision.Outcome
 	Response     *workerprotocol.Response
+	Diagnostics  []Diagnostic
 	Verification Verification
 	AttemptID    string
 	Err          error
+	evidence     processsupervision.Outcome
 }
