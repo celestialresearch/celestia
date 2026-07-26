@@ -150,11 +150,14 @@ fn run_worker(input: Vec<u8>) -> Output {
         thread::sleep(Duration::from_millis(10));
     }
     if let Some(reason) = failure {
-        child.terminate();
+        let cleanup = child.terminate();
         if let Some(handle) = writer {
             let _ = join_writer(handle);
         }
-        panic!("{reason}");
+        match cleanup {
+            Ok(()) => panic!("{reason}"),
+            Err(error) => panic!("{reason}; clean up worker: {error}"),
+        }
     }
     if let Some(handle) = writer {
         join_writer(handle).expect("write request");
@@ -181,11 +184,20 @@ impl ChildGuard {
         self.child.as_mut().expect("owned worker")
     }
 
-    fn terminate(&mut self) {
+    fn terminate(&mut self) -> io::Result<()> {
         if let Some(child) = self.child.as_mut() {
-            let _ = child.kill();
-            let _ = child.wait();
+            if child.try_wait()?.is_some() {
+                return Ok(());
+            }
+            if let Err(error) = child.kill() {
+                if child.try_wait()?.is_some() {
+                    return Ok(());
+                }
+                return Err(error);
+            }
+            child.wait()?;
         }
+        Ok(())
     }
 
     fn output(mut self) -> io::Result<Output> {
@@ -195,6 +207,6 @@ impl ChildGuard {
 
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        self.terminate();
+        let _ = self.terminate();
     }
 }
