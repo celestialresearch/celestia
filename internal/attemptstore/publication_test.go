@@ -419,6 +419,8 @@ func TestObservationAcceptsContractTransitions(t *testing.T) {
 	timedOut := failedProcess
 	timedOut.ProcessStatus = "timed_out"
 	timedOut.TerminalStatus = "timed_out"
+	deadlineCancelled := timedOut
+	deadlineCancelled.ProcessStatus = "cancelled"
 	for _, observation := range []Observation{
 		verified,
 		unverified,
@@ -427,6 +429,7 @@ func TestObservationAcceptsContractTransitions(t *testing.T) {
 		failedProcess,
 		cancelled,
 		timedOut,
+		deadlineCancelled,
 	} {
 		if err := validateObservation(observation); err != nil {
 			t.Fatalf("valid transition rejected: %+v: %v", observation, err)

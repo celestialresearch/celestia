@@ -184,6 +184,7 @@ func validCancelledObservation(record Observation) bool {
 
 func validTimedOutObservation(record Observation) bool {
 	return (record.ProcessStatus == "timed_out" ||
+		record.ProcessStatus == "cancelled" ||
 		record.ProcessStatus == "start_failed") &&
 		record.ProcessError != "" &&
 		record.CleanupComplete &&

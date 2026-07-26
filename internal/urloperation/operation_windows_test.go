@@ -265,6 +265,34 @@ func TestOperationPreservesTermination(t *testing.T) {
 	}
 }
 
+func TestOperationPublishesCallerDeadline(t *testing.T) {
+	operation, err := newTestOperation(t, testHostileWorker(t))
+	if err != nil {
+		t.Fatalf("new operation: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	result := operation.Execute(
+		ctx,
+		"https://hang.test",
+		urlreference.Defang,
+	)
+	if result.Status != TimedOut ||
+		result.Process.Status != processsupervision.Cancelled ||
+		!errors.Is(result.Err, context.DeadlineExceeded) {
+		t.Fatalf("result=%+v", result)
+	}
+	records, err := operation.store.Inspect(result.AttemptID)
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if records.Observation == nil ||
+		records.Observation.ProcessStatus != string(processsupervision.Cancelled) ||
+		records.Observation.TerminalStatus != string(TimedOut) {
+		t.Fatalf("records=%+v", records)
+	}
+}
+
 func TestOperationRejectsInvalidContext(t *testing.T) {
 	if _, err := admittedStartDeadline(
 		nilContext(),
