@@ -13,6 +13,21 @@
 
 package attemptstore
 
+import (
+	"os"
+	"syscall"
+)
+
 func secureEvidenceParent(path string) error {
-	return secureEvidenceTree(path)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok ||
+		int64(stat.Uid) != int64(os.Geteuid()) ||
+		info.Mode().Perm()&0o022 != 0 {
+		return ErrCorrupt
+	}
+	return nil
 }
