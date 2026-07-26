@@ -410,6 +410,7 @@ func (supervisor *Supervisor) observe(
 	defer timer.Stop()
 
 	status, cause := awaitProcess(ctx, timer.C, waited, overflow, input)
+	cleanupDeadline := time.Now().Add(supervisor.limits.CleanupTimeout)
 	if status != Completed {
 		if err := windows.TerminateJobObject(process.job, 1); err != nil {
 			status = CleanupFailed
@@ -419,22 +420,21 @@ func (supervisor *Supervisor) observe(
 	cleanupComplete, waitErr := waitCleanup(
 		process.info.Process,
 		process.job,
-		supervisor.limits.CleanupTimeout,
+		cleanupRemaining(cleanupDeadline),
 	)
 	if !cleanupComplete {
 		status = CleanupFailed
 		cause = errors.Join(cause, waitErr)
 	}
-	inputResult := awaitInput(inputDone, supervisor.limits.CleanupTimeout)
+	inputResult := awaitInput(inputDone, cleanupDeadline)
 	status, cause, cleanupComplete = applyInputResult(
 		status,
 		cause,
 		cleanupComplete,
 		inputResult,
 	)
-	streamDeadline := time.Now().Add(supervisor.limits.CleanupTimeout)
-	out := awaitStream(stdoutReader, stdout, streamDeadline)
-	diagnostics := awaitStream(stderrReader, stderr, streamDeadline)
+	out := awaitStream(stdoutReader, stdout, cleanupDeadline)
+	diagnostics := awaitStream(stderrReader, stderr, cleanupDeadline)
 	outcome := finishOutcome(process, status, cause, cleanupComplete, out, diagnostics)
 	if err := process.close(); err != nil {
 		outcome.Status = CleanupFailed
@@ -444,8 +444,8 @@ func (supervisor *Supervisor) observe(
 	return outcome
 }
 
-func awaitInput(input <-chan inputResult, timeout time.Duration) inputResult {
-	timer := time.NewTimer(timeout)
+func awaitInput(input <-chan inputResult, deadline time.Time) inputResult {
+	timer := time.NewTimer(cleanupRemaining(deadline))
 	defer timer.Stop()
 	select {
 	case result := <-input:
@@ -455,6 +455,14 @@ func awaitInput(input <-chan inputResult, timeout time.Duration) inputResult {
 			cleanupErr: errors.New("join worker input: cleanup deadline exceeded"),
 		}
 	}
+}
+
+func cleanupRemaining(deadline time.Time) time.Duration {
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return time.Nanosecond
+	}
+	return remaining
 }
 
 func awaitProcess(
