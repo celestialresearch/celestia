@@ -206,7 +206,7 @@ func (store *Store) stageOwned(
 			),
 		)
 	}()
-	if err := store.prepareOwnershipMarker(request.AttemptID); err != nil {
+	if err := store.createOwnershipMarker(request.AttemptID); err != nil {
 		return nil, err
 	}
 	markerCreated = true
