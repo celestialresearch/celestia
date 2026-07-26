@@ -288,6 +288,24 @@ func TestNativeWaitRejectsInvalidState(t *testing.T) {
 	})
 }
 
+func TestStreamCancelClosesUnwrappedHandle(t *testing.T) {
+	handle, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	reader := &streamReader{
+		name:   "unwrapped",
+		handle: handle,
+		done:   make(chan struct{}),
+	}
+	if err := reader.cancel(); err == nil {
+		t.Fatal("non-I/O handle cancellation succeeded")
+	}
+	if err := windows.CloseHandle(handle); !errors.Is(err, windows.ERROR_INVALID_HANDLE) {
+		t.Fatalf("handle remains open: %v", err)
+	}
+}
+
 func TestStartupCleanupJoinsWorker(t *testing.T) {
 	for _, assigned := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unassigned", true: "assigned"}[assigned], func(t *testing.T) {
