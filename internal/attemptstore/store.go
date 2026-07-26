@@ -114,7 +114,8 @@ type Records struct {
 }
 
 type Store struct {
-	root string
+	root         string
+	lockIdentity os.FileInfo
 }
 
 type Attempt struct {
@@ -141,8 +142,8 @@ func New(root string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Join(clean, attemptsDirectory, pendingDirectory), 0o700); err != nil {
 		return nil, fmt.Errorf("create evidence root: %w", err)
 	}
-	if err := os.Mkdir(filepath.Join(clean, locksDirectory), 0o700); err != nil &&
-		!errors.Is(err, os.ErrExist) {
+	lockDirectoryCreated, err := createLockDirectory(clean)
+	if err != nil {
 		return nil, fmt.Errorf("create attempt locks: %w", err)
 	}
 	for _, directory := range []string{
@@ -155,7 +156,27 @@ func New(root string) (*Store, error) {
 			return nil, err
 		}
 	}
-	return &Store{root: clean}, nil
+	if lockDirectoryCreated {
+		if err := syncAttemptLockDirectory(clean); err != nil {
+			return nil, fmt.Errorf("sync attempt locks: %w", err)
+		}
+	}
+	lockIdentity, err := os.Lstat(filepath.Join(clean, locksDirectory))
+	if err != nil {
+		return nil, fmt.Errorf("inspect attempt locks: %w", err)
+	}
+	return &Store{root: clean, lockIdentity: lockIdentity}, nil
+}
+
+func createLockDirectory(root string) (bool, error) {
+	err := os.Mkdir(filepath.Join(root, locksDirectory), 0o700)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, os.ErrExist) {
+		return false, nil
+	}
+	return false, err
 }
 
 func (store *Store) Stage(accepted urladmission.Accepted, admittedAt time.Time) (*Attempt, error) {

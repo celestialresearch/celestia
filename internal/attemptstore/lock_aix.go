@@ -47,3 +47,7 @@ func secureLockFile(_ *os.File, info os.FileInfo) error {
 	}
 	return nil
 }
+
+func syncAttemptLockDirectory(directory string) error {
+	return syncDirectory(directory)
+}

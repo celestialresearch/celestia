@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build !windows && !aix
+//go:build darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
 
 package attemptstore
 
@@ -44,4 +44,8 @@ func secureLockFile(_ *os.File, info os.FileInfo) error {
 		return ErrCorrupt
 	}
 	return nil
+}
+
+func syncAttemptLockDirectory(directory string) error {
+	return syncDirectory(directory)
 }

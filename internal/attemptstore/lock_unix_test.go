@@ -37,28 +37,70 @@ func TestStageRejectsPermissiveLockFile(t *testing.T) {
 	}
 }
 
-func TestRecoverRejectsMissingActiveLock(t *testing.T) {
+func TestRecoverRejectsMissingLock(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
 	attempt, err := store.Stage(accepted, admittedAt)
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	defer func() {
-		_ = attempt.Close()
-	}()
 	lockPath := filepath.Join(
 		store.root,
 		locksDirectory,
 		accepted.Request.AttemptID+".lock",
 	)
 	if err := os.Remove(lockPath); err != nil {
-		t.Fatalf("remove active lock path: %v", err)
+		t.Fatalf("remove lock path: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("close attempt: %v", err)
 	}
 	if err := store.Recover(
 		accepted.Request.AttemptID,
-		"missing active lock",
+		"missing lock",
 	); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("missing active lock recovered: %v", err)
+		t.Fatalf("missing lock recovered: %v", err)
+	}
+}
+
+func TestRecoverRejectsReplacedLockDirectory(t *testing.T) {
+	tests := map[string]func(*testing.T, string){
+		"directory": func(t *testing.T, path string) {
+			t.Helper()
+			if err := os.Mkdir(path, 0o700); err != nil {
+				t.Fatalf("create replacement directory: %v", err)
+			}
+		},
+		"symlink": func(t *testing.T, path string) {
+			t.Helper()
+			target := t.TempDir()
+			if err := os.Symlink(target, path); err != nil {
+				t.Fatalf("create replacement symlink: %v", err)
+			}
+		},
+	}
+	for name, replace := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := newTestStore(t)
+			accepted, admittedAt := testAccepted(t)
+			attempt, err := store.Stage(accepted, admittedAt)
+			if err != nil {
+				t.Fatalf("stage: %v", err)
+			}
+			defer func() {
+				_ = attempt.Close()
+			}()
+			lockDirectory := filepath.Join(store.root, locksDirectory)
+			if err := os.Rename(lockDirectory, lockDirectory+".original"); err != nil {
+				t.Fatalf("move lock directory: %v", err)
+			}
+			replace(t, lockDirectory)
+			if err := store.Recover(
+				accepted.Request.AttemptID,
+				"replaced lock directory",
+			); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("replaced lock directory accepted: %v", err)
+			}
+		})
 	}
 }

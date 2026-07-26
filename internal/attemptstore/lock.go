@@ -38,9 +38,9 @@ func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptL
 		return nil, fmt.Errorf("%w: attempt identity", ErrInvalid)
 	}
 	directory := filepath.Join(store.root, locksDirectory)
-	root, err := os.OpenRoot(directory)
+	root, err := store.openLockRoot(directory)
 	if err != nil {
-		return nil, fmt.Errorf("open attempt locks: %w", err)
+		return nil, err
 	}
 	defer func() {
 		_ = root.Close()
@@ -72,8 +72,45 @@ func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptL
 		}
 		return nil, fmt.Errorf("lock attempt: %w", err)
 	}
+	if err := syncAttemptLock(file, directory); err != nil {
+		_ = unlockAttemptFile(file)
+		_ = file.Close()
+		return nil, fmt.Errorf("sync attempt lock: %w", err)
+	}
+	if err := store.validateLockIdentity(directory); err != nil {
+		_ = unlockAttemptFile(file)
+		_ = file.Close()
+		return nil, err
+	}
 	reservation.keep = true
 	return &attemptLock{file: file, key: key}, nil
+}
+
+func (store *Store) openLockRoot(directory string) (*os.Root, error) {
+	if err := rejectLinkedAncestors(directory); err != nil {
+		return nil, fmt.Errorf("inspect attempt locks: %w", err)
+	}
+	if err := store.validateLockIdentity(directory); err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return nil, fmt.Errorf("open attempt locks: %w", err)
+	}
+	rootInfo, err := root.Stat(".")
+	if err != nil || !os.SameFile(store.lockIdentity, rootInfo) {
+		_ = root.Close()
+		return nil, ErrCorrupt
+	}
+	return root, nil
+}
+
+func (store *Store) validateLockIdentity(directory string) error {
+	info, err := os.Lstat(directory)
+	if err != nil || !os.SameFile(store.lockIdentity, info) {
+		return ErrCorrupt
+	}
+	return nil
 }
 
 func reserveAttemptLock(key string) (*lockReservation, error) {
@@ -90,18 +127,31 @@ func (reservation *lockReservation) abandon() {
 }
 
 func openAttemptLockFile(root *os.Root, name string, create bool) (*os.File, error) {
-	flags := os.O_RDWR
-	if create {
-		flags |= os.O_CREATE
-	}
-	file, err := root.OpenFile(name, flags, 0o600)
+	file, err := root.OpenFile(name, os.O_RDWR, 0o600)
 	if err == nil {
 		return file, nil
 	}
-	if !create && errors.Is(err, os.ErrNotExist) {
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("open attempt lock: %w", err)
+	}
+	if !create {
 		return nil, ErrCorrupt
 	}
-	return nil, fmt.Errorf("open attempt lock: %w", err)
+	file, err = root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return root.OpenFile(name, os.O_RDWR, 0o600)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("create attempt lock: %w", err)
+	}
+	return file, nil
+}
+
+func syncAttemptLock(file *os.File, directory string) error {
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	return syncAttemptLockDirectory(directory)
 }
 
 func validateLockFile(file *os.File, pathInfo os.FileInfo) error {
