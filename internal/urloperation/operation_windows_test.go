@@ -532,6 +532,19 @@ func TestPublishReleaseFailurePreservesTerminalStatus(t *testing.T) {
 	}
 }
 
+func TestPublicationFailureOverridesReleaseFailure(t *testing.T) {
+	result := Result{Status: Verified}
+	applyPublishError(
+		&result,
+		errors.Join(attemptstore.ErrPublication, attemptstore.ErrRelease),
+	)
+	if result.Status != Indeterminate ||
+		!errors.Is(result.Err, ErrPersistence) ||
+		!errors.Is(result.Err, ErrCleanup) {
+		t.Fatalf("combined publication result=%+v", result)
+	}
+}
+
 func BenchmarkOperation(b *testing.B) {
 	operation, err := New(
 		locateWorker(b, "celestia-url-reference.exe"),

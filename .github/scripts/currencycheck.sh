@@ -134,10 +134,11 @@ latest_crate() {
   sed -n "s/^${component} = \"\\([^\"]*\\)\".*/\\1/p" <<<"$output"
 }
 
-workspace_dependencies() {
+manifest_dependencies() {
   awk '
-    /^\[workspace.dependencies\]$/ { active = 1; next }
-    active && /^\[/ { exit }
+    FNR == 1 { active = 0 }
+    /^\[(workspace\.)?dependencies\]$/ { active = 1; next }
+    active && /^\[/ { active = 0 }
     active && /^[[:space:]]*[a-zA-Z0-9_-]+[[:space:]]*=/ {
       line = $0
       sub(/^[[:space:]]*/, "", line)
@@ -163,13 +164,16 @@ workspace_dependencies() {
         pending = ""
       }
     }
-  ' "$root/Cargo.toml"
+  ' \
+    "$root/Cargo.toml" \
+    "$root/worker/qualification-fixtures/Cargo.toml" |
+    sort -u
 }
 
 workflow_helpers() {
   sed -n \
     's/^[[:space:]]*\(cargo-[a-z0-9-]*\)@\([^[:space:]]*\).*$/\1|\2/p' \
-    "$root/.github/workflows/main.yml" |
+    "$root"/.github/workflows/*.yml |
     sort -u
 }
 
@@ -223,7 +227,7 @@ check_crates() {
       continue
     fi
     accept_or_fail cargo "$component" "$current" "$latest" || status=1
-  done < <(workspace_dependencies)
+  done < <(manifest_dependencies)
   return "$status"
 }
 

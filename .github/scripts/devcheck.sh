@@ -324,9 +324,17 @@ if [[ -f Cargo.toml ]]; then
   if [[ "${DEVCHECK_SUPPLY_CHAIN:-true}" == true ]]; then
     run_check 'Rust Advisories' cargo audit --deny warnings
     run_check 'Rust Dependencies' cargo deny check
+    run_check 'Fixture Advisories' \
+      cargo audit --deny warnings \
+      --file worker/qualification-fixtures/Cargo.lock
+    run_check 'Fixture Dependencies' \
+      cargo deny --manifest-path worker/qualification-fixtures/Cargo.toml \
+      --config deny.toml check
   else
     skip_check 'Rust Advisories' 'Disabled for this platform job'
     skip_check 'Rust Dependencies' 'Disabled for this platform job'
+    skip_check 'Fixture Advisories' 'Disabled for this platform job'
+    skip_check 'Fixture Dependencies' 'Disabled for this platform job'
   fi
 else
   skip_check 'Rust Checks' 'No Cargo workspace exists'

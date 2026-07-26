@@ -169,7 +169,12 @@ func (supervisor *Supervisor) run(
 		outcome.CleanupComplete = cleanupComplete
 		return outcome
 	}
-	outcome := supervisor.observe(ctx, process, frame, supervisor.limits.Timeout)
+	remaining := executionRemaining(
+		process.started,
+		supervisor.limits.Timeout,
+		time.Now(),
+	)
+	outcome := supervisor.observe(ctx, process, frame, remaining)
 	outcome.WorkerSHA256 = hash
 	outcome.Duration = time.Since(started)
 	return outcome
@@ -277,6 +282,7 @@ func (resources *launchResources) start(
 		cleanupErr := resources.stopStart(info, true)
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
+	resumedAt := time.Now()
 	if _, err := windows.ResumeThread(info.Thread); err != nil {
 		stopErr := resources.stopStart(info, true)
 		return nil, stopErr == nil, errors.Join(
@@ -292,7 +298,7 @@ func (resources *launchResources) start(
 		pipes:     resources.pipes,
 		container: resources.container,
 		image:     resources.image,
-		started:   time.Now(),
+		started:   resumedAt,
 	}, true, nil
 }
 

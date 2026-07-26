@@ -351,6 +351,17 @@ func TestAwaitProcessKeepsTimeout(t *testing.T) {
 	}
 }
 
+func TestExecutionAllowanceStartsAtResume(t *testing.T) {
+	started := time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC)
+	now := started.Add(750 * time.Millisecond)
+	if remaining := executionRemaining(started, 2*time.Second, now); remaining != 1250*time.Millisecond {
+		t.Fatalf("remaining allowance=%s", remaining)
+	}
+	if remaining := executionRemaining(started, 2*time.Second, started.Add(3*time.Second)); remaining >= 0 {
+		t.Fatalf("expired allowance=%s", remaining)
+	}
+}
+
 func TestAwaitInputStates(t *testing.T) {
 	input := make(chan error, 1)
 	input <- nil

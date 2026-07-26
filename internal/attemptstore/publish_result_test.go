@@ -22,14 +22,17 @@ func TestPublishResultDistinguishesReleaseFailure(t *testing.T) {
 	if err := publishResult(nil, nil); err != nil {
 		t.Fatalf("successful publication failed: %v", err)
 	}
-	if err := publishResult(publicationErr, nil); !errors.Is(err, publicationErr) {
+	if err := publishResult(publicationErr, nil); !errors.Is(err, publicationErr) ||
+		!errors.Is(err, ErrPublication) {
 		t.Fatalf("publication failure lost: %v", err)
 	}
 	if err := publishResult(nil, releaseErr); !errors.Is(err, ErrRelease) {
 		t.Fatalf("release failure not classified: %v", err)
 	}
 	err := publishResult(publicationErr, releaseErr)
-	if !errors.Is(err, publicationErr) || !errors.Is(err, ErrRelease) {
+	if !errors.Is(err, publicationErr) ||
+		!errors.Is(err, ErrPublication) ||
+		!errors.Is(err, ErrRelease) {
 		t.Fatalf("combined failure lost: %v", err)
 	}
 }

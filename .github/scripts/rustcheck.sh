@@ -23,8 +23,17 @@ toolchain_version() {
   awk -F'"' '$1 ~ /^[[:space:]]*channel/ { print $2; exit }' rust-toolchain.toml
 }
 
+fixture_rust_version() {
+  awk -F'"' '$1 ~ /^[[:space:]]*rust-version/ { print $2; exit }' \
+    worker/qualification-fixtures/Cargo.toml
+}
+
 workflow_tools() {
   awk '
+    FNR == 1 {
+      in_action = 0
+      in_block = 0
+    }
     {
       indent = match($0, /[^ ]/) - 1
     }
@@ -55,18 +64,19 @@ workflow_tools() {
       sub(/[[:space:]]+#.*$/, "", line)
       print line
     }
-  ' .github/workflows/main.yml
+  ' .github/workflows/*.yml
 }
 
 workflow_tool_version() {
   tool=$1
   matches=$(
     workflow_tools |
-      sed -n "s/^${tool}@\\([^[:space:]]*\\).*$/\\1/p"
+      sed -n "s/^${tool}@\\([^[:space:]]*\\).*$/\\1/p" |
+      sort -u
   )
   count=$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ')
   if [[ "$count" -ne 1 ]]; then
-    printf 'Expected one active workflow pin for %s, found %s\n' \
+    printf 'Expected one active workflow version for %s, found %s\n' \
       "$tool" "$count" >&2
     return 1
   fi
@@ -90,15 +100,18 @@ check_config() {
   fi
 
   manifest=$(rust_version)
+  fixture=$(fixture_rust_version)
   toolchain=$(toolchain_version)
   if ! workflow=$(workflow_tool_version rust 2>&1); then
     printf '%s\n' "$workflow"
     return 1
   fi
-  if [[ -z "$manifest" || "$manifest" != "$toolchain" ||
+  if [[ -z "$manifest" || -z "$fixture" ||
+    "$manifest" != "$fixture" ||
+    "$manifest" != "$toolchain" ||
     "$manifest" != "$workflow" ]]; then
-    printf 'Rust version mismatch: manifest=%s toolchain=%s workflow=%s\n' \
-      "$manifest" "$toolchain" "$workflow"
+    printf 'Rust version mismatch: manifest=%s fixture=%s toolchain=%s workflow=%s\n' \
+      "$manifest" "$fixture" "$toolchain" "$workflow"
     return 1
   fi
 }
