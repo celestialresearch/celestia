@@ -136,10 +136,11 @@ latest_crate() {
 
 manifest_dependencies() {
   awk '
-    FNR == 1 { active = 0 }
+    FNR == 1 { active = 0; pending = "" }
     /^\[(workspace\.)?dependencies\]$/ { active = 1; next }
     active && /^\[/ { active = 0 }
-    active && /^[[:space:]]*[a-zA-Z0-9_-]+[[:space:]]*=/ {
+    active && pending == "" &&
+      /^[[:space:]]*[a-zA-Z0-9_-]+[[:space:]]*=/ {
       line = $0
       sub(/^[[:space:]]*/, "", line)
       name = line

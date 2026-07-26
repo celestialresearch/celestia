@@ -313,7 +313,7 @@ func (store *Store) Recover(attemptID, reason string) (err error) {
 	owner, err := store.acquireAttemptLock(attemptID, false)
 	if err != nil {
 		if errors.Is(err, ErrCorrupt) || errors.Is(err, os.ErrNotExist) {
-			legacy, legacyErr := store.legacyLockMissing(attemptID)
+			legacy, legacyErr := store.migrationRequired(attemptID)
 			if legacyErr != nil {
 				return legacyErr
 			}
@@ -324,6 +324,16 @@ func (store *Store) Recover(attemptID, reason string) (err error) {
 		}
 		return err
 	}
+	marker, err := store.hasOwnershipMarker(attemptID)
+	if err != nil {
+		return errors.Join(err, releaseError(owner.release()))
+	}
+	if !marker {
+		return errors.Join(
+			fmt.Errorf("%w: attempt %s has incomplete v0 ownership", ErrMigrationRequired, attemptID),
+			releaseError(owner.release()),
+		)
+	}
 	return store.recoverOwned(attemptID, reason, owner)
 }
 
@@ -333,7 +343,7 @@ func (store *Store) MigrateV0(attemptID, reason string) (err error) {
 	if reason == "" {
 		return fmt.Errorf("%w: migration reason", ErrInvalid)
 	}
-	legacy, err := store.legacyLockMissing(attemptID)
+	legacy, err := store.migrationRequired(attemptID)
 	if err != nil {
 		return err
 	}
@@ -379,7 +389,7 @@ func (store *Store) recoverOwned(attemptID, reason string, owner *attemptLock) (
 	return publishMarker(path, attemptID)
 }
 
-func (store *Store) legacyLockMissing(attemptID string) (bool, error) {
+func (store *Store) migrationRequired(attemptID string) (bool, error) {
 	if !validIdentity(attemptID) {
 		return false, nil
 	}
@@ -387,11 +397,15 @@ func (store *Store) legacyLockMissing(attemptID string) (bool, error) {
 	if err != nil || marker {
 		return false, err
 	}
-	if _, err := os.Lstat(filepath.Join(store.root, locksDirectory, attemptID+".lock")); !errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
 	_, _, err = store.recoverablePath(attemptID)
 	return err == nil, err
+}
+
+func releaseError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%w: %w", ErrRelease, err)
 }
 
 func publishResult(publicationErr, releaseErr error) error {
