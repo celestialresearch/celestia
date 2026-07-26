@@ -220,7 +220,7 @@ cache_key() (
 
   {
     while IFS= read -r -d '' file; do
-      git hash-object "$file"
+      git hash-object -- "$file"
     done <"$inventory"
     git hash-object .github/scripts/actioncheck.sh
     git --version
