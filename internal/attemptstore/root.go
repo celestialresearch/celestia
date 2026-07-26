@@ -29,7 +29,7 @@ func prepareEvidenceRoot(root string) (string, error) {
 	if err := rejectLinkedAncestors(clean); err != nil {
 		return "", fmt.Errorf("inspect evidence root: %w", err)
 	}
-	if _, err := os.Lstat(clean); err == nil {
+	if _, err := lstatEvidencePath(clean); err == nil {
 		return clean, adoptEvidenceRoot(clean)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("inspect evidence root: %w", err)
@@ -46,7 +46,7 @@ func adoptEvidenceRoot(path string) error {
 
 func createEvidenceRoot(path string) error {
 	parent := filepath.Dir(path)
-	info, err := os.Lstat(parent)
+	info, err := lstatEvidencePath(parent)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("%w: evidence root parent must exist", ErrInvalid)
@@ -64,6 +64,15 @@ func createEvidenceRoot(path string) error {
 		return fmt.Errorf("create evidence root: %w", err)
 	}
 	return nil
+}
+
+func lstatEvidencePath(path string) (os.FileInfo, error) {
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	info, statErr := root.Lstat(filepath.Base(path))
+	return info, errors.Join(statErr, root.Close())
 }
 
 func prepareEvidenceDirectories(root string) error {
@@ -93,7 +102,7 @@ func validateEvidenceDirectories(root string) error {
 }
 
 func ensureEvidenceDirectory(path string) error {
-	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+	if _, err := lstatEvidencePath(path); errors.Is(err, os.ErrNotExist) {
 		return createEvidenceDirectory(path)
 	} else if err != nil {
 		return err
