@@ -13,6 +13,7 @@ package attemptstore
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +24,14 @@ import (
 	"path/filepath"
 	"reflect"
 )
+
+func recordTempName(name string) (string, error) {
+	var identity [16]byte
+	if _, err := rand.Read(identity[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(".%s.%x", name, identity), nil
+}
 
 func writeRecord(path, name string, value any) (err error) {
 	data, err := json.Marshal(value)

@@ -14,9 +14,7 @@
 package attemptstore
 
 import (
-	"crypto/rand"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"unsafe"
@@ -34,11 +32,11 @@ func createRecordTemp(path, name string) (*os.File, error) {
 		SecurityDescriptor: descriptor,
 	}
 	for range 8 {
-		var identity [16]byte
-		if _, err := rand.Read(identity[:]); err != nil {
+		temporaryName, err := recordTempName(name)
+		if err != nil {
 			return nil, err
 		}
-		filePath := filepath.Join(path, fmt.Sprintf(".%s.%x", name, identity))
+		filePath := filepath.Join(path, temporaryName)
 		pointer, err := windows.UTF16PtrFromString(filePath)
 		if err != nil {
 			return nil, err
