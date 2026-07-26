@@ -14,7 +14,9 @@
 package attemptstore
 
 import (
+	"errors"
 	"os"
+	"path/filepath"
 	"syscall"
 )
 
@@ -55,10 +57,14 @@ func publishDirectory(source, target, directory string) error {
 }
 
 func secureEvidenceTree(path string) error {
-	info, err := os.Lstat(path)
+	info, err := lstatEvidencePath(path)
 	if err != nil {
 		return err
 	}
+	return validateEvidenceDirectory(path, info)
+}
+
+func validateEvidenceDirectory(path string, info os.FileInfo) error {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || pathIsLinked(path, info) {
 		return ErrCorrupt
 	}
@@ -70,6 +76,28 @@ func secureEvidenceTree(path string) error {
 		return ErrCorrupt
 	}
 	return nil
+}
+
+func secureEvidenceFile(_ string) error {
+	return nil
+}
+
+func createEvidenceDirectory(path string) error {
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	name := filepath.Base(path)
+	if err := root.Mkdir(name, 0o700); err != nil {
+		_ = root.Close()
+		return err
+	}
+	info, statErr := root.Lstat(name)
+	closeErr := root.Close()
+	if err := errors.Join(statErr, closeErr); err != nil {
+		return err
+	}
+	return validateEvidenceDirectory(path, info)
 }
 
 func pathIsLinked(_ string, info os.FileInfo) bool {

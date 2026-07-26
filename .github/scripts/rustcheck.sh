@@ -13,6 +13,7 @@
 set -eu
 
 mode=${1:-config}
+cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
 rust_version() {
   awk -F'"' '$1 ~ /^[[:space:]]*rust-version/ { print $2; exit }' Cargo.toml
@@ -22,8 +23,17 @@ toolchain_version() {
   awk -F'"' '$1 ~ /^[[:space:]]*channel/ { print $2; exit }' rust-toolchain.toml
 }
 
+fixture_rust_version() {
+  awk -F'"' '$1 ~ /^[[:space:]]*rust-version/ { print $2; exit }' \
+    worker/qualification-fixtures/Cargo.toml
+}
+
 workflow_tools() {
   awk '
+    FNR == 1 {
+      in_action = 0
+      in_block = 0
+    }
     {
       indent = match($0, /[^ ]/) - 1
     }
@@ -54,18 +64,19 @@ workflow_tools() {
       sub(/[[:space:]]+#.*$/, "", line)
       print line
     }
-  ' .github/workflows/main.yml
+  ' .github/workflows/*.yml
 }
 
 workflow_tool_version() {
   tool=$1
   matches=$(
     workflow_tools |
-      sed -n "s/^${tool}@\\([^[:space:]]*\\).*$/\\1/p"
+      sed -n "s/^${tool}@\\([^[:space:]]*\\).*$/\\1/p" |
+      sort -u
   )
   count=$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ')
   if [[ "$count" -ne 1 ]]; then
-    printf 'Expected one active workflow pin for %s, found %s\n' \
+    printf 'Expected one active workflow version for %s, found %s\n' \
       "$tool" "$count" >&2
     return 1
   fi
@@ -89,15 +100,18 @@ check_config() {
   fi
 
   manifest=$(rust_version)
+  fixture=$(fixture_rust_version)
   toolchain=$(toolchain_version)
   if ! workflow=$(workflow_tool_version rust 2>&1); then
     printf '%s\n' "$workflow"
     return 1
   fi
-  if [[ -z "$manifest" || "$manifest" != "$toolchain" ||
+  if [[ -z "$manifest" || -z "$fixture" ||
+    "$manifest" != "$fixture" ||
+    "$manifest" != "$toolchain" ||
     "$manifest" != "$workflow" ]]; then
-    printf 'Rust version mismatch: manifest=%s toolchain=%s workflow=%s\n' \
-      "$manifest" "$toolchain" "$workflow"
+    printf 'Rust version mismatch: manifest=%s fixture=%s toolchain=%s workflow=%s\n' \
+      "$manifest" "$fixture" "$toolchain" "$workflow"
     return 1
   fi
 }
@@ -105,6 +119,7 @@ check_config() {
 check_tool() {
   command_name=$1
   workflow_name=$2
+  cargo_bin=${CARGO_BIN:-cargo}
   if ! expected=$(workflow_tool_version "$workflow_name" 2>&1); then
     printf '%s\n' "$expected"
     return 1
@@ -113,7 +128,7 @@ check_tool() {
     printf 'Missing pinned Rust helper in main workflow: %s\n' "$workflow_name"
     return 1
   fi
-  if ! output=$(cargo "$command_name" --version 2>&1); then
+  if ! output=$("$cargo_bin" "$command_name" --version 2>&1); then
     printf 'Required Rust helper is unavailable: cargo %s\n' "$command_name"
     return 1
   fi
@@ -127,7 +142,8 @@ check_tool() {
 
 check_tools() {
   expected=$(toolchain_version)
-  if ! output=$(rustc --version 2>&1); then
+  rustc_bin=${RUSTC_BIN:-rustc}
+  if ! output=$("$rustc_bin" --version 2>&1); then
     printf 'Required Rust compiler is unavailable\n'
     return 1
   fi
@@ -153,43 +169,50 @@ release_exe_suffix() {
 }
 
 check_release_artefacts() (
-  mkdir -p .cache
-  target_dir=$(mktemp -d .cache/release-artefacts.XXXXXX)
+  cargo_bin=${CARGO_BIN:-cargo}
+  mkdir -p "$cache_root"
+  target_dir=$(mktemp -d "$cache_root/release-artefacts.XXXXXX")
 
   # shellcheck disable=SC2329 # Invoked by the EXIT and signal trap.
   cleanup() {
     case "$target_dir" in
-    .cache/release-artefacts.*) rm -rf -- "$target_dir" ;;
+    "$cache_root"/release-artefacts.*) rm -rf -- "$target_dir" ;;
     esac
   }
 
   trap cleanup EXIT HUP INT TERM
-  cargo build --workspace --release --locked --target-dir "$target_dir"
+  "$cargo_bin" build --workspace --release --locked --target-dir "$target_dir"
 
   release_dir=$target_dir/release
+  # Cargo keeps build metadata beside the release outputs. It is not part of
+  # the distributable directory and must not weaken the allowlist below.
+  rm -rf -- "$release_dir/.fingerprint" "$release_dir/build" \
+    "$release_dir/deps" "$release_dir/examples" "$release_dir/incremental"
+  # Cargo's build lock is coordination state, not a distributable artefact.
+  rm -f -- "$release_dir/.cargo-artifact-lock" \
+    "$release_dir/.cargo-build-lock" \
+    "$release_dir/.cargo-lock"
   expected=celestia-url-reference$(release_exe_suffix)
+  expected_metadata=("celestia-url-reference.d")
+  if [[ "$expected" == *.exe ]]; then
+    expected_metadata+=("celestia_url_reference.pdb")
+  fi
   seen=false
-  unexpected=
-
-  for path in "$release_dir"/*; do
-    file=${path##*/}
-    if [[ -d "$path" && ! -L "$path" ]]; then
-      continue
+  while IFS= read -r -d '' path; do
+    file=${path#"$release_dir/"}
+    if [[ -d "$path" ]]; then
+      printf 'Unexpected release directory: %s\n' "$file"
+      return 1
     fi
-    case "$file" in
-    *.d | *.pdb)
-      if [[ ! -f "$path" || -L "$path" || -x "$path" ]]; then
-        printf 'Invalid release metadata: %s\n' "$file"
-        return 1
-      fi
-      continue
-      ;;
-    esac
+    if [[ -L "$path" ]]; then
+      printf 'Unexpected release symlink: %s\n' "$file"
+      return 1
+    fi
+    if [[ ! -f "$path" ]]; then
+      printf 'Unexpected release artefact: %s\n' "$file"
+      return 1
+    fi
     if [[ "$file" == "$expected" ]]; then
-      if [[ ! -f "$path" || -L "$path" ]]; then
-        printf 'Release artefact is not a regular file: %s\n' "$expected"
-        return 1
-      fi
       if [[ ! -x "$path" && "$file" != *.exe ]]; then
         printf 'Release artefact is not executable: %s\n' "$expected"
         return 1
@@ -197,17 +220,30 @@ check_release_artefacts() (
       seen=true
       continue
     fi
-    if [[ -x "$path" || "$file" == *.exe || -L "$path" ]]; then
-      unexpected="${unexpected}${unexpected:+ }$file"
+    metadata=false
+    for allowed in "${expected_metadata[@]}"; do
+      if [[ "$file" == "$allowed" ]]; then
+        metadata=true
+        break
+      fi
+    done
+    if [[ "$metadata" == true ]]; then
+      if [[ -x "$path" ]]; then
+        printf 'Invalid release metadata: %s\n' "$file"
+        return 1
+      fi
+      continue
     fi
-  done
+    if [[ -x "$path" || "$file" == *.exe ]]; then
+      printf 'Unexpected release executable: %s\n' "$file"
+    else
+      printf 'Unexpected release artefact: %s\n' "$file"
+    fi
+    return 1
+  done < <(find "$release_dir" -mindepth 1 -print0)
 
   if [[ "$seen" != true ]]; then
     printf 'Missing release executable: %s\n' "$expected"
-    return 1
-  fi
-  if [[ -n "$unexpected" ]]; then
-    printf 'Unexpected release executable: %s\n' "$unexpected"
     return 1
   fi
 )

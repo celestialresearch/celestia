@@ -63,6 +63,12 @@ func TestRecoverRejectsMissingLock(t *testing.T) {
 	); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("missing lock recovered: %v", err)
 	}
+	if err := store.MigrateV0(
+		accepted.Request.AttemptID,
+		"operator quiesced legacy attempt",
+	); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("current attempt migrated: %v", err)
+	}
 }
 
 func TestRecoverRejectsReplacedLockDirectory(t *testing.T) {
@@ -109,7 +115,7 @@ func TestRecoverRejectsReplacedLockDirectory(t *testing.T) {
 
 func TestStageDoesNotRecreateMissingActiveLock(t *testing.T) {
 	store, accepted, admittedAt := lockProcessFixture(t)
-	command := lockHelperCommand(t.Context(), "stage")
+	command := lockHelperCommand(t.Context(), "stage", store.root)
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatalf("open helper stdout: %v", err)

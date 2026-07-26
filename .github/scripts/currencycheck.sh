@@ -124,58 +124,85 @@ accept_or_fail() {
 
 latest_crate() {
   local component=$1
+  local cargo_bin=${CARGO_BIN:-cargo}
   local output
 
-  if ! output=$(cargo search "$component" --limit 1 2>&1); then
+  if ! output=$("$cargo_bin" search "$component" --limit 1 2>&1); then
     printf 'Cargo search failed for %s: %s\n' "$component" "$output" >&2
     return 1
   fi
   sed -n "s/^${component} = \"\\([^\"]*\\)\".*/\\1/p" <<<"$output"
 }
 
-workspace_dependencies() {
+manifest_dependencies() {
   awk '
-    /^\[workspace.dependencies\]$/ { active = 1; next }
-    active && /^\[/ { exit }
-    active && /^[a-zA-Z0-9_-]+[[:space:]]*=/ {
-      name = $1
+    FNR == 1 { active = 0; pending = "" }
+    /^\[(workspace\.)?dependencies\]$/ { active = 1; next }
+    active && /^\[/ { active = 0 }
+    active && pending == "" &&
+      /^[[:space:]]*[a-zA-Z0-9_-]+[[:space:]]*=/ {
+      line = $0
+      sub(/^[[:space:]]*/, "", line)
+      name = line
+      sub(/[[:space:]]*=.*$/, "", name)
+      pending = name
+    }
+    active && pending != "" {
       line = $0
       if (match(line, /version[[:space:]]*=[[:space:]]*"=[^"]+"/)) {
         value = substr(line, RSTART, RLENGTH)
         sub(/^.*"=/, "", value)
         sub(/"$/, "", value)
-        print name "|" value
+        print pending "|" value
+        pending = ""
       } else if (match(line, /=[[:space:]]*"=[^"]+"/)) {
         value = substr(line, RSTART, RLENGTH)
         sub(/^.*"=/, "", value)
         sub(/"$/, "", value)
-        print name "|" value
+        print pending "|" value
+        pending = ""
+      } else if (line ~ /}/) {
+        pending = ""
       }
     }
-  ' "$root/Cargo.toml"
+  ' \
+    "$root/Cargo.toml" \
+    "$root/worker/qualification-fixtures/Cargo.toml" |
+    sort -u
 }
 
 workflow_helpers() {
   sed -n \
     's/^[[:space:]]*\(cargo-[a-z0-9-]*\)@\([^[:space:]]*\).*$/\1|\2/p' \
-    "$root/.github/workflows/main.yml" |
+    "$root"/.github/workflows/*.yml |
     sort -u
 }
 
 check_toolchain() {
   local current
   local latest
+  local normalised
   local output
+  local rustup_bin=${RUSTUP_BIN:-rustup}
+  local rustup_status
 
   current=$(awk -F'"' '$1 ~ /^[[:space:]]*channel/ { print $2; exit }' \
     "$root/rust-toolchain.toml")
-  output=$(rustup check 2>&1)
+  set +e
+  output=$("$rustup_bin" check 2>&1)
+  rustup_status=$?
+  set -e
+  if ((rustup_status != 0 && rustup_status != 100)); then
+    printf 'Rust toolchain currency check failed: %s\n' "$output" >&2
+    return 1
+  fi
+  normalised=$(tr '[:upper:]' '[:lower:]' <<<"$output")
   latest=$(sed -n \
-    's/^stable-.*update available: [^ ]* ([^)]*) -> \([0-9][0-9.]*\) .*/\1/p' \
-    <<<"$output")
+    's/^stable-.*update[[:space:]]*available[[:space:]]*:[[:space:]].*->[[:space:]]*\([0-9][0-9.]*\).*/\1/p' \
+    <<<"$normalised")
   if [[ -z "$latest" ]]; then
-    if grep -Fq 'stable-' <<<"$output" &&
-      grep -Fq 'up to date' <<<"$output"; then
+    if grep -Eq '^stable-.*up[[:space:]]+to[[:space:]]+date[[:space:]]*:' \
+      <<<"$normalised"; then
       latest=$current
     else
       printf 'Could not determine the latest stable Rust toolchain\n' >&2
@@ -201,7 +228,7 @@ check_crates() {
       continue
     fi
     accept_or_fail cargo "$component" "$current" "$latest" || status=1
-  done < <(workspace_dependencies)
+  done < <(manifest_dependencies)
   return "$status"
 }
 

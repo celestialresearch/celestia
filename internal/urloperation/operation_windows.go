@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows && amd64
 
 package urloperation
 
@@ -70,9 +70,9 @@ func (operation *Operation) Execute(
 			Err:       errors.Join(ErrPersistence, err),
 		}
 	}
-	result := operation.executeAccepted(ctx, accepted, admittedAt)
+	result, process := operation.executeAccepted(ctx, accepted, admittedAt)
 	result.AttemptID = accepted.Request.AttemptID
-	observation := observationFrom(result)
+	observation := observationFrom(result, process)
 	if err := attempt.Publish(observation); err != nil {
 		applyPublishError(&result, err)
 	}
@@ -80,6 +80,14 @@ func (operation *Operation) Execute(
 }
 
 func applyPublishError(result *Result, err error) {
+	if errors.Is(err, attemptstore.ErrPublication) {
+		result.Status = Indeterminate
+		result.Err = errors.Join(result.Err, ErrPersistence, err)
+		if errors.Is(err, attemptstore.ErrRelease) {
+			result.Err = errors.Join(result.Err, ErrCleanup)
+		}
+		return
+	}
 	if errors.Is(err, attemptstore.ErrRelease) {
 		result.Err = errors.Join(result.Err, ErrCleanup, err)
 		return
@@ -92,34 +100,30 @@ func (operation *Operation) executeAccepted(
 	ctx context.Context,
 	accepted urladmission.Accepted,
 	admittedAt time.Time,
-) Result {
-	executionContext, cancel, err := admittedContext(
-		ctx,
-		accepted.Request.Deadline,
-	)
+) (Result, processsupervision.Outcome) {
+	startDeadline, err := admittedStartDeadline(ctx, accepted.Request.Deadline)
 	if err != nil {
 		return Result{
 			Status: Failed,
 			Err:    errors.Join(ErrProtocol, err),
-		}
+		}, processsupervision.Outcome{}
 	}
-	defer cancel()
-	process := operation.supervisor.Run(executionContext, accepted.Frame)
+	process := operation.supervisor.RunBefore(ctx, accepted.Frame, startDeadline)
 	if process.Status != processsupervision.Completed {
 		return Result{
 			Status:  terminalStatus(process),
-			Process: process,
+			Process: callerProcess(process),
 			Err:     errors.Join(ErrProcess, process.Err),
-		}
+		}, process
 	}
 
 	_, correlation, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt)
 	if err != nil {
 		return Result{
 			Status:  Failed,
-			Process: process,
+			Process: callerProcess(process),
 			Err:     errors.Join(ErrProtocol, err),
-		}
+		}, process
 	}
 	response, err := workerprotocol.DecodeResponse(
 		process.Stdout,
@@ -129,11 +133,11 @@ func (operation *Operation) executeAccepted(
 	if err != nil {
 		return Result{
 			Status:  Failed,
-			Process: process,
+			Process: callerProcess(process),
 			Err:     errors.Join(ErrProtocol, err),
-		}
+		}, process
 	}
-	return evaluateResponse(accepted, process, response)
+	return evaluateResponse(accepted, process, response), process
 }
 
 func evaluateResponse(
@@ -141,11 +145,14 @@ func evaluateResponse(
 	process processsupervision.Outcome,
 	response workerprotocol.Response,
 ) Result {
+	diagnostics := projectDiagnostics(response.Diagnostics)
+	response.Diagnostics = nil
 	if response.Status != workerprotocol.Completed {
 		return Result{
-			Status:   Failed,
-			Process:  process,
-			Response: &response,
+			Status:      Failed,
+			Process:     callerProcess(process),
+			Response:    &response,
+			Diagnostics: diagnostics,
 			Err: errors.Join(
 				ErrProcess,
 				fmt.Errorf("worker status %s", response.Status),
@@ -153,9 +160,10 @@ func evaluateResponse(
 		}
 	}
 	result := Result{
-		Status:   ExecutedUnverified,
-		Process:  process,
-		Response: &response,
+		Status:      ExecutedUnverified,
+		Process:     callerProcess(process),
+		Response:    &response,
+		Diagnostics: diagnostics,
 		Verification: Verification{
 			VerifierID:      VerifierID,
 			VerifierVersion: VerifierVersion,
@@ -183,19 +191,47 @@ func evaluateResponse(
 	return result
 }
 
-func admittedContext(
+func callerProcess(process processsupervision.Outcome) processsupervision.Outcome {
+	process.Stdout = nil
+	process.Stderr = nil
+	return process
+}
+
+func projectDiagnostics(values []workerprotocol.Diagnostic) []Diagnostic {
+	if len(values) == 0 {
+		return nil
+	}
+	diagnostics := make([]Diagnostic, len(values))
+	for index, value := range values {
+		diagnostics[index] = Diagnostic{
+			Code:    value.Code,
+			Message: diagnosticMessage(value.Code),
+		}
+	}
+	return diagnostics
+}
+
+func diagnosticMessage(code string) string {
+	switch code {
+	case "invalid_reference":
+		return "The worker rejected the URL reference"
+	default:
+		return "The worker reported a failure"
+	}
+}
+
+func admittedStartDeadline(
 	parent context.Context,
 	deadlineValue string,
-) (context.Context, context.CancelFunc, error) {
+) (time.Time, error) {
 	if parent == nil {
-		return nil, nil, errors.New("nil execution context")
+		return time.Time{}, errors.New("nil execution context")
 	}
 	deadline, err := time.Parse(time.RFC3339Nano, deadlineValue)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse admitted deadline: %w", err)
+		return time.Time{}, fmt.Errorf("parse admitted deadline: %w", err)
 	}
-	contextWithDeadline, cancel := context.WithDeadline(parent, deadline)
-	return contextWithDeadline, cancel, nil
+	return deadline, nil
 }
 
 func terminalStatus(process processsupervision.Outcome) Status {
@@ -207,8 +243,12 @@ func terminalStatus(process processsupervision.Outcome) Status {
 		return Cancelled
 	case processsupervision.TimedOut:
 		return TimedOut
+	case processsupervision.StartFailed:
+		if errors.Is(process.Err, context.DeadlineExceeded) {
+			return TimedOut
+		}
+		return Failed
 	case processsupervision.Completed,
-		processsupervision.StartFailed,
 		processsupervision.OutputOverflow,
 		processsupervision.ErrorOverflow,
 		processsupervision.ExitFailed,
@@ -225,38 +265,72 @@ func operationLimits() processsupervision.Limits {
 		ErrorBytes:     workerprotocol.StderrBytes,
 		MemoryBytes:    workerprotocol.MemoryBytes,
 		Processes:      workerprotocol.Processes,
+		StartupTimeout: 2 * time.Second,
 		Timeout:        time.Duration(workerprotocol.TimeoutMS) * time.Millisecond,
 		CleanupTimeout: time.Second,
 	}
 }
 
-func observationFrom(result Result) attemptstore.Observation {
-	protocolStatus := protocolNotRun
-	if result.Response != nil {
-		protocolStatus = protocolValid
-	} else if errors.Is(result.Err, ErrProtocol) {
-		protocolStatus = protocolRejected
-	}
-	processError := ""
-	if result.Process.Err != nil {
-		processError = result.Process.Err.Error()
-	}
+func observationFrom(
+	result Result,
+	process processsupervision.Outcome,
+) attemptstore.Observation {
+	processStatus := observationProcessStatus(result)
 	return attemptstore.Observation{
 		Version:          attemptstore.Version,
 		AttemptID:        result.AttemptID,
-		WorkerSHA256:     fmt.Sprintf("%x", result.Process.WorkerSHA256),
-		ProcessStatus:    string(result.Process.Status),
-		ProcessError:     processError,
-		ExitCode:         result.Process.ExitCode,
-		Stdout:           result.Process.Stdout,
-		Stderr:           result.Process.Stderr,
-		CleanupComplete:  result.Process.CleanupComplete,
-		ProtocolStatus:   protocolStatus,
+		WorkerSHA256:     fmt.Sprintf("%x", process.WorkerSHA256),
+		ProcessStatus:    processStatus,
+		ProcessError:     observationProcessError(result, process),
+		ExitCode:         process.ExitCode,
+		Stdout:           process.Stdout,
+		Stderr:           process.Stderr,
+		CleanupComplete:  process.CleanupComplete,
+		ProtocolStatus:   observationProtocolStatus(result),
 		VerificationID:   result.Verification.VerifierID,
 		VerificationVer:  result.Verification.VerifierVersion,
 		ExpectedOutput:   result.Verification.Expected,
 		VerificationPass: result.Verification.Matched,
 		TerminalStatus:   string(result.Status),
-		DurationNS:       result.Process.Duration.Nanoseconds(),
+		DurationNS:       process.Duration.Nanoseconds(),
 	}
+}
+
+func observationProtocolStatus(result Result) string {
+	if result.Response != nil {
+		return protocolValid
+	}
+	if result.Process.Status == processsupervision.Completed &&
+		errors.Is(result.Err, ErrProtocol) {
+		return protocolRejected
+	}
+	return protocolNotRun
+}
+
+func observationProcessStatus(result Result) string {
+	if result.Response != nil &&
+		result.Response.Status == workerprotocol.Failed {
+		return string(processsupervision.ExitFailed)
+	}
+	return string(result.Process.Status)
+}
+
+func observationProcessError(
+	result Result,
+	process processsupervision.Outcome,
+) string {
+	if process.Err != nil {
+		return process.Err.Error()
+	}
+	if result.Err == nil {
+		return ""
+	}
+	if result.Response != nil &&
+		result.Response.Status == workerprotocol.Failed {
+		return result.Err.Error()
+	}
+	if process.Status != processsupervision.Completed {
+		return result.Err.Error()
+	}
+	return ""
 }

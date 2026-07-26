@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows && amd64
 
 package urloperation
 
@@ -20,14 +20,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"celestia.research/governed-operation/internal/attemptstore"
 	"celestia.research/governed-operation/internal/processsupervision"
 	"celestia.research/governed-operation/internal/urladmission"
 	"celestia.research/governed-operation/internal/urlreference"
 	"celestia.research/governed-operation/internal/workerprotocol"
+	"golang.org/x/sys/windows"
 )
 
 func TestMain(testingMain *testing.M) {
@@ -44,15 +47,31 @@ func TestMain(testingMain *testing.M) {
 		"build",
 		"--workspace",
 		"--all-targets",
-		"--features",
-		"qualification-fixtures",
 		"--locked",
 	)
 	command.Dir = root
 	command.Stdout = os.Stderr
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "build worker fixtures: %v\n", err)
+		fmt.Fprintf(os.Stderr, "build production worker: %v\n", err)
+		os.Exit(1)
+	}
+	// The test invokes the repository-pinned Cargo tool with fixed arguments;
+	// the path is derived only from the checked-out repository root.
+	qualification := exec.CommandContext( //nolint:gosec // fixed test-tool invocation
+		ctx,
+		"cargo",
+		"build",
+		"--manifest-path",
+		filepath.Join(root, "worker", "qualification-fixtures", "Cargo.toml"),
+		"--bins",
+		"--locked",
+	)
+	qualification.Dir = root
+	qualification.Stdout = os.Stderr
+	qualification.Stderr = os.Stderr
+	if err := qualification.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "build qualification fixtures: %v\n", err)
 		os.Exit(1)
 	}
 	os.Exit(testingMain.Run())
@@ -87,7 +106,7 @@ func TestOperationVerifiesWorker(t *testing.T) {
 }
 
 func TestOperationRejectsBeforeExecution(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "evidence")
+	root := testEvidenceRoot(t)
 	operation, err := New(testWorker(t), root)
 	if err != nil {
 		t.Fatalf("new operation: %v", err)
@@ -110,7 +129,7 @@ func TestOperationRejectsBeforeExecution(t *testing.T) {
 }
 
 func TestOperationReportsStagingFailure(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "evidence")
+	root := testEvidenceRoot(t)
 	operation, err := New(testWorker(t), root)
 	if err != nil {
 		t.Fatalf("new operation: %v", err)
@@ -147,8 +166,8 @@ func TestObservationPreservesProcessFailure(t *testing.T) {
 		},
 		Err: ErrProtocol,
 	}
-	observation := observationFrom(result)
-	if observation.ProtocolStatus != protocolRejected ||
+	observation := observationFrom(result, result.Process)
+	if observation.ProtocolStatus != protocolNotRun ||
 		observation.ProcessError == "" ||
 		observation.TerminalStatus != string(Failed) {
 		t.Fatalf("observation=%+v", observation)
@@ -172,6 +191,9 @@ func TestObservationMapsProtocolState(t *testing.T) {
 		{
 			name: "rejected",
 			result: Result{
+				Process: processsupervision.Outcome{
+					Status: processsupervision.Completed,
+				},
 				Err: ErrProtocol,
 			},
 			expected: protocolRejected,
@@ -179,7 +201,7 @@ func TestObservationMapsProtocolState(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if actual := observationFrom(test.result).ProtocolStatus; actual != test.expected {
+			if actual := observationFrom(test.result, test.result.Process).ProtocolStatus; actual != test.expected {
 				t.Fatalf("status=%q, want %q", actual, test.expected)
 			}
 		})
@@ -194,7 +216,7 @@ func TestOperationRejectsProcessFailure(t *testing.T) {
 	admittedAt := time.Now().UTC()
 	accepted := admittedFixture(t, admittedAt)
 	accepted.Frame = []byte("partial")
-	result := operation.executeAccepted(context.Background(), accepted, admittedAt)
+	result, _ := operation.executeAccepted(context.Background(), accepted, admittedAt)
 	if result.Status != Failed || result.Process.Status != processsupervision.ExitFailed {
 		t.Fatalf("result=%+v", result)
 	}
@@ -231,7 +253,7 @@ func TestOperationPreservesTermination(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			accepted := admittedFixture(t, test.admittedAt)
-			result := operation.executeAccepted(
+			result, _ := operation.executeAccepted(
 				test.context(),
 				accepted,
 				test.admittedAt,
@@ -243,14 +265,51 @@ func TestOperationPreservesTermination(t *testing.T) {
 	}
 }
 
+func TestOperationPublishesCallerDeadline(t *testing.T) {
+	operation, err := newTestOperation(t, testHostileWorker(t))
+	if err != nil {
+		t.Fatalf("new operation: %v", err)
+	}
+	admittedAt := time.Now().UTC()
+	accepted := admittedFixture(t, admittedAt)
+	attempt, err := operation.store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	process := processsupervision.Outcome{
+		Status:          processsupervision.Cancelled,
+		Err:             context.DeadlineExceeded,
+		CleanupComplete: true,
+		Duration:        time.Nanosecond,
+	}
+	result := Result{
+		AttemptID: accepted.Request.AttemptID,
+		Status:    terminalStatus(process),
+		Process:   callerProcess(process),
+		Err:       errors.Join(ErrProcess, process.Err),
+	}
+	if err := attempt.Publish(observationFrom(result, process)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	records, err := operation.store.Inspect(result.AttemptID)
+	if err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+	if records.Observation == nil ||
+		records.Observation.ProcessStatus != string(processsupervision.Cancelled) ||
+		records.Observation.TerminalStatus != string(TimedOut) {
+		t.Fatalf("records=%+v", records)
+	}
+}
+
 func TestOperationRejectsInvalidContext(t *testing.T) {
-	if _, _, err := admittedContext(
+	if _, err := admittedStartDeadline(
 		nilContext(),
 		time.Now().UTC().Format(time.RFC3339Nano),
 	); err == nil {
 		t.Fatal("nil context accepted")
 	}
-	if _, _, err := admittedContext(context.Background(), "invalid"); err == nil {
+	if _, err := admittedStartDeadline(context.Background(), "invalid"); err == nil {
 		t.Fatal("invalid deadline accepted")
 	}
 }
@@ -301,7 +360,7 @@ func TestOperationRejectsMalformedProtocol(t *testing.T) {
 	admittedAt := time.Now().UTC()
 	accepted := admittedFixture(t, admittedAt)
 	accepted.Frame = []byte("malformed")
-	result := operation.executeAccepted(context.Background(), accepted, admittedAt)
+	result, _ := operation.executeAccepted(context.Background(), accepted, admittedAt)
 	if result.Status != Failed || result.Process.Status != processsupervision.Completed {
 		t.Fatalf("result=%+v", result)
 	}
@@ -324,12 +383,26 @@ func TestOperationPublishesProtocolFailure(t *testing.T) {
 
 func TestOperationRecordsValidWorkerFailure(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  string
-		status workerprotocol.Status
+		name          string
+		input         string
+		status        workerprotocol.Status
+		processStatus processsupervision.Status
+		exitCode      uint32
 	}{
-		{name: "rejected", input: "https://rejected.test", status: workerprotocol.Rejected},
-		{name: "failed", input: "https://failed.test", status: workerprotocol.Failed},
+		{
+			name:          "rejected",
+			input:         "https://rejected.test",
+			status:        workerprotocol.Rejected,
+			processStatus: processsupervision.Completed,
+			exitCode:      2,
+		},
+		{
+			name:          "failed",
+			input:         "https://failed.test",
+			status:        workerprotocol.Failed,
+			processStatus: processsupervision.ExitFailed,
+			exitCode:      3,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -347,7 +420,7 @@ func TestOperationRecordsValidWorkerFailure(t *testing.T) {
 			if err != nil {
 				t.Fatalf("inspect: %v", err)
 			}
-			assertWorkerFailureEvidence(t, records)
+			assertWorkerFailureEvidence(t, records, test.processStatus, test.exitCode)
 		})
 	}
 }
@@ -356,20 +429,54 @@ func assertWorkerFailure(t *testing.T, result Result, status workerprotocol.Stat
 	t.Helper()
 	if result.Status != Failed ||
 		result.Process.Status != processsupervision.Completed ||
+		len(result.Process.Stdout) != 0 ||
+		len(result.Process.Stderr) != 0 ||
 		result.Response == nil ||
-		result.Response.Status != status ||
+		result.Response.Status != status {
+		t.Fatalf("result=%+v", result)
+	}
+	assertProjectedDiagnostics(t, result)
+}
+
+func assertProjectedDiagnostics(t *testing.T, result Result) {
+	t.Helper()
+	if result.Response == nil ||
+		len(result.Response.Diagnostics) != 0 ||
+		len(result.Diagnostics) != 1 ||
+		result.Diagnostics[0].Message != "The worker reported a failure" ||
 		result.Verification.VerifierID != "" {
 		t.Fatalf("result=%+v", result)
 	}
+	if strings.Contains(result.Diagnostics[0].Message, "hostile fixture") {
+		t.Fatalf("worker-controlled message exposed: %+v", result.Diagnostics)
+	}
+	if strings.Contains(fmt.Sprintf("%+v", result), "hostile fixture") {
+		t.Fatalf("raw worker evidence retained in result")
+	}
 }
 
-func assertWorkerFailureEvidence(t *testing.T, records attemptstore.Records) {
+func assertWorkerFailureEvidence(
+	t *testing.T,
+	records attemptstore.Records,
+	processStatus processsupervision.Status,
+	exitCode uint32,
+) {
 	t.Helper()
 	if records.Observation == nil ||
+		records.Observation.ProcessStatus != string(processStatus) ||
+		records.Observation.ExitCode != exitCode ||
 		records.Observation.ProtocolStatus != protocolValid ||
 		records.Observation.VerificationID != "" ||
 		records.Observation.TerminalStatus != string(Failed) {
 		t.Fatalf("records=%+v", records)
+	}
+	if processStatus == processsupervision.ExitFailed &&
+		records.Observation.ProcessError == "" {
+		t.Fatalf("failed worker omitted process error: %+v", records.Observation)
+	}
+	if processStatus == processsupervision.Completed &&
+		records.Observation.ProcessError != "" {
+		t.Fatalf("rejected worker recorded process error: %+v", records.Observation)
 	}
 }
 
@@ -405,7 +512,34 @@ func admittedFixture(t *testing.T, admittedAt time.Time) urladmission.Accepted {
 
 func newTestOperation(t *testing.T, worker string) (*Operation, error) {
 	t.Helper()
-	return New(worker, filepath.Join(t.TempDir(), "evidence"))
+	return New(worker, testEvidenceRoot(t))
+}
+
+func testEvidenceRoot(tb testing.TB) string {
+	tb.Helper()
+	parent := filepath.Join(tb.TempDir(), "owned")
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		tb.Fatalf("current user: %v", err)
+	}
+	descriptor, err := windows.SecurityDescriptorFromString(
+		fmt.Sprintf("O:%sD:P(A;OICI;FA;;;%s)", user.User.Sid, user.User.Sid),
+	)
+	if err != nil {
+		tb.Fatalf("evidence parent descriptor: %v", err)
+	}
+	pointer, err := windows.UTF16PtrFromString(parent)
+	if err != nil {
+		tb.Fatalf("evidence parent path: %v", err)
+	}
+	attributes := windows.SecurityAttributes{
+		Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
+		SecurityDescriptor: descriptor,
+	}
+	if err := windows.CreateDirectory(pointer, &attributes); err != nil {
+		tb.Fatalf("create evidence parent: %v", err)
+	}
+	return filepath.Join(parent, "evidence")
 }
 
 func testWorker(t *testing.T) string {
@@ -421,7 +555,11 @@ func testHostileWorker(t *testing.T) string {
 func locateWorker(tb testing.TB, name string) string {
 	tb.Helper()
 	root := filepath.Clean(filepath.Join(testWorkingDirectory(tb), "..", ".."))
-	path := filepath.Join(root, "target", "debug", name)
+	binaryDirectory := filepath.Join(root, "target", "debug")
+	if name == "celestia-hostile-worker.exe" || name == "celestia-blocked-input-worker.exe" {
+		binaryDirectory = filepath.Join(root, "worker", "qualification-fixtures", "target", "debug")
+	}
+	path := filepath.Join(binaryDirectory, name)
 	if _, err := os.Stat(path); err != nil {
 		tb.Fatalf("worker %s is unavailable: %v", name, err)
 	}
@@ -460,10 +598,23 @@ func TestPublishReleaseFailurePreservesTerminalStatus(t *testing.T) {
 	}
 }
 
+func TestPublicationFailureOverridesReleaseFailure(t *testing.T) {
+	result := Result{Status: Verified}
+	applyPublishError(
+		&result,
+		errors.Join(attemptstore.ErrPublication, attemptstore.ErrRelease),
+	)
+	if result.Status != Indeterminate ||
+		!errors.Is(result.Err, ErrPersistence) ||
+		!errors.Is(result.Err, ErrCleanup) {
+		t.Fatalf("combined publication result=%+v", result)
+	}
+}
+
 func BenchmarkOperation(b *testing.B) {
 	operation, err := New(
 		locateWorker(b, "celestia-url-reference.exe"),
-		filepath.Join(b.TempDir(), "evidence"),
+		testEvidenceRoot(b),
 	)
 	if err != nil {
 		b.Fatalf("new operation: %v", err)

@@ -13,6 +13,7 @@
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
+cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
 usage() {
   printf 'Usage: %s verify|currency|cached-currency\n' "${0##*/}" >&2
@@ -64,13 +65,40 @@ parse_action() {
   ACTION_TAG=${BASH_REMATCH[1]}
 }
 
+git_ls_remote() {
+  local attempts=${ACTIONCHECK_REMOTE_ATTEMPTS:-3}
+  local delay=${ACTIONCHECK_RETRY_DELAY_SECONDS:-1}
+  local attempt=1
+  local output
+
+  if [[ ! "$attempts" =~ ^[1-9][0-9]*$ ||
+    ! "$delay" =~ ^[0-9]+$ ]]; then
+    printf 'Action remote attempts must be positive and delay non-negative\n' >&2
+    return 2
+  fi
+  while ! output=$(git ls-remote "$@" 2>&1); do
+    if ((attempt >= attempts)); then
+      printf '%s\n' "$output" >&2
+      return 1
+    fi
+    printf 'Action remote lookup failed; retrying (%d/%d)\n' \
+      "$attempt" "$attempts" >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+  printf '%s\n' "$output"
+}
+
 tag_sha() {
   local repository=$1
   local tag=$2
   local refs peeled
 
-  refs=$(git ls-remote --tags "https://github.com/$repository.git" \
-    "refs/tags/$tag" "refs/tags/$tag^{}")
+  if ! refs=$(git_ls_remote --tags "https://github.com/$repository.git" \
+    "refs/tags/$tag" "refs/tags/$tag^{}"); then
+    printf 'Could not resolve action tag: %s %s\n' "$repository" "$tag" >&2
+    return 1
+  fi
   peeled=$(awk '$2 ~ /\^\{\}$/ { print $1; exit }' <<<"$refs")
   if [[ -n "$peeled" ]]; then
     printf '%s\n' "$peeled"
@@ -81,9 +109,13 @@ tag_sha() {
 
 latest_tag() {
   local repository=$1
+  local refs
 
-  git ls-remote --tags --refs "https://github.com/$repository.git" |
-    sed -n 's#^[0-9a-f]\{40\}[[:space:]]refs/tags/\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$#\1#p' |
+  if ! refs=$(git_ls_remote --tags --refs "https://github.com/$repository.git"); then
+    printf 'Could not list action releases: %s\n' "$repository" >&2
+    return 1
+  fi
+  sed -n 's#^[0-9a-f]\{40\}[[:space:]]refs/tags/\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$#\1#p' <<<"$refs" |
     awk -F '[v.]' '
       $2 > major ||
       ($2 == major && $3 > minor) ||
@@ -114,7 +146,10 @@ check_actions() {
     if [[ "$check_currency" == true ]]; then
       key="$ACTION_REPOSITORY@$ACTION_TAG"
       if [[ "$checked_tags" != *$'\n'"$key"$'\n'* ]]; then
-        expected=$(tag_sha "$ACTION_REPOSITORY" "$ACTION_TAG")
+        if ! expected=$(tag_sha "$ACTION_REPOSITORY" "$ACTION_TAG"); then
+          status=1
+          continue
+        fi
         if [[ -z "$expected" || "$expected" != "$ACTION_SHA" ]]; then
           printf '%s@%s does not resolve to %s\n' \
             "$ACTION_REPOSITORY" "$ACTION_TAG" "$ACTION_SHA" >&2
@@ -123,7 +158,10 @@ check_actions() {
         checked_tags+="$key"$'\n'
       fi
       if [[ "$checked_latest" != *$'\n'"$ACTION_REPOSITORY"$'\n'* ]]; then
-        latest=$(latest_tag "$ACTION_REPOSITORY")
+        if ! latest=$(latest_tag "$ACTION_REPOSITORY"); then
+          status=1
+          continue
+        fi
         if [[ -z "$latest" ]]; then
           printf '%s has no discoverable stable semantic release\n' \
             "$ACTION_REPOSITORY" >&2
@@ -160,7 +198,7 @@ cache_key() {
 }
 
 cached_currency() {
-  local key cache_file
+  local key cache_file temporary_cache
   local max_age_minutes=${ACTIONCHECK_CACHE_MAX_AGE_MINUTES:-1440}
 
   if [[ ! "$max_age_minutes" =~ ^[0-9]+$ ]]; then
@@ -169,7 +207,7 @@ cached_currency() {
   fi
 
   key=$(cache_key)
-  cache_file=".cache/actioncheck/$key"
+  cache_file="$cache_root/actioncheck/$key"
   if ((max_age_minutes > 0)) &&
     [[ -n "$(find "$cache_file" -mmin "-$max_age_minutes" -print 2>/dev/null)" ]]; then
     printf 'action currency cached\n'
@@ -178,26 +216,40 @@ cached_currency() {
 
   check_actions true
   mkdir -p -- "$(dirname -- "$cache_file")"
-  printf '%s\n' "$key" >"$cache_file"
+  temporary_cache=$(mktemp "$(dirname -- "$cache_file")/.action.XXXXXX")
+  if ! printf '%s\n' "$key" >"$temporary_cache"; then
+    rm -f -- "$temporary_cache"
+    return 1
+  fi
+  if ! mv -f -- "$temporary_cache" "$cache_file"; then
+    rm -f -- "$temporary_cache"
+    return 1
+  fi
 }
 
-if (($# != 1)); then
-  usage
-  exit 2
-fi
+main() {
+  if (($# != 1)); then
+    usage
+    return 2
+  fi
 
-case "$1" in
-verify)
-  check_actions false
-  ;;
-currency)
-  check_actions true
-  ;;
-cached-currency)
-  cached_currency
-  ;;
-*)
-  usage
-  exit 2
-  ;;
-esac
+  case "$1" in
+  verify)
+    check_actions false
+    ;;
+  currency)
+    check_actions true
+    ;;
+  cached-currency)
+    cached_currency
+    ;;
+  *)
+    usage
+    return 2
+    ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

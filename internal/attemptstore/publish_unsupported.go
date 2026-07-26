@@ -27,6 +27,14 @@ func secureEvidenceTree(_ string) error {
 	return ErrUnsupported
 }
 
+func secureEvidenceFile(_ string) error {
+	return ErrUnsupported
+}
+
+func createEvidenceDirectory(_ string) error {
+	return ErrUnsupported
+}
+
 func pathIsLinked(_ string, _ os.FileInfo) bool {
 	return true
 }

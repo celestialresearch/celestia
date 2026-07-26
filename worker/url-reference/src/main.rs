@@ -171,7 +171,9 @@ fn is_compact_frame(data: &[u8]) -> bool {
 
 fn write_response(response: &Response<'_>) -> Result<(), ()> {
     let encoded = serde_json::to_vec(&response).map_err(|_| ())?;
-    io::stdout().write_all(&encoded).map_err(|_| ())
+    let mut stdout = io::stdout();
+    stdout.write_all(&encoded).map_err(|_| ())?;
+    stdout.flush().map_err(|_| ())
 }
 
 fn duration_ns(start: Instant) -> u64 {
@@ -461,9 +463,6 @@ fn validate_host(host: &str) -> Result<Option<bool>, ()> {
     let trailing_root = labels.len() > 1 && labels.last() == Some(&"");
     if trailing_root {
         labels.pop();
-    }
-    if labels.is_empty() {
-        return Err(());
     }
     let mut all_decimal = labels.len() == 4;
     for label in &labels {

@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows && amd64
 
 package processsupervision
 
@@ -62,7 +62,7 @@ func (reader *streamReader) read(
 	}
 	var buffer bytes.Buffer
 	_, err := io.CopyN(&buffer, reader.file, int64(limit)+1)
-	if err == nil || buffer.Len() > limit {
+	if err == nil {
 		select {
 		case overflow <- overflowStatus:
 		default:

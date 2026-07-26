@@ -167,6 +167,23 @@ memory                 64 MiB
 worker processes             1
 ```
 
+Timing has five distinct phases:
+- admission validates bounded in-memory input and creates an absolute start
+  deadline two seconds after admission;
+- evidence staging must finish before that start deadline;
+- containment startup is checked against the earlier of the remaining start
+  allowance and a separate two-second startup budget;
+- successful process resume starts the worker's full two-second execution
+  timer;
+- termination and process-tree join use a separate one-second cleanup budget.
+
+Staging and startup use synchronous filesystem and Windows calls. Their
+deadlines are checked between calls and immediately before process resume; they
+do not claim to pre-empt a blocking operating-system call. A start deadline
+that expires before resume records `start_failed` execution and a `timed_out`
+terminal result. After resume, only the execution state machine may classify
+the worker outcome.
+
 The worker receives one request on standard input and emits one response on
 standard output. Both are compact UTF-8 JSON objects with no byte-order mark,
 prefix, suffix or terminal newline. End of file terminates each frame. Unknown
@@ -220,10 +237,11 @@ All fields are required:
 ```
 
 Identifiers and nonces use unpadded base64url. Hashes cover exact UTF-8 bytes.
-The deadline uses a `Z` offset. Admission requires it to agree with
-`timeout_ms`; the earlier limit governs if elapsed wall and monotonic clocks
-disagree. Lengths and hashes must match the decoded exact input. The exact
-serialised request bytes are retained.
+The deadline uses a `Z` offset and is the latest permitted process-resume time.
+Admission derives it from `timeout_ms`. After resume, `timeout_ms` supplies a
+fresh execution allowance measured by the supervisor's monotonic timer.
+Lengths and hashes must match the decoded exact input. The exact serialised
+request bytes are retained.
 
 Every JSON number is an unsigned base-ten integer with no sign, fraction,
 exponent or leading zero except the value `0`. Length fields range from zero
@@ -367,7 +385,8 @@ per-attempt lock file provides the cross-process ownership identity. Execution
 holds its operating-system lock from staging through publication. Recovery
 fails while that lock is held and may proceed after process death releases it.
 Lock files are not deleted because replacing a locked inode would split
-ownership. Recovery may only:
+ownership. A permanent ownership-era marker distinguishes current attempts
+with a missing lock from pre-lock v0 bundles. Recovery may only:
 - validate and publish a complete pending attempt;
 - retain and report an incomplete pending attempt;
 - report a corrupt pending or published attempt.

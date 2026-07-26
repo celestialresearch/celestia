@@ -13,6 +13,7 @@
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+cache_root=${CELESTIA_CACHE_DIR:-"$root/.cache"}
 
 main() (
   local output
@@ -20,8 +21,10 @@ main() (
   local licence_dir
   local metadata_probe
   local rust_dir
+  local shellcheck_script
   local status
   local work_dir
+  local action_pid=
   local change_pid=
   local currency_pid=
 
@@ -35,13 +38,17 @@ main() (
       kill "$currency_pid" 2>/dev/null || true
       wait "$currency_pid" 2>/dev/null || true
     fi
+    if [[ -n "$action_pid" ]]; then
+      kill "$action_pid" 2>/dev/null || true
+      wait "$action_pid" 2>/dev/null || true
+    fi
     rm -rf -- "$work_dir"
   }
 
-  mkdir -p "$root/.cache"
-  work_dir=$(mktemp -d "$root/.cache/verification-test.XXXXXX")
+  mkdir -p "$cache_root"
+  work_dir=$(mktemp -d "$cache_root/verification-test.XXXXXX")
   case "$work_dir" in
-  "$root"/.cache/verification-test.*) ;;
+  "$cache_root"/verification-test.*) ;;
   *)
     printf 'refusing unexpected temporary path %s\n' "$work_dir" >&2
     return 1
@@ -52,6 +59,55 @@ main() (
   change_pid=$!
   bash "$root/.github/scripts/currencycheck_test.sh" &
   currency_pid=$!
+  bash "$root/.github/scripts/actioncheck_test.sh" &
+  action_pid=$!
+
+  shellcheck_script="$root/.github/scripts/windows-shellcheck.ps1"
+  if grep -Fq '| head' "$shellcheck_script"; then
+    printf 'Windows shell check uses an unowned output pipeline\n' >&2
+    return 1
+  fi
+  for variable in CELESTIA_SHELL_CACHE CELESTIA_SHELL_TARGET \
+    CELESTIA_SHELL_TMP; do
+    grep -Fq "\$start.Environment['$variable']" "$shellcheck_script" || {
+      printf 'Windows shell check omits %s isolation\n' "$variable" >&2
+      return 1
+    }
+  done
+  grep -Fq 'exec /usr/bin/bash ./.github/scripts/devcheck.sh' \
+    "$shellcheck_script" || {
+    printf 'Windows shell check does not own devcheck\n' >&2
+    return 1
+  }
+  grep -Fq "\$start.RedirectStandardOutput = \$true" \
+    "$shellcheck_script" || {
+    printf 'Windows shell check does not own standard output\n' >&2
+    return 1
+  }
+  grep -Fq "\$start.RedirectStandardError = \$true" \
+    "$shellcheck_script" || {
+    printf 'Windows shell check does not own standard error\n' >&2
+    return 1
+  }
+  grep -Fq "\$Stream.ReadAsync(" "$shellcheck_script" || {
+    printf 'Windows shell check does not use bounded stream reads\n' >&2
+    return 1
+  }
+  if grep -Eq 'Get-Content .*-(Raw|ReadCount)' "$shellcheck_script"; then
+    printf 'Windows shell check reads captured output without a bound\n' >&2
+    return 1
+  fi
+  # shellcheck disable=SC2016 # These probes match literal source.
+  grep -Fq '$cleanupFailures = @(' "$shellcheck_script" || {
+    printf 'Windows shell check does not retain cleanup failures as an array\n' >&2
+    return 1
+  }
+  # shellcheck disable=SC2016 # These probes match literal source.
+  grep -Fq 'CYGWIN*) go_profile=$(cygpath -w "$profile")' \
+    "$root/.github/scripts/coveragecheck.sh" || {
+    printf 'coverage check omits Cygwin Go-path conversion\n' >&2
+    return 1
+  }
 
   mkdir -p "$work_dir/.github/scripts" "$work_dir/a" "$work_dir/b"
   cp "$root/.github/scripts/coveragecheck.sh" \
@@ -81,7 +137,7 @@ main() (
 
   rust_dir="$work_dir/rust"
   mkdir -p "$rust_dir/.github/scripts" "$rust_dir/.github/workflows" \
-    "$rust_dir/bin"
+    "$rust_dir/bin" "$rust_dir/worker/qualification-fixtures"
   cp "$root/.github/scripts/rustcheck.sh" "$rust_dir/.github/scripts/"
   cat >"$rust_dir/Cargo.toml" <<'EOF'
 [workspace]
@@ -92,6 +148,8 @@ rust-version = "1.94.1"
 EOF
   printf '%s\n' '[toolchain]' 'channel = "1.94.0"' \
     >"$rust_dir/rust-toolchain.toml"
+  printf '%s\n' '[package]' 'rust-version = "1.94.1"' \
+    >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
   cat >"$rust_dir/.github/workflows/main.yml" <<'EOF'
 steps:
   - name: Unrelated
@@ -109,6 +167,8 @@ steps:
 EOF
   cp "$rust_dir/.github/workflows/main.yml" \
     "$rust_dir/.github/workflows/main.yml.base"
+  cp "$rust_dir/.github/workflows/main.yml" \
+    "$rust_dir/.github/workflows/nightly.yml"
 
   set +e
   output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
@@ -119,7 +179,7 @@ EOF
     return 1
   }
   grep -Fq \
-    'Rust version mismatch: manifest=1.94.1 toolchain=1.94.0 workflow=1.94.1' \
+    'Rust version mismatch: manifest=1.94.1 fixture=1.94.1 toolchain=1.94.0 workflow=1.94.1' \
     <<<"$output" || {
     printf 'Rust config check omitted the mismatch diagnostic:\n%s\n' \
       "$output" >&2
@@ -144,6 +204,23 @@ EOF
   printf '%s\n' '[toolchain]' 'channel = "1.94.1"' \
     >"$rust_dir/rust-toolchain.toml"
   (cd "$rust_dir" && bash .github/scripts/rustcheck.sh config)
+
+  printf '%s\n' '[package]' 'rust-version = "1.94.0"' \
+    >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
+  set +e
+  output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted fixture version drift\n' >&2
+    return 1
+  }
+  grep -Fq 'fixture=1.94.0' <<<"$output" || {
+    printf 'Rust config check omitted fixture drift:\n%s\n' "$output" >&2
+    return 1
+  }
+  printf '%s\n' '[package]' 'rust-version = "1.94.1"' \
+    >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
 
   mv "$rust_dir/Cargo.toml" "$rust_dir/Cargo.toml.saved"
   set +e
@@ -174,28 +251,25 @@ EOF
   cp "$rust_dir/.github/workflows/main.yml.base" \
     "$rust_dir/.github/workflows/main.yml"
 
-  sed '/^[[:space:]]*rust@1.94.1 + rustfmt + clippy$/a\
-        rust@1.94.1 + rustfmt' \
+  sed 's/rust@1.94.1 +/rust@1.94.0 +/' \
     "$rust_dir/.github/workflows/main.yml.base" \
-    >"$rust_dir/.github/workflows/main.yml.new"
-  mv "$rust_dir/.github/workflows/main.yml.new" \
-    "$rust_dir/.github/workflows/main.yml"
+    >"$rust_dir/.github/workflows/nightly.yml"
   set +e
   output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
-    printf 'Rust config check accepted duplicate active pins\n' >&2
+    printf 'Rust config check accepted cross-workflow pin drift\n' >&2
     return 1
   }
-  grep -Fq 'Expected one active workflow pin for rust, found 2' \
+  grep -Fq 'Expected one active workflow version for rust, found 2' \
     <<<"$output" || {
-    printf 'Rust config check omitted the duplicate diagnostic:\n%s\n' \
+    printf 'Rust config check omitted the cross-workflow diagnostic:\n%s\n' \
       "$output" >&2
     return 1
   }
   cp "$rust_dir/.github/workflows/main.yml.base" \
-    "$rust_dir/.github/workflows/main.yml"
+    "$rust_dir/.github/workflows/nightly.yml"
 
   cat >"$rust_dir/bin/cargo" <<'EOF'
 #!/usr/bin/env bash
@@ -229,6 +303,13 @@ build)
     : >"$release_dir/${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE}${suffix}"
     chmod +x "$release_dir/${RUSTCHECK_EXTRA_RELEASE_EXECUTABLE}${suffix}"
   fi
+  if [[ -n "${RUSTCHECK_EXTRA_RELEASE_ARTEFACT:-}" ]]; then
+    : >"$release_dir/${RUSTCHECK_EXTRA_RELEASE_ARTEFACT}"
+  fi
+  if [[ -n "${RUSTCHECK_NESTED_RELEASE_ARTEFACT:-}" ]]; then
+    mkdir -p "$release_dir/nested"
+    : >"$release_dir/nested/${RUSTCHECK_NESTED_RELEASE_ARTEFACT}"
+  fi
   ;;
 llvm-cov) printf 'cargo-llvm-cov %s\n' "${LLVM_COV_VERSION:-0.8.7}" ;;
 audit)
@@ -252,12 +333,15 @@ EOF
 
   (
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" bash .github/scripts/rustcheck.sh tools
+      RUSTC_BIN="$rust_dir/bin/rustc" \
+        CARGO_BIN="$rust_dir/bin/cargo" \
+        bash .github/scripts/rustcheck.sh tools
   )
   set +e
   output=$(
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" FIXTURE_RUSTC_VERSION=0 \
+      RUSTC_BIN="$rust_dir/bin/rustc" \
+        CARGO_BIN="$rust_dir/bin/cargo" FIXTURE_RUSTC_VERSION=0 \
         bash .github/scripts/rustcheck.sh tools 2>&1
   )
   status=$?
@@ -274,7 +358,8 @@ EOF
   }
   (
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=false \
+      RUSTC_BIN="$rust_dir/bin/rustc" \
+        CARGO_BIN="$rust_dir/bin/cargo" DEVCHECK_SUPPLY_CHAIN=false \
         FAIL_SUPPLY_COMMANDS=true bash .github/scripts/rustcheck.sh tools
   )
 
@@ -284,7 +369,8 @@ EOF
     llvm-cov)
       output=$(
         cd "$rust_dir" &&
-          PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=true \
+          RUSTC_BIN="$rust_dir/bin/rustc" \
+            CARGO_BIN="$rust_dir/bin/cargo" DEVCHECK_SUPPLY_CHAIN=true \
             LLVM_COV_VERSION=0 \
             bash .github/scripts/rustcheck.sh tools 2>&1
       )
@@ -292,7 +378,8 @@ EOF
     audit)
       output=$(
         cd "$rust_dir" &&
-          PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=true \
+          RUSTC_BIN="$rust_dir/bin/rustc" \
+            CARGO_BIN="$rust_dir/bin/cargo" DEVCHECK_SUPPLY_CHAIN=true \
             AUDIT_VERSION=0 \
             bash .github/scripts/rustcheck.sh tools 2>&1
       )
@@ -300,7 +387,8 @@ EOF
     deny)
       output=$(
         cd "$rust_dir" &&
-          PATH="$rust_dir/bin:$PATH" DEVCHECK_SUPPLY_CHAIN=true \
+          RUSTC_BIN="$rust_dir/bin/rustc" \
+            CARGO_BIN="$rust_dir/bin/cargo" DEVCHECK_SUPPLY_CHAIN=true \
             DENY_VERSION=0 \
             bash .github/scripts/rustcheck.sh tools 2>&1
       )
@@ -322,12 +410,13 @@ EOF
 
   (
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" bash .github/scripts/rustcheck.sh artefacts
+      CARGO_BIN="$rust_dir/bin/cargo" \
+        bash .github/scripts/rustcheck.sh artefacts
   )
   set +e
   output=$(
     cd "$rust_dir" &&
-      PATH="$rust_dir/bin:$PATH" \
+      CARGO_BIN="$rust_dir/bin/cargo" \
         RUSTCHECK_EXTRA_RELEASE_EXECUTABLE=celestia-hostile-worker \
         bash .github/scripts/rustcheck.sh artefacts 2>&1
   )
@@ -343,6 +432,44 @@ EOF
       "$output" >&2
     return 1
   }
+  set +e
+  output=$(
+    cd "$rust_dir" &&
+      CARGO_BIN="$rust_dir/bin/cargo" \
+        RUSTCHECK_EXTRA_RELEASE_ARTEFACT=unexpected.metadata \
+        bash .github/scripts/rustcheck.sh artefacts 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust artefact check accepted an unexpected regular file\n' >&2
+    return 1
+  }
+  grep -Fq 'Unexpected release artefact: unexpected.metadata' \
+    <<<"$output" || {
+    printf 'Rust artefact check omitted the unexpected regular file:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  set +e
+  output=$(
+    cd "$rust_dir" &&
+      CARGO_BIN="$rust_dir/bin/cargo" \
+        RUSTCHECK_NESTED_RELEASE_ARTEFACT=unexpected.nested \
+        bash .github/scripts/rustcheck.sh artefacts 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust artefact check accepted a nested regular file\n' >&2
+    return 1
+  }
+  grep -Fq 'Unexpected release directory: nested' \
+    <<<"$output" || {
+    printf 'Rust artefact check omitted the nested release directory:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
   metadata_probe="$rust_dir/executable.d"
   : >"$metadata_probe"
   chmod +x "$metadata_probe"
@@ -350,7 +477,7 @@ EOF
     set +e
     output=$(
       cd "$rust_dir" &&
-        PATH="$rust_dir/bin:$PATH" RUSTCHECK_EXECUTABLE_METADATA=true \
+        CARGO_BIN="$rust_dir/bin/cargo" RUSTCHECK_EXECUTABLE_METADATA=true \
           bash .github/scripts/rustcheck.sh artefacts 2>&1
     )
     status=$?
@@ -518,6 +645,8 @@ EOF
   change_pid=
   wait "$currency_pid"
   currency_pid=
+  wait "$action_pid"
+  action_pid=
 )
 
 main

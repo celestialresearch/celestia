@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows && amd64
 
 package processsupervision
 
@@ -28,7 +28,6 @@ const (
 	createSuspended               = 0x00000004
 	createNoWindow                = 0x08000000
 	createUnicodeEnvironment      = 0x00000400
-	stillActive                   = 259
 )
 
 var (
@@ -50,9 +49,11 @@ type securityCapabilities struct {
 }
 
 type appContainer struct {
-	name   string
-	sid    *windows.SID
-	folder string
+	name           string
+	sid            *windows.SID
+	folder         string
+	sidReleased    bool
+	profileDeleted bool
 }
 
 func createContainer(name string) (appContainer, error) {
@@ -119,23 +120,39 @@ func containerFolder(sid *windows.SID) (string, error) {
 }
 
 func (container *appContainer) close() error {
+	return container.closeWith(windows.FreeSid, deleteContainer)
+}
+
+func (container *appContainer) closeWith(
+	freeSID func(*windows.SID) error,
+	deleteProfile func(string) error,
+) error {
 	var closeErr error
 	identity := container.identity()
-	if container.sid != nil {
-		if err := windows.FreeSid(container.sid); err != nil {
-			closeErr = errors.Join(
-				closeErr,
-				fmt.Errorf("free AppContainer SID %s: %w", identity, err),
-			)
+	if !container.sidReleased {
+		if container.sid == nil {
+			container.sidReleased = true
 		} else {
-			container.sid = nil
+			if err := freeSID(container.sid); err != nil {
+				closeErr = errors.Join(
+					closeErr,
+					fmt.Errorf("free AppContainer SID %s: %w", identity, err),
+				)
+			} else {
+				container.sid = nil
+				container.sidReleased = true
+			}
 		}
 	}
-	if err := deleteContainer(container.name); err != nil {
-		closeErr = errors.Join(
-			closeErr,
-			fmt.Errorf("delete AppContainer profile %s: %w", identity, err),
-		)
+	if !container.profileDeleted {
+		if err := deleteProfile(container.name); err != nil {
+			closeErr = errors.Join(
+				closeErr,
+				fmt.Errorf("delete AppContainer profile %s: %w", identity, err),
+			)
+		} else {
+			container.profileDeleted = true
+		}
 	}
 	return closeErr
 }
@@ -174,8 +191,8 @@ func createJob(limits Limits) (windows.Handle, error) {
 		windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE |
 			windows.JOB_OBJECT_LIMIT_PROCESS_TIME |
 			windows.JOB_OBJECT_LIMIT_ACTIVE_PROCESS |
-			windows.JOB_OBJECT_LIMIT_PROCESS_MEMORY
-	information.ProcessMemoryLimit = uintptr(limits.MemoryBytes)
+			windows.JOB_OBJECT_LIMIT_JOB_MEMORY
+	information.JobMemoryLimit = uintptr(limits.MemoryBytes)
 	_, err = windows.SetInformationJobObject(
 		job,
 		windows.JobObjectExtendedLimitInformation,

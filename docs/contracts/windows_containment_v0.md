@@ -6,13 +6,19 @@ Status: implemented and locally qualified for the probes below on Windows.
 - A unique AppContainer profile is created for each attempt with no capabilities.
 - The worker image is copied into that profile then rehashed under a read lock.
 - The process starts suspended and enters a Job Object before execution.
-- The Job Object forbids breakaway and enforces process count, process memory,
+- The Job Object forbids breakaway and enforces process count, job-tree memory,
   CPU time and kill-on-close.
 - Only standard input, standard output and standard error handles are inherited.
 - The environment contains only `SystemRoot`, `WINDIR`, `LOCALAPPDATA`, `TEMP`
   and `TMP`.
 - Standard input, standard output, standard error, wall time and cleanup time
   are bounded.
+- Profile creation, image staging and process setup are checked against the
+  earlier of the admitted start deadline and the startup budget between
+  synchronous Windows operations and immediately before resume. These checks
+  do not pre-empt a blocking Windows call.
+- Successful resume is the execution boundary. The full execution timer starts
+  after resume, so setup latency cannot reduce its allowance.
 - The complete Job Object process tree must reach zero active processes before
   cleanup succeeds.
 

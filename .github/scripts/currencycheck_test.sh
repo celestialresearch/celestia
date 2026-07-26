@@ -23,6 +23,55 @@ case "$work_dir" in
 esac
 trap 'rm -rf -- "$work_dir"' EXIT HUP INT TERM
 exceptions="$work_dir/exceptions"
+crate_versions="$work_dir/crate-versions"
+
+celestia_test_rustup() {
+  printf '%s\n' "${RUSTUP_TEST_OUTPUT:-}"
+  return "${RUSTUP_TEST_STATUS:-0}"
+}
+
+celestia_test_cargo() {
+  component=${2:-}
+  version=$(awk -F'|' -v component="$component" '$1 == component { print $2; exit }' \
+    "$CARGO_TEST_VERSIONS")
+  [ -n "$version" ] || return 1
+  printf '%s = "%s" # fixture\n' "$component" "$version"
+}
+
+export -f celestia_test_rustup celestia_test_cargo
+
+awk '
+  /^\[workspace.dependencies\]$/ { active = 1; next }
+  active && /^\[/ { exit }
+  active && /^[[:space:]]*[a-zA-Z0-9_-]+[[:space:]]*=/ {
+    line = $0
+    sub(/^[[:space:]]*/, "", line)
+    name = line
+    sub(/[[:space:]]*=.*$/, "", name)
+    pending = name
+  }
+  active && pending != "" {
+    line = $0
+    if (match(line, /version[[:space:]]*=[[:space:]]*"=[^"]+"/)) {
+      value = substr(line, RSTART, RLENGTH)
+      sub(/^.*"=/, "", value)
+      sub(/"$/, "", value)
+      print pending "|" value
+      pending = ""
+    } else if (match(line, /=[[:space:]]*"=[^"]+"/)) {
+      value = substr(line, RSTART, RLENGTH)
+      sub(/^.*"=/, "", value)
+      sub(/"$/, "", value)
+      print pending "|" value
+      pending = ""
+    } else if (line ~ /}/) {
+      pending = ""
+    }
+  }
+' "$root/Cargo.toml" >"$crate_versions"
+sed -n \
+  's/^[[:space:]]*\(cargo-[a-z0-9-]*\)@\([^[:space:]]*\).*$/\1|\2/p' \
+  "$root/.github/workflows/main.yml" >>"$crate_versions"
 
 expect_failure() {
   local expected=$1
@@ -44,6 +93,43 @@ expect_failure() {
     printf 'currency check omitted %s:\n%s\n' "$expected" "$output" >&2
     return 1
   }
+}
+
+expect_toolchain() {
+  local output=$1
+  local expected=$2
+  local fixture_status=${3:-0}
+  local status
+  local result
+
+  set +e
+  result=$(
+      RUSTUP_BIN=celestia_test_rustup \
+      RUSTUP_TEST_OUTPUT="$output" \
+      RUSTUP_TEST_STATUS="$fixture_status" \
+      CARGO_BIN=celestia_test_cargo \
+      CARGO_TEST_VERSIONS="$crate_versions" \
+      CURRENCY_EXCEPTIONS_FILE="$exceptions" \
+      bash "$root/.github/scripts/currencycheck.sh" currency 2>&1
+  )
+  status=$?
+  set -e
+  if [[ "$expected" == pass ]]; then
+    [[ "$status" -eq 0 ]] || {
+      printf 'toolchain currency check failed:\n%s\n' "$result" >&2
+      return 1
+    }
+  else
+    [[ "$status" -ne 0 ]] || {
+      printf 'toolchain currency check accepted invalid output\n' >&2
+      return 1
+    }
+    grep -Fq "$expected" <<<"$result" || {
+      printf 'toolchain currency check omitted %s:\n%s\n' \
+        "$expected" "$result" >&2
+      return 1
+    }
+  fi
 }
 
 printf '%s\n' \
@@ -84,3 +170,73 @@ printf '%s\n' \
   'cargo|probe|1.0.0|2099-12-31|Second' \
   >"$exceptions"
 expect_failure 'Duplicate currency exception'
+
+current=$(awk -F'"' '$1 ~ /^[[:space:]]*channel/ { print $2; exit }' \
+  "$root/rust-toolchain.toml")
+printf '%s\n' \
+  "toolchain|rust|$current|2099-12-31|Test fixture permits the current toolchain" \
+  >"$exceptions"
+expect_toolchain \
+  'stable-x86_64-pc-windows-msvc - up to date : 1.94.1 (e408947bf 2026-03-25)' \
+  pass
+expect_toolchain \
+  'stable-x86_64-pc-windows-msvc - Up To Date: 1.94.1 (e408947bf 2026-03-25)' \
+  pass
+expect_toolchain \
+  'stable-x86_64-pc-windows-msvc - Update Available : 1.94.1 (...) -> 1.95.0 (...)' \
+  pass \
+  100
+expect_toolchain 'stable toolchain status unknown' \
+  'Could not determine the latest stable Rust toolchain'
+expect_toolchain \
+  'stable-x86_64-pc-windows-msvc - Update Available : 1.94.1 (...) -> 1.95.0 (...)' \
+  'Rust toolchain currency check failed' \
+  1
+
+set +e
+result=$(
+  RUSTUP_BIN=celestia_test_rustup \
+  RUSTUP_TEST_STATUS=1 \
+  RUSTUP_TEST_OUTPUT='rustup failed' \
+  CARGO_BIN=celestia_test_cargo \
+  CARGO_TEST_VERSIONS="$crate_versions" \
+    CURRENCY_EXCEPTIONS_FILE="$exceptions" \
+    bash "$root/.github/scripts/currencycheck.sh" currency 2>&1
+)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'toolchain currency check accepted command failure\n' >&2
+  exit 1
+}
+grep -Fq 'Rust toolchain currency check failed: rustup failed' <<<"$result" || {
+  printf 'toolchain currency check hid command failure:\n%s\n' "$result" >&2
+  exit 1
+}
+
+manifest_dir="$work_dir/manifest"
+mkdir -p "$manifest_dir/.github/scripts" \
+  "$manifest_dir/.github/workflows" \
+  "$manifest_dir/worker/qualification-fixtures"
+cp "$root/.github/scripts/currencycheck.sh" \
+  "$manifest_dir/.github/scripts/"
+cat >"$manifest_dir/Cargo.toml" <<'EOF'
+[workspace.dependencies]
+multiline-probe = {
+  version = "=1.0.0"
+}
+EOF
+printf '%s\n' '[package]' >"$manifest_dir/worker/qualification-fixtures/Cargo.toml"
+printf '%s\n' '[toolchain]' 'channel = "1.0.0"' \
+  >"$manifest_dir/rust-toolchain.toml"
+printf '%s\n' 'name: Probe' >"$manifest_dir/.github/workflows/main.yml"
+: >"$manifest_dir/.github/.currency"
+printf '%s\n' 'multiline-probe|1.0.0' >"$manifest_dir/crate-versions"
+(
+  cd "$manifest_dir"
+  RUSTUP_BIN=celestia_test_rustup \
+    RUSTUP_TEST_OUTPUT='stable-probe - up to date : 1.0.0' \
+    CARGO_BIN=celestia_test_cargo \
+    CARGO_TEST_VERSIONS="$manifest_dir/crate-versions" \
+    bash .github/scripts/currencycheck.sh currency
+)

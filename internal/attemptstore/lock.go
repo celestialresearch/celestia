@@ -31,6 +31,8 @@ type lockReservation struct {
 	keep bool
 }
 
+const ownershipMarkerSuffix = ".owned"
+
 var activeAttemptLocks sync.Map
 
 func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptLock, error) {
@@ -52,7 +54,7 @@ func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptL
 		return nil, err
 	}
 	defer reservation.abandon()
-	file, err := openAttemptLockFile(root, name, create)
+	file, err := openAttemptLockFile(root, directory, name, create)
 	if err != nil {
 		return nil, err
 	}
@@ -84,6 +86,73 @@ func (store *Store) acquireAttemptLock(attemptID string, create bool) (*attemptL
 	}
 	reservation.keep = true
 	return &attemptLock{file: file, key: key}, nil
+}
+
+func (store *Store) createOwnershipMarker(attemptID string) error {
+	directory := filepath.Join(store.root, locksDirectory)
+	root, err := store.openLockRoot(directory)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = root.Close()
+	}()
+	name := attemptID + ownershipMarkerSuffix
+	if _, err := root.Lstat(name); err == nil {
+		return ErrDuplicate
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect attempt ownership marker: %w", err)
+	}
+	file, err := openAttemptLockFile(root, directory, name, true)
+	if err != nil {
+		return fmt.Errorf("create attempt ownership marker: %w", err)
+	}
+	info, statErr := file.Stat()
+	var secureErr error
+	if statErr == nil {
+		secureErr = secureLockFile(file, info)
+	}
+	syncErr := syncAttemptLock(file, directory)
+	closeErr := file.Close()
+	if err := errors.Join(statErr, secureErr, syncErr, closeErr); err != nil {
+		return fmt.Errorf("secure attempt ownership marker: %w", err)
+	}
+	return nil
+}
+
+func (store *Store) hasOwnershipMarker(attemptID string) (bool, error) {
+	directory := filepath.Join(store.root, locksDirectory)
+	root, err := store.openLockRoot(directory)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		_ = root.Close()
+	}()
+	name := attemptID + ownershipMarkerSuffix
+	pathInfo, err := root.Lstat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect attempt ownership marker: %w", err)
+	}
+	if !pathInfo.Mode().IsRegular() ||
+		pathInfo.Mode()&os.ModeSymlink != 0 ||
+		pathIsLinked(filepath.Join(directory, name), pathInfo) {
+		return false, ErrCorrupt
+	}
+	file, err := root.OpenFile(name, os.O_RDWR, 0)
+	if err != nil {
+		return false, fmt.Errorf("open attempt ownership marker: %w", err)
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+	if err := validateLockFile(file, pathInfo); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (store *Store) openLockRoot(directory string) (*os.Root, error) {
@@ -124,27 +193,6 @@ func (reservation *lockReservation) abandon() {
 	if !reservation.keep {
 		activeAttemptLocks.Delete(reservation.key)
 	}
-}
-
-func openAttemptLockFile(root *os.Root, name string, create bool) (*os.File, error) {
-	file, err := root.OpenFile(name, os.O_RDWR, 0o600)
-	if err == nil {
-		return file, nil
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("open attempt lock: %w", err)
-	}
-	if !create {
-		return nil, ErrCorrupt
-	}
-	file, err = root.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		return root.OpenFile(name, os.O_RDWR, 0o600)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("create attempt lock: %w", err)
-	}
-	return file, nil
 }
 
 func syncAttemptLock(file *os.File, directory string) error {

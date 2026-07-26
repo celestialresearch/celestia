@@ -13,6 +13,7 @@
 set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
+cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
 usage() {
   printf 'Usage: %s verify|diff|cached-diff|update|apply\n' "${0##*/}" >&2
@@ -202,7 +203,7 @@ cached_diff() {
     return 2
   }
   key=$(cache_key)
-  cache_file=".cache/licencecheck/$key"
+  cache_file="$cache_root/licencecheck/$key"
   if ((max_age_minutes > 0)) &&
     [[ -n "$(find "$cache_file" -mmin "-$max_age_minutes" -print 2>/dev/null)" ]]; then
     printf 'licence headers cached\n'
