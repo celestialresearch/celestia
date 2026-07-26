@@ -34,8 +34,8 @@ durable terminal outcome.
 
 ## Atomicity and Recovery
 - The evidence root may be created only beneath an existing secure directory.
-  On Unix the parent must be owned by the current user with mode `0700`.
-  `New` does not create missing ancestor directories.
+  On Unix the parent must be owned by the current user and not group or world
+  writable. `New` does not create missing ancestor directories.
 - Each attempt has a permanent lock file. Its operating-system exclusive lock
   is held from staging through terminal publication.
 - Current writers create a permanent ownership-era marker before staging.
