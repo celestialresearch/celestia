@@ -172,12 +172,21 @@ check_release_artefacts() (
   unexpected=
 
   for path in "$release_dir"/*; do
-    [[ -f "$path" ]] || continue
     file=${path##*/}
     case "$file" in
-    *.d | *.pdb) continue ;;
+    *.d | *.pdb)
+      if [[ ! -f "$path" || -L "$path" || -x "$path" ]]; then
+        printf 'Invalid release metadata: %s\n' "$file"
+        return 1
+      fi
+      continue
+      ;;
     esac
     if [[ "$file" == "$expected" ]]; then
+      if [[ ! -f "$path" || -L "$path" ]]; then
+        printf 'Release artefact is not a regular file: %s\n' "$expected"
+        return 1
+      fi
       if [[ ! -x "$path" && "$file" != *.exe ]]; then
         printf 'Release artefact is not executable: %s\n' "$expected"
         return 1
@@ -185,7 +194,7 @@ check_release_artefacts() (
       seen=true
       continue
     fi
-    if [[ -x "$path" || "$file" == *.exe ]]; then
+    if [[ -x "$path" || "$file" == *.exe || -L "$path" ]]; then
       unexpected="${unexpected}${unexpected:+ }$file"
     fi
   done

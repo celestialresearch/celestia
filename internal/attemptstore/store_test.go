@@ -84,7 +84,7 @@ func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrActive) {
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("duplicate stage: %v", err)
 	}
 	observation := testObservation("invalid")

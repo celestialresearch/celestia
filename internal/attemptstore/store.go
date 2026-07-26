@@ -184,6 +184,9 @@ func (store *Store) Stage(accepted urladmission.Accepted, admittedAt time.Time) 
 	if err != nil {
 		return nil, err
 	}
+	if err := store.rejectDuplicateAttempt(request.AttemptID); err != nil {
+		return nil, err
+	}
 	owner, err := store.acquireAttemptLock(request.AttemptID, true)
 	if err != nil {
 		return nil, err
@@ -212,6 +215,22 @@ func (store *Store) Stage(accepted urladmission.Accepted, admittedAt time.Time) 
 	}
 	keepOwner = true
 	return attempt, nil
+}
+
+func (store *Store) rejectDuplicateAttempt(attemptID string) error {
+	for _, path := range []string{
+		store.finalPath(attemptID),
+		store.pendingPath(attemptID),
+	} {
+		exists, err := pathExists(path)
+		if err != nil {
+			return fmt.Errorf("inspect attempt: %w", err)
+		}
+		if exists {
+			return ErrDuplicate
+		}
+	}
+	return nil
 }
 
 func (store *Store) prepareAttemptDirectories(attemptID string) (string, string, error) {
