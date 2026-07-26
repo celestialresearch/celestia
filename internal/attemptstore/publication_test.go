@@ -528,6 +528,8 @@ func TestObservationAcceptsAndRejectsCleanupFailureTransitions(t *testing.T) {
 	validStartFailure := validProcessFailure
 	validStartFailure.ProcessStatus = "start_failed"
 	validStartFailure.ProcessError = "start failed"
+	validStartFailure.Stdout = nil
+	validStartFailure.Stderr = nil
 	if err := validateObservation(validStartFailure); err != nil {
 		t.Fatalf("valid start failure rejected: %v", err)
 	}
@@ -541,6 +543,22 @@ func TestObservationAcceptsAndRejectsCleanupFailureTransitions(t *testing.T) {
 	invalidProcessFailure.ProcessStatus = "cancelled"
 	if err := validateObservation(invalidProcessFailure); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("cancelled failed observation accepted: %v", err)
+	}
+}
+
+func TestObservationRejectsStartFailureStreams(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	observation := observationWithoutVerification(testObservationFor(t, accepted))
+	observation.ProcessStatus = "start_failed"
+	observation.ProcessError = "start failed"
+	observation.ExitCode = 0
+	observation.ProtocolStatus = "not_run"
+	observation.Stdout = []byte("worker did not start")
+	for _, terminal := range []string{"failed", "timed_out"} {
+		observation.TerminalStatus = terminal
+		if err := validateObservation(observation); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("%s start failure streams accepted: %+v", terminal, observation)
+		}
 	}
 }
 
