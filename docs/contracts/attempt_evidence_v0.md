@@ -64,6 +64,8 @@ durable terminal outcome.
 - Recovery never reruns the worker. It publishes an `indeterminate` recovery
   record for an incomplete attempt or resumes publication of an existing valid
   terminal record.
+- Recovery reasons are valid UTF-8, contain no control characters or surrounding
+  whitespace and are limited to 512 bytes.
 - A persistence failure cannot produce `verified`.
 
 Bundles created by the pre-lock v0 implementation are not silently adopted by
