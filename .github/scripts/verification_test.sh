@@ -21,6 +21,7 @@ main() (
   local licence_dir
   local metadata_probe
   local rust_dir
+  local shellcheck_script
   local status
   local work_dir
   local action_pid=
@@ -61,6 +62,24 @@ main() (
   bash "$root/.github/scripts/actioncheck_test.sh" &
   action_pid=$!
 
+  shellcheck_script="$root/.github/scripts/windows-shellcheck.ps1"
+  if grep -Fq '| head' "$shellcheck_script"; then
+    printf 'Windows shell check uses an unowned output pipeline\n' >&2
+    return 1
+  fi
+  for variable in CELESTIA_SHELL_CACHE CELESTIA_SHELL_TARGET \
+    CELESTIA_SHELL_TMP; do
+    grep -Fq "\$start.Environment['$variable']" "$shellcheck_script" || {
+      printf 'Windows shell check omits %s isolation\n' "$variable" >&2
+      return 1
+    }
+  done
+  grep -Fq 'exec /usr/bin/bash ./.github/scripts/devcheck.sh' \
+    "$shellcheck_script" || {
+    printf 'Windows shell check does not own devcheck\n' >&2
+    return 1
+  }
+
   mkdir -p "$work_dir/.github/scripts" "$work_dir/a" "$work_dir/b"
   cp "$root/.github/scripts/coveragecheck.sh" \
     "$root/.github/scripts/policycheck.sh" \
@@ -89,7 +108,7 @@ main() (
 
   rust_dir="$work_dir/rust"
   mkdir -p "$rust_dir/.github/scripts" "$rust_dir/.github/workflows" \
-    "$rust_dir/bin"
+    "$rust_dir/bin" "$rust_dir/worker/qualification-fixtures"
   cp "$root/.github/scripts/rustcheck.sh" "$rust_dir/.github/scripts/"
   cat >"$rust_dir/Cargo.toml" <<'EOF'
 [workspace]
@@ -100,6 +119,8 @@ rust-version = "1.94.1"
 EOF
   printf '%s\n' '[toolchain]' 'channel = "1.94.0"' \
     >"$rust_dir/rust-toolchain.toml"
+  printf '%s\n' '[package]' 'rust-version = "1.94.1"' \
+    >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
   cat >"$rust_dir/.github/workflows/main.yml" <<'EOF'
 steps:
   - name: Unrelated
@@ -117,6 +138,8 @@ steps:
 EOF
   cp "$rust_dir/.github/workflows/main.yml" \
     "$rust_dir/.github/workflows/main.yml.base"
+  cp "$rust_dir/.github/workflows/main.yml" \
+    "$rust_dir/.github/workflows/nightly.yml"
 
   set +e
   output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
@@ -127,7 +150,7 @@ EOF
     return 1
   }
   grep -Fq \
-    'Rust version mismatch: manifest=1.94.1 toolchain=1.94.0 workflow=1.94.1' \
+    'Rust version mismatch: manifest=1.94.1 fixture=1.94.1 toolchain=1.94.0 workflow=1.94.1' \
     <<<"$output" || {
     printf 'Rust config check omitted the mismatch diagnostic:\n%s\n' \
       "$output" >&2
@@ -152,6 +175,23 @@ EOF
   printf '%s\n' '[toolchain]' 'channel = "1.94.1"' \
     >"$rust_dir/rust-toolchain.toml"
   (cd "$rust_dir" && bash .github/scripts/rustcheck.sh config)
+
+  printf '%s\n' '[package]' 'rust-version = "1.94.0"' \
+    >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
+  set +e
+  output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted fixture version drift\n' >&2
+    return 1
+  }
+  grep -Fq 'fixture=1.94.0' <<<"$output" || {
+    printf 'Rust config check omitted fixture drift:\n%s\n' "$output" >&2
+    return 1
+  }
+  printf '%s\n' '[package]' 'rust-version = "1.94.1"' \
+    >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
 
   mv "$rust_dir/Cargo.toml" "$rust_dir/Cargo.toml.saved"
   set +e
@@ -182,28 +222,25 @@ EOF
   cp "$rust_dir/.github/workflows/main.yml.base" \
     "$rust_dir/.github/workflows/main.yml"
 
-  sed '/^[[:space:]]*rust@1.94.1 + rustfmt + clippy$/a\
-        rust@1.94.1 + rustfmt' \
+  sed 's/rust@1.94.1 +/rust@1.94.0 +/' \
     "$rust_dir/.github/workflows/main.yml.base" \
-    >"$rust_dir/.github/workflows/main.yml.new"
-  mv "$rust_dir/.github/workflows/main.yml.new" \
-    "$rust_dir/.github/workflows/main.yml"
+    >"$rust_dir/.github/workflows/nightly.yml"
   set +e
   output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
-    printf 'Rust config check accepted duplicate active pins\n' >&2
+    printf 'Rust config check accepted cross-workflow pin drift\n' >&2
     return 1
   }
-  grep -Fq 'Expected one active workflow pin for rust, found 2' \
+  grep -Fq 'Expected one active workflow version for rust, found 2' \
     <<<"$output" || {
-    printf 'Rust config check omitted the duplicate diagnostic:\n%s\n' \
+    printf 'Rust config check omitted the cross-workflow diagnostic:\n%s\n' \
       "$output" >&2
     return 1
   }
   cp "$rust_dir/.github/workflows/main.yml.base" \
-    "$rust_dir/.github/workflows/main.yml"
+    "$rust_dir/.github/workflows/nightly.yml"
 
   cat >"$rust_dir/bin/cargo" <<'EOF'
 #!/usr/bin/env bash

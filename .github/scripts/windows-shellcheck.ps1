@@ -15,7 +15,6 @@ Set-StrictMode -Version Latest
 $root = (Resolve-Path -LiteralPath "$PSScriptRoot\..\..").Path
 $maximumOutputBytes = 1MB
 $shellDeadline = [TimeSpan]::FromMinutes(10)
-$outputLimit = $maximumOutputBytes + 1
 $checks = @(
     @{
         Name = 'Git Bash'
@@ -24,7 +23,7 @@ $checks = @(
             '--noprofile',
             '--norc',
             '-c',
-            'set -o pipefail; /usr/bin/bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(/usr/bin/cygpath "$CELESTIA_SHELL_LOG")"'
+            'export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")"; exec /usr/bin/bash ./.github/scripts/devcheck.sh > "$(/usr/bin/cygpath "$CELESTIA_SHELL_LOG")" 2>&1'
         )
         Environment = @{}
     },
@@ -35,7 +34,7 @@ $checks = @(
             '--noprofile',
             '--norc',
             '-c',
-            'set -o pipefail; /usr/bin/bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(/usr/bin/cygpath "$CELESTIA_SHELL_LOG")"'
+            'export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")"; exec /usr/bin/bash ./.github/scripts/devcheck.sh > "$(/usr/bin/cygpath "$CELESTIA_SHELL_LOG")" 2>&1'
         )
         Environment = @{
             CHERE_INVOKING = '1'
@@ -50,7 +49,7 @@ $checks = @(
             '-o',
             'igncr',
             '-c',
-            'cd "$(/usr/bin/cygpath "$GITHUB_WORKSPACE")" || exit; set -o pipefail; /usr/bin/bash ./.github/scripts/devcheck.sh 2>&1 | head -c "$CELESTIA_SHELL_OUTPUT_LIMIT" > "$(/usr/bin/cygpath "$CELESTIA_SHELL_LOG")"'
+            'cd "$(/usr/bin/cygpath "$GITHUB_WORKSPACE")" || exit; export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")"; exec /usr/bin/bash ./.github/scripts/devcheck.sh > "$(/usr/bin/cygpath "$CELESTIA_SHELL_LOG")" 2>&1'
         )
         Environment = @{}
     }
@@ -84,20 +83,26 @@ try {
         [System.IO.Directory]::CreateDirectory(
             (Join-Path $shellRoot 'tmp')
         ) | Out-Null
-        $relativeRoot = ".cache/windows-shell/$runID/$shellName"
         $log = Join-Path $logRoot "$shellName.log"
         $start = [System.Diagnostics.ProcessStartInfo]::new()
         $start.FileName = $check.File
         $start.WorkingDirectory = $root
         $start.UseShellExecute = $false
         $start.Environment['CELESTIA_SHELL_LOG'] = $log
-        $start.Environment['CELESTIA_SHELL_OUTPUT_LIMIT'] = [string]$outputLimit
         $start.Environment['DEVCHECK_CURRENCY'] = 'false'
         $start.Environment['DEVCHECK_PROFILE'] = 'shell'
         $start.Environment['GITHUB_WORKSPACE'] = $root
-        $start.Environment['CELESTIA_CACHE_DIR'] = "$relativeRoot/cache"
-        $start.Environment['CARGO_TARGET_DIR'] = "$relativeRoot/target"
-        $start.Environment['TMPDIR'] = "$relativeRoot/tmp"
+        $start.Environment['CELESTIA_SHELL_CACHE'] = (
+            Join-Path $shellRoot 'cache'
+        )
+        $start.Environment['CELESTIA_SHELL_TARGET'] = (
+            Join-Path $shellRoot 'target'
+        )
+        $start.Environment['CELESTIA_SHELL_TMP'] = (
+            Join-Path $shellRoot 'tmp'
+        )
+        $start.Environment['TEMP'] = (Join-Path $shellRoot 'tmp')
+        $start.Environment['TMP'] = (Join-Path $shellRoot 'tmp')
         foreach ($entry in $check.Environment.GetEnumerator()) {
             $start.Environment[$entry.Key] = $entry.Value
         }

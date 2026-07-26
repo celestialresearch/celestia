@@ -51,6 +51,7 @@ var (
 	ErrCorrupt           = errors.New("corrupt attempt evidence")
 	ErrActive            = errors.New("attempt is active")
 	ErrRelease           = errors.New("attempt ownership release failed")
+	ErrPublication       = errors.New("attempt publication failed")
 	ErrMigrationRequired = errors.New("attempt evidence migration required")
 	ErrUnsupported       = errors.New("attempt evidence is unsupported")
 )
@@ -394,14 +395,18 @@ func (store *Store) legacyLockMissing(attemptID string) (bool, error) {
 }
 
 func publishResult(publicationErr, releaseErr error) error {
+	var published error
+	if publicationErr != nil {
+		published = fmt.Errorf("%w: %w", ErrPublication, publicationErr)
+	}
 	if releaseErr == nil {
-		return publicationErr
+		return published
 	}
 	if publicationErr == nil {
 		return fmt.Errorf("%w: %w", ErrRelease, releaseErr)
 	}
 	return errors.Join(
-		publicationErr,
+		published,
 		fmt.Errorf("%w: %w", ErrRelease, releaseErr),
 	)
 }

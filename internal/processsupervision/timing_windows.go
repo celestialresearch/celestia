@@ -45,3 +45,11 @@ func checkStartupDeadline(deadline time.Time) error {
 	}
 	return nil
 }
+
+func executionRemaining(
+	started time.Time,
+	limit time.Duration,
+	now time.Time,
+) time.Duration {
+	return started.Add(limit).Sub(now)
+}
