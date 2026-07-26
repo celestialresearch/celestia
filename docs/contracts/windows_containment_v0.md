@@ -9,7 +9,7 @@ Status: implemented and locally qualified for the probes below on Windows.
   paths are rejected before filesystem access.
 - The process starts suspended and enters a Job Object before execution.
 - The Job Object forbids breakaway and enforces process count, job-tree memory,
-  CPU time and kill-on-close.
+  per-process user-mode CPU time and kill-on-close.
 - Only standard input, standard output and standard error handles are inherited.
 - The environment contains only `SystemRoot`, `WINDIR`, `LOCALAPPDATA`, `TEMP`
   and `TMP`.
@@ -46,7 +46,7 @@ Status: implemented and locally qualified for the probes below on Windows.
   same user.
 - Profile deletion is cleanup rather than durable erasure. A deletion failure
   makes cleanup fail.
-- CPU time and wall time are separate limits.
+- Per-process user-mode CPU time and wall time are separate limits.
 - No other Windows release, architecture or worker is qualified by this local
   evidence.
 
