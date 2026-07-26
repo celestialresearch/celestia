@@ -39,6 +39,7 @@ const (
 	MaxDiagnostics   = 16
 	MaxMessageBytes  = 512
 	MaxDurationNS    = 2_000_000_000
+	MaxJSONDepth     = 32
 	InputBytes       = 4096
 	StderrBytes      = 8192
 	MemoryBytes      = 67108864
@@ -503,7 +504,7 @@ func validateJSONFrame(data []byte) error {
 		return protocolError("unpaired surrogate")
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := scanValue(decoder); err != nil {
+	if err := scanValue(decoder, 0); err != nil {
 		return err
 	}
 	return nil
@@ -570,7 +571,10 @@ func decodeHex4(data []byte) (uint16, bool) {
 	return value, true
 }
 
-func scanValue(decoder *json.Decoder) error {
+func scanValue(decoder *json.Decoder, depth int) error {
+	if depth > MaxJSONDepth {
+		return protocolError("JSON nesting depth")
+	}
 	token, err := decoder.Token()
 	if err != nil {
 		return protocolError("token")
@@ -581,15 +585,15 @@ func scanValue(decoder *json.Decoder) error {
 	}
 	switch delimiter {
 	case '{':
-		return scanObject(decoder)
+		return scanObject(decoder, depth)
 	case '[':
-		return scanArray(decoder)
+		return scanArray(decoder, depth)
 	default:
 		return protocolError("unexpected delimiter")
 	}
 }
 
-func scanObject(decoder *json.Decoder) error {
+func scanObject(decoder *json.Decoder, depth int) error {
 	keys := make(map[string]struct{})
 	for decoder.More() {
 		token, err := decoder.Token()
@@ -604,16 +608,16 @@ func scanObject(decoder *json.Decoder) error {
 			return protocolError("duplicate field")
 		}
 		keys[key] = struct{}{}
-		if err := scanValue(decoder); err != nil {
+		if err := scanValue(decoder, depth+1); err != nil {
 			return err
 		}
 	}
 	return expectDelimiter(decoder, '}')
 }
 
-func scanArray(decoder *json.Decoder) error {
+func scanArray(decoder *json.Decoder, depth int) error {
 	for decoder.More() {
-		if err := scanValue(decoder); err != nil {
+		if err := scanValue(decoder, depth+1); err != nil {
 			return err
 		}
 	}

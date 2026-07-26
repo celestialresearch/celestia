@@ -60,6 +60,19 @@ func TestDecodeResponse(t *testing.T) {
 	}
 }
 
+func TestJSONFrameDepthLimit(t *testing.T) {
+	t.Parallel()
+
+	within := strings.Repeat("[", MaxJSONDepth) + "0" + strings.Repeat("]", MaxJSONDepth)
+	if err := validateJSONFrame([]byte(within)); err != nil {
+		t.Fatalf("bounded JSON nesting rejected: %v", err)
+	}
+	excessive := "[" + within + "]"
+	if err := validateJSONFrame([]byte(excessive)); !errors.Is(err, ErrProtocol) {
+		t.Fatalf("excessive JSON nesting accepted: %v", err)
+	}
+}
+
 func TestDecodeResponseRejects(t *testing.T) {
 	t.Parallel()
 
@@ -356,13 +369,13 @@ func TestProtocolScannerErrors(t *testing.T) {
 		name string
 		run  func() error
 	}{
-		{"missing value", func() error { return scanValue(json.NewDecoder(bytes.NewBuffer(nil))) }},
+		{"missing value", func() error { return scanValue(json.NewDecoder(bytes.NewBuffer(nil)), 0) }},
 		{"unexpected delimiter", unexpectedDelimiter},
-		{"missing object key", func() error { return scanObject(json.NewDecoder(bytes.NewBuffer(nil))) }},
-		{"non-string object key", func() error { return scanObject(json.NewDecoder(bytes.NewBufferString(`1`))) }},
+		{"missing object key", func() error { return scanObject(json.NewDecoder(bytes.NewBuffer(nil)), 0) }},
+		{"non-string object key", func() error { return scanObject(json.NewDecoder(bytes.NewBufferString(`1`)), 0) }},
 		{"invalid object key", invalidObjectKey},
 		{"invalid object value", invalidObjectValue},
-		{"invalid array value", func() error { return scanArray(json.NewDecoder(bytes.NewBufferString(`{`))) }},
+		{"invalid array value", func() error { return scanArray(json.NewDecoder(bytes.NewBufferString(`{`)), 0) }},
 		{"missing delimiter", func() error { return expectDelimiter(json.NewDecoder(bytes.NewBuffer(nil)), '}') }},
 		{"wrong delimiter", wrongDelimiter},
 	}
@@ -380,19 +393,19 @@ func TestProtocolScannerErrors(t *testing.T) {
 func unexpectedDelimiter() error {
 	decoder := json.NewDecoder(bytes.NewBufferString(`[]`))
 	_, _ = decoder.Token()
-	return scanValue(decoder)
+	return scanValue(decoder, 0)
 }
 
 func invalidObjectKey() error {
 	decoder := json.NewDecoder(bytes.NewBufferString(`[tru`))
 	_, _ = decoder.Token()
-	return scanObject(decoder)
+	return scanObject(decoder, 0)
 }
 
 func invalidObjectValue() error {
 	decoder := json.NewDecoder(bytes.NewBufferString(`{"a"`))
 	_, _ = decoder.Token()
-	return scanObject(decoder)
+	return scanObject(decoder, 0)
 }
 
 func wrongDelimiter() error {
