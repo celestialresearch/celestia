@@ -495,13 +495,13 @@ func inspectPublished(path, attemptID string) (Records, error) {
 	if err := verifyHash(path, receiptFile, records.Publication.ReceiptHash); err != nil {
 		return Records{}, err
 	}
-	if err := validatePublishedFiles(path, records.Receipt.TerminalFile); err != nil {
+	if err := validateBundleFiles(path, records.Receipt.TerminalFile, true); err != nil {
 		return Records{}, err
 	}
 	return records, nil
 }
 
-func validatePublishedFiles(path, terminalFile string) (err error) {
+func validateBundleFiles(path, terminalFile string, published bool) (err error) {
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return fmt.Errorf("open evidence bundle: %w", err)
@@ -523,10 +523,12 @@ func validatePublishedFiles(path, terminalFile string) (err error) {
 		return fmt.Errorf("read evidence directory: %w", err)
 	}
 	expected := map[string]bool{
-		admittedFile:    true,
-		terminalFile:    true,
-		receiptFile:     true,
-		publicationFile: true,
+		admittedFile: true,
+		terminalFile: true,
+		receiptFile:  true,
+	}
+	if published {
+		expected[publicationFile] = true
 	}
 	if len(entries) != len(expected) {
 		return ErrCorrupt
@@ -684,8 +686,12 @@ func writeOrMatchReceipt(path, attemptID, kind, terminalFile, state string) erro
 }
 
 func publishMarker(path, attemptID string) error {
-	if _, err := readBundle(path, attemptID); err != nil {
+	records, err := readBundle(path, attemptID)
+	if err != nil {
 		return fmt.Errorf("verify published bundle: %w", err)
+	}
+	if err := validateBundleFiles(path, records.Receipt.TerminalFile, false); err != nil {
+		return fmt.Errorf("verify published bundle files: %w", err)
 	}
 	receiptHash, err := fileHash(path, receiptFile)
 	if err != nil {
