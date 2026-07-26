@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -120,14 +121,18 @@ func validWorkerPath(path string) bool {
 }
 
 func validLimits(limits Limits) bool {
-	return limits.InputBytes > 0 &&
-		limits.OutputBytes > 0 &&
-		limits.ErrorBytes > 0 &&
+	return validStreamLimit(limits.InputBytes) &&
+		validStreamLimit(limits.OutputBytes) &&
+		validStreamLimit(limits.ErrorBytes) &&
 		limits.MemoryBytes > 0 &&
 		limits.Processes > 0 &&
 		limits.StartupTimeout > 0 &&
-		limits.Timeout > 0 &&
+		limits.Timeout >= 100*time.Nanosecond &&
 		limits.CleanupTimeout > 0
+}
+
+func validStreamLimit(limit int) bool {
+	return limit > 0 && limit < math.MaxInt
 }
 
 func (supervisor *Supervisor) run(
