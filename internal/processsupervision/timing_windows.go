@@ -15,8 +15,12 @@ package processsupervision
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 )
+
+var errParentContext = errors.New("parent execution context ended")
 
 func failedLaunchOutcome(
 	started time.Time,
@@ -24,6 +28,9 @@ func failedLaunchOutcome(
 	err error,
 ) Outcome {
 	status := StartFailed
+	if errors.Is(err, errParentContext) {
+		status = Cancelled
+	}
 	if !cleanupComplete {
 		status = CleanupFailed
 	}
@@ -44,6 +51,15 @@ func checkStartupDeadline(deadline time.Time) error {
 		return context.DeadlineExceeded
 	}
 	return nil
+}
+
+func checkStartupContext(ctx context.Context, deadline time.Time) error {
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("%w: %w", errParentContext, ctx.Err())
+	default:
+		return checkStartupDeadline(deadline)
+	}
 }
 
 func executionRemaining(

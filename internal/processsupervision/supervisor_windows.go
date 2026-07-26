@@ -164,7 +164,7 @@ func (supervisor *Supervisor) run(
 		startDeadline,
 		time.Now().Add(supervisor.limits.StartupTimeout),
 	)
-	process, hash, cleanupComplete, err := supervisor.launch(startupDeadline)
+	process, hash, cleanupComplete, err := supervisor.launch(ctx, startupDeadline)
 	if err != nil {
 		outcome := failedLaunchOutcome(started, cleanupComplete, err)
 		outcome.WorkerSHA256 = supervisor.workerHash
@@ -186,13 +186,14 @@ func (supervisor *Supervisor) run(
 }
 
 func (supervisor *Supervisor) launch(
+	ctx context.Context,
 	startupDeadline time.Time,
 ) (*launchedProcess, [32]byte, bool, error) {
-	resources, cleanupComplete, err := supervisor.prepareLaunch(startupDeadline)
+	resources, cleanupComplete, err := supervisor.prepareLaunch(ctx, startupDeadline)
 	if err != nil {
 		return nil, [32]byte{}, cleanupComplete, err
 	}
-	process, cleanupComplete, err := resources.start(startupDeadline)
+	process, cleanupComplete, err := resources.start(ctx, startupDeadline)
 	if err != nil {
 		closeErr := resources.close()
 		return nil,
@@ -204,6 +205,7 @@ func (supervisor *Supervisor) launch(
 }
 
 func (supervisor *Supervisor) prepareLaunch(
+	ctx context.Context,
 	startupDeadline time.Time,
 ) (*launchResources, bool, error) {
 	container, err := createContainerName()
@@ -214,7 +216,7 @@ func (supervisor *Supervisor) prepareLaunch(
 		}
 		return nil, true, err
 	}
-	if err := checkStartupDeadline(startupDeadline); err != nil {
+	if err := checkStartupContext(ctx, startupDeadline); err != nil {
 		cleanupErr := container.close()
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
@@ -228,7 +230,7 @@ func (supervisor *Supervisor) prepareLaunch(
 			cleanupSucceeded(imageCleanupComplete, cleanupErr),
 			errors.Join(err, cleanupErr)
 	}
-	if err := checkStartupDeadline(startupDeadline); err != nil {
+	if err := checkStartupContext(ctx, startupDeadline); err != nil {
 		cleanupErr := errors.Join(image.Close(), container.close())
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
@@ -245,7 +247,7 @@ func (supervisor *Supervisor) prepareLaunch(
 			cleanupSucceeded(pipeCleanupComplete, cleanupErr),
 			errors.Join(err, cleanupErr)
 	}
-	if err := checkStartupDeadline(startupDeadline); err != nil {
+	if err := checkStartupContext(ctx, startupDeadline); err != nil {
 		cleanupErr := errors.Join(pipes.close(), image.Close(), container.close())
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
@@ -265,14 +267,15 @@ func (supervisor *Supervisor) prepareLaunch(
 		job:       job,
 		cleanup:   supervisor.limits.CleanupTimeout,
 	}
-	return finishLaunchPreparation(resources, startupDeadline)
+	return finishLaunchPreparation(ctx, resources, startupDeadline)
 }
 
 func finishLaunchPreparation(
+	ctx context.Context,
 	resources *launchResources,
 	startupDeadline time.Time,
 ) (*launchResources, bool, error) {
-	if err := checkStartupDeadline(startupDeadline); err != nil {
+	if err := checkStartupContext(ctx, startupDeadline); err != nil {
 		cleanupErr := resources.close()
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
@@ -284,13 +287,14 @@ func cleanupSucceeded(previous bool, err error) bool {
 }
 
 func (resources *launchResources) start(
+	ctx context.Context,
 	startupDeadline time.Time,
 ) (*launchedProcess, bool, error) {
 	info, err := startSuspended(resources.container, resources.imagePath, resources.pipes)
 	if err != nil {
 		return nil, true, err
 	}
-	if err := checkStartupDeadline(startupDeadline); err != nil {
+	if err := checkStartupContext(ctx, startupDeadline); err != nil {
 		cleanupErr := resources.stopStart(info, false)
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
@@ -305,7 +309,7 @@ func (resources *launchResources) start(
 		stopErr := resources.stopStart(info, true)
 		return nil, stopErr == nil, errors.Join(err, stopErr)
 	}
-	if err := checkStartupDeadline(startupDeadline); err != nil {
+	if err := checkStartupContext(ctx, startupDeadline); err != nil {
 		cleanupErr := resources.stopStart(info, true)
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}

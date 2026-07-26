@@ -332,6 +332,7 @@ func TestStartupCleanupJoinsWorker(t *testing.T) {
 				t.Fatalf("new supervisor: %v", err)
 			}
 			resources, _, err := supervisor.prepareLaunch(
+				context.Background(),
 				time.Now().Add(testNativeLimits().StartupTimeout),
 			)
 			if err != nil {
@@ -365,6 +366,41 @@ func TestStartupCleanupJoinsWorker(t *testing.T) {
 	}
 }
 
+func TestCancelledStartupNeverResumesWorker(t *testing.T) {
+	supervisor, err := New(
+		os.Getenv("CELESTIA_TEST_HOSTILE_WORKER"),
+		testNativeLimits(),
+	)
+	if err != nil {
+		t.Fatalf("new supervisor: %v", err)
+	}
+	resources, _, err := supervisor.prepareLaunch(
+		context.Background(),
+		time.Now().Add(testNativeLimits().StartupTimeout),
+	)
+	if err != nil {
+		t.Fatalf("prepare launch: %v", err)
+	}
+	defer func() {
+		if err := resources.close(); err != nil {
+			t.Errorf("close resources: %v", err)
+		}
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	process, complete, err := resources.start(
+		ctx,
+		time.Now().Add(testNativeLimits().StartupTimeout),
+	)
+	if process != nil || !complete || !errors.Is(err, context.Canceled) {
+		t.Fatalf("process=%v complete=%t error=%v", process, complete, err)
+	}
+	outcome := failedLaunchOutcome(time.Now(), complete, err)
+	if outcome.Status != Cancelled || !outcome.CleanupComplete {
+		t.Fatalf("outcome=%+v", outcome)
+	}
+}
+
 func TestExpiredLaunchPreparationClosesPipes(t *testing.T) {
 	pipes, complete, err := newPipes()
 	if err != nil || !complete {
@@ -377,7 +413,11 @@ func TestExpiredLaunchPreparationClosesPipes(t *testing.T) {
 		},
 		pipes: pipes,
 	}
-	prepared, complete, err := finishLaunchPreparation(resources, time.Now().Add(-time.Second))
+	prepared, complete, err := finishLaunchPreparation(
+		context.Background(),
+		resources,
+		time.Now().Add(-time.Second),
+	)
 	if prepared != nil || !complete || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("prepared=%v complete=%t error=%v", prepared, complete, err)
 	}
