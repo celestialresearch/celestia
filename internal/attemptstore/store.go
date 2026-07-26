@@ -448,11 +448,32 @@ func (attempt *Attempt) closeLocked() error {
 	return attempt.owner.release()
 }
 
-func (store *Store) Inspect(attemptID string) (Records, error) {
+func (store *Store) Inspect(attemptID string) (records Records, err error) {
 	path, err := store.attemptPath(attemptID)
 	if err != nil {
 		return Records{}, err
 	}
+	current, err := store.hasOwnershipMarker(attemptID)
+	if err != nil {
+		return Records{}, err
+	}
+	var owner *attemptLock
+	if current {
+		owner, err = store.acquireAttemptLock(attemptID, false)
+		if err != nil {
+			return Records{}, err
+		}
+		defer func() {
+			if releaseErr := owner.release(); releaseErr != nil {
+				records = Records{}
+				err = errors.Join(err, releaseError(releaseErr))
+			}
+		}()
+	}
+	return inspectPublished(path, attemptID)
+}
+
+func inspectPublished(path, attemptID string) (Records, error) {
 	records, err := readBundle(path, attemptID)
 	if err != nil {
 		return Records{}, err
