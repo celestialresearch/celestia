@@ -469,15 +469,15 @@ func awaitProcess(
 			return status, cause
 		}
 		if timeoutReady(timeout) {
-			return resolveProcessTimeout(waited)
+			return resolveProcessBoundary(waited, TimedOut, context.DeadlineExceeded)
 		}
 		select {
 		case cause := <-waited:
 			return processWaitResult(cause)
 		case <-ctx.Done():
-			return Cancelled, ctx.Err()
+			return resolveProcessBoundary(waited, Cancelled, ctx.Err())
 		case <-timeout:
-			return resolveProcessTimeout(waited)
+			return resolveProcessBoundary(waited, TimedOut, context.DeadlineExceeded)
 		case status := <-overflow:
 			return status, errStreamLimit
 		case result := <-input:
@@ -518,13 +518,15 @@ func processWaitResult(cause error) (Status, error) {
 	return Completed, nil
 }
 
-func resolveProcessTimeout(
+func resolveProcessBoundary(
 	waited <-chan error,
+	status Status,
+	cause error,
 ) (Status, error) {
-	if status, cause, ready := readWaitResult(waited); ready {
-		return status, cause
+	if waitStatus, waitErr, ready := readWaitResult(waited); ready {
+		return waitStatus, waitErr
 	}
-	return TimedOut, context.DeadlineExceeded
+	return status, cause
 }
 
 func finishOutcome(
