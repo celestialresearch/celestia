@@ -19,7 +19,7 @@ import (
 )
 
 func prepareEvidenceRoot(root string) (string, error) {
-	if root == "" || !filepath.IsAbs(root) {
+	if !validEvidenceRootPath(root) {
 		return "", fmt.Errorf("%w: evidence root", ErrInvalid)
 	}
 	clean, err := resolveEvidenceRoot(root)
