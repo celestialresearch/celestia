@@ -212,15 +212,44 @@ func TestSecureEvidenceFileRejectsReadOnlyDACL(t *testing.T) {
 		t.Fatalf("close record: %v", err)
 	}
 	t.Cleanup(func() { _ = os.Remove(path) })
+	setReadOnlyDACL(t, path)
+	if err := secureEvidenceFile(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("read-only evidence file accepted: %v", err)
+	}
+}
+
+func setReadOnlyDACL(t *testing.T, path string) {
+	t.Helper()
+
 	sid, err := currentUserSID()
 	if err != nil {
 		t.Fatalf("current user SID: %v", err)
 	}
+	setDACL(t, path, fmt.Sprintf("O:%sD:P(A;OICI;FR;;;%s)", sid, sid))
+}
+
+func setSharedDACL(t *testing.T, path string) {
+	t.Helper()
+
+	sid, err := currentUserSID()
+	if err != nil {
+		t.Fatalf("current user SID: %v", err)
+	}
+	setDACL(
+		t,
+		path,
+		fmt.Sprintf("O:%sD:P(A;OICI;FA;;;%s)(A;OICI;FR;;;WD)", sid, sid),
+	)
+}
+
+func setDACL(t *testing.T, path, value string) {
+	t.Helper()
+
 	descriptor, err := windows.SecurityDescriptorFromString(
-		fmt.Sprintf("O:%sD:P(A;OICI;FR;;;%s)", sid, sid),
+		value,
 	)
 	if err != nil {
-		t.Fatalf("create read-only descriptor: %v", err)
+		t.Fatalf("create test descriptor: %v", err)
 	}
 	dacl, _, err := descriptor.DACL()
 	if err != nil {
@@ -235,10 +264,7 @@ func TestSecureEvidenceFileRejectsReadOnlyDACL(t *testing.T) {
 		dacl,
 		nil,
 	); err != nil {
-		t.Fatalf("apply read-only DACL: %v", err)
-	}
-	if err := secureEvidenceFile(path); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("read-only evidence file accepted: %v", err)
+		t.Fatalf("apply test DACL: %v", err)
 	}
 }
 
