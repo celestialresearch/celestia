@@ -12,11 +12,13 @@
 package attemptstore
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -257,6 +259,39 @@ func TestInspectRejectsMissingFields(t *testing.T) {
 	removeJSONField(t, filepath.Join(path, observationFile), "process_status")
 	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("missing field accepted: %v", err)
+	}
+}
+
+func TestReadRecordRejectsNonCanonicalJSON(t *testing.T) {
+	root := t.TempDir()
+	recovery := Recovery{
+		Version:        Version,
+		AttemptID:      strings.Repeat("A", 43),
+		TerminalStatus: "indeterminate",
+		Reason:         "fixture",
+	}
+	canonical, err := json.Marshal(recovery)
+	if err != nil {
+		t.Fatalf("encode recovery: %v", err)
+	}
+	tests := map[string][]byte{
+		"leading whitespace": append([]byte(" "), canonical...),
+		"duplicate field": append(
+			bytes.TrimSuffix(canonical, []byte("}")),
+			[]byte(`,"version":0}`)...,
+		),
+	}
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(root, name+".json")
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatalf("write record: %v", err)
+			}
+			var actual Recovery
+			if err := readRecord(root, filepath.Base(path), &actual); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("non-canonical record accepted: %v", err)
+			}
+		})
 	}
 }
 

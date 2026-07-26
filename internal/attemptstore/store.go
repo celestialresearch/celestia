@@ -733,6 +733,10 @@ func readRecord(path, name string, target any) error {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return ErrCorrupt
 	}
+	canonical, err := json.Marshal(target)
+	if err != nil || !bytes.Equal(data, canonical) {
+		return ErrCorrupt
+	}
 	return validateRecord(target)
 }
 
