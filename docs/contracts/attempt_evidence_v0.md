@@ -21,8 +21,8 @@ publication marker is written.
 `admitted.json` retains the original input and exact request frame.
 Inspection uses the frozen v0 frame decoder and requires its attempt identity
 and input to match the duplicated admitted fields. The decoder enforces the
-v0 deadline, input length, input hash, mode and fixed operation limits. It does
-not replay the current admission policy.
+v0 URL grammar, deadline, input length, input hash, mode and fixed operation
+limits. It does not rerun admission or generate new identities.
 `observation.json` retains the worker identity, exact bounded streams, process
 outcome, protocol result, verification result and terminal status.
 `recovery.json` records an interrupted attempt as `indeterminate`.
@@ -56,7 +56,8 @@ durable terminal outcome.
   `publication.json` is created.
 - Inspection accepts only fixed record names, regular files, matching attempt
   identities, matching schema versions, matching terminal states and matching
-  hashes.
+  hashes. It replays protocol validation and deterministic URL verification
+  against the retained request and response.
 - Recovery never reruns the worker. It publishes an `indeterminate` recovery
   record for an incomplete attempt or resumes publication of an existing valid
   terminal record.
