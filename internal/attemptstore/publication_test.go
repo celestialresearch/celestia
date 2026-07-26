@@ -404,6 +404,10 @@ func TestObservationAcceptsContractTransitions(t *testing.T) {
 	failedResponse := observationWithoutVerification(verified)
 	failedResponse.TerminalStatus = "failed"
 	failedResponse.ExitCode = 2
+	workerFailed := failedResponse
+	workerFailed.ProcessStatus = "exit_failed"
+	workerFailed.ProcessError = "worker status failed"
+	workerFailed.ExitCode = 3
 	failedProcess := failedResponse
 	failedProcess.ProcessStatus = "exit_failed"
 	failedProcess.ProtocolStatus = "not_run"
@@ -419,6 +423,7 @@ func TestObservationAcceptsContractTransitions(t *testing.T) {
 		verified,
 		unverified,
 		failedResponse,
+		workerFailed,
 		failedProcess,
 		cancelled,
 		timedOut,
@@ -492,10 +497,12 @@ func TestObservationRejectsContradictoryProcessProtocolStates(t *testing.T) {
 		{name: "output rejected", process: "output_overflow", protocol: "rejected", exitCode: 1},
 		{name: "error valid", process: "error_overflow", protocol: "valid", exitCode: 1},
 		{name: "exit valid", process: "exit_failed", protocol: "valid", exitCode: 1},
+		{name: "exit rejected code", process: "exit_failed", protocol: "valid", exitCode: 2},
 		{name: "cancelled failed", process: "cancelled", protocol: "not_run", exitCode: 1},
 		{name: "timed out failed", process: "timed_out", protocol: "not_run", exitCode: 1},
 		{name: "completed not run", process: "completed", protocol: "not_run"},
 		{name: "completed valid zero", process: "completed", protocol: "valid"},
+		{name: "completed valid failure", process: "completed", protocol: "valid", exitCode: 3},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

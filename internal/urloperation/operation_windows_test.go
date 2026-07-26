@@ -344,12 +344,26 @@ func TestOperationPublishesProtocolFailure(t *testing.T) {
 
 func TestOperationRecordsValidWorkerFailure(t *testing.T) {
 	tests := []struct {
-		name   string
-		input  string
-		status workerprotocol.Status
+		name          string
+		input         string
+		status        workerprotocol.Status
+		processStatus processsupervision.Status
+		exitCode      uint32
 	}{
-		{name: "rejected", input: "https://rejected.test", status: workerprotocol.Rejected},
-		{name: "failed", input: "https://failed.test", status: workerprotocol.Failed},
+		{
+			name:          "rejected",
+			input:         "https://rejected.test",
+			status:        workerprotocol.Rejected,
+			processStatus: processsupervision.Completed,
+			exitCode:      2,
+		},
+		{
+			name:          "failed",
+			input:         "https://failed.test",
+			status:        workerprotocol.Failed,
+			processStatus: processsupervision.ExitFailed,
+			exitCode:      3,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -367,7 +381,7 @@ func TestOperationRecordsValidWorkerFailure(t *testing.T) {
 			if err != nil {
 				t.Fatalf("inspect: %v", err)
 			}
-			assertWorkerFailureEvidence(t, records)
+			assertWorkerFailureEvidence(t, records, test.processStatus, test.exitCode)
 		})
 	}
 }
@@ -402,13 +416,28 @@ func assertProjectedDiagnostics(t *testing.T, result Result) {
 	}
 }
 
-func assertWorkerFailureEvidence(t *testing.T, records attemptstore.Records) {
+func assertWorkerFailureEvidence(
+	t *testing.T,
+	records attemptstore.Records,
+	processStatus processsupervision.Status,
+	exitCode uint32,
+) {
 	t.Helper()
 	if records.Observation == nil ||
+		records.Observation.ProcessStatus != string(processStatus) ||
+		records.Observation.ExitCode != exitCode ||
 		records.Observation.ProtocolStatus != protocolValid ||
 		records.Observation.VerificationID != "" ||
 		records.Observation.TerminalStatus != string(Failed) {
 		t.Fatalf("records=%+v", records)
+	}
+	if processStatus == processsupervision.ExitFailed &&
+		records.Observation.ProcessError == "" {
+		t.Fatalf("failed worker omitted process error: %+v", records.Observation)
+	}
+	if processStatus == processsupervision.Completed &&
+		records.Observation.ProcessError != "" {
+		t.Fatalf("rejected worker recorded process error: %+v", records.Observation)
 	}
 }
 

@@ -300,6 +300,10 @@ func observationProtocolStatus(result Result) string {
 }
 
 func observationProcessStatus(result Result) string {
+	if result.Response != nil &&
+		result.Response.Status == workerprotocol.Failed {
+		return string(processsupervision.ExitFailed)
+	}
 	return string(result.Process.Status)
 }
 
@@ -312,6 +316,10 @@ func observationProcessError(
 	}
 	if result.Err == nil {
 		return ""
+	}
+	if result.Response != nil &&
+		result.Response.Status == workerprotocol.Failed {
+		return result.Err.Error()
 	}
 	if process.Status != processsupervision.Completed {
 		return result.Err.Error()

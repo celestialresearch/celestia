@@ -49,7 +49,7 @@ func publishDirectory(source, target, _ string) error {
 }
 
 func secureEvidenceTree(path string) error {
-	info, err := os.Lstat(path)
+	info, err := lstatEvidencePath(path)
 	if err != nil {
 		return err
 	}

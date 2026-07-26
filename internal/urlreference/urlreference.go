@@ -126,11 +126,11 @@ func validateInput(input string) error {
 	if len(input) == 0 || len(input) > MaxReferenceBytes {
 		return invalid("input length")
 	}
-	if !utf8.ValidString(input) || strings.HasPrefix(input, "\uFEFF") {
+	if !utf8.ValidString(input) {
 		return invalid("UTF-8")
 	}
 	for _, r := range input {
-		if r == 0 || r < 0x20 || r == 0x7f || rejectedSpace(r) {
+		if r < 0x20 || r == 0x7f || rejectedSpace(r) {
 			return invalid("control or whitespace")
 		}
 	}

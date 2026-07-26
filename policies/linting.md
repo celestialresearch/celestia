@@ -34,8 +34,8 @@ The baseline applies whenever Go packages exist:
 - test-helper and standard-testing checks;
 - `modernize` as secondary evidence after `go fix`.
 
-`.golangci.yml` is the executable allowlist. `GO_STANDARD.md` is the normative
-contract. This policy decides when the allowlist may change.
+`.golangci.yml` is the executable allowlist. This policy is the normative
+contract for changing that allowlist.
 
 ## Admission
 
@@ -52,8 +52,7 @@ Before enabling a linter:
 7. Run the complete repository gate and inspect every new finding.
 8. Correct valid findings before enabling the gate.
 9. Document any unavoidable suppression under the suppression contract.
-10. Update `.golangci.yml`, `GO_STANDARD.md`, both applicable `AGENTS.md`
-    files and this policy in one coherent change.
+10. Update `.golangci.yml`, `AGENTS.md` and this policy in one coherent change.
 
 Do not enable a linter and globally exclude its initial findings. Existing
 findings must be corrected or individually justified.
