@@ -597,6 +597,22 @@ func TestAwaitProcessStates(t *testing.T) {
 			t.Fatalf("status=%s error=%v", status, err)
 		}
 	})
+	t.Run("ready completion wins at cancellation cutoff", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		waited := make(chan error, 1)
+		waited <- nil
+		status, err := awaitProcess(
+			ctx,
+			make(chan time.Time),
+			waited,
+			make(chan Status),
+			make(chan inputResult),
+		)
+		if status != Completed || err != nil {
+			t.Fatalf("status=%s error=%v", status, err)
+		}
+	})
 	t.Run("overflow", func(t *testing.T) {
 		overflow := make(chan Status, 1)
 		overflow <- OutputOverflow
