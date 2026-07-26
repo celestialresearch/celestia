@@ -104,7 +104,20 @@ func finishLockRoot(
 	lock *attemptLock,
 	operationErr error,
 ) (*attemptLock, error) {
-	closeErr := root.Close()
+	return finishLockRootResult(
+		root.Close(),
+		reservation,
+		lock,
+		operationErr,
+	)
+}
+
+func finishLockRootResult(
+	closeErr error,
+	reservation *lockReservation,
+	lock *attemptLock,
+	operationErr error,
+) (*attemptLock, error) {
 	if closeErr == nil {
 		return lock, operationErr
 	}
@@ -118,6 +131,7 @@ func finishLockRoot(
 		lock.file.Close(),
 	)
 	reservation.keep = false
+	activeAttemptLocks.Delete(reservation.key)
 	return nil, operationErr
 }
 
