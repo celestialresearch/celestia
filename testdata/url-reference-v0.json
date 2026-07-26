@@ -1,0 +1,55 @@
+{
+  "version": 0,
+  "accepted": [
+    {
+      "input": "https://example.test/a.b?q=1.2#f.g",
+      "fang": "https://example.test/a.b?q=1.2#f.g",
+      "defang": "hxxps://example[.]test/a.b?q=1.2#f.g"
+    },
+    {
+      "input": "hxxps://example[.]test/a.b?q=1.2#f.g",
+      "fang": "https://example.test/a.b?q=1.2#f.g",
+      "defang": "hxxps://example[.]test/a.b?q=1.2#f.g"
+    },
+    {
+      "input": "http://192.0.2.10:00443/a%2Eb",
+      "fang": "http://192.0.2.10:00443/a%2Eb",
+      "defang": "hxxp://192[.]0[.]2[.]10:00443/a%2Eb"
+    },
+    {
+      "input": "https://[2001:db8::1]:443/",
+      "fang": "https://[2001:db8::1]:443/",
+      "defang": "hxxps://[2001:db8::1]:443/"
+    },
+    {
+      "input": "https://example.test./",
+      "fang": "https://example.test./",
+      "defang": "hxxps://example[.]test[.]/"
+    },
+    {
+      "input": "https://localhost/\u00e9?x=?#y=#",
+      "fang": "https://localhost/\u00e9?x=?#y=#",
+      "defang": "hxxps://localhost/\u00e9?x=?#y=#"
+    }
+  ],
+  "rejected": [
+    "",
+    "example.test",
+    "HTTPS://example.test/",
+    "https:///path",
+    "https://user@example.test/",
+    "https://example[.]test/",
+    "hxxps://example.test/",
+    "hxxps://a[.]b.c/",
+    "https://192.00.2.1/",
+    "https://256.0.2.1/",
+    "https://2001:db8::1/",
+    "https://[::ffff:192.0.2.1]/",
+    "https://[fe80::1%25eth0]/",
+    "https://b\u00fccher.example/",
+    "https://example\u3002test/",
+    "https://example.test/%2",
+    " https://example.test/",
+    "https://example.test/ "
+  ]
+}
