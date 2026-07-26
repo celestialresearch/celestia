@@ -127,3 +127,17 @@ func TestAdmitRandomFailure(t *testing.T) {
 		t.Fatalf("admit() error = %v, want generation failure", err)
 	}
 }
+
+func TestAdmitRejectsRepeatedIdentity(t *testing.T) {
+	t.Parallel()
+
+	_, err := admit(
+		"https://example.test",
+		urlreference.Defang,
+		time.Unix(0, 0).UTC(),
+		bytes.NewReader(bytes.Repeat([]byte{1}, identityBytes*2)),
+	)
+	if err == nil || errors.Is(err, ErrRejected) {
+		t.Fatalf("admit() error = %v, want entropy failure", err)
+	}
+}
