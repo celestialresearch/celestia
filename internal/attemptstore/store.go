@@ -372,6 +372,9 @@ func (store *Store) recoverOwned(attemptID, reason string, owner *attemptLock) (
 	if err != nil {
 		return err
 	}
+	if err := repairInterruptedRecords(path); err != nil {
+		return fmt.Errorf("repair interrupted records: %w", err)
+	}
 	if published, err := publicationExists(path, attemptID); err != nil {
 		return err
 	} else if published {

@@ -15,8 +15,10 @@ package attemptstore
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -25,6 +27,9 @@ func publishFile(source, target, directory string) (err error) {
 		if os.IsExist(err) {
 			return ErrDuplicate
 		}
+		return err
+	}
+	if err := os.Remove(source); err != nil {
 		return err
 	}
 	root, err := os.OpenRoot(directory)
@@ -136,4 +141,107 @@ func syncDirectory(directory string) (err error) {
 
 func confirmPublication(directory string) error {
 	return syncDirectory(directory)
+}
+
+func repairInterruptedRecords(path string) (err error) {
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, root.Close())
+	}()
+	directory, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	entries, readErr := directory.ReadDir(-1)
+	closeErr := directory.Close()
+	if err := errors.Join(readErr, closeErr); err != nil {
+		return err
+	}
+	var removals []string
+	for _, name := range recordNames() {
+		target, targetErr := root.Lstat(name)
+		if targetErr != nil && !errors.Is(targetErr, os.ErrNotExist) {
+			return targetErr
+		}
+		var linkedTemporary string
+		for _, entry := range entries {
+			if !temporaryRecordName(name, entry.Name()) {
+				continue
+			}
+			info, err := root.Lstat(entry.Name())
+			if err != nil || !validInterruptedRecord(info) {
+				return ErrCorrupt
+			}
+			if targetErr == nil && os.SameFile(target, info) {
+				if linkedTemporary != "" {
+					return ErrCorrupt
+				}
+				linkedTemporary = entry.Name()
+			}
+			removals = append(removals, entry.Name())
+		}
+		if targetErr == nil {
+			stat, ok := target.Sys().(*syscall.Stat_t)
+			if !ok || stat.Nlink > 2 || stat.Nlink == 2 && linkedTemporary == "" {
+				return ErrCorrupt
+			}
+		}
+	}
+	if len(removals) == 0 {
+		return nil
+	}
+	for _, name := range removals {
+		if err := root.Remove(name); err != nil {
+			return err
+		}
+	}
+	if err := syncDirectory(path); err != nil {
+		return err
+	}
+	for _, name := range recordNames() {
+		if _, err := root.Lstat(name); err == nil {
+			if err := secureEvidenceFile(filepath.Join(path, name)); err != nil {
+				return fmt.Errorf("verify repaired record %s: %w", name, err)
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
+
+func recordNames() []string {
+	return []string{
+		admittedFile,
+		observationFile,
+		recoveryFile,
+		receiptFile,
+		publicationFile,
+	}
+}
+
+func temporaryRecordName(record, candidate string) bool {
+	suffix, found := strings.CutPrefix(candidate, "."+record+".")
+	if !found || len(suffix) != 32 {
+		return false
+	}
+	for _, value := range suffix {
+		if value < '0' || value > '9' && value < 'a' || value > 'f' {
+			return false
+		}
+	}
+	return true
+}
+
+func validInterruptedRecord(info os.FileInfo) bool {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok &&
+		info.Mode().IsRegular() &&
+		info.Mode()&os.ModeSymlink == 0 &&
+		int64(stat.Uid) == int64(os.Geteuid()) &&
+		(stat.Nlink == 1 || stat.Nlink == 2) &&
+		info.Mode().Perm() == 0o600
 }

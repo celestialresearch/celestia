@@ -212,3 +212,7 @@ func pathIsLinked(path string, _ os.FileInfo) bool {
 func confirmPublication(directory string) error {
 	return syncAttemptLockDirectory(directory)
 }
+
+func repairInterruptedRecords(string) error {
+	return nil
+}
