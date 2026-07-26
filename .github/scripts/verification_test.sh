@@ -657,6 +657,18 @@ EOF
     printf 'policy output omitted the scanner failure:\n%s\n' "$output" >&2
     return 1
   }
+  set +e
+  output=$(
+    cd "$work_dir" &&
+      FAIL_GIT_COMMAND=ls-files REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
+        bash .github/scripts/coveragecheck.sh cached 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'coverage check ignored a failed source inventory\n' >&2
+    return 1
+  }
 
   licence_dir="$work_dir/licence"
   mkdir -p "$licence_dir/.github/scripts"

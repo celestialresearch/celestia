@@ -85,8 +85,15 @@ validate_percentage() {
   }
 }
 
-cache_key() {
+cache_key() (
   local file
+  local inventory
+
+  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage.XXXXXX")
+  trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
+  git ls-files -co --exclude-standard -z -- \
+    '*.go' '*.rs' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml' \
+    >"$inventory"
 
   {
     git hash-object "$policy" .github/scripts/coveragecheck.sh go.mod
@@ -94,10 +101,10 @@ cache_key() {
     while IFS= read -r -d '' file; do
       [[ -f "$file" ]] || continue
       git hash-object "$file"
-    done < <(git ls-files -co --exclude-standard -z -- '*.go' '*.rs' 'Cargo.toml' 'Cargo.lock' 'rust-toolchain.toml')
+    done <"$inventory"
     go env GOVERSION GOOS GOARCH CGO_ENABLED CC CXX GOFLAGS
   } | git hash-object --stdin
-}
+)
 
 create_report() {
   local profile=$1

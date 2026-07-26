@@ -42,16 +42,18 @@ verify_modules() {
 update_modules() {
   local package
   local packages
+  local tools
 
   packages=$(go list -f '{{if or .GoFiles .CgoFiles}}{{.ImportPath}}{{end}}' \
     ./... 2>/dev/null | sed '/^[[:space:]]*$/d')
   if [[ -n "$packages" ]]; then
     go get -u ./...
   fi
+  tools=$(tool_packages)
   while IFS= read -r package; do
     [[ -n "$package" ]] || continue
     go get -tool "$package@latest"
-  done < <(tool_packages)
+  done <<<"$tools"
   go mod tidy
   go mod verify
 }
@@ -78,7 +80,7 @@ compare_file() {
 
 check_update_diff() (
   local status=0
-  local work_dir file
+  local work_dir file inventory files
 
   work_dir=$(mktemp -d "${TMPDIR:-/tmp}/celestia-modcheck.XXXXXX")
   case "$work_dir" in
@@ -90,11 +92,15 @@ check_update_diff() (
   esac
   trap 'rm -rf -- "$work_dir"' EXIT HUP INT TERM
 
+  inventory=$work_dir/inventory
+  files=$work_dir/files
+  git ls-files -co --exclude-standard -z >"$inventory"
+  : >"$files"
   while IFS= read -r -d '' file; do
     [[ -f "$file" ]] || continue
-    printf '%s\0' "$file"
-  done < <(git ls-files -co --exclude-standard -z) |
-    tar --null -T - -cf - |
+    printf '%s\0' "$file" >>"$files"
+  done <"$inventory"
+  tar --null -T "$files" -cf - |
     tar -xf - -C "$work_dir"
   if ! (
     cd -- "$work_dir"
