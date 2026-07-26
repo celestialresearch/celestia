@@ -118,6 +118,9 @@ func TestStoreDetectsCorruption(t *testing.T) {
 	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("stage published attempt: %v", err)
+	}
 	path := filepath.Join(store.finalPath(accepted.Request.AttemptID), observationFile)
 	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
 		t.Fatalf("corrupt observation: %v", err)
