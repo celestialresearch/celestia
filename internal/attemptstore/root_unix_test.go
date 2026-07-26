@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build !windows
+//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
 
 package attemptstore
 
@@ -54,6 +54,20 @@ func TestSecureEvidenceTreeRejectsNonDirectory(t *testing.T) {
 	}
 	if err := secureEvidenceTree(path); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("non-directory accepted: %v", err)
+	}
+}
+
+func TestStageRejectsLinkedAttemptPath(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	if err := os.Symlink(
+		t.TempDir(),
+		store.finalPath(accepted.Request.AttemptID),
+	); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("linked attempt path accepted: %v", err)
 	}
 }
 

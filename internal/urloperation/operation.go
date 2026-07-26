@@ -28,6 +28,7 @@ var (
 	ErrProtocol     = errors.New("worker protocol failed")
 	ErrVerification = errors.New("worker output failed verification")
 	ErrPersistence  = errors.New("attempt persistence failed")
+	ErrCleanup      = errors.New("attempt ownership cleanup failed")
 )
 
 type Status string

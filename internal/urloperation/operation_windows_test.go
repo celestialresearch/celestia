@@ -15,6 +15,7 @@ package urloperation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -43,6 +44,8 @@ func TestMain(testingMain *testing.M) {
 		"build",
 		"--workspace",
 		"--all-targets",
+		"--features",
+		"qualification-fixtures",
 		"--locked",
 	)
 	command.Dir = root
@@ -440,6 +443,21 @@ func repositoryRoot() (string, error) {
 		return "", fmt.Errorf("working directory: %w", err)
 	}
 	return filepath.Clean(filepath.Join(workingDirectory, "..", "..")), nil
+}
+
+func TestPublishReleaseFailurePreservesTerminalStatus(t *testing.T) {
+	result := Result{Status: Verified}
+	applyPublishError(&result, attemptstore.ErrRelease)
+	if result.Status != Verified {
+		t.Fatalf("release failure changed status to %q", result.Status)
+	}
+	if !errors.Is(result.Err, ErrCleanup) ||
+		!errors.Is(result.Err, attemptstore.ErrRelease) {
+		t.Fatalf("release failure not reported: %v", result.Err)
+	}
+	if errors.Is(result.Err, ErrPersistence) {
+		t.Fatalf("release failure reported as persistence failure: %v", result.Err)
+	}
 }
 
 func BenchmarkOperation(b *testing.B) {

@@ -145,6 +145,73 @@ check_tools() {
   fi
 }
 
+release_exe_suffix() {
+  case "$(uname -s 2>/dev/null)" in
+  CYGWIN* | MINGW* | MSYS*) printf '.exe' ;;
+  *) printf '' ;;
+  esac
+}
+
+check_release_artefacts() (
+  mkdir -p .cache
+  target_dir=$(mktemp -d .cache/release-artefacts.XXXXXX)
+
+  # shellcheck disable=SC2329 # Invoked by the EXIT and signal trap.
+  cleanup() {
+    case "$target_dir" in
+    .cache/release-artefacts.*) rm -rf -- "$target_dir" ;;
+    esac
+  }
+
+  trap cleanup EXIT HUP INT TERM
+  cargo build --workspace --release --locked --target-dir "$target_dir"
+
+  release_dir=$target_dir/release
+  expected=celestia-url-reference$(release_exe_suffix)
+  seen=false
+  unexpected=
+
+  for path in "$release_dir"/*; do
+    file=${path##*/}
+    if [[ -d "$path" && ! -L "$path" ]]; then
+      continue
+    fi
+    case "$file" in
+    *.d | *.pdb)
+      if [[ ! -f "$path" || -L "$path" || -x "$path" ]]; then
+        printf 'Invalid release metadata: %s\n' "$file"
+        return 1
+      fi
+      continue
+      ;;
+    esac
+    if [[ "$file" == "$expected" ]]; then
+      if [[ ! -f "$path" || -L "$path" ]]; then
+        printf 'Release artefact is not a regular file: %s\n' "$expected"
+        return 1
+      fi
+      if [[ ! -x "$path" && "$file" != *.exe ]]; then
+        printf 'Release artefact is not executable: %s\n' "$expected"
+        return 1
+      fi
+      seen=true
+      continue
+    fi
+    if [[ -x "$path" || "$file" == *.exe || -L "$path" ]]; then
+      unexpected="${unexpected}${unexpected:+ }$file"
+    fi
+  done
+
+  if [[ "$seen" != true ]]; then
+    printf 'Missing release executable: %s\n' "$expected"
+    return 1
+  fi
+  if [[ -n "$unexpected" ]]; then
+    printf 'Unexpected release executable: %s\n' "$unexpected"
+    return 1
+  fi
+)
+
 case "$mode" in
 config)
   check_config
@@ -153,8 +220,11 @@ tools)
   check_config
   check_tools
   ;;
+artefacts)
+  check_release_artefacts
+  ;;
 *)
-  printf 'Usage: rustcheck.sh config|tools\n' >&2
+  printf 'Usage: rustcheck.sh artefacts|config|tools\n' >&2
   exit 2
   ;;
 esac

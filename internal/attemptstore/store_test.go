@@ -53,8 +53,12 @@ func TestStorePublishesAndInspects(t *testing.T) {
 func TestStoreRecoversPendingAttempt(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
-	if _, err := store.Stage(accepted, admittedAt); err != nil {
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
 		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release interrupted attempt: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, "interrupted"); err != nil {
 		t.Fatalf("recover: %v", err)
@@ -88,11 +92,8 @@ func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
 		t.Fatalf("invalid observation: %v", err)
 	}
 	observation = testObservation(accepted.Request.AttemptID)
-	if err := attempt.Publish(observation); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	if err := attempt.Publish(observation); !errors.Is(err, ErrDuplicate) {
-		t.Fatalf("duplicate publication: %v", err)
+	if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("released attempt published: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, ""); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("empty recovery: %v", err)
@@ -116,6 +117,9 @@ func TestStoreDetectsCorruption(t *testing.T) {
 	}
 	if err := attempt.Publish(testObservation(accepted.Request.AttemptID)); err != nil {
 		t.Fatalf("publish: %v", err)
+	}
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("stage published attempt: %v", err)
 	}
 	path := filepath.Join(store.finalPath(accepted.Request.AttemptID), observationFile)
 	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {

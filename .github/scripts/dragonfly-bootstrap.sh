@@ -12,6 +12,17 @@
 
 set -eu
 
+retry() {
+  local attempts=0
+  until "$@"; do
+    attempts=$((attempts + 1))
+    if [[ "$attempts" -ge 3 ]]; then
+      return 1
+    fi
+    sleep $((attempts * 5))
+  done
+}
+
 if [[ "$(uname -s)" != DragonFly ]]; then
   echo 'DragonFly bootstrap requires DragonFly BSD' >&2
   exit 1
@@ -33,5 +44,5 @@ AUTO: {
 }
 EOF
 
-sudo pkg update -f
-sudo pkg install -y go
+retry sudo pkg update -f
+retry sudo pkg install -y go

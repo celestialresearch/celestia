@@ -82,11 +82,23 @@ func validateRecord(target any) error {
 func validateAdmitted(record Admitted) error {
 	admittedAt, err := time.Parse(time.RFC3339Nano, record.AdmittedAt)
 	if err != nil ||
-		record.Version != Version ||
-		!validIdentity(record.AttemptID) ||
 		admittedAt.Location() != time.UTC ||
-		record.OriginalInput == "" ||
+		admittedAt.Format(time.RFC3339Nano) != record.AdmittedAt ||
 		len(record.RequestFrame) == 0 {
+		return ErrCorrupt
+	}
+	var request requestV0
+	switch record.Version {
+	case 0:
+		request, err = decodeRequestV0(record.RequestFrame, admittedAt)
+	default:
+		return ErrCorrupt
+	}
+	if err != nil {
+		return ErrCorrupt
+	}
+	if record.AttemptID != request.AttemptID ||
+		record.OriginalInput != request.Input {
 		return ErrCorrupt
 	}
 	return nil

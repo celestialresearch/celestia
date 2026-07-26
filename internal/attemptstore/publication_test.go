@@ -16,6 +16,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -130,6 +131,9 @@ func TestRecoverPublishesAfterReceiptFailure(t *testing.T) {
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
 	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release interrupted attempt: %v", err)
+	}
 	if err := store.Recover(accepted.Request.AttemptID, "receipt write failed"); err != nil {
 		t.Fatalf("recover: %v", err)
 	}
@@ -159,6 +163,9 @@ func TestRecoverResumesRecoveryReceipt(t *testing.T) {
 	}
 	if err := writeOrMatchRecord(attempt.path, recoveryFile, recovery); err != nil {
 		t.Fatalf("write recovery: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release interrupted attempt: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, recovery.Reason); err != nil {
 		t.Fatalf("resume recovery: %v", err)
@@ -196,6 +203,9 @@ func TestRecoverPublishesAfterMarkerFailure(t *testing.T) {
 	}
 	if _, err := attempt.publishDirectory(); err != nil {
 		t.Fatalf("publish directory: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("release interrupted attempt: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, "marker write failed"); err != nil {
 		t.Fatalf("recover: %v", err)
@@ -583,8 +593,19 @@ func TestCanonicalEvidenceRootRejectsInvalidPath(t *testing.T) {
 func TestMissingAttemptCannotRecover(t *testing.T) {
 	store := newTestStore(t)
 	attemptID := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	before, err := os.ReadDir(filepath.Join(store.root, locksDirectory))
+	if err != nil {
+		t.Fatalf("read locks before recovery: %v", err)
+	}
 	if err := store.Recover(attemptID, "missing"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing attempt recovered: %v", err)
+	}
+	after, err := os.ReadDir(filepath.Join(store.root, locksDirectory))
+	if err != nil {
+		t.Fatalf("read locks after recovery: %v", err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("missing recovery changed locks: before=%v after=%v", before, after)
 	}
 	if _, err := store.Inspect(attemptID); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing attempt inspected: %v", err)

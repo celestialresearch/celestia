@@ -1,0 +1,81 @@
+// Copyright © 2026 @sudocelestia. All rights reserved.
+//
+// PROPRIETARY AND CONFIDENTIAL SOURCE CODE.
+//
+// No licence, permission or authorisation is granted to use, copy, modify,
+// compile, execute, distribute, publish, sublicense or otherwise exploit this
+// file, except to the limited extent unavoidably permitted by applicable law
+// or GitHub's Terms of Service.
+//
+// See the LICENSE file at the repository root for the complete terms.
+
+package attemptstore
+
+import (
+	"errors"
+	"testing"
+)
+
+func TestPublishResultDistinguishesReleaseFailure(t *testing.T) {
+	publicationErr := errors.New("publication")
+	releaseErr := errors.New("release")
+	if err := publishResult(nil, nil); err != nil {
+		t.Fatalf("successful publication failed: %v", err)
+	}
+	if err := publishResult(publicationErr, nil); !errors.Is(err, publicationErr) {
+		t.Fatalf("publication failure lost: %v", err)
+	}
+	if err := publishResult(nil, releaseErr); !errors.Is(err, ErrRelease) {
+		t.Fatalf("release failure not classified: %v", err)
+	}
+	err := publishResult(publicationErr, releaseErr)
+	if !errors.Is(err, publicationErr) || errors.Is(err, ErrRelease) {
+		t.Fatalf("combined failure lost: %v", err)
+	}
+}
+
+func TestPublishClassifiesReleaseAfterPublication(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	owner := attempt.owner
+	owner.once.Do(func() {
+		owner.releaseErr = errors.New("injected release failure")
+	})
+	t.Cleanup(func() {
+		_ = unlockAttemptFile(owner.file)
+		_ = owner.file.Close()
+	})
+	err = attempt.Publish(testObservation(accepted.Request.AttemptID))
+	if !errors.Is(err, ErrRelease) {
+		t.Fatalf("release failure not classified: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
+		t.Fatalf("published attempt not inspectable: %v", err)
+	}
+}
+
+func TestNilAttemptClose(t *testing.T) {
+	var attempt *Attempt
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("close nil attempt: %v", err)
+	}
+}
+
+func TestAttemptCloseIsIdempotent(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("first close: %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+}
