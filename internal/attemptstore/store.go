@@ -495,7 +495,48 @@ func inspectPublished(path, attemptID string) (Records, error) {
 	if err := verifyHash(path, receiptFile, records.Publication.ReceiptHash); err != nil {
 		return Records{}, err
 	}
+	if err := validatePublishedFiles(path, records.Receipt.TerminalFile); err != nil {
+		return Records{}, err
+	}
 	return records, nil
+}
+
+func validatePublishedFiles(path, terminalFile string) (err error) {
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return fmt.Errorf("open evidence bundle: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, root.Close())
+	}()
+
+	directory, err := root.Open(".")
+	if err != nil {
+		return fmt.Errorf("open evidence directory: %w", err)
+	}
+	defer func() {
+		err = errors.Join(err, directory.Close())
+	}()
+
+	entries, err := directory.ReadDir(-1)
+	if err != nil {
+		return fmt.Errorf("read evidence directory: %w", err)
+	}
+	expected := map[string]bool{
+		admittedFile:    true,
+		terminalFile:    true,
+		receiptFile:     true,
+		publicationFile: true,
+	}
+	if len(entries) != len(expected) {
+		return ErrCorrupt
+	}
+	for _, entry := range entries {
+		if !expected[entry.Name()] || entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+			return ErrCorrupt
+		}
+	}
+	return nil
 }
 
 func readBundle(path, attemptID string) (Records, error) {
