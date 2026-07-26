@@ -79,6 +79,24 @@ main() (
     printf 'Windows shell check does not own devcheck\n' >&2
     return 1
   }
+  grep -Fq "\$start.RedirectStandardOutput = \$true" \
+    "$shellcheck_script" || {
+    printf 'Windows shell check does not own standard output\n' >&2
+    return 1
+  }
+  grep -Fq "\$start.RedirectStandardError = \$true" \
+    "$shellcheck_script" || {
+    printf 'Windows shell check does not own standard error\n' >&2
+    return 1
+  }
+  grep -Fq "\$Stream.ReadAsync(" "$shellcheck_script" || {
+    printf 'Windows shell check does not use bounded stream reads\n' >&2
+    return 1
+  }
+  if grep -Eq 'Get-Content .*-(Raw|ReadCount)' "$shellcheck_script"; then
+    printf 'Windows shell check reads captured output without a bound\n' >&2
+    return 1
+  fi
   # shellcheck disable=SC2016 # These probes match literal source.
   grep -Fq '$cleanupFailures = @(' "$shellcheck_script" || {
     printf 'Windows shell check does not retain cleanup failures as an array\n' >&2
