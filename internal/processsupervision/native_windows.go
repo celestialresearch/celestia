@@ -81,6 +81,16 @@ func createContainer(name string) (appContainer, error) {
 		}
 		return appContainer{}, fmt.Errorf("create AppContainer: HRESULT %#x", result)
 	}
+	if sid == nil {
+		container := appContainer{name: name}
+		if rollbackErr := container.close(); rollbackErr != nil {
+			return container, errors.Join(
+				errors.New("create AppContainer: missing SID"),
+				fmt.Errorf("rollback AppContainer %s: %w", container.identity(), rollbackErr),
+			)
+		}
+		return appContainer{}, errors.New("create AppContainer: missing SID")
+	}
 	folder, err := containerFolder(sid)
 	if err != nil {
 		container := appContainer{name: name, sid: sid}
@@ -96,6 +106,9 @@ func createContainer(name string) (appContainer, error) {
 }
 
 func containerFolder(sid *windows.SID) (string, error) {
+	if sid == nil {
+		return "", errors.New("get AppContainer folder: missing SID")
+	}
 	sidText, err := windows.UTF16PtrFromString(sid.String())
 	if err != nil {
 		return "", fmt.Errorf("encode AppContainer SID: %w", err)
@@ -110,6 +123,9 @@ func containerFolder(sid *windows.SID) (string, error) {
 			return "", errAppContainerNotImplemented
 		}
 		return "", fmt.Errorf("get AppContainer folder: HRESULT %#x", result)
+	}
+	if folder == nil {
+		return "", errors.New("get AppContainer folder: missing path")
 	}
 	defer func() {
 		_, _, _ = coTaskMemFree.Call(

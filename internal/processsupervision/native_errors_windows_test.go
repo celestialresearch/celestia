@@ -55,6 +55,14 @@ func TestContainerRejectsInvalidNames(t *testing.T) {
 	}
 }
 
+func TestContainerFolderRejectsMissingSID(t *testing.T) {
+	t.Parallel()
+
+	if _, err := containerFolder(nil); err == nil {
+		t.Fatal("containerFolder(nil) error = nil")
+	}
+}
+
 func TestContainerCloseReportsIdentity(t *testing.T) {
 	container := appContainer{name: "invalid\x00name"}
 	err := container.close()
