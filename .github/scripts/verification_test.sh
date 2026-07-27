@@ -170,6 +170,46 @@ main() (
     printf 'Go platform lint does not preserve the host executable\n' >&2
     return 1
   }
+  mkdir -p "$work_dir/type-assertion"
+  printf 'module celestia.research/type-assertion\n\ngo 1.26.5\n' \
+    >"$work_dir/type-assertion/go.mod"
+  cat >"$work_dir/type-assertion/assertion.go" <<'EOF'
+package typeassertion
+
+func assertion(value any) int {
+	return value.(int)
+}
+EOF
+  set +e
+  output=$(
+    cd "$work_dir/type-assertion" &&
+      go tool golangci-lint run --config "$root/.golangci.yml" ./... 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] && grep -Fq 'errcheck' <<<"$output" || {
+    printf 'errcheck accepted an unchecked type assertion:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  cat >"$work_dir/type-assertion/assertion.go" <<'EOF'
+package typeassertion
+
+func assertion(value any) int {
+	number, ok := value.(int)
+	if !ok {
+		return 0
+	}
+	return number
+}
+EOF
+  (
+    cd "$work_dir/type-assertion" &&
+      go tool golangci-lint run --config "$root/.golangci.yml" ./...
+  ) || {
+    printf 'errcheck rejected a checked type assertion\n' >&2
+    return 1
+  }
 
   sleep 60 &
   change_pid=$!
