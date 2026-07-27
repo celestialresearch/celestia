@@ -87,9 +87,6 @@ func TestStageCreatesOwnershipMarker(t *testing.T) {
 	if _, err := store.hasOwnershipMarker(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("non-empty ownership marker accepted: %v", err)
 	}
-	if legacy, err := store.migrationRequired("invalid"); err != nil || legacy {
-		t.Fatalf("invalid identity classified as legacy: legacy=%t error=%v", legacy, err)
-	}
 }
 
 func TestOwnershipMarkerRejectsDirectory(t *testing.T) {

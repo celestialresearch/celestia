@@ -63,12 +63,6 @@ func TestRecoverRejectsMissingLock(t *testing.T) {
 	); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("missing lock recovered: %v", err)
 	}
-	if err := store.MigrateV0(
-		accepted.Request.AttemptID,
-		"operator quiesced legacy attempt",
-	); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("current attempt migrated: %v", err)
-	}
 }
 
 func TestReadOnlyLockOpenDoesNotRequireWriteAccess(t *testing.T) {

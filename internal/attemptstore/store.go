@@ -42,14 +42,13 @@ const (
 )
 
 var (
-	ErrInvalid           = errors.New("invalid attempt evidence")
-	ErrDuplicate         = errors.New("duplicate attempt")
-	ErrCorrupt           = errors.New("corrupt attempt evidence")
-	ErrActive            = errors.New("attempt is active")
-	ErrRelease           = errors.New("attempt ownership release failed")
-	ErrPublication       = errors.New("attempt publication failed")
-	ErrMigrationRequired = errors.New("attempt evidence migration required")
-	ErrUnsupported       = errors.New("attempt evidence is unsupported")
+	ErrInvalid     = errors.New("invalid attempt evidence")
+	ErrDuplicate   = errors.New("duplicate attempt")
+	ErrCorrupt     = errors.New("corrupt attempt evidence")
+	ErrActive      = errors.New("attempt is active")
+	ErrRelease     = errors.New("attempt ownership release failed")
+	ErrPublication = errors.New("attempt publication failed")
+	ErrUnsupported = errors.New("attempt evidence is unsupported")
 )
 
 type Admitted struct {
@@ -318,13 +317,6 @@ func (store *Store) Recover(attemptID, reason string) (err error) {
 	owner, err := store.acquireAttemptLock(attemptID, false)
 	if err != nil {
 		if errors.Is(err, ErrCorrupt) || errors.Is(err, os.ErrNotExist) {
-			legacy, legacyErr := store.migrationRequired(attemptID)
-			if legacyErr != nil {
-				return legacyErr
-			}
-			if legacy {
-				return fmt.Errorf("%w: attempt %s has no v0 ownership lock", ErrMigrationRequired, attemptID)
-			}
 			return ErrCorrupt
 		}
 		return err
@@ -335,41 +327,17 @@ func (store *Store) Recover(attemptID, reason string) (err error) {
 	}
 	if !marker {
 		return errors.Join(
-			fmt.Errorf("%w: attempt %s has incomplete v0 ownership", ErrMigrationRequired, attemptID),
+			fmt.Errorf("%w: attempt %s has no ownership marker", ErrCorrupt, attemptID),
 			releaseError(owner.release()),
 		)
 	}
-	return store.recoverOwned(attemptID, reason, owner, false)
-}
-
-// MigrateV0 explicitly adopts a pre-lock v0 attempt after its caller has
-// quiesced every writer that could still own the legacy bundle.
-func (store *Store) MigrateV0(attemptID, reason string) (err error) {
-	if !validRecoveryReason(reason) {
-		return fmt.Errorf("%w: migration reason", ErrInvalid)
-	}
-	legacy, err := store.migrationRequired(attemptID)
-	if err != nil {
-		return err
-	}
-	if !legacy {
-		return fmt.Errorf("%w: v0 lock is present", ErrInvalid)
-	}
-	owner, err := store.acquireAttemptLock(attemptID, true)
-	if err != nil {
-		return err
-	}
-	if err := store.createOwnershipMarker(attemptID); err != nil {
-		return publishResult(err, owner.release())
-	}
-	return store.recoverOwned(attemptID, reason, owner, true)
+	return store.recoverOwned(attemptID, reason, owner)
 }
 
 func (store *Store) recoverOwned(
 	attemptID,
 	reason string,
 	owner *attemptLock,
-	acceptPublished bool,
 ) (err error) {
 	defer func() {
 		err = publishResult(err, owner.release())
@@ -384,7 +352,7 @@ func (store *Store) recoverOwned(
 	if published, err := publicationExists(path, attemptID); err != nil {
 		return err
 	} else if published {
-		return recoverPublished(path, attemptID, acceptPublished)
+		return recoverPublished(path, attemptID)
 	}
 	if err := store.ensureTerminal(path, attemptID, reason); err != nil {
 		return err
@@ -404,29 +372,14 @@ func (store *Store) recoverOwned(
 	return publishMarker(path, attemptID)
 }
 
-func recoverPublished(path, attemptID string, acceptPublished bool) error {
+func recoverPublished(path, attemptID string) error {
 	if _, err := inspectPublished(path, attemptID); err != nil {
 		return err
 	}
 	if err := confirmPublication(path); err != nil {
 		return fmt.Errorf("confirm recovered publication: %w", err)
 	}
-	if acceptPublished {
-		return nil
-	}
 	return ErrDuplicate
-}
-
-func (store *Store) migrationRequired(attemptID string) (bool, error) {
-	if !validIdentity(attemptID) {
-		return false, nil
-	}
-	marker, err := store.hasOwnershipMarker(attemptID)
-	if err != nil || marker {
-		return false, err
-	}
-	_, _, err = store.recoverablePath(attemptID)
-	return err == nil, err
 }
 
 func releaseError(err error) error {

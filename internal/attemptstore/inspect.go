@@ -27,11 +27,7 @@ func (store *Store) Inspect(attemptID string) (records Records, err error) {
 		return Records{}, err
 	}
 	if !current {
-		return Records{}, fmt.Errorf(
-			"%w: attempt %s has no current ownership marker",
-			ErrMigrationRequired,
-			attemptID,
-		)
+		return Records{}, fmt.Errorf("%w: attempt %s has no ownership marker", ErrCorrupt, attemptID)
 	}
 	if err := store.validateAttemptLock(attemptID); err != nil {
 		return Records{}, err

@@ -92,7 +92,7 @@ func TestInspectRequiresCurrentOwnership(t *testing.T) {
 	if err := os.Remove(marker); err != nil {
 		t.Fatalf("remove ownership marker: %v", err)
 	}
-	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrMigrationRequired) {
+	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("unowned publication inspected: %v", err)
 	}
 }

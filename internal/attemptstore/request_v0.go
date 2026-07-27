@@ -32,7 +32,6 @@ const (
 	requestV0Operation      = "url-reference"
 	requestV0MediaType      = "text/plain; charset=utf-8"
 	requestV0StartTimeoutMS = 12000
-	requestV0LegacyStartMS  = 2000
 	requestV0TimeoutMS      = 2000
 	requestV0InputMax       = 4096
 	requestV0OutputMax      = 8192
@@ -295,8 +294,7 @@ func validRequestV0Deadline(value string, admittedAt time.Time) bool {
 	}
 	parsed, err := time.Parse(time.RFC3339Nano, value)
 	current := admittedAt.UTC().Add(requestV0StartTimeoutMS * time.Millisecond)
-	legacy := admittedAt.UTC().Add(requestV0LegacyStartMS * time.Millisecond)
 	return err == nil &&
 		parsed.Format(time.RFC3339Nano) == value &&
-		(parsed.Equal(current) || parsed.Equal(legacy))
+		parsed.Equal(current)
 }
