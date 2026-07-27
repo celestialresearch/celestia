@@ -71,7 +71,6 @@ func newInputWriter(handle windows.Handle) *inputWriter {
 }
 
 func (writer *inputWriter) write(frame []byte) inputResult {
-	defer close(writer.done)
 	if writer.file == nil {
 		return inputResult{
 			err:        errors.New("create worker stdin"),
@@ -87,6 +86,17 @@ func (writer *inputWriter) write(frame []byte) inputResult {
 		result.err = fmt.Errorf("write worker frame: %w", writeErr)
 	}
 	return result
+}
+
+func (writer *inputWriter) publish(
+	frame []byte,
+	input chan<- inputResult,
+	inputDone chan<- inputResult,
+) {
+	result := writer.write(frame)
+	input <- result
+	inputDone <- result
+	close(writer.done)
 }
 
 func (writer *inputWriter) cancel() error {

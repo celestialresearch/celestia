@@ -131,9 +131,8 @@ func TestAwaitInputCancelsBlockedWrite(t *testing.T) {
 	defer closeNativeHandle(t, read)
 	writer := newInputWriter(write)
 	result := make(chan inputResult, 1)
-	go func() {
-		result <- writer.write(make([]byte, 1<<20))
-	}()
+	inputDone := make(chan inputResult, 1)
+	go writer.publish(make([]byte, 1<<20), result, inputDone)
 	deadline := time.Now().Add(time.Millisecond)
 	observation := awaitInput(writer, result, deadline, deadline.Add(100*time.Millisecond))
 	if observation.cleanupErr == nil || !strings.Contains(observation.cleanupErr.Error(), "join worker input") {
@@ -143,6 +142,11 @@ func TestAwaitInputCancelsBlockedWrite(t *testing.T) {
 	case <-writer.done:
 	default:
 		t.Fatal("input writer remained active")
+	}
+	select {
+	case <-inputDone:
+	default:
+		t.Fatal("input writer completed before publishing its join result")
 	}
 }
 
@@ -166,6 +170,38 @@ func TestAwaitStreamCancelsBlockedRead(t *testing.T) {
 	case value := <-result:
 		t.Fatalf("unjoined stream result=%v", value)
 	default:
+	}
+}
+
+func TestCompletionFollowsResultPublication(t *testing.T) {
+	streamDone := make(chan struct{})
+	streamResult := make(chan streamResult, 1)
+	reader := &streamReader{
+		name: "invalid",
+		done: streamDone,
+	}
+	go reader.read(1, OutputOverflow, streamResult, make(chan Status, 1))
+	<-streamDone
+	select {
+	case <-streamResult:
+	default:
+		t.Fatal("stream completed before publishing its result")
+	}
+
+	inputDone := make(chan inputResult, 1)
+	inputResult := make(chan inputResult, 1)
+	writer := &inputWriter{done: make(chan struct{})}
+	go writer.publish(nil, inputResult, inputDone)
+	<-writer.done
+	select {
+	case <-inputResult:
+	default:
+		t.Fatal("input completed before publishing its process result")
+	}
+	select {
+	case <-inputDone:
+	default:
+		t.Fatal("input completed before publishing its join result")
 	}
 }
 
