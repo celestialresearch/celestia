@@ -21,6 +21,7 @@ work_dir=$(mktemp -d "${TMPDIR:-/tmp}/celestia-actioncheck.XXXXXX")
 trap 'rm -rf -- "$work_dir"' EXIT HUP INT TERM
 calls_file="$work_dir/calls"
 output_file="$work_dir/output"
+error_file="$work_dir/error"
 printf '0\n' >"$calls_file"
 
 git() {
@@ -37,9 +38,13 @@ git() {
 
 ACTIONCHECK_REMOTE_ATTEMPTS=3 \
   ACTIONCHECK_RETRY_DELAY_SECONDS=0 \
-  git_ls_remote --tags example.invalid >"$output_file"
+  git_ls_remote --tags example.invalid >"$output_file" 2>"$error_file"
 [[ "$(cat "$output_file")" == resolved && "$(cat "$calls_file")" -eq 3 ]] || {
   printf 'action remote lookup did not retry to success\n' >&2
+  exit 1
+}
+[[ "$(grep -Fc 'Action remote lookup failed; retrying' "$error_file")" -eq 2 ]] || {
+  printf 'action remote lookup omitted retry diagnostics\n' >&2
   exit 1
 }
 

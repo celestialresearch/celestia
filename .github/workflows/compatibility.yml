@@ -151,6 +151,12 @@ jobs:
               FreeBSD)
                 sudo pkg install -y go
                 ;;
+              NetBSD)
+                sudo pkgin -y install go
+                ;;
+              OpenBSD)
+                sudo pkg_add go
+                ;;
               DragonFly)
                 bash ./.github/scripts/dragonfly-bootstrap.sh
                 ;;
