@@ -29,6 +29,7 @@ main() (
   local action_pid=
   local change_pid=
   local currency_pid=
+  local golangci_lint
 
   terminate_child() {
     local pid=$1
@@ -61,6 +62,7 @@ main() (
   esac
   trap cleanup EXIT
   trap 'exit 1' HUP INT TERM
+  golangci_lint=$(cd "$root" && go tool -n golangci-lint)
   shellcheck_script="$root/.github/scripts/windows-shellcheck.ps1"
   if grep -Fq '| head' "$shellcheck_script"; then
     printf 'Windows shell check uses an unowned output pipeline\n' >&2
@@ -179,19 +181,21 @@ package typeassertion
 func assertion(value any) int {
 	return value.(int)
 }
+
+var _ = assertion
 EOF
   set +e
   output=$(
     cd "$work_dir/type-assertion" &&
-      go tool golangci-lint run --config "$root/.golangci.yml" ./... 2>&1
+      "$golangci_lint" run --config "$root/.golangci.yml" ./... 2>&1
   )
   status=$?
   set -e
-  [[ "$status" -ne 0 ]] && grep -Fq 'errcheck' <<<"$output" || {
+  if [[ "$status" -eq 0 ]] || ! grep -Fq 'errcheck' <<<"$output"; then
     printf 'errcheck accepted an unchecked type assertion:\n%s\n' \
       "$output" >&2
     return 1
-  }
+  fi
   cat >"$work_dir/type-assertion/assertion.go" <<'EOF'
 package typeassertion
 
@@ -202,10 +206,12 @@ func assertion(value any) int {
 	}
 	return number
 }
+
+var _ = assertion
 EOF
   (
     cd "$work_dir/type-assertion" &&
-      go tool golangci-lint run --config "$root/.golangci.yml" ./...
+      "$golangci_lint" run --config "$root/.golangci.yml" ./...
   ) || {
     printf 'errcheck rejected a checked type assertion\n' >&2
     return 1
