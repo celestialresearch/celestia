@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,6 +162,50 @@ func TestInspectAcceptsLegacyRequestDeadline(t *testing.T) {
 	}
 	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
 		t.Fatalf("legacy request deadline rejected: %v", err)
+	}
+}
+
+func TestInspectAcceptsLegacyRecoveryReasons(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason string
+	}{
+		{name: "space", reason: " surrounding space "},
+		{name: "control", reason: "line\nbreak"},
+		{name: "long", reason: strings.Repeat("x", maxRecoveryReasonBytes+1)},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := newTestStore(t)
+			accepted, admittedAt := testAccepted(t)
+			attempt, err := store.Stage(accepted, admittedAt)
+			if err != nil {
+				t.Fatalf("stage: %v", err)
+			}
+			if err := attempt.Close(); err != nil {
+				t.Fatalf("close attempt: %v", err)
+			}
+			if err := store.Recover(accepted.Request.AttemptID, "interrupted"); err != nil {
+				t.Fatalf("recover: %v", err)
+			}
+
+			path := store.finalPath(accepted.Request.AttemptID)
+			var recovery Recovery
+			if err := readRecord(path, recoveryFile, &recovery); err != nil {
+				t.Fatalf("read recovery: %v", err)
+			}
+			recovery.Reason = test.reason
+			writeJSONFile(t, filepath.Join(path, recoveryFile), recovery)
+			refreshPublicationHashes(t, path)
+
+			records, err := store.Inspect(accepted.Request.AttemptID)
+			if err != nil {
+				t.Fatalf("inspect retained recovery: %v", err)
+			}
+			if records.Recovery == nil || records.Recovery.Reason != test.reason {
+				t.Fatalf("recovery=%+v", records.Recovery)
+			}
+		})
 	}
 }
 

@@ -463,10 +463,6 @@ func TestRecoveryRejectsInvalidShape(t *testing.T) {
 		func(value *Recovery) { value.AttemptID = "invalid" },
 		func(value *Recovery) { value.TerminalStatus = "failed" },
 		func(value *Recovery) { value.Reason = "" },
-		func(value *Recovery) { value.Reason = " " },
-		func(value *Recovery) { value.Reason = "line\nbreak" },
-		func(value *Recovery) { value.Reason = string([]byte{0xff}) },
-		func(value *Recovery) { value.Reason = strings.Repeat("x", maxRecoveryReasonBytes+1) },
 	} {
 		invalid := recovery
 		change(&invalid)
