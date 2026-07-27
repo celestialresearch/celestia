@@ -37,10 +37,7 @@ func (store *Store) Inspect(attemptID string) (records Records, err error) {
 		return Records{}, err
 	}
 	published, err := publicationExists(path, attemptID)
-	if err != nil {
-		return Records{}, err
-	}
-	if published {
+	if err == nil && published {
 		return store.inspectPublishedPath(path, attemptID)
 	}
 	owner, err := store.acquireAttemptLock(attemptID, false)
