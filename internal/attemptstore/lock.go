@@ -202,6 +202,33 @@ func (store *Store) hasOwnershipMarker(attemptID string) (present bool, err erro
 	return true, nil
 }
 
+func (store *Store) validateAttemptLock(attemptID string) (err error) {
+	directory := filepath.Join(store.root, locksDirectory)
+	root, err := store.openLockRoot(directory)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, root.Close())
+	}()
+	name := attemptID + ".lock"
+	file, err := openAttemptLockFile(root, directory, name, false)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrCorrupt
+	}
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
+	pathInfo, err := root.Lstat(name)
+	if err != nil {
+		return ErrCorrupt
+	}
+	return validateLockFile(file, pathInfo)
+}
+
 func (store *Store) openLockRoot(directory string) (*os.Root, error) {
 	if err := rejectLinkedAncestors(directory); err != nil {
 		return nil, fmt.Errorf("inspect attempt locks: %w", err)

@@ -166,36 +166,99 @@ func repairInterruptedRecords(path string) (err error) {
 	if err := errors.Join(readErr, closeErr); err != nil {
 		return err
 	}
+	removals, err := interruptedRecordRemovals(root, entries)
+	if err != nil {
+		return err
+	}
+	if err := removeInterruptedRecords(root, path, removals); err != nil {
+		return err
+	}
+	return verifyRepairedRecords(root, path)
+}
+
+func interruptedRecordRemovals(
+	root *os.Root,
+	entries []os.DirEntry,
+) ([]string, error) {
 	var removals []string
 	for _, name := range recordNames() {
-		target, targetErr := root.Lstat(name)
-		if targetErr != nil && !errors.Is(targetErr, os.ErrNotExist) {
-			return targetErr
+		recordRemovals, err := interruptedRecordRemovalsFor(root, entries, name)
+		if err != nil {
+			return nil, err
 		}
-		var linkedTemporary string
-		for _, entry := range entries {
-			if !temporaryRecordName(name, entry.Name()) {
-				continue
-			}
-			info, err := root.Lstat(entry.Name())
-			if err != nil || !validInterruptedRecord(info) {
-				return ErrCorrupt
-			}
-			if targetErr == nil && os.SameFile(target, info) {
-				if linkedTemporary != "" {
-					return ErrCorrupt
-				}
-				linkedTemporary = entry.Name()
-			}
-			removals = append(removals, entry.Name())
-		}
-		if targetErr == nil {
-			stat, ok := target.Sys().(*syscall.Stat_t)
-			if !ok || stat.Nlink > 2 || stat.Nlink == 2 && linkedTemporary == "" {
-				return ErrCorrupt
-			}
-		}
+		removals = append(removals, recordRemovals...)
 	}
+	return removals, nil
+}
+
+func interruptedRecordRemovalsFor(
+	root *os.Root,
+	entries []os.DirEntry,
+	name string,
+) ([]string, error) {
+	target, present, err := interruptedTarget(root, name)
+	if err != nil {
+		return nil, err
+	}
+	removals, linked, err := interruptedTemporaries(root, entries, name, target, present)
+	if err != nil {
+		return nil, err
+	}
+	if !present {
+		return removals, nil
+	}
+	stat := target.Sys().(*syscall.Stat_t)
+	if stat.Nlink == 2 && linked != 1 || stat.Nlink == 1 && linked != 0 {
+		return nil, ErrCorrupt
+	}
+	return removals, nil
+}
+
+func interruptedTarget(root *os.Root, name string) (os.FileInfo, bool, error) {
+	target, err := root.Lstat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	if !validInterruptedRecord(target) {
+		return nil, false, ErrCorrupt
+	}
+	return target, true, nil
+}
+
+func interruptedTemporaries(
+	root *os.Root,
+	entries []os.DirEntry,
+	name string,
+	target os.FileInfo,
+	targetPresent bool,
+) ([]string, int, error) {
+	var removals []string
+	var linked int
+	for _, entry := range entries {
+		if !temporaryRecordName(name, entry.Name()) {
+			continue
+		}
+		info, err := root.Lstat(entry.Name())
+		if err != nil || !validInterruptedRecord(info) {
+			return nil, 0, ErrCorrupt
+		}
+		stat := info.Sys().(*syscall.Stat_t)
+		sameTarget := targetPresent && os.SameFile(target, info)
+		if stat.Nlink == 2 && !sameTarget {
+			return nil, 0, ErrCorrupt
+		}
+		if sameTarget {
+			linked++
+		}
+		removals = append(removals, entry.Name())
+	}
+	return removals, linked, nil
+}
+
+func removeInterruptedRecords(root *os.Root, path string, removals []string) error {
 	if len(removals) == 0 {
 		return nil
 	}
@@ -207,6 +270,10 @@ func repairInterruptedRecords(path string) (err error) {
 	if err := syncDirectory(path); err != nil {
 		return err
 	}
+	return nil
+}
+
+func verifyRepairedRecords(root *os.Root, path string) error {
 	for _, name := range recordNames() {
 		if _, err := root.Lstat(name); err == nil {
 			if err := secureEvidenceFile(filepath.Join(path, name)); err != nil {

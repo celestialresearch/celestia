@@ -35,12 +35,3 @@ func temporaryRecordName(record, candidate string) bool {
 	}
 	return true
 }
-
-func recordTemporary(candidate string) bool {
-	for _, record := range recordNames() {
-		if temporaryRecordName(record, candidate) {
-			return true
-		}
-	}
-	return false
-}

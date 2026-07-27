@@ -384,6 +384,9 @@ func (store *Store) recoverOwned(
 	if published, err := publicationExists(path, attemptID); err != nil {
 		return err
 	} else if published {
+		if err := confirmPublication(path); err != nil {
+			return fmt.Errorf("confirm recovered publication: %w", err)
+		}
 		if acceptPublished {
 			return nil
 		}
@@ -475,6 +478,9 @@ func (store *Store) Inspect(attemptID string) (records Records, err error) {
 			ErrMigrationRequired,
 			attemptID,
 		)
+	}
+	if err := store.validateAttemptLock(attemptID); err != nil {
+		return Records{}, err
 	}
 	published, err := publicationExists(path, attemptID)
 	if err != nil {
