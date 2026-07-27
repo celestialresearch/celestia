@@ -168,7 +168,9 @@ func readJSONFile(t *testing.T, path string, target any) {
 		t.Fatalf("open JSON root: %v", err)
 	}
 	defer func() {
-		_ = root.Close()
+		if err := root.Close(); err != nil {
+			t.Errorf("close JSON root: %v", err)
+		}
 	}()
 	data, err := root.ReadFile(filepath.Base(path))
 	if err != nil {
