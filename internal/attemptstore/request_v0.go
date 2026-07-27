@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"celestia.research/governed-operation/internal/urlreference"
+	"celestia.research/governed-operation/internal/workerprotocol"
 )
 
 const (
@@ -65,6 +66,30 @@ type limitsV0 struct {
 	StderrBytes int `json:"stderr_bytes"`
 	MemoryBytes int `json:"memory_bytes"`
 	Processes   int `json:"processes"`
+}
+
+func (request requestV0) workerRequest() workerprotocol.Request {
+	return workerprotocol.Request{
+		ProtocolVersion:  request.ProtocolVersion,
+		OperationID:      request.OperationID,
+		OperationVersion: request.OperationVersion,
+		AttemptID:        request.AttemptID,
+		RequestNonce:     request.RequestNonce,
+		InputMediaType:   request.InputMediaType,
+		InputLength:      request.InputLength,
+		InputSHA256:      request.InputSHA256,
+		Mode:             request.Mode,
+		Deadline:         request.Deadline,
+		TimeoutMS:        request.TimeoutMS,
+		Limits: workerprotocol.Limits{
+			InputBytes:  request.Limits.InputBytes,
+			OutputBytes: request.Limits.OutputBytes,
+			StderrBytes: request.Limits.StderrBytes,
+			MemoryBytes: request.Limits.MemoryBytes,
+			Processes:   request.Limits.Processes,
+		},
+		Input: request.Input,
+	}
 }
 
 func decodeRequestV0(data []byte, admittedAt time.Time) (requestV0, error) {

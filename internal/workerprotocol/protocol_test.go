@@ -28,24 +28,7 @@ func TestDecodeResponse(t *testing.T) {
 
 	request := testRequest()
 	correlation := testCorrelation(t, request)
-	output := "hxxps://example[.]test/"
-	hash := sha256.Sum256([]byte(output))
-	response := Response{
-		ProtocolVersion:  ProtocolVersion,
-		OperationID:      OperationID,
-		OperationVersion: OperationVersion,
-		AttemptID:        request.AttemptID,
-		RequestNonce:     request.RequestNonce,
-		WorkerID:         WorkerID,
-		WorkerVersion:    WorkerVersion,
-		Status:           Completed,
-		OutputMediaType:  new(MediaType),
-		OutputLength:     new(len(output)),
-		OutputSHA256:     new(hex.EncodeToString(hash[:])),
-		Output:           new(output),
-		Diagnostics:      []Diagnostic{},
-		DurationNS:       1000,
-	}
+	response := testResponse(request)
 	data, err := json.Marshal(response)
 	if err != nil {
 		t.Fatal(err)
@@ -55,8 +38,46 @@ func TestDecodeResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeResponse() error = %v", err)
 	}
-	if actual.Output == nil || *actual.Output != output {
+	if actual.Output == nil || *actual.Output != *response.Output {
 		t.Fatalf("DecodeResponse() output = %v", actual.Output)
+	}
+}
+
+func TestDecodeResponseForRequestCorrelation(t *testing.T) {
+	t.Parallel()
+
+	request := testRequest()
+	response := testResponse(request)
+	data, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeResponseForRequestCorrelation(data, request, 0); err != nil {
+		t.Fatalf("DecodeResponseForRequestCorrelation() error = %v", err)
+	}
+
+	tests := map[string]func(*Request){
+		"attempt": func(request *Request) { request.AttemptID = "invalid" },
+		"nonce":   func(request *Request) { request.RequestNonce = "invalid" },
+		"repeated": func(request *Request) {
+			request.RequestNonce = request.AttemptID
+		},
+		"media": func(request *Request) {
+			request.InputMediaType = "application/octet-stream"
+		},
+	}
+	for name, change := range tests {
+		t.Run(name, func(t *testing.T) {
+			invalid := request
+			change(&invalid)
+			if _, err := DecodeResponseForRequestCorrelation(
+				data,
+				invalid,
+				0,
+			); !errors.Is(err, ErrProtocol) {
+				t.Fatalf("invalid request correlation error = %v, want ErrProtocol", err)
+			}
+		})
 	}
 }
 
@@ -483,6 +504,27 @@ func testRequest() Request {
 			Processes:   Processes,
 		},
 		Input: input,
+	}
+}
+
+func testResponse(request Request) Response {
+	output := "hxxps://example[.]test/"
+	hash := sha256.Sum256([]byte(output))
+	return Response{
+		ProtocolVersion:  ProtocolVersion,
+		OperationID:      OperationID,
+		OperationVersion: OperationVersion,
+		AttemptID:        request.AttemptID,
+		RequestNonce:     request.RequestNonce,
+		WorkerID:         WorkerID,
+		WorkerVersion:    WorkerVersion,
+		Status:           Completed,
+		OutputMediaType:  new(MediaType),
+		OutputLength:     new(len(output)),
+		OutputSHA256:     new(hex.EncodeToString(hash[:])),
+		Output:           new(output),
+		Diagnostics:      []Diagnostic{},
+		DurationNS:       1000,
 	}
 }
 
