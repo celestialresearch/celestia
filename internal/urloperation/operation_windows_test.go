@@ -271,7 +271,7 @@ func TestOperationPreservesTermination(t *testing.T) {
 	}{
 		{
 			name:       "admitted deadline",
-			admittedAt: time.Now().UTC().Add(-3 * time.Second),
+			admittedAt: time.Now().UTC().Add(-13 * time.Second),
 			context:    context.Background,
 			status:     TimedOut,
 		},
@@ -361,6 +361,7 @@ func TestOperationUsesContractLimits(t *testing.T) {
 		limits.ErrorBytes != workerprotocol.StderrBytes ||
 		limits.MemoryBytes != workerprotocol.MemoryBytes ||
 		limits.Processes != workerprotocol.Processes ||
+		limits.StartupTimeout != containmentStartupTimeout ||
 		limits.Timeout != time.Duration(workerprotocol.TimeoutMS)*time.Millisecond {
 		t.Fatalf("limits=%+v", limits)
 	}

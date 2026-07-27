@@ -77,7 +77,7 @@ func admit(
 		InputSHA256:      hex.EncodeToString(inputHash[:]),
 		Mode:             string(mode),
 		Deadline: admittedAt.Add(
-			time.Duration(workerprotocol.TimeoutMS) * time.Millisecond,
+			time.Duration(workerprotocol.StartTimeoutMS) * time.Millisecond,
 		).Format(time.RFC3339Nano),
 		TimeoutMS: workerprotocol.TimeoutMS,
 		Limits: workerprotocol.Limits{

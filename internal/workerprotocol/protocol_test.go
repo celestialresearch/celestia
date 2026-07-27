@@ -473,7 +473,7 @@ func testRequest() Request {
 		InputLength:      len(input),
 		InputSHA256:      hex.EncodeToString(hash[:]),
 		Mode:             "defang",
-		Deadline:         "2026-07-25T00:00:02Z",
+		Deadline:         "2026-07-25T00:00:12Z",
 		TimeoutMS:        TimeoutMS,
 		Limits: Limits{
 			InputBytes:  InputBytes,

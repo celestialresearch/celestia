@@ -44,6 +44,7 @@ const (
 	StderrBytes      = 8192
 	MemoryBytes      = 67108864
 	Processes        = 1
+	StartTimeoutMS   = 12000
 	TimeoutMS        = 2000
 )
 
@@ -242,7 +243,9 @@ func validateDeadline(value string, admittedAt time.Time) error {
 	if err != nil || parsed.Format(time.RFC3339Nano) != value {
 		return protocolError("request deadline")
 	}
-	expected := admittedAt.UTC().Add(time.Duration(TimeoutMS) * time.Millisecond)
+	expected := admittedAt.UTC().Add(
+		time.Duration(StartTimeoutMS) * time.Millisecond,
+	)
 	if !parsed.Equal(expected) {
 		return protocolError("request deadline")
 	}

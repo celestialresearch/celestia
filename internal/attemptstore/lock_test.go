@@ -291,7 +291,7 @@ func lockProcessFixture(t *testing.T) (*Store, urladmission.Accepted, time.Time)
 		InputSHA256:      hex.EncodeToString(inputHash[:]),
 		Mode:             string(urlreference.Defang),
 		Deadline: admittedAt.Add(
-			time.Duration(workerprotocol.TimeoutMS) * time.Millisecond,
+			time.Duration(workerprotocol.StartTimeoutMS) * time.Millisecond,
 		).Format(time.RFC3339Nano),
 		TimeoutMS: workerprotocol.TimeoutMS,
 		Limits: workerprotocol.Limits{

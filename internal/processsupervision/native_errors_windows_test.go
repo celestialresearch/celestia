@@ -598,7 +598,7 @@ func testNativeLimits() Limits {
 		ErrorBytes:     8192,
 		MemoryBytes:    67_108_864,
 		Processes:      1,
-		StartupTimeout: 2 * time.Second,
+		StartupTimeout: 10 * time.Second,
 		Timeout:        500 * time.Millisecond,
 		CleanupTimeout: time.Second,
 	}

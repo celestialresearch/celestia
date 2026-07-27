@@ -55,7 +55,7 @@ func TestAdmit(t *testing.T) {
 	if accepted.Request.InputSHA256 != hex.EncodeToString(inputHash[:]) {
 		t.Fatalf("input hash = %q", accepted.Request.InputSHA256)
 	}
-	if accepted.Request.Deadline != "2026-07-25T10:00:02.000000123Z" {
+	if accepted.Request.Deadline != "2026-07-25T10:00:12.000000123Z" {
 		t.Fatalf("deadline = %q", accepted.Request.Deadline)
 	}
 	decoded, _, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt)

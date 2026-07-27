@@ -516,7 +516,9 @@ func correlation(t *testing.T, accepted urladmission.Accepted) workerprotocol.Co
 
 func admittedAt(accepted urladmission.Accepted) time.Time {
 	deadline, _ := time.Parse(time.RFC3339Nano, accepted.Request.Deadline)
-	return deadline.Add(-time.Duration(workerprotocol.TimeoutMS) * time.Millisecond)
+	return deadline.Add(
+		-time.Duration(workerprotocol.StartTimeoutMS) * time.Millisecond,
+	)
 }
 
 func workerRejectedFrame(t *testing.T, accepted urladmission.Accepted) []byte {
@@ -544,7 +546,7 @@ func testLimits() processsupervision.Limits {
 		ErrorBytes:     8192,
 		MemoryBytes:    workerprotocol.MemoryBytes,
 		Processes:      workerprotocol.Processes,
-		StartupTimeout: 2 * time.Second,
+		StartupTimeout: 10 * time.Second,
 		Timeout:        500 * time.Millisecond,
 		CleanupTimeout: time.Second,
 	}
