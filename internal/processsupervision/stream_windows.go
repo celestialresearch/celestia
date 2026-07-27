@@ -84,8 +84,8 @@ func (reader *streamReader) read(
 ) {
 	value := reader.readResult(limit, overflowStatus, overflow)
 	value.cleanupErr = reader.cancel()
-	close(reader.done)
 	result <- value
+	close(reader.done)
 }
 
 func (reader *streamReader) readResult(

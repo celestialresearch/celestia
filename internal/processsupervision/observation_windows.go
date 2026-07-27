@@ -44,11 +44,7 @@ func (supervisor *Supervisor) observe(
 	stdinHandle := process.pipes.stdinWrite
 	process.pipes.stdinWrite = 0
 	inputWriter := newInputWriter(stdinHandle)
-	go func() {
-		result := inputWriter.write(frame)
-		input <- result
-		inputDone <- result
-	}()
+	go inputWriter.publish(frame, input, inputDone)
 	if remaining <= 0 {
 		remaining = time.Nanosecond
 	}
