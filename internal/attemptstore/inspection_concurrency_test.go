@@ -15,6 +15,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -70,6 +71,40 @@ func TestInspectAllowsConcurrentReaders(t *testing.T) {
 		if err != nil {
 			t.Fatalf("concurrent inspect: %v", err)
 		}
+	}
+}
+
+func TestInspectLocksBeforeClassifyingPublication(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupAttempt(t, attempt)
+	})
+	if err := attempt.publishLocked(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish while retaining ownership: %v", err)
+	}
+	path, err := store.attemptPath(accepted.Request.AttemptID)
+	if err != nil {
+		t.Fatalf("attempt path: %v", err)
+	}
+	temporary := filepath.Join(
+		path,
+		"."+publicationFile+"."+strings.Repeat("a", 32),
+	)
+	if err := os.Link(filepath.Join(path, publicationFile), temporary); err != nil {
+		t.Fatalf("link in-flight publication: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(temporary); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("remove publication link: %v", err)
+		}
+	})
+	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrActive) {
+		t.Fatalf("in-flight publication returned %v", err)
 	}
 }
 
