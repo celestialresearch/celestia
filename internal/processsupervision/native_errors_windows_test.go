@@ -193,7 +193,7 @@ func TestSupervisorReportsWorkerHashOnLaunchFailure(t *testing.T) {
 
 func TestFailedLaunchPreservesCleanupState(t *testing.T) {
 	outcome := failedLaunchOutcome(time.Now(), false, errors.New("cleanup"))
-	if outcome.Status != CleanupFailed || outcome.CleanupComplete {
+	if outcome.Status != StartFailed || outcome.CleanupComplete {
 		t.Fatalf(
 			"status=%s cleanup=%t",
 			outcome.Status,

@@ -31,9 +31,6 @@ func failedLaunchOutcome(
 	if errors.Is(err, errParentContext) {
 		status = Cancelled
 	}
-	if !cleanupComplete {
-		status = CleanupFailed
-	}
 	outcome := failedOutcome(status, started, err)
 	outcome.CleanupComplete = cleanupComplete
 	return outcome

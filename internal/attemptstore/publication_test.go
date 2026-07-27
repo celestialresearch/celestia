@@ -600,6 +600,31 @@ func TestObservationAcceptsAndRejectsCleanupFailureTransitions(t *testing.T) {
 	}
 }
 
+func TestObservationPreservesPrimaryOutcomeDuringCleanupFailure(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	base := observationWithoutVerification(testObservationFor(t, accepted))
+	base.ProcessError = "primary and cleanup failure"
+	base.ProtocolStatus = "not_run"
+	base.CleanupComplete = false
+	tests := []struct {
+		process  string
+		terminal string
+	}{
+		{process: "timed_out", terminal: "timed_out"},
+		{process: "cancelled", terminal: "cancelled"},
+		{process: "exit_failed", terminal: "failed"},
+		{process: "completed", terminal: "failed"},
+	}
+	for _, test := range tests {
+		observation := base
+		observation.ProcessStatus = test.process
+		observation.TerminalStatus = test.terminal
+		if err := validateObservation(observation); err != nil {
+			t.Fatalf("%s with cleanup failure rejected: %v", test.process, err)
+		}
+	}
+}
+
 func TestObservationRejectsStartFailureStreams(t *testing.T) {
 	accepted, _ := testAccepted(t)
 	observation := observationWithoutVerification(testObservationFor(t, accepted))

@@ -316,6 +316,7 @@ func (resources *launchResources) start(
 		cleanupErr := resources.stopStart(info, true)
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
+	resumedAt := time.Now()
 	if _, err := windows.ResumeThread(info.Thread); err != nil {
 		stopErr := resources.stopStart(info, true)
 		return nil, stopErr == nil, errors.Join(
@@ -323,7 +324,6 @@ func (resources *launchResources) start(
 			stopErr,
 		)
 	}
-	resumedAt := time.Now()
 	return &launchedProcess{
 		info:      info,
 		job:       resources.job,

@@ -253,7 +253,6 @@ func validObservationTransition(record Observation) bool {
 func validCancelledObservation(record Observation) bool {
 	return record.ProcessStatus == "cancelled" &&
 		record.ProcessError != "" &&
-		record.CleanupComplete &&
 		record.ProtocolStatus == "not_run" &&
 		noVerification(record)
 }
@@ -263,7 +262,6 @@ func validTimedOutObservation(record Observation) bool {
 		record.ProcessStatus == "cancelled" ||
 		record.ProcessStatus == "start_failed") &&
 		record.ProcessError != "" &&
-		record.CleanupComplete &&
 		record.ProtocolStatus == "not_run" &&
 		noVerification(record) &&
 		(record.ProcessStatus != "start_failed" ||
@@ -298,6 +296,9 @@ func validFailedObservation(record Observation) bool {
 	if !noVerification(record) {
 		return false
 	}
+	if !record.CleanupComplete {
+		return validCleanupImpairedFailure(record)
+	}
 	switch record.ProcessStatus {
 	case "completed":
 		return validCompletedFailure(record)
@@ -309,6 +310,20 @@ func validFailedObservation(record Observation) bool {
 		return validExitFailure(record)
 	case "output_overflow", "error_overflow":
 		return validProcessFailure(record)
+	default:
+		return false
+	}
+}
+
+func validCleanupImpairedFailure(record Observation) bool {
+	if record.ProcessError == "" || record.ProtocolStatus != "not_run" {
+		return false
+	}
+	switch record.ProcessStatus {
+	case "completed", "exit_failed", "output_overflow", "error_overflow", "cleanup_failed":
+		return true
+	case "start_failed":
+		return record.ExitCode == 0 && noProcessStreams(record)
 	default:
 		return false
 	}

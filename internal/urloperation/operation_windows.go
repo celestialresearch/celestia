@@ -126,7 +126,7 @@ func (operation *Operation) executeAccepted(
 		}, processsupervision.Outcome{}
 	}
 	process := operation.supervisor.RunBefore(ctx, accepted.Frame, startDeadline)
-	if process.Status != processsupervision.Completed {
+	if process.Status != processsupervision.Completed || !process.CleanupComplete {
 		return Result{
 			Status:  terminalStatus(process),
 			Process: callerProcess(process),

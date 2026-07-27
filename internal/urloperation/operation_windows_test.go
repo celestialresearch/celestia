@@ -338,6 +338,29 @@ func TestOperationPublishesCallerDeadline(t *testing.T) {
 	}
 }
 
+func TestTerminalStatusPreservesPrimaryOutcomeDuringCleanupFailure(t *testing.T) {
+	tests := []struct {
+		status processsupervision.Status
+		err    error
+		want   Status
+	}{
+		{status: processsupervision.TimedOut, err: context.DeadlineExceeded, want: TimedOut},
+		{status: processsupervision.Cancelled, err: context.Canceled, want: Cancelled},
+		{status: processsupervision.ExitFailed, err: errors.New("process failed"), want: Failed},
+		{status: processsupervision.Completed, err: errors.New("cleanup failed"), want: Failed},
+	}
+	for _, test := range tests {
+		process := processsupervision.Outcome{
+			Status:          test.status,
+			CleanupComplete: false,
+			Err:             test.err,
+		}
+		if got := terminalStatus(process); got != test.want {
+			t.Fatalf("status=%s terminal=%s want=%s", test.status, got, test.want)
+		}
+	}
+}
+
 func TestOperationRejectsInvalidContext(t *testing.T) {
 	if _, err := admittedStartDeadline(
 		nilContext(),

@@ -65,21 +65,7 @@ func (supervisor *Supervisor) observe(
 	executionDuration := time.Since(process.started)
 	cleanupDeadline := time.Now().Add(supervisor.limits.CleanupTimeout)
 	joinDeadline := cleanupDeadline.Add(100 * time.Millisecond)
-	if status != Completed {
-		if err := windows.TerminateJobObject(process.job, 1); err != nil {
-			status = CleanupFailed
-			cause = errors.Join(cause, fmt.Errorf("terminate job: %w", err))
-		}
-	}
-	cleanupComplete, waitErr := waitCleanup(
-		process.info.Process,
-		process.job,
-		cleanupRemaining(cleanupDeadline),
-	)
-	if !cleanupComplete {
-		status = CleanupFailed
-		cause = errors.Join(cause, waitErr)
-	}
+	cleanupComplete, cause := cleanupProcess(process, status, cause, cleanupDeadline)
 	inputResult := awaitInput(inputWriter, inputDone, cleanupDeadline, joinDeadline)
 	status, cause, cleanupComplete = applyInputResult(
 		status,
@@ -90,12 +76,61 @@ func (supervisor *Supervisor) observe(
 	out := awaitStream(stdoutReader, stdout, cleanupDeadline, joinDeadline)
 	diagnostics := awaitStream(stderrReader, stderr, cleanupDeadline, joinDeadline)
 	outcome := finishOutcome(process, status, cause, cleanupComplete, executionDuration, out, diagnostics)
-	if err := process.close(); err != nil {
-		outcome.Status = CleanupFailed
+	closeComplete, closeErr := finaliseCleanup(cleanupDeadline, process.close)
+	if !closeComplete {
 		outcome.CleanupComplete = false
-		outcome.Err = errors.Join(outcome.Err, err)
+		outcome.Err = errors.Join(outcome.Err, closeErr)
 	}
 	return outcome
+}
+
+func cleanupProcess(
+	process *launchedProcess,
+	status Status,
+	cause error,
+	deadline time.Time,
+) (bool, error) {
+	cleanupComplete := true
+	treeEmpty, treeErr := jobEmpty(process.job)
+	if treeErr != nil {
+		cleanupComplete = false
+		cause = errors.Join(cause, treeErr)
+	}
+	if status != Completed || !treeEmpty {
+		var terminateComplete bool
+		cause, terminateComplete = terminateForCleanup(cause, func() error {
+			return windows.TerminateJobObject(process.job, 1)
+		})
+		if !terminateComplete {
+			cleanupComplete = false
+		}
+	}
+	waitComplete, waitErr := waitCleanup(
+		process.info.Process,
+		process.job,
+		cleanupRemaining(deadline),
+	)
+	if !waitComplete {
+		cleanupComplete = false
+		cause = errors.Join(cause, waitErr)
+	}
+	return cleanupComplete, cause
+}
+
+func terminateForCleanup(cause error, terminate func() error) (error, bool) {
+	if err := terminate(); err != nil {
+		return errors.Join(cause, fmt.Errorf("terminate job: %w", err)), false
+	}
+	return cause, true
+}
+
+func finaliseCleanup(deadline time.Time, closeResources func() error) (bool, error) {
+	overdue := !time.Now().Before(deadline)
+	err := closeResources()
+	if overdue || !time.Now().Before(deadline) {
+		err = errors.Join(err, errors.New("final cleanup deadline exceeded"))
+	}
+	return err == nil, err
 }
 
 func cleanupRemaining(deadline time.Time) time.Duration {
@@ -234,7 +269,6 @@ func applyStreamResult(
 	overflowStatus Status,
 ) (Status, error, bool) {
 	if result.cleanupErr != nil {
-		status = CleanupFailed
 		cause = errors.Join(
 			cause,
 			fmt.Errorf("clean up worker %s: %w", name, result.cleanupErr),
@@ -263,7 +297,7 @@ func applyInputResult(
 	result inputResult,
 ) (Status, error, bool) {
 	if result.cleanupErr != nil {
-		return CleanupFailed,
+		return status,
 			errors.Join(cause, result.err, result.cleanupErr),
 			false
 	}

@@ -51,6 +51,7 @@ fn run_fixture() {
         "stderr_overflow" => write_repeated(io::stderr(), b'x', 131_072),
         "hang" => hang(),
         "descendant" => spawn_descendant(),
+        "descendant_exit" => spawn_descendant_and_exit(),
         "grandchild" => spawn_child(),
         "network" => report(connect(value)),
         "file" => report(fs::read(value).is_ok()),
@@ -143,6 +144,26 @@ fn spawn_descendant() {
             print!("{}", child.id());
             io::stdout().flush().expect("flush descendant identity");
             hang();
+        }
+        Err(_) => print!("blocked"),
+    }
+}
+
+#[allow(
+    clippy::zombie_processes,
+    reason = "hostile fixture leaves the child for supervisor qualification"
+)]
+fn spawn_descendant_and_exit() {
+    let child = Command::new(env::current_exe().expect("fixture path"))
+        .arg("grandchild")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn();
+    match child {
+        Ok(child) => {
+            print!("{}", child.id());
+            io::stdout().flush().expect("flush descendant identity");
         }
         Err(_) => print!("blocked"),
     }
