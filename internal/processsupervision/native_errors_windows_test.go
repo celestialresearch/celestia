@@ -245,7 +245,7 @@ func TestNativeHelpersRejectInvalidState(t *testing.T) {
 		}
 	})
 	t.Run("write handle", func(t *testing.T) {
-		result := writeFrame(windows.InvalidHandle, []byte("frame"))
+		result := newInputWriter(windows.InvalidHandle).write([]byte("frame"))
 		if result.err == nil {
 			t.Fatal("invalid write handle was accepted")
 		}
