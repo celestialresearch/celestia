@@ -168,7 +168,7 @@ release_exe_suffix() {
   esac
 }
 
-check_release_artefacts() (
+check_release_outputs() (
   local inventory
 
   cargo_bin=${CARGO_BIN:-cargo}
@@ -201,7 +201,7 @@ check_release_artefacts() (
   fi
   inventory=$target_dir/release-inventory
   if ! find "$release_dir" -mindepth 1 -print0 >"$inventory"; then
-    printf 'Failed to inventory release artefacts\n' >&2
+    printf 'Failed to inventory release build outputs\n' >&2
     return 1
   fi
   seen=false
@@ -216,7 +216,7 @@ check_release_artefacts() (
       return 1
     fi
     if [[ ! -f "$path" ]]; then
-      printf 'Unexpected release artefact: %s\n' "$file"
+      printf 'Unexpected release build output: %s\n' "$file"
       return 1
     fi
     if [[ "$file" == "$expected" ]]; then
@@ -244,7 +244,7 @@ check_release_artefacts() (
     if [[ -x "$path" || "$file" == *.exe ]]; then
       printf 'Unexpected release executable: %s\n' "$file"
     else
-      printf 'Unexpected release artefact: %s\n' "$file"
+      printf 'Unexpected release build output: %s\n' "$file"
     fi
     return 1
   done <"$inventory"
@@ -264,7 +264,7 @@ tools)
   check_tools
   ;;
 artefacts)
-  check_release_artefacts
+  check_release_outputs
   ;;
 *)
   printf 'Usage: rustcheck.sh artefacts|config|tools\n' >&2

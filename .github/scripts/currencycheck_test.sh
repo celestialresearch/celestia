@@ -32,6 +32,9 @@ celestia_test_rustup() {
 
 celestia_test_cargo() {
   component=${2:-}
+  if [[ -n "${CARGO_TEST_LOG:-}" ]]; then
+    printf '%s\n' "$component" >>"$CARGO_TEST_LOG"
+  fi
   version=$(awk -F'|' -v component="$component" '$1 == component { print $2; exit }' \
     "$CARGO_TEST_VERSIONS")
   [ -n "$version" ] || return 1
@@ -231,21 +234,43 @@ cat >"$manifest_dir/Cargo.toml" <<'EOF'
 multiline-probe = {
   version = "=1.0.0"
 }
+
+[dev-dependencies]
+dev-probe = "=1.0.0"
+
+[build-dependencies]
+build-probe = "=1.0.0"
+
+[target.'cfg(windows)'.dependencies]
+target-probe = "=1.0.0"
 EOF
 printf '%s\n' '[package]' >"$manifest_dir/worker/qualification-fixtures/Cargo.toml"
 printf '%s\n' '[toolchain]' 'channel = "1.0.0"' \
   >"$manifest_dir/rust-toolchain.toml"
 printf '%s\n' 'name: Probe' >"$manifest_dir/.github/workflows/main.yml"
 : >"$manifest_dir/.github/.currency"
-printf '%s\n' 'multiline-probe|1.0.0' >"$manifest_dir/crate-versions"
+printf '%s\n' \
+  'multiline-probe|1.0.0' \
+  'dev-probe|1.0.0' \
+  'build-probe|1.0.0' \
+  'target-probe|1.0.0' \
+  >"$manifest_dir/crate-versions"
+: >"$manifest_dir/cargo-log"
 (
   cd "$manifest_dir"
   RUSTUP_BIN=celestia_test_rustup \
     RUSTUP_TEST_OUTPUT='stable-probe - up to date : 1.0.0' \
     CARGO_BIN=celestia_test_cargo \
+    CARGO_TEST_LOG="$manifest_dir/cargo-log" \
     CARGO_TEST_VERSIONS="$manifest_dir/crate-versions" \
     bash .github/scripts/currencycheck.sh currency
 )
+for component in multiline-probe dev-probe build-probe target-probe; do
+  grep -Fxq "$component" "$manifest_dir/cargo-log" || {
+    printf 'currency check omitted %s dependency\n' "$component" >&2
+    exit 1
+  }
+done
 
 mkdir -p "$manifest_dir/failing-bin"
 cat >"$manifest_dir/failing-bin/sort" <<'EOF'

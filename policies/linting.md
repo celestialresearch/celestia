@@ -56,7 +56,8 @@ Before enabling a linter:
 7. Run the complete repository gate and inspect every new finding.
 8. Correct valid findings before enabling the gate.
 9. Document any unavoidable suppression under the suppression contract.
-10. Update `.golangci.yml`, `AGENTS.md` and this policy in one coherent change.
+10. Review `.golangci.yml`, `AGENTS.md` and this policy together; update each
+    file whose enforced or documented contract changes.
 
 Do not enable a linter and globally exclude its initial findings. Existing
 findings must be corrected or individually justified.
