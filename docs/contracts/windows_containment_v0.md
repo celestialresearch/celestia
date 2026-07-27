@@ -13,8 +13,10 @@ Status: implemented and locally qualified for the probes below on Windows.
 - Only standard input, standard output and standard error handles are inherited.
 - The environment contains only `SystemRoot`, `WINDIR`, `LOCALAPPDATA`, `TEMP`
   and `TMP`.
-- Standard input, standard output, standard error, wall time and cleanup time
-  are bounded.
+- Standard input, standard output, standard error and wall time are bounded.
+  Process-tree observation has a cleanup deadline. Pipe joins use one bounded
+  grace; synchronous native cleanup is not pre-emptible and any overrun fails
+  cleanup.
 - Profile creation, image staging and process setup are checked against the
   earlier of the admitted start deadline and the startup budget between
   synchronous Windows operations and immediately before resume. These checks

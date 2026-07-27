@@ -45,14 +45,16 @@ durable terminal outcome.
 - Current writers create a permanent ownership-era marker before staging.
   A missing current lock is corruption rather than evidence of a legacy bundle.
   A lock without that marker requires explicit migration resumption.
+- A staging failure before `admitted.json` is durable burns the identity but
+  does not expose it as an inspectable or recoverable attempt.
 - Recovery uses a non-blocking acquisition and refuses an active attempt.
   Process death releases the lock without a timestamp or stale-age guess.
 - Lock files are never replaced or removed, preventing ownership from splitting
   across different filesystem objects.
 - Pending and published directory creation refuses duplicate identities.
 - Every record is flushed then published to its final name without replacement.
-  Windows uses a write-through move; Unix-like systems link then sync the
-  containing directory.
+  Windows uses a write-through move. Unix-like systems link, sync, unlink the
+  temporary name then sync again.
 - Under exclusive recovery ownership, Windows and Unix-like systems remove only
   recognised writer temporary names left by an interrupted record publication.
   Unix linked targets must identify the same owner-only regular file before
@@ -60,7 +62,8 @@ durable terminal outcome.
 - A receipt is published only after both referenced records are readable and
   hashed.
 - The complete bundle is moved into the published namespace before
-  `publication.json` is created.
+  `publication.json` is created. Unix-like systems sync the target parent before
+  the source parent after this cross-directory move.
 - Inspection accepts only fixed record names, regular files, matching attempt
   identities, matching schema versions, matching terminal states and matching
   hashes. It replays protocol validation and deterministic URL verification
