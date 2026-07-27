@@ -291,7 +291,7 @@ func TestRecoveryRejectsInvalidReceiptState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	receiptPath := filepath.Join(store.pendingPath(accepted.Request.AttemptID), bundleDirectory, receiptFile)
 	if err := os.Mkdir(receiptPath, 0o700); err != nil {
 		t.Fatalf("create receipt directory: %v", err)
@@ -308,7 +308,7 @@ func TestStoreReportsWriteFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	if err := os.Rename(attempt.path, attempt.path+".moved"); err != nil {
 		t.Fatalf("move attempt: %v", err)
 	}
@@ -363,7 +363,7 @@ func TestStoreRejectsIncompleteAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	if _, err := store.Inspect(accepted.Request.AttemptID); err == nil {
 		t.Fatal("pending attempt inspected as terminal")
 	}
@@ -588,6 +588,15 @@ func newTestStore(t *testing.T) *Store {
 		t.Fatalf("new store: %v", err)
 	}
 	return store
+}
+
+func cleanupAttempt(t *testing.T, attempt *Attempt) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := attempt.Close(); err != nil {
+			t.Errorf("close attempt: %v", err)
+		}
+	})
 }
 
 func newTestEvidenceRoot(t *testing.T) string {

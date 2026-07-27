@@ -436,8 +436,11 @@ func assertDescendantCleaned(t *testing.T, mode string, processes uint32) {
 		t.Fatalf("parse descendant identity %q: %v", outcome.Stdout, err)
 	}
 	handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
-	if err != nil {
+	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 		return
+	}
+	if err != nil {
+		t.Fatalf("open descendant %d: %v", pid, err)
 	}
 	defer func() {
 		if err := windows.CloseHandle(handle); err != nil {

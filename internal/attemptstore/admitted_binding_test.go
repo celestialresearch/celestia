@@ -100,7 +100,7 @@ func TestPublishRejectsUnverifiableProtocolEvidence(t *testing.T) {
 			if err != nil {
 				t.Fatalf("stage: %v", err)
 			}
-			t.Cleanup(func() { _ = attempt.Close() })
+			cleanupAttempt(t, attempt)
 			observation := testObservationFor(t, accepted)
 			mutate(&observation)
 			if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {

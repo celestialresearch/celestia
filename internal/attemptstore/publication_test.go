@@ -29,7 +29,7 @@ func TestPublishCreatesMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestInspectRejectsUnexpectedRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestInspectRequiresCurrentOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestPublishedIdentityCannotRestage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestInspectRequiresPublicationMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	observation := testObservationFor(t, accepted)
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
@@ -149,7 +149,7 @@ func TestPublicationRequiresFinalReadBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	observation := testObservationFor(t, accepted)
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
@@ -182,7 +182,7 @@ func TestPublicationRejectsUnexpectedRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	observation := testObservationFor(t, accepted)
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		t.Fatalf("write observation: %v", err)
