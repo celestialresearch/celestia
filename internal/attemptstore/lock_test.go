@@ -44,9 +44,9 @@ func TestRecoverRejectsActiveAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	defer func() {
-		_ = attempt.Close()
-	}()
+	t.Cleanup(func() {
+		cleanupAttempt(t, attempt)
+	})
 	if err := store.Recover(accepted.Request.AttemptID, "active"); !errors.Is(err, ErrActive) {
 		t.Fatalf("active attempt recovered: %v", err)
 	}
@@ -66,9 +66,9 @@ func TestStageCreatesOwnershipMarker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	defer func() {
-		_ = attempt.Close()
-	}()
+	t.Cleanup(func() {
+		cleanupAttempt(t, attempt)
+	})
 	present, err := store.hasOwnershipMarker(accepted.Request.AttemptID)
 	if err != nil || !present {
 		t.Fatalf("ownership marker: present=%t error=%v", present, err)
@@ -175,9 +175,9 @@ func TestAttemptLockCrossProcess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	defer func() {
-		_ = attempt.Close()
-	}()
+	t.Cleanup(func() {
+		cleanupAttempt(t, attempt)
+	})
 	command := lockHelperCommand(t.Context(), "recover", store.root)
 	output, err := command.CombinedOutput()
 	if err != nil {

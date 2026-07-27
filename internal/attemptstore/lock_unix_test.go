@@ -95,9 +95,9 @@ func TestRecoverRejectsReplacedLockDirectory(t *testing.T) {
 			if err != nil {
 				t.Fatalf("stage: %v", err)
 			}
-			defer func() {
-				_ = attempt.Close()
-			}()
+			t.Cleanup(func() {
+				cleanupAttempt(t, attempt)
+			})
 			lockDirectory := filepath.Join(store.root, locksDirectory)
 			if err := os.Rename(lockDirectory, lockDirectory+".original"); err != nil {
 				t.Fatalf("move lock directory: %v", err)
