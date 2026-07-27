@@ -143,9 +143,30 @@ latest_crate() {
 }
 
 manifest_dependencies() {
+  local manifest
+  local manifests=()
+
+  while IFS= read -r -d '' manifest; do
+    manifests+=("$manifest")
+  done < <(
+    find "$root" \
+      \( -name .git -o -name .cache -o -name target \) -prune -o \
+      -type f -name Cargo.toml -print0
+  )
+  ((${#manifests[@]} > 0)) || {
+    printf 'No Cargo manifests found\n' >&2
+    return 1
+  }
   awk '
     FNR == 1 { active = 0; pending = "" }
-    /^\[(workspace\.)?dependencies\]$/ { active = 1; next }
+    /^\[(workspace\.)?((dev|build)-)?dependencies\]$/ {
+      active = 1
+      next
+    }
+    /^\[target\..*\.(dependencies|dev-dependencies|build-dependencies)\]$/ {
+      active = 1
+      next
+    }
     active && /^\[/ { active = 0 }
     active && pending == "" &&
       /^[[:space:]]*[a-zA-Z0-9_-]+[[:space:]]*=/ {
@@ -173,9 +194,7 @@ manifest_dependencies() {
         pending = ""
       }
     }
-  ' \
-    "$root/Cargo.toml" \
-    "$root/worker/qualification-fixtures/Cargo.toml" |
+  ' "${manifests[@]}" |
     sort -u
 }
 

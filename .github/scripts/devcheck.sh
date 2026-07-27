@@ -335,7 +335,7 @@ if [[ -f Cargo.toml ]]; then
   run_check 'Qualification Fixture Docs' fixture_docs
   run_check 'Rust Docs' rust_docs
   run_check 'Rust Coverage' rust_coverage
-  run_check 'Rust Release' bash ./.github/scripts/rustcheck.sh artefacts
+  run_check 'Rust Build Outputs' bash ./.github/scripts/rustcheck.sh artefacts
   if [[ "${DEVCHECK_SUPPLY_CHAIN:-true}" == true ]]; then
     run_check 'Rust Advisories' cargo audit --deny warnings
     run_check 'Rust Dependencies' cargo deny check

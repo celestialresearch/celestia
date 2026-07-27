@@ -609,7 +609,7 @@ EOF
     printf 'Rust artefact check accepted an unexpected regular file\n' >&2
     return 1
   }
-  grep -Fq 'Unexpected release artefact: unexpected.metadata' \
+  grep -Fq 'Unexpected release build output: unexpected.metadata' \
     <<<"$output" || {
     printf 'Rust artefact check omitted the unexpected regular file:\n%s\n' \
       "$output" >&2
@@ -987,7 +987,7 @@ EOF
     printf 'Rust release check ignored a failed artefact inventory\n' >&2
     return 1
   }
-  grep -Fq 'Failed to inventory release artefacts' <<<"$output" || {
+  grep -Fq 'Failed to inventory release build outputs' <<<"$output" || {
     printf 'Rust release output omitted the inventory failure:\n%s\n' \
       "$output" >&2
     return 1
