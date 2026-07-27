@@ -29,6 +29,7 @@ import (
 type Operation struct {
 	supervisor *processsupervision.Supervisor
 	store      *attemptstore.Store
+	admit      func(string, urlreference.Mode, time.Time) (urladmission.Accepted, error)
 }
 
 const (
@@ -49,7 +50,11 @@ func New(
 	if err != nil {
 		return nil, fmt.Errorf("configure URL operation evidence: %w", err)
 	}
-	return &Operation{supervisor: supervisor, store: store}, nil
+	return &Operation{
+		supervisor: supervisor,
+		store:      store,
+		admit:      urladmission.Admit,
+	}, nil
 }
 
 func (operation *Operation) Execute(
@@ -67,16 +72,18 @@ func (operation *Operation) Execute(
 		}
 	}
 	admittedAt := time.Now().UTC()
-	accepted, err := urladmission.Admit(input, mode, admittedAt)
+	accepted, err := operation.admit(input, mode, admittedAt)
 	if err != nil {
-		return Result{Status: Rejected, Err: err}
+		if errors.Is(err, urladmission.ErrRejected) {
+			return Result{Status: Rejected, Err: err}
+		}
+		return Result{Status: Failed, Err: errors.Join(ErrAdmission, err)}
 	}
 	attempt, err := operation.store.Stage(accepted, admittedAt)
 	if err != nil {
 		return Result{
-			Status:    Indeterminate,
-			AttemptID: accepted.Request.AttemptID,
-			Err:       errors.Join(ErrPersistence, err),
+			Status: Indeterminate,
+			Err:    errors.Join(ErrPersistence, err),
 		}
 	}
 	result, process := operation.executeAccepted(ctx, accepted, admittedAt)
@@ -154,7 +161,7 @@ func evaluateResponse(
 	process processsupervision.Outcome,
 	response workerprotocol.Response,
 ) Result {
-	diagnostics := projectDiagnostics(response.Diagnostics)
+	diagnostics := projectDiagnostics(response.Status, response.Diagnostics)
 	response.Diagnostics = nil
 	if response.Status != workerprotocol.Completed {
 		return Result{
@@ -206,13 +213,16 @@ func callerProcess(process processsupervision.Outcome) processsupervision.Outcom
 	return process
 }
 
-func projectDiagnostics(values []workerprotocol.Diagnostic) []Diagnostic {
-	if len(values) == 0 {
+func projectDiagnostics(
+	status workerprotocol.Status,
+	values []workerprotocol.Diagnostic,
+) []Diagnostic {
+	if status == workerprotocol.Completed || len(values) == 0 {
 		return nil
 	}
 	diagnostics := make([]Diagnostic, len(values))
 	for index, value := range values {
-		code := diagnosticCode(value.Code)
+		code := diagnosticCode(status, value.Code)
 		diagnostics[index] = Diagnostic{
 			Code:    code,
 			Message: diagnosticMessage(code),
@@ -221,8 +231,8 @@ func projectDiagnostics(values []workerprotocol.Diagnostic) []Diagnostic {
 	return diagnostics
 }
 
-func diagnosticCode(code string) string {
-	if code == "invalid_reference" {
+func diagnosticCode(status workerprotocol.Status, code string) string {
+	if status == workerprotocol.Rejected && code == "invalid_reference" {
 		return code
 	}
 	return "worker_failure"

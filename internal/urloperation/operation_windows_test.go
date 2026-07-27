@@ -155,7 +155,33 @@ func TestOperationReportsStagingFailure(t *testing.T) {
 		"https://example.test",
 		urlreference.Defang,
 	)
-	if result.Status != Indeterminate {
+	if result.Status != Indeterminate || result.AttemptID != "" {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestOperationDoesNotRejectAdmissionFailure(t *testing.T) {
+	operation, err := New(testWorker(t), testEvidenceRoot(t))
+	if err != nil {
+		t.Fatalf("new operation: %v", err)
+	}
+	admissionErr := errors.New("entropy unavailable")
+	operation.admit = func(
+		string,
+		urlreference.Mode,
+		time.Time,
+	) (urladmission.Accepted, error) {
+		return urladmission.Accepted{}, admissionErr
+	}
+	result := operation.Execute(
+		context.Background(),
+		"https://example.test",
+		urlreference.Defang,
+	)
+	if result.Status != Failed ||
+		!errors.Is(result.Err, ErrAdmission) ||
+		!errors.Is(result.Err, admissionErr) ||
+		result.AttemptID != "" {
 		t.Fatalf("result=%+v", result)
 	}
 }
@@ -473,31 +499,50 @@ func assertProjectedDiagnostics(t *testing.T, result Result) {
 func TestProjectDiagnostics(t *testing.T) {
 	tests := []struct {
 		name    string
+		status  workerprotocol.Status
 		worker  string
 		code    string
 		message string
+		count   int
 	}{
 		{
 			name:    "known rejection",
+			status:  workerprotocol.Rejected,
 			worker:  "invalid_reference",
 			code:    "invalid_reference",
 			message: "The worker rejected the URL reference",
+			count:   1,
 		},
 		{
 			name:    "unknown failure",
+			status:  workerprotocol.Failed,
 			worker:  "worker_selected_code",
 			code:    "worker_failure",
 			message: "The worker reported a failure",
+			count:   1,
+		},
+		{
+			name:   "completed",
+			status: workerprotocol.Completed,
+			worker: "invalid_reference",
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			diagnostics := projectDiagnostics([]workerprotocol.Diagnostic{{
-				Code:    test.worker,
-				Message: "worker-controlled message",
-			}})
-			if len(diagnostics) != 1 ||
-				diagnostics[0].Code != test.code ||
+			diagnostics := projectDiagnostics(
+				test.status,
+				[]workerprotocol.Diagnostic{{
+					Code:    test.worker,
+					Message: "worker-controlled message",
+				}},
+			)
+			if len(diagnostics) != test.count {
+				t.Fatalf("diagnostics=%+v", diagnostics)
+			}
+			if test.count == 0 {
+				return
+			}
+			if diagnostics[0].Code != test.code ||
 				diagnostics[0].Message != test.message {
 				t.Fatalf("diagnostics=%+v", diagnostics)
 			}

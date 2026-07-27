@@ -25,6 +25,7 @@ const (
 )
 
 var (
+	ErrAdmission    = errors.New("URL-reference admission failed")
 	ErrProcess      = errors.New("worker process failed")
 	ErrProtocol     = errors.New("worker protocol failed")
 	ErrVerification = errors.New("worker output failed verification")
