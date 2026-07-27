@@ -191,13 +191,14 @@ func decodeObservationEvidence(
 	if err != nil {
 		return workerprotocol.Request{}, workerprotocol.Response{}, err
 	}
-	request, correlation, err := workerprotocol.DecodeRequest(admitted.RequestFrame, admittedAt)
+	retained, err := decodeRequestV0(admitted.RequestFrame, admittedAt)
 	if err != nil {
 		return workerprotocol.Request{}, workerprotocol.Response{}, err
 	}
-	response, err := workerprotocol.DecodeResponse(
+	request := retained.workerRequest()
+	response, err := workerprotocol.DecodeResponseForRequestCorrelation(
 		observation.Stdout,
-		correlation,
+		request,
 		int(observation.ExitCode),
 	)
 	return request, response, err

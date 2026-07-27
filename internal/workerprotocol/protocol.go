@@ -138,6 +138,20 @@ func DecodeResponse(data []byte, correlation Correlation, exitCode int) (Respons
 	return response, nil
 }
 
+func DecodeResponseForRequestCorrelation(
+	data []byte,
+	request Request,
+	exitCode int,
+) (Response, error) {
+	if !validIdentity(request.AttemptID) ||
+		!validIdentity(request.RequestNonce) ||
+		request.AttemptID == request.RequestNonce ||
+		request.InputMediaType != MediaType {
+		return Response{}, protocolError("request correlation")
+	}
+	return DecodeResponse(data, correlationFor(request), exitCode)
+}
+
 func EncodeRequest(request Request, admittedAt time.Time) ([]byte, Correlation, error) {
 	correlation, err := ValidateRequest(request, admittedAt)
 	if err != nil {
@@ -200,11 +214,15 @@ func ValidateRequest(request Request, admittedAt time.Time) (Correlation, error)
 	}) {
 		return Correlation{}, protocolError("request limits")
 	}
+	return correlationFor(request), nil
+}
+
+func correlationFor(request Request) Correlation {
 	return Correlation{
 		attemptID: request.AttemptID,
 		nonce:     request.RequestNonce,
 		mediaType: request.InputMediaType,
-	}, nil
+	}
 }
 
 func validateRequestConstants(request Request) error {

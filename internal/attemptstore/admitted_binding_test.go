@@ -129,6 +129,41 @@ func TestInspectRejectsProtocolEvidenceCorruption(t *testing.T) {
 	}
 }
 
+func TestInspectAcceptsLegacyRequestDeadline(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	path := store.finalPath(accepted.Request.AttemptID)
+	request := accepted.Request
+	request.Deadline = admittedAt.Add(
+		requestV0LegacyStartMS * time.Millisecond,
+	).Format(time.RFC3339Nano)
+	var admitted Admitted
+	readJSONFile(t, filepath.Join(path, admittedFile), &admitted)
+	admitted.RequestFrame = rawFrame(t, request)
+	writeJSONFile(t, filepath.Join(path, admittedFile), admitted)
+	refreshPublicationHashes(t, path)
+
+	if err := validateAdmitted(admitted); err != nil {
+		t.Fatalf("legacy admitted record rejected: %v", err)
+	}
+	var observation Observation
+	readJSONFile(t, filepath.Join(path, observationFile), &observation)
+	if err := validateObservationEvidence(admitted, observation); err != nil {
+		t.Fatalf("legacy observation evidence rejected: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
+		t.Fatalf("legacy request deadline rejected: %v", err)
+	}
+}
+
 func TestInspectRejectsAdmittedBindingCorruption(t *testing.T) {
 	tests := admittedCorruptionTests()
 	for _, test := range tests {
