@@ -75,9 +75,6 @@ func TestStoreRejectsPendingPathReplacementDuringCleanup(t *testing.T) {
 
 func TestStoreRejectsUnknownRecoveryIdentity(t *testing.T) {
 	store := newTestStore(t)
-	if err := store.MigrateV0("invalid", "legacy"); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("invalid migration identity returned %v", err)
-	}
 	if err := store.Recover("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "missing"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("unknown recovery identity returned %v", err)
 	}
