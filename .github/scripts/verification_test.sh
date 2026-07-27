@@ -70,14 +70,24 @@ main() (
     return 1
   fi
   if grep -Eq "find .*'-name '\\*\\.go'.*\\|.*grep" \
-    "$root/.github/workflows/compatibility.yml"; then
-    printf 'compatibility check masks Go inventory failures\n' >&2
+    "$root"/.github/workflows/*.yml; then
+    printf 'workflow Go package detection masks inventory failures\n' >&2
     return 1
   fi
-  if grep -Eq 'find .*-quit' "$root/.github/workflows/compatibility.yml"; then
-    printf 'compatibility check uses non-portable find options\n' >&2
+  if grep -Eq 'find .*-quit' "$root"/.github/workflows/*.yml; then
+    printf 'workflow uses non-portable find options\n' >&2
     return 1
   fi
+  grep -Fq 'sudo pkgin -y install go' \
+    "$root/.github/workflows/compatibility.yml" || {
+    printf 'NetBSD Go bootstrap is missing\n' >&2
+    return 1
+  }
+  grep -Fq 'sudo pkg_add go' \
+    "$root/.github/workflows/compatibility.yml" || {
+    printf 'OpenBSD Go bootstrap is missing\n' >&2
+    return 1
+  }
   for variable in CELESTIA_SHELL_CACHE CELESTIA_SHELL_TARGET \
     CELESTIA_SHELL_TMP; do
     grep -Fq "\$start.Environment['$variable']" "$shellcheck_script" || {
@@ -524,7 +534,10 @@ EOF
     tar -xf - -C "$repo_dir"
   git -C "$repo_dir" init -q
   git -C "$repo_dir" config core.autocrlf false
-  git -C "$repo_dir" add -A
+  if ! git -C "$repo_dir" add -A 2>"$work_dir/git-add-error"; then
+    cat "$work_dir/git-add-error" >&2
+    return 1
+  fi
   rm -- "$repo_dir/rust-toolchain.toml"
   set +e
   output=$(

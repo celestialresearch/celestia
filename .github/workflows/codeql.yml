@@ -73,17 +73,17 @@ jobs:
         run: |
           case "$LANGUAGE" in
             actions)
-              if ! detected=$(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print -quit); then
+              if ! detected=$(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print); then
                 exit 1
               fi
               ;;
             go)
-              if ! detected=$(find . -type f -name '*.go' -print -quit); then
+              if ! detected=$(find . -type f -name '*.go' -print); then
                 exit 1
               fi
               ;;
             rust)
-              if ! detected=$(find . -type f -name '*.rs' -print -quit); then
+              if ! detected=$(find . -type f -name '*.rs' -print); then
                 exit 1
               fi
               ;;
