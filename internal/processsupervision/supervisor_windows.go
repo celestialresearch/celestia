@@ -93,7 +93,7 @@ func newSupervisor(workerPath string, limits Limits) (*Supervisor, error) {
 		return nil, fmt.Errorf("%w: worker path or limits", ErrInvalid)
 	}
 	cleanPath := filepath.Clean(workerPath)
-	worker, err := openLocked(cleanPath, windows.GENERIC_READ, windows.OPEN_EXISTING)
+	worker, err := openLocalImage(cleanPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w: open worker: %w", ErrInvalid, err)
 	}

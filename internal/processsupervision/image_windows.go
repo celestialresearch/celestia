@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/windows"
 )
@@ -43,7 +44,7 @@ func stageImage(
 	if err := os.MkdirAll(folder, 0o700); err != nil {
 		return nil, hash, "", true, fmt.Errorf("prepare AppContainer folder: %w", err)
 	}
-	sourceFile, err = openLocked(source, windows.GENERIC_READ, windows.OPEN_EXISTING)
+	sourceFile, err = openLocalImage(source)
 	if err != nil {
 		return nil, hash, "", true, fmt.Errorf("open worker: %w", err)
 	}
@@ -145,4 +146,75 @@ func openLocked(path string, access, disposition uint32) (*os.File, error) {
 		return nil, errors.Join(errors.New("create worker file"), windows.CloseHandle(handle))
 	}
 	return file, nil
+}
+
+func openLocalImage(path string) (*os.File, error) {
+	file, err := openLocked(path, windows.GENERIC_READ, windows.OPEN_EXISTING)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateLocalImage(file, path); err != nil {
+		return nil, errors.Join(err, file.Close())
+	}
+	return file, nil
+}
+
+func validateLocalImage(file *os.File, configuredPath string) error {
+	configuredType, err := workerDriveType(configuredPath)
+	if err != nil || configuredType == windows.DRIVE_REMOTE {
+		return errors.Join(errors.New("worker must use a local volume"), err)
+	}
+	finalPath, err := finalImagePath(windows.Handle(file.Fd()))
+	if err != nil {
+		return err
+	}
+	finalType, err := workerDriveType(strings.TrimPrefix(finalPath, `\\?\`))
+	if err != nil || !validLocalFinalPath(finalPath, finalType) {
+		return errors.Join(errors.New("worker resolved outside a local volume"), err)
+	}
+	return nil
+}
+
+func workerDriveType(path string) (uint32, error) {
+	volume := filepath.VolumeName(path)
+	if len(volume) != 2 || volume[1] != ':' {
+		return windows.DRIVE_UNKNOWN, errors.New("worker volume is not a drive letter")
+	}
+	root, err := windows.UTF16PtrFromString(volume + `\`)
+	if err != nil {
+		return windows.DRIVE_UNKNOWN, err
+	}
+	driveType := windows.GetDriveType(root)
+	if driveType == windows.DRIVE_UNKNOWN || driveType == windows.DRIVE_NO_ROOT_DIR {
+		return driveType, errors.New("worker volume is unavailable")
+	}
+	return driveType, nil
+}
+
+func finalImagePath(handle windows.Handle) (string, error) {
+	size := uint32(512)
+	for range 2 {
+		buffer := make([]uint16, size)
+		length, err := windows.GetFinalPathNameByHandle(handle, &buffer[0], size, 0)
+		if err != nil {
+			return "", err
+		}
+		if length < size {
+			return windows.UTF16ToString(buffer[:length]), nil
+		}
+		size = length
+	}
+	return "", errors.New("resolved worker path exceeds reported size")
+}
+
+func validLocalFinalPath(path string, driveType uint32) bool {
+	if driveType == windows.DRIVE_REMOTE {
+		return false
+	}
+	const prefix = `\\?\`
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	resolved := strings.TrimPrefix(path, prefix)
+	return validWorkerPath(resolved)
 }
