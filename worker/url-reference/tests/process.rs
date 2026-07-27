@@ -81,6 +81,47 @@ fn rejects_repeated_correlation() {
     assert!(output.stderr.is_empty());
 }
 
+#[test]
+fn rejects_invalid_request_frames() {
+    let valid = request("https://example.test/", "defang");
+    let mut truncated = valid.clone();
+    truncated.pop();
+
+    let mut unknown: Value = serde_json::from_slice(&valid).expect("request JSON");
+    unknown["unknown"] = Value::Bool(true);
+
+    let mut bad_hash: Value = serde_json::from_slice(&valid).expect("request JSON");
+    bad_hash["input_sha256"] = Value::String("0".repeat(64));
+
+    let mut bad_deadline: Value = serde_json::from_slice(&valid).expect("request JSON");
+    bad_deadline["deadline"] = Value::String("not-a-deadline".to_owned());
+
+    let mut bad_limit: Value = serde_json::from_slice(&valid).expect("request JSON");
+    bad_limit["limits"]["input_bytes"] = Value::from(4095);
+
+    let cases = [
+        Vec::new(),
+        vec![0xff],
+        vec![b'x'; 65_537],
+        truncated,
+        serde_json::to_vec(&unknown).expect("serialise unknown field"),
+        serde_json::to_vec(&bad_hash).expect("serialise bad hash"),
+        serde_json::to_vec(&bad_deadline).expect("serialise bad deadline"),
+        serde_json::to_vec(&bad_limit).expect("serialise bad limit"),
+    ];
+
+    for input in cases {
+        assert_failed_frame(input);
+    }
+}
+
+fn assert_failed_frame(input: Vec<u8>) {
+    let output = run_worker(input);
+    assert_eq!(output.status.code(), Some(3));
+    assert!(output.stdout.is_empty());
+    assert!(output.stderr.is_empty());
+}
+
 fn request(input: &str, mode: &str) -> Vec<u8> {
     serde_json::to_vec(&json!({
         "protocol_version": 0,
