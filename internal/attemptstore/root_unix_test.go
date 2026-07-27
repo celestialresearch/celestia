@@ -198,3 +198,24 @@ func TestRepairValidatesBeforeRemoval(t *testing.T) {
 		t.Fatalf("valid temporary record was removed: %v", err)
 	}
 }
+
+func TestRepairRejectsUnpairedLinkedTemporary(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir()
+	source := filepath.Join(path, "unrelated")
+	temporary := filepath.Join(path, "."+receiptFile+"."+strings.Repeat("e", 32))
+	if err := os.WriteFile(source, []byte("unrelated"), 0o600); err != nil {
+		t.Fatalf("write unrelated record: %v", err)
+	}
+	if err := os.Link(source, temporary); err != nil {
+		t.Skipf("hard links unavailable: %v", err)
+	}
+
+	if err := repairInterruptedRecords(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("repair error = %v, want ErrCorrupt", err)
+	}
+	if _, err := os.Lstat(temporary); err != nil {
+		t.Fatalf("corrupt temporary was removed: %v", err)
+	}
+}

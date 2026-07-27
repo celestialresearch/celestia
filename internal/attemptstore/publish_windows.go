@@ -281,3 +281,12 @@ func repairInterruptedRecords(path string) (err error) {
 	}
 	return confirmPublication(path)
 }
+
+func recordTemporary(candidate string) bool {
+	for _, record := range recordNames() {
+		if temporaryRecordName(record, candidate) {
+			return true
+		}
+	}
+	return false
+}

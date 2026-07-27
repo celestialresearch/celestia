@@ -12,6 +12,9 @@
 package attemptstore
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 )
@@ -56,12 +59,10 @@ func TestInspectAllowsConcurrentReaders(t *testing.T) {
 	var group sync.WaitGroup
 	errors := make(chan error, readers)
 	for range readers {
-		group.Add(1)
-		go func() {
-			defer group.Done()
+		group.Go(func() {
 			_, err := store.Inspect(accepted.Request.AttemptID)
 			errors <- err
-		}()
+		})
 	}
 	group.Wait()
 	close(errors)
@@ -69,5 +70,29 @@ func TestInspectAllowsConcurrentReaders(t *testing.T) {
 		if err != nil {
 			t.Fatalf("concurrent inspect: %v", err)
 		}
+	}
+}
+
+func TestInspectRejectsMissingCurrentLock(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	t.Cleanup(func() { _ = attempt.Close() })
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	lock := filepath.Join(
+		store.root,
+		locksDirectory,
+		accepted.Request.AttemptID+".lock",
+	)
+	if err := os.Remove(lock); err != nil {
+		t.Fatalf("remove lock: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("missing current lock returned %v", err)
 	}
 }

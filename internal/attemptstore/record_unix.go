@@ -16,17 +16,29 @@ package attemptstore
 import (
 	"errors"
 	"os"
-	"path/filepath"
 )
 
-func createRecordTemp(path, name string) (*os.File, error) {
+func createRecordTemp(path, name string) (file *os.File, err error) {
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := root.Close(); closeErr != nil {
+			if file != nil {
+				closeErr = errors.Join(closeErr, file.Close())
+				file = nil
+			}
+			err = errors.Join(err, closeErr)
+		}
+	}()
 	for range 8 {
 		temporaryName, err := recordTempName(name)
 		if err != nil {
 			return nil, err
 		}
-		file, err := os.OpenFile(
-			filepath.Join(path, temporaryName),
+		file, err = root.OpenFile(
+			temporaryName,
 			os.O_RDWR|os.O_CREATE|os.O_EXCL,
 			0o600,
 		)
