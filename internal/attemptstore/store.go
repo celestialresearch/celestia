@@ -476,6 +476,13 @@ func (store *Store) Inspect(attemptID string) (records Records, err error) {
 			attemptID,
 		)
 	}
+	published, err := publicationExists(path, attemptID)
+	if err != nil {
+		return Records{}, err
+	}
+	if published {
+		return store.inspectPublishedPath(path, attemptID)
+	}
 	owner, err := store.acquireAttemptLock(attemptID, false)
 	if err != nil {
 		return Records{}, err
@@ -486,6 +493,10 @@ func (store *Store) Inspect(attemptID string) (records Records, err error) {
 			err = errors.Join(err, releaseError(releaseErr))
 		}
 	}()
+	return store.inspectPublishedPath(path, attemptID)
+}
+
+func (store *Store) inspectPublishedPath(path, attemptID string) (Records, error) {
 	if err := confirmPublication(store.attemptsPath()); err != nil {
 		return Records{}, fmt.Errorf("confirm attempt publication: %w", err)
 	}

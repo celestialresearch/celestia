@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -74,7 +75,7 @@ func TestInspectRejectsUnexpectedRecord(t *testing.T) {
 	}
 }
 
-func TestInspectRefusesOwnedPublication(t *testing.T) {
+func TestInspectReadsOwnedPublication(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
 	attempt, err := store.Stage(accepted, admittedAt)
@@ -87,14 +88,46 @@ func TestInspectRefusesOwnedPublication(t *testing.T) {
 	); err != nil {
 		t.Fatalf("publish while retaining ownership: %v", err)
 	}
-	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrActive) {
-		t.Fatalf("active publication inspected: %v", err)
+	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
+		t.Fatalf("inspect immutable publication: %v", err)
 	}
 	if err := attempt.Close(); err != nil {
 		t.Fatalf("close attempt: %v", err)
 	}
 	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
 		t.Fatalf("inspect released publication: %v", err)
+	}
+}
+
+func TestInspectAllowsConcurrentReaders(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	t.Cleanup(func() { _ = attempt.Close() })
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	const readers = 8
+	var group sync.WaitGroup
+	errors := make(chan error, readers)
+	for range readers {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			_, err := store.Inspect(accepted.Request.AttemptID)
+			errors <- err
+		}()
+	}
+	group.Wait()
+	close(errors)
+	for err := range errors {
+		if err != nil {
+			t.Fatalf("concurrent inspect: %v", err)
+		}
 	}
 }
 
