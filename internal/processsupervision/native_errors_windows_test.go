@@ -92,6 +92,26 @@ func TestWorkerPathPolicy(t *testing.T) {
 	}
 }
 
+func TestResolvedWorkerPathPolicy(t *testing.T) {
+	tests := map[string]struct {
+		path      string
+		driveType uint32
+		want      bool
+	}{
+		"local":  {path: `\\?\C:\worker.exe`, driveType: windows.DRIVE_FIXED, want: true},
+		"mapped": {path: `\\?\Z:\worker.exe`, driveType: windows.DRIVE_REMOTE},
+		"UNC":    {path: `\\?\UNC\server\share\worker.exe`, driveType: windows.DRIVE_REMOTE},
+		"device": {path: `\Device\Mup\server\share\worker.exe`, driveType: windows.DRIVE_REMOTE},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if actual := validLocalFinalPath(test.path, test.driveType); actual != test.want {
+				t.Fatalf("validLocalFinalPath(%q) = %t, want %t", test.path, actual, test.want)
+			}
+		})
+	}
+}
+
 func TestContainerCloseReportsIdentity(t *testing.T) {
 	container := appContainer{name: "invalid\x00name"}
 	err := container.close()
