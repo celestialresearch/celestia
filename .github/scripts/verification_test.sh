@@ -74,6 +74,10 @@ main() (
     printf 'compatibility check masks Go inventory failures\n' >&2
     return 1
   fi
+  if grep -Eq 'find .*-quit' "$root/.github/workflows/compatibility.yml"; then
+    printf 'compatibility check uses non-portable find options\n' >&2
+    return 1
+  fi
   for variable in CELESTIA_SHELL_CACHE CELESTIA_SHELL_TARGET \
     CELESTIA_SHELL_TMP; do
     grep -Fq "\$start.Environment['$variable']" "$shellcheck_script" || {
@@ -84,6 +88,12 @@ main() (
   grep -Fq 'exec /usr/bin/bash ./.github/scripts/devcheck.sh' \
     "$shellcheck_script" || {
     printf 'Windows shell check does not own devcheck\n' >&2
+    return 1
+  }
+  # shellcheck disable=SC2016 # This probe matches literal PowerShell source.
+  [[ $(grep -Fc 'GIT_CONFIG_KEY_0=safe.directory' "$shellcheck_script") -eq 3 &&
+    $(grep -Fc 'GIT_CONFIG_VALUE_0="$PWD"' "$shellcheck_script") -eq 3 ]] || {
+    printf 'Windows shell check omits command-scoped Git ownership\n' >&2
     return 1
   }
   grep -Fq "\$start.RedirectStandardOutput = \$true" \
@@ -118,6 +128,7 @@ main() (
 
   mkdir -p "$work_dir/.github/scripts" "$work_dir/a" "$work_dir/b"
   cp "$root/.github/scripts/coveragecheck.sh" \
+    "$root/.github/scripts/modcheck.sh" \
     "$root/.github/scripts/policycheck.sh" \
     "$work_dir/.github/scripts/"
   printf 'default 90\ncache-max-age-minutes 0\n' \
@@ -667,6 +678,7 @@ EOF
       "$output" >&2
     return 1
   }
+  rm -- "$work_dir/coverage_test.go"
   fake_bin="$work_dir/fake-bin"
   real_git=$(command -v git)
   mkdir -p "$fake_bin"
@@ -704,6 +716,28 @@ EOF
   set -e
   [[ "$status" -ne 0 ]] || {
     printf 'coverage check ignored a failed source inventory\n' >&2
+    return 1
+  }
+  grep -Fq 'Failed to inventory coverage inputs' <<<"$output" || {
+    printf 'coverage output omitted the inventory failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  set +e
+  output=$(
+    cd "$work_dir" &&
+      FAIL_GIT_COMMAND=ls-files REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
+        bash .github/scripts/modcheck.sh diff 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'module check ignored a failed source inventory\n' >&2
+    return 1
+  }
+  grep -Fq 'Failed to inventory module inputs' <<<"$output" || {
+    printf 'module output omitted the inventory failure:\n%s\n' \
+      "$output" >&2
     return 1
   }
 

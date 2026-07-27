@@ -138,7 +138,7 @@ jobs:
           uname -a
           command -v bash
           test -f go.mod
-          if ! detected=$(find . -type f -name '*.go' -print -quit); then
+          if ! detected=$(find . -type f -name '*.go' -print); then
             echo 'Go package inventory failed' >&2
             exit 1
           fi

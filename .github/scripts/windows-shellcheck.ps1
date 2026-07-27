@@ -92,7 +92,7 @@ $checks = @(
             '--noprofile',
             '--norc',
             '-c',
-            'export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")"; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
+            'export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$PWD"; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
         )
         Environment = @{}
     },
@@ -103,7 +103,7 @@ $checks = @(
             '--noprofile',
             '--norc',
             '-c',
-            'export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")"; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
+            'export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$PWD"; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
         )
         Environment = @{
             CHERE_INVOKING = '1'
@@ -118,7 +118,7 @@ $checks = @(
             '-o',
             'igncr',
             '-c',
-            'cd "$(/usr/bin/cygpath "$GITHUB_WORKSPACE")" || exit; export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")"; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
+            'cd "$(/usr/bin/cygpath "$GITHUB_WORKSPACE")" || exit; export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$PWD"; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
         )
         Environment = @{}
     }

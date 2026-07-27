@@ -91,7 +91,10 @@ cache_key() (
 
   inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage.XXXXXX")
   trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
-  git ls-files -co --exclude-standard -z >"$inventory"
+  if ! git ls-files -co --exclude-standard -z >"$inventory"; then
+    printf 'Failed to inventory coverage inputs\n' >&2
+    return 1
+  fi
 
   {
     while IFS= read -r -d '' file; do
