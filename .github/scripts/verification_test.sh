@@ -30,16 +30,22 @@ main() (
   local change_pid=
   local currency_pid=
 
+  terminate_child() {
+    local pid=$1
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  }
+
   # shellcheck disable=SC2329 # Invoked by the EXIT and signal trap.
   cleanup() {
     if [[ -n "$change_pid" ]]; then
-      wait "$change_pid" 2>/dev/null || true
+      terminate_child "$change_pid"
     fi
     if [[ -n "$currency_pid" ]]; then
-      wait "$currency_pid" 2>/dev/null || true
+      terminate_child "$currency_pid"
     fi
     if [[ -n "$action_pid" ]]; then
-      wait "$action_pid" 2>/dev/null || true
+      terminate_child "$action_pid"
     fi
     rm -rf -- "$work_dir"
   }
@@ -53,7 +59,8 @@ main() (
     return 1
     ;;
   esac
-  trap cleanup EXIT HUP INT TERM
+  trap cleanup EXIT
+  trap 'exit 1' HUP INT TERM
   shellcheck_script="$root/.github/scripts/windows-shellcheck.ps1"
   if grep -Fq '| head' "$shellcheck_script"; then
     printf 'Windows shell check uses an unowned output pipeline\n' >&2
@@ -151,6 +158,15 @@ main() (
     printf 'race tests omit the package parallelism bound\n' >&2
     return 1
   }
+
+  sleep 60 &
+  change_pid=$!
+  terminate_child "$change_pid"
+  if kill -0 "$change_pid" 2>/dev/null; then
+    printf 'verification cleanup retained an owned child\n' >&2
+    return 1
+  fi
+  change_pid=
 
   bash "$root/.github/scripts/changecheck_test.sh" &
   change_pid=$!
@@ -577,6 +593,18 @@ EOF
   if ! grep -Fq 'Config' <<<"$output" ||
     ! grep -Fq 'Incomplete Rust configuration' <<<"$output"; then
     printf 'devcheck omitted the incomplete Rust diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  fi
+  cp "$root/rust-toolchain.toml" "$repo_dir/rust-toolchain.toml"
+  output=$(
+    cd "$repo_dir" &&
+      DEVCHECK_PROFILE=config \
+        bash .github/scripts/devcheck.sh 2>&1
+  )
+  if grep -Fq 'Verification Scripts' <<<"$output" ||
+    ! grep -Fq '0 skipped, 0 failed' <<<"$output"; then
+    printf 'devcheck config profile did not stop after configuration:\n%s\n' \
       "$output" >&2
     return 1
   fi
