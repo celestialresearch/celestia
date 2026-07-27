@@ -603,7 +603,9 @@ mod tests {
             assert_eq!(transform(&case.input, &Mode::Defang), Ok(case.defang));
         }
         for input in fixture.rejected {
-            assert_eq!(transform(&input, &Mode::Defang), Err(()), "{input}");
+            for (name, mode) in [("fang", Mode::Fang), ("defang", Mode::Defang)] {
+                assert_eq!(transform(&input, &mode), Err(()), "{name}: {input}");
+            }
         }
     }
 

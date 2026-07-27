@@ -39,8 +39,10 @@ func TestConformanceFixture(t *testing.T) {
 		assertConformanceCase(t, test)
 	}
 	for _, input := range fixture.Rejected {
-		if _, err := Transform(input, Defang); err == nil {
-			t.Fatalf("rejected input accepted: %q", input)
+		for _, mode := range []Mode{Fang, Defang} {
+			if _, err := Transform(input, mode); err == nil {
+				t.Fatalf("%s accepted rejected input: %q", mode, input)
+			}
 		}
 	}
 }
