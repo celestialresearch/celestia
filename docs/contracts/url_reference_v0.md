@@ -169,10 +169,10 @@ worker processes             1
 
 Timing has five distinct phases:
 - admission validates bounded in-memory input and creates an absolute start
-  deadline two seconds after admission;
+  deadline twelve seconds after admission;
 - evidence staging must finish before that start deadline;
 - containment startup is checked against the earlier of the remaining start
-  allowance and a separate two-second startup budget;
+  allowance and a separate ten-second startup budget;
 - successful process resume starts the worker's full two-second execution
   timer;
 - termination and process-tree observation use a separate one-second cleanup

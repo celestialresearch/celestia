@@ -28,15 +28,17 @@ import (
 )
 
 const (
-	requestV0Operation = "url-reference"
-	requestV0MediaType = "text/plain; charset=utf-8"
-	requestV0TimeoutMS = 2000
-	requestV0InputMax  = 4096
-	requestV0OutputMax = 8192
-	requestV0StderrMax = 8192
-	requestV0MemoryMax = 67108864
-	requestV0Processes = 1
-	requestV0FrameMax  = 65536
+	requestV0Operation      = "url-reference"
+	requestV0MediaType      = "text/plain; charset=utf-8"
+	requestV0StartTimeoutMS = 12000
+	requestV0LegacyStartMS  = 2000
+	requestV0TimeoutMS      = 2000
+	requestV0InputMax       = 4096
+	requestV0OutputMax      = 8192
+	requestV0StderrMax      = 8192
+	requestV0MemoryMax      = 67108864
+	requestV0Processes      = 1
+	requestV0FrameMax       = 65536
 )
 
 var decimalV0 = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
@@ -267,8 +269,9 @@ func validRequestV0Deadline(value string, admittedAt time.Time) bool {
 		return false
 	}
 	parsed, err := time.Parse(time.RFC3339Nano, value)
-	expected := admittedAt.UTC().Add(requestV0TimeoutMS * time.Millisecond)
+	current := admittedAt.UTC().Add(requestV0StartTimeoutMS * time.Millisecond)
+	legacy := admittedAt.UTC().Add(requestV0LegacyStartMS * time.Millisecond)
 	return err == nil &&
 		parsed.Format(time.RFC3339Nano) == value &&
-		parsed.Equal(expected)
+		(parsed.Equal(current) || parsed.Equal(legacy))
 }

@@ -33,9 +33,10 @@ type Operation struct {
 }
 
 const (
-	protocolNotRun   = "not_run"
-	protocolValid    = "valid"
-	protocolRejected = "rejected"
+	protocolNotRun            = "not_run"
+	protocolValid             = "valid"
+	protocolRejected          = "rejected"
+	containmentStartupTimeout = 10 * time.Second
 )
 
 func New(
@@ -292,7 +293,7 @@ func operationLimits() processsupervision.Limits {
 		ErrorBytes:     workerprotocol.StderrBytes,
 		MemoryBytes:    workerprotocol.MemoryBytes,
 		Processes:      workerprotocol.Processes,
-		StartupTimeout: 2 * time.Second,
+		StartupTimeout: containmentStartupTimeout,
 		Timeout:        time.Duration(workerprotocol.TimeoutMS) * time.Millisecond,
 		CleanupTimeout: time.Second,
 	}

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestDecodeRequestV0(t *testing.T) {
@@ -29,6 +30,21 @@ func TestDecodeRequestV0(t *testing.T) {
 	if request.AttemptID != accepted.Request.AttemptID ||
 		request.Input != accepted.Request.Input {
 		t.Fatal("decoded v0 request lost admitted bindings")
+	}
+}
+
+func TestDecodeRequestV0AcceptsLegacyDeadline(t *testing.T) {
+	accepted, admittedAt := testAccepted(t)
+	legacy := admittedAt.Add(requestV0LegacyStartMS * time.Millisecond).
+		Format(time.RFC3339Nano)
+	frame := bytes.Replace(
+		accepted.Frame,
+		[]byte(accepted.Request.Deadline),
+		[]byte(legacy),
+		1,
+	)
+	if _, err := decodeRequestV0(frame, admittedAt); err != nil {
+		t.Fatalf("decode legacy deadline: %v", err)
 	}
 }
 
