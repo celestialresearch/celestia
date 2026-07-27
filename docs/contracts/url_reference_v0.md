@@ -259,6 +259,7 @@ object.
 Request string fields have these exact rules:
 - `operation_id`, `input_media_type` and `mode` are the literals or enum shown;
 - `attempt_id` and `request_nonce` decode to exactly 32 bytes;
+- `attempt_id` and `request_nonce` are distinct;
 - `input_sha256` is exactly 64 lowercase hexadecimal digits;
 - `deadline` is an RFC3339Nano string in UTC;
 - `input` is the admitted string and its byte length is from 1 through 4,096.
