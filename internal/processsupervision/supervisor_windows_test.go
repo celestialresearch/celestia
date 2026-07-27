@@ -227,21 +227,21 @@ func TestSupervisorBoundsBlockedInput(t *testing.T) {
 	)
 	limits := testLimits()
 	limits.InputBytes = 65_536
-	started := time.Now()
 	outcome := runFixture(
 		t,
 		worker,
 		limits,
 		string(make([]byte, limits.InputBytes)),
 	)
+	maximumDuration := limits.StartupTimeout + limits.Timeout + limits.CleanupTimeout
 	if outcome.Status != processsupervision.TimedOut ||
 		!outcome.CleanupComplete ||
-		time.Since(started) > 2*time.Second {
+		outcome.Duration > maximumDuration {
 		t.Fatalf(
 			"status=%s cleanup=%t duration=%s error=%v",
 			outcome.Status,
 			outcome.CleanupComplete,
-			time.Since(started),
+			outcome.Duration,
 			outcome.Err,
 		)
 	}

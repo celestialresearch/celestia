@@ -62,10 +62,6 @@ func environmentBlock(folder string) ([]uint16, error) {
 	return append(block, 0), nil
 }
 
-func writeFrame(handle windows.Handle, frame []byte) inputResult {
-	return newInputWriter(handle).write(frame)
-}
-
 func newInputWriter(handle windows.Handle) *inputWriter {
 	return &inputWriter{
 		handle: handle,
