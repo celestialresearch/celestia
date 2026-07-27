@@ -16,7 +16,7 @@ import (
 
 	"celestia.research/governed-operation/internal/attemptstore"
 	"celestia.research/governed-operation/internal/processsupervision"
-	"celestia.research/governed-operation/internal/workerprotocol"
+	"celestia.research/governed-operation/internal/workerprotocolv1"
 )
 
 const (

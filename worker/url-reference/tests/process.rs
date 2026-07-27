@@ -124,9 +124,9 @@ fn assert_failed_frame(input: Vec<u8>) {
 
 fn request(input: &str, mode: &str) -> Vec<u8> {
     serde_json::to_vec(&json!({
-        "protocol_version": 0,
+        "protocol_version": 1,
         "operation_id": "url-reference",
-        "operation_version": 0,
+        "operation_version": 1,
         "attempt_id": ATTEMPT_ID,
         "request_nonce": REQUEST_NONCE,
         "input_media_type": "text/plain; charset=utf-8",

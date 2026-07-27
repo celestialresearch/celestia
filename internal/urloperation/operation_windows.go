@@ -22,8 +22,8 @@ import (
 	"celestia.research/governed-operation/internal/attemptstore"
 	"celestia.research/governed-operation/internal/processsupervision"
 	"celestia.research/governed-operation/internal/urladmission"
-	"celestia.research/governed-operation/internal/urlreference"
-	"celestia.research/governed-operation/internal/workerprotocol"
+	"celestia.research/governed-operation/internal/urlreferencev1"
+	"celestia.research/governed-operation/internal/workerprotocolv1"
 )
 
 type Operation struct {

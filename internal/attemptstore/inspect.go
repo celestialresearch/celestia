@@ -138,7 +138,7 @@ func readBundle(path, attemptID string) (Records, error) {
 		return Records{}, err
 	}
 	if records.Observation != nil &&
-		validateObservationEvidence(records.Admitted, *records.Observation) != nil {
+		validateRetainedObservationEvidence(records.Admitted, *records.Observation) != nil {
 		return Records{}, ErrCorrupt
 	}
 	return records, nil

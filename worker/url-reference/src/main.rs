@@ -103,13 +103,13 @@ fn run() -> Result<ExitCode, ()> {
         Ok(output) => output,
         Err(()) => {
             let response = Response {
-                protocol_version: 0,
+                protocol_version: 1,
                 operation_id: "url-reference",
-                operation_version: 0,
+                operation_version: 1,
                 attempt_id: &request.attempt_id,
                 request_nonce: &request.request_nonce,
                 worker_id: "celestia-url-reference",
-                worker_version: "0",
+                worker_version: "1",
                 status: "rejected",
                 output_media_type: None,
                 output_length: None,
@@ -129,13 +129,13 @@ fn run() -> Result<ExitCode, ()> {
         return Err(());
     }
     let response = Response {
-        protocol_version: 0,
+        protocol_version: 1,
         operation_id: "url-reference",
-        operation_version: 0,
+        operation_version: 1,
         attempt_id: &request.attempt_id,
         request_nonce: &request.request_nonce,
         worker_id: "celestia-url-reference",
-        worker_version: "0",
+        worker_version: "1",
         status: "completed",
         output_media_type: Some(&request.input_media_type),
         output_length: Some(output.len()),
@@ -195,9 +195,9 @@ fn read_request() -> Result<Vec<u8>, ()> {
 }
 
 fn validate_request(request: &Request) -> Result<(), ()> {
-    if request.protocol_version != 0
+    if request.protocol_version != 1
         || request.operation_id != "url-reference"
-        || request.operation_version != 0
+        || request.operation_version != 1
         || request.input_media_type != "text/plain; charset=utf-8"
         || request.timeout_ms != 2_000
         || request.input.is_empty()
@@ -324,6 +324,9 @@ fn days_in_month(year: u32, month: u32) -> u32 {
 }
 
 fn transform(input: &str, mode: &Mode) -> Result<String, ()> {
+    if input.is_empty() || input.len() > MAX_INPUT_BYTES {
+        return Err(());
+    }
     validate_text(input)?;
     let scheme_end = input.find("://").ok_or(())?;
     let authority_start = scheme_end + 3;

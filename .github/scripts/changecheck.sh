@@ -93,7 +93,7 @@ classify_path() {
     go=true
     compatibility=true
     case "$path" in
-    internal/workerprotocol/* | internal/urladmission/*)
+    internal/workerprotocolv1/* | internal/urladmission/*)
       mark_full
       ;;
     esac

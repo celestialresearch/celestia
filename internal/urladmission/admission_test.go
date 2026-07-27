@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"celestia.research/governed-operation/internal/urlreference"
-	"celestia.research/governed-operation/internal/workerprotocol"
+	"celestia.research/governed-operation/internal/urlreferencev1"
+	"celestia.research/governed-operation/internal/workerprotocolv1"
 )
 
 func TestAdmit(t *testing.T) {

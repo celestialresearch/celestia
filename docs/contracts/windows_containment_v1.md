@@ -1,4 +1,4 @@
-# Windows Containment v0
+# Windows Containment v1
 
 Status: implemented and locally qualified for the probes below on Windows.
 

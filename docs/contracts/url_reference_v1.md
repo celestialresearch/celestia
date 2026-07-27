@@ -1,17 +1,16 @@
-# URL-Reference Operation v0
+# URL-Reference Operation v1
 
 ## Scope
 
-Celestia v0 transforms one inert URL reference. It never resolves, fetches,
+Celestia v1 transforms one inert URL reference. It never resolves, fetches,
 opens, follows or executes the reference. Output remains untrusted text and
 must never be used automatically as a network target.
 
-The operation identifier is `url-reference`, operation version is `0` and
-protocol version is `0`. The only modes are `fang` and `defang`.
+The operation identifier is `url-reference`, operation version is `1` and
+protocol version is `1`. The only modes are `fang` and `defang`.
 
-This contract is internal and pre-release. No compatibility with earlier
-internal v0 records is promised. Compatibility and version-transition rules
-must be fixed before operational evidence is retained across upgrades.
+This is the first supported internal contract. Incompatible grammar, protocol,
+verification or evidence changes require a new version.
 
 ## Change Brief
 
@@ -42,7 +41,7 @@ permissive normalisation, SQLite and a persistent worker add no demonstrated
 correctness benefit in this slice.
 
 Windows containment and attempt evidence are defined in
-`windows_containment_v0.md` and `attempt_evidence_v0.md`. Other platforms fail
+`windows_containment_v1.md` and `attempt_evidence_v1.md`. Other platforms fail
 closed. Proof requires table and property tests for grammar and transformation,
 hostile worker fixtures, protocol fuzzing, interruption and recovery tests,
 race-tested process cleanup and native platform evidence.
@@ -215,16 +214,16 @@ survival after cancellation. The profile must deny every attempt and prove
 complete owned-process cleanup before that platform can enable the operation.
 
 The selected Windows profile is defined in
-[`windows_containment_v0.md`](windows_containment_v0.md).
+[`windows_containment_v1.md`](windows_containment_v1.md).
 
 ## Request Envelope
 
 All fields are required:
 ```json
 {
-  "protocol_version": 0,
+  "protocol_version": 1,
   "operation_id": "url-reference",
-  "operation_version": 0,
+  "operation_version": 1,
   "attempt_id": "base64url-32-random-bytes",
   "request_nonce": "base64url-32-random-bytes",
   "input_media_type": "text/plain; charset=utf-8",
@@ -266,7 +265,7 @@ Request string fields have these exact rules:
 - `deadline` is an RFC3339Nano string in UTC;
 - `input` is the admitted string and its byte length is from 1 through 4,096.
 
-Protocol and operation versions are integer `0`. Every limit is the exact
+Protocol and operation versions are integer `1`. Every limit is the exact
 integer shown. The `limits` object contains no additional field.
 
 ## Response Envelope
@@ -275,13 +274,13 @@ All fields are required when status is `completed`. Output fields are absent
 for every other status:
 ```json
 {
-  "protocol_version": 0,
+  "protocol_version": 1,
   "operation_id": "url-reference",
-  "operation_version": 0,
+  "operation_version": 1,
   "attempt_id": "echoed-attempt-id",
   "request_nonce": "echoed-request-nonce",
   "worker_id": "celestia-url-reference",
-  "worker_version": "0",
+  "worker_version": "1",
   "status": "completed",
   "output_media_type": "text/plain; charset=utf-8",
   "output_length": 23,
@@ -293,7 +292,7 @@ for every other status:
 ```
 
 Worker statuses are `completed`, `rejected` and `failed`. `worker_id` is
-`celestia-url-reference`, `worker_version` is `0` and the output media type is
+`celestia-url-reference`, `worker_version` is `1` and the output media type is
 the request media type. Output length ranges from 1 through 8,192 and its hash
 is exactly 64 lowercase hexadecimal digits. `duration_ns` is an integer from
 zero through 2,000,000,000. A diagnostic is an object
@@ -365,12 +364,12 @@ attempts/.pending/<attempt-id>/bundle/
 Every accepted bundle is potentially sensitive because paths, queries and
 fragments may contain credentials. The application-owned evidence root uses
 owner-only permissions, rejects links and reparse points at every component
-and is retained until explicit operator deletion. v0 performs no automatic
+and is retained until explicit operator deletion. v1 performs no automatic
 garbage collection.
 
 The bundle contains exact input, request, response and diagnostic bytes plus
 versioned JSON records for admission, process outcome, protocol validation,
-verification and pre-publication outcome. `attempt_evidence_v0.md` is the
+verification and pre-publication outcome. `attempt_evidence_v1.md` is the
 authoritative persistent schema. Its receipt hashes the admitted and terminal
 records; worker and verifier identity remain inside the hashed terminal
 observation. Record files do not contain their own hashes. The manifest set
@@ -378,7 +377,7 @@ excludes the receipt and publication marker.
 
 Records are written through same-directory temporary files, flushed and
 published to unused final names through the platform procedure defined in
-`attempt_evidence_v0.md`. The receipt is written last and hashed separately.
+`attempt_evidence_v1.md`. The receipt is written last and hashed separately.
 The complete pending attempt is verified, flushed and atomically renamed to:
 ```text
 attempts/<attempt-id>/
@@ -399,8 +398,8 @@ per-attempt lock file provides the cross-process ownership identity. Execution
 holds its operating-system lock from staging through publication. Recovery
 fails while that lock is held and may proceed after process death releases it.
 Lock files are not deleted because replacing a locked inode would split
-ownership. A permanent ownership-era marker distinguishes current attempts
-with a missing lock from pre-lock v0 bundles. Recovery may only:
+ownership. A permanent ownership marker makes a missing lock corrupt. Recovery
+may only:
 - validate and publish a complete pending attempt;
 - retain and report an incomplete pending attempt;
 - report a corrupt pending or published attempt.
@@ -438,7 +437,7 @@ Planned exit statuses are:
 7 indeterminate
 ```
 
-No machine-readable CLI format is defined in v0.
+No machine-readable CLI format is defined in v1.
 
 ## Non-Goals
 

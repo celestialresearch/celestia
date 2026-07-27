@@ -18,26 +18,28 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+
+	"celestia.research/governed-operation/internal/workerprotocolv1"
 )
 
-func TestDecodeRequestV0(t *testing.T) {
+func TestDecodeRequestV1(t *testing.T) {
 	accepted, admittedAt := testAccepted(t)
-	request, err := decodeRequestV0(accepted.Frame, admittedAt)
+	request, err := decodeRequestV1(accepted.Frame, admittedAt)
 	if err != nil {
-		t.Fatalf("decode v0 request: %v", err)
+		t.Fatalf("decode v1 request: %v", err)
 	}
 	if request.AttemptID != accepted.Request.AttemptID ||
 		request.Input != accepted.Request.Input {
-		t.Fatal("decoded v0 request lost admitted bindings")
+		t.Fatal("decoded v1 request lost admitted bindings")
 	}
 }
 
-func TestDecodeRequestV0RejectsNonCanonicalFrame(t *testing.T) {
+func TestDecodeRequestV1RejectsNonCanonicalFrame(t *testing.T) {
 	accepted, admittedAt := testAccepted(t)
 	tests := map[string][]byte{
 		"trailing whitespace": append(bytes.Clone(accepted.Frame), '\n'),
 		"unknown field":       append(bytes.TrimSuffix(accepted.Frame, []byte("}")), []byte(`,"extra":0}`)...),
-		"duplicate field":     append(bytes.TrimSuffix(accepted.Frame, []byte("}")), []byte(`,"protocol_version":0}`)...),
+		"duplicate field":     append(bytes.TrimSuffix(accepted.Frame, []byte("}")), []byte(`,"protocol_version":1}`)...),
 		"duplicate limit": bytes.Replace(
 			accepted.Frame,
 			[]byte(`"processes":1}`),
@@ -52,13 +54,13 @@ func TestDecodeRequestV0RejectsNonCanonicalFrame(t *testing.T) {
 		),
 		"negative integer": bytes.Replace(
 			accepted.Frame,
-			[]byte(`"protocol_version":0`),
+			[]byte(`"protocol_version":1`),
 			[]byte(`"protocol_version":-1`),
 			1,
 		),
 		"integer overflow": bytes.Replace(
 			accepted.Frame,
-			[]byte(`"protocol_version":0`),
+			[]byte(`"protocol_version":1`),
 			[]byte(`"protocol_version":999999999999999999999999999999`),
 			1,
 		),
@@ -103,18 +105,18 @@ func TestDecodeRequestV0RejectsNonCanonicalFrame(t *testing.T) {
 		"invalid UTF-8": {
 			0xff,
 		},
-		"oversized": bytes.Repeat([]byte{'x'}, requestV0FrameMax+1),
+		"oversized": bytes.Repeat([]byte{'x'}, requestV1FrameMax+1),
 	}
 	for name, frame := range tests {
 		t.Run(name, func(t *testing.T) {
-			if _, err := decodeRequestV0(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
-				t.Fatalf("non-canonical v0 frame accepted: %v", err)
+			if _, err := decodeRequestV1(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("non-canonical v1 frame accepted: %v", err)
 			}
 		})
 	}
 }
 
-func TestDecodeRequestV0RejectsRepeatedCorrelation(t *testing.T) {
+func TestDecodeRequestV1RejectsRepeatedCorrelation(t *testing.T) {
 	accepted, admittedAt := testAccepted(t)
 	frame := bytes.Replace(
 		accepted.Frame,
@@ -122,14 +124,14 @@ func TestDecodeRequestV0RejectsRepeatedCorrelation(t *testing.T) {
 		[]byte(accepted.Request.AttemptID),
 		1,
 	)
-	if _, err := decodeRequestV0(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
+	if _, err := decodeRequestV1(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("repeated correlation accepted: %v", err)
 	}
 }
 
-func TestDecodeRequestV0RejectsInvalidReference(t *testing.T) {
+func TestDecodeRequestV1DoesNotReplayGrammar(t *testing.T) {
 	accepted, admittedAt := testAccepted(t)
-	request, err := decodeRequestV0(accepted.Frame, admittedAt)
+	request, err := decodeRequestV1(accepted.Frame, admittedAt)
 	if err != nil {
 		t.Fatalf("decode fixture: %v", err)
 	}
@@ -141,34 +143,64 @@ func TestDecodeRequestV0RejectsInvalidReference(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode invalid reference: %v", err)
 	}
-	if _, err := decodeRequestV0(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("invalid v0 reference accepted: %v", err)
+	if _, err := decodeRequestV1(frame, admittedAt); err != nil {
+		t.Fatalf("retained frame depends on current grammar: %v", err)
 	}
 }
 
-func TestDecodeRequestV0AcceptsEquivalentJSON(t *testing.T) {
+func TestRetainedObservationDoesNotReplayTransform(t *testing.T) {
+	accepted, admittedAt := testAccepted(t)
+	observation := testObservationFor(t, accepted)
+	var response workerprotocol.Response
+	if err := json.Unmarshal(observation.Stdout, &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	output := "retained-v1-output"
+	outputLength := len(output)
+	outputHash := sha256.Sum256([]byte(output))
+	outputHashText := hex.EncodeToString(outputHash[:])
+	response.Output = &output
+	response.OutputLength = &outputLength
+	response.OutputSHA256 = &outputHashText
+	var err error
+	observation.Stdout, err = json.Marshal(response)
+	if err != nil {
+		t.Fatalf("encode response: %v", err)
+	}
+	observation.ExpectedOutput = output
+
+	admitted := admittedRecord(accepted.Request, accepted.Frame, admittedAt)
+	if err := validateRetainedObservationEvidence(admitted, observation); err != nil {
+		t.Fatalf("retained evidence replayed transformation: %v", err)
+	}
+	if err := validateObservationEvidence(admitted, observation); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("publication skipped transformation: %v", err)
+	}
+}
+
+func TestDecodeRequestV1AcceptsEquivalentJSON(t *testing.T) {
 	accepted, admittedAt := testAccepted(t)
 	escaped := bytes.Replace(accepted.Frame, []byte("url-reference"), []byte(`url\u002dreference`), 1)
 	escapedSlash := bytes.Replace(accepted.Frame, []byte(`"input":"https://`), []byte(`"input":"https:\/\/`), 1)
-	first := []byte(`"protocol_version":0,`)
+	first := []byte(`"protocol_version":1,`)
 	reordered := bytes.Replace(accepted.Frame, first, nil, 1)
-	reordered = append(bytes.TrimSuffix(reordered, []byte("}")), []byte(`,"protocol_version":0}`)...)
+	reordered = append(bytes.TrimSuffix(reordered, []byte("}")), []byte(`,"protocol_version":1}`)...)
 	for name, frame := range map[string][]byte{
 		"escaped":       escaped,
 		"escaped slash": escapedSlash,
 		"reordered":     reordered,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := decodeRequestV0(frame, admittedAt); err != nil {
-				t.Fatalf("equivalent v0 JSON rejected: %v", err)
+			if _, err := decodeRequestV1(frame, admittedAt); err != nil {
+				t.Fatalf("equivalent v1 JSON rejected: %v", err)
 			}
 		})
 	}
 }
 
-func TestDecodeRequestV0RejectsSurrogateAfterQuote(t *testing.T) {
+func TestDecodeRequestV1RejectsSurrogateAfterQuote(t *testing.T) {
 	accepted, admittedAt := testAccepted(t)
-	request, err := decodeRequestV0(accepted.Frame, admittedAt)
+	request, err := decodeRequestV1(accepted.Frame, admittedAt)
 	if err != nil {
 		t.Fatalf("decode fixture: %v", err)
 	}
@@ -181,7 +213,7 @@ func TestDecodeRequestV0RejectsSurrogateAfterQuote(t *testing.T) {
 		t.Fatalf("encode fixture: %v", err)
 	}
 	frame = bytes.Replace(frame, []byte("\ufffd"), []byte(`\ud800`), 1)
-	if _, err := decodeRequestV0(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
+	if _, err := decodeRequestV1(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("unpaired surrogate after escaped quote accepted: %v", err)
 	}
 }
@@ -189,13 +221,13 @@ func TestDecodeRequestV0RejectsSurrogateAfterQuote(t *testing.T) {
 func TestValidateAdmittedRejectsUnknownVersion(t *testing.T) {
 	accepted, admittedAt := testAccepted(t)
 	record := admittedRecord(accepted.Request, accepted.Frame, admittedAt)
-	record.Version = 1
+	record.Version = 2
 	if err := validateAdmitted(record); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("unknown admitted version accepted: %v", err)
 	}
 }
 
-func TestObjectFieldsV0RejectsMalformed(t *testing.T) {
+func TestObjectFieldsV1RejectsMalformed(t *testing.T) {
 	tests := map[string][]byte{
 		"non-object":    []byte(`[]`),
 		"duplicate":     []byte(`{"x":0,"x":1}`),
@@ -205,33 +237,33 @@ func TestObjectFieldsV0RejectsMalformed(t *testing.T) {
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
-			if _, ok := objectFieldsV0(data); ok {
-				t.Fatal("malformed v0 object decoded")
+			if _, ok := objectFieldsV1(data); ok {
+				t.Fatal("malformed v1 object decoded")
 			}
 		})
 	}
 }
 
-func FuzzDecodeRequestV0(f *testing.F) {
+func FuzzDecodeRequestV1(f *testing.F) {
 	accepted, admittedAt := testAccepted(f)
 	f.Add(accepted.Frame)
 	f.Add([]byte(`{}`))
 
 	f.Fuzz(func(t *testing.T, frame []byte) {
-		request, err := decodeRequestV0(frame, admittedAt)
+		request, err := decodeRequestV1(frame, admittedAt)
 		if err != nil {
 			return
 		}
-		if !validRequestV0(request, admittedAt) {
-			t.Fatal("decoder accepted an invalid v0 request")
+		if !validRequestV1(request, admittedAt) {
+			t.Fatal("decoder accepted an invalid v1 request")
 		}
 		canonical, err := json.Marshal(request)
 		if err != nil {
-			t.Fatalf("marshal accepted v0 request: %v", err)
+			t.Fatalf("marshal accepted v1 request: %v", err)
 		}
-		decoded, err := decodeRequestV0(canonical, admittedAt)
+		decoded, err := decodeRequestV1(canonical, admittedAt)
 		if err != nil || decoded != request {
-			t.Fatalf("canonical v0 request did not round trip: decoded=%+v error=%v", decoded, err)
+			t.Fatalf("canonical v1 request did not round trip: decoded=%+v error=%v", decoded, err)
 		}
 	})
 }

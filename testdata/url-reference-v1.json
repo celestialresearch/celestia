@@ -1,5 +1,11 @@
 {
-  "version": 0,
+  "version": 1,
+  "boundaries": {
+    "label_max": 63,
+    "host_max": 253,
+    "input_max": 4096,
+    "port_digits_max": 5
+  },
   "accepted": [
     {
       "input": "https://example.test/a.b?q=1.2#f.g",
