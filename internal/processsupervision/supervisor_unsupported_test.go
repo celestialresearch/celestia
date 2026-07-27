@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build !windows
+//go:build !windows || (windows && !amd64)
 
 package processsupervision
 

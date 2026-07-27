@@ -14,6 +14,8 @@ set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
+currency_file=${ACTIONCHECK_CURRENCY_FILE:-.github/.currency}
+currency_script=${ACTIONCHECK_CURRENCY_SCRIPT:-.github/scripts/currencycheck.sh}
 
 usage() {
   printf 'Usage: %s verify|currency|cached-currency\n' "${0##*/}" >&2
@@ -191,7 +193,7 @@ check_actions() {
             "$ACTION_REPOSITORY" >&2
           status=1
         elif [[ "$latest" != "$ACTION_TAG" ]]; then
-          if bash ./.github/scripts/currencycheck.sh \
+          if bash "$currency_script" \
             allows action "$ACTION_REPOSITORY" "$ACTION_TAG"; then
             printf '%s retains %s by documented exception; latest is %s\n' \
               "$ACTION_REPOSITORY" "$ACTION_TAG" "$latest"
@@ -223,12 +225,15 @@ cache_key() (
       git hash-object -- "$file"
     done <"$inventory"
     git hash-object .github/scripts/actioncheck.sh
+    git hash-object "$currency_file"
+    git hash-object "$currency_script"
     git --version
+    date -u +%F
   } | git hash-object --stdin
 )
 
 cached_currency() {
-  local key cache_file temporary_cache
+  local key cache_file marker temporary_cache
   local max_age_minutes=${ACTIONCHECK_CACHE_MAX_AGE_MINUTES:-1440}
 
   if [[ ! "$max_age_minutes" =~ ^[0-9]+$ ]]; then
@@ -239,6 +244,9 @@ cached_currency() {
   key=$(cache_key)
   cache_file="$cache_root/actioncheck/$key"
   if ((max_age_minutes > 0)) &&
+    [[ -f "$cache_file" && ! -L "$cache_file" ]] &&
+    IFS= read -r marker <"$cache_file" &&
+    [[ "$marker" == "$key" ]] &&
     [[ -n "$(find "$cache_file" -mmin "-$max_age_minutes" -print 2>/dev/null)" ]]; then
     printf 'action currency cached\n'
     return

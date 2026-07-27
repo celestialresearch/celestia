@@ -94,6 +94,48 @@ if [[ "$(latest_tag example.invalid)" != v0.0.0 ]]; then
   exit 1
 fi
 
+unset -f git
+currency_file="$work_dir/currency"
+currency_script="$work_dir/currencycheck.sh"
+action_file="$work_dir/action.yml"
+printf 'exceptions-v1\n' >"$currency_file"
+printf 'checker-v1\n' >"$currency_script"
+printf 'uses: example/action@0000000000000000000000000000000000000001 # v1.0.0\n' >"$action_file"
+action_files() {
+  printf '%s\0' "$action_file"
+}
+first_key=$(cache_key)
+printf 'exceptions-v2\n' >"$currency_file"
+second_key=$(cache_key)
+[[ "$first_key" != "$second_key" ]] || {
+  printf 'action cache ignored currency exceptions\n' >&2
+  exit 1
+}
+printf 'checker-v2\n' >"$currency_script"
+third_key=$(cache_key)
+[[ "$second_key" != "$third_key" ]] || {
+  printf 'action cache ignored the currency checker\n' >&2
+  exit 1
+}
+cache_root="$work_dir/cache"
+key=$(cache_key)
+mkdir -p -- "$cache_root/actioncheck"
+printf 'wrong-key\n' >"$cache_root/actioncheck/$key"
+check_calls=0
+check_actions() {
+  check_calls=$((check_calls + 1))
+}
+ACTIONCHECK_CACHE_MAX_AGE_MINUTES=1440 cached_currency >/dev/null
+[[ "$check_calls" -eq 1 && "$(cat "$cache_root/actioncheck/$key")" == "$key" ]] || {
+  printf 'action cache trusted an invalid marker\n' >&2
+  exit 1
+}
+ACTIONCHECK_CACHE_MAX_AGE_MINUTES=1440 cached_currency >/dev/null
+[[ "$check_calls" -eq 1 ]] || {
+  printf 'action cache ignored a valid marker\n' >&2
+  exit 1
+}
+
 invalid_entry='.github/workflows/main.yml:1:actions/checkout@0000000000000000000000000000000000000001 # v01.0.0'
 if parse_action "$invalid_entry" >/dev/null 2>&1; then
   printf 'action parser accepted a non-canonical semantic version\n' >&2

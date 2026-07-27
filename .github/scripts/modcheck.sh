@@ -132,6 +132,7 @@ cache_key() {
 check_cached_update_diff() {
   local cache_file
   local cache_key_value
+  local marker temporary_cache
   local max_age_minutes=${MODCHECK_CACHE_MAX_AGE_MINUTES:-1440}
 
   if [[ ! "$max_age_minutes" =~ ^[0-9]+$ ]]; then
@@ -142,6 +143,9 @@ check_cached_update_diff() {
   cache_key_value=$(cache_key)
   cache_file="$cache_root/modcheck/$cache_key_value"
   if ((max_age_minutes > 0)) &&
+    [[ -f "$cache_file" && ! -L "$cache_file" ]] &&
+    IFS= read -r marker <"$cache_file" &&
+    [[ "$marker" == "$cache_key_value" ]] &&
     [[ -n "$(find "$cache_file" -mmin "-$max_age_minutes" -print 2>/dev/null)" ]]; then
     printf 'module currency cached\n'
     return
@@ -150,7 +154,15 @@ check_cached_update_diff() {
   verify_modules
   check_update_diff
   mkdir -p -- "$(dirname -- "$cache_file")"
-  printf '%s\n' "$cache_key_value" >"$cache_file"
+  temporary_cache=$(mktemp "$(dirname -- "$cache_file")/.module.XXXXXX")
+  if ! printf '%s\n' "$cache_key_value" >"$temporary_cache"; then
+    rm -f -- "$temporary_cache"
+    return 1
+  fi
+  if ! mv -f -- "$temporary_cache" "$cache_file"; then
+    rm -f -- "$temporary_cache"
+    return 1
+  fi
 }
 
 if (($# != 1)); then

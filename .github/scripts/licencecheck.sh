@@ -201,7 +201,7 @@ cache_key() {
 }
 
 cached_diff() {
-  local cache_file key
+  local cache_file key marker temporary_cache
   local max_age_minutes=${LICENCECHECK_CACHE_MAX_AGE_MINUTES:-1440}
 
   [[ "$max_age_minutes" =~ ^[0-9]+$ ]] || {
@@ -211,13 +211,24 @@ cached_diff() {
   key=$(cache_key)
   cache_file="$cache_root/licencecheck/$key"
   if ((max_age_minutes > 0)) &&
+    [[ -f "$cache_file" && ! -L "$cache_file" ]] &&
+    IFS= read -r marker <"$cache_file" &&
+    [[ "$marker" == "$key" ]] &&
     [[ -n "$(find "$cache_file" -mmin "-$max_age_minutes" -print 2>/dev/null)" ]]; then
     printf 'licence headers cached\n'
     return
   fi
   verify_files
   mkdir -p -- "$(dirname -- "$cache_file")"
-  printf '%s\n' "$key" >"$cache_file"
+  temporary_cache=$(mktemp "$(dirname -- "$cache_file")/.licence.XXXXXX")
+  if ! printf '%s\n' "$key" >"$temporary_cache"; then
+    rm -f -- "$temporary_cache"
+    return 1
+  fi
+  if ! mv -f -- "$temporary_cache" "$cache_file"; then
+    rm -f -- "$temporary_cache"
+    return 1
+  fi
 }
 
 if (($# != 1)); then
