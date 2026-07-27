@@ -30,6 +30,7 @@ main() (
   local change_pid=
   local currency_pid=
   local golangci_lint
+  local platform_log
 
   terminate_child() {
     local pid=$1
@@ -175,22 +176,41 @@ main() (
     printf 'race tests omit the package parallelism bound\n' >&2
     return 1
   }
-  for target in 'linux amd64' 'aix ppc64' 'plan9 amd64'; do
-    grep -Fq "$target" "$root/.github/scripts/devcheck.sh" || {
-      printf 'Go platform lint omits %s\n' "$target" >&2
-      return 1
-    }
-  done
-  # shellcheck disable=SC2016 # This probe matches literal shell source.
-  grep -Fq 'lint=$(go tool -n golangci-lint)' \
-    "$root/.github/scripts/devcheck.sh" || {
-    printf 'Go platform lint does not preserve the host executable\n' >&2
-    return 1
-  }
   mkdir -p "$work_dir/type-assertion"
+  fake_bin="$work_dir/platform-bin"
+  platform_log="$work_dir/platform-targets"
+  mkdir -p "$fake_bin"
+  cat >"$fake_bin/go" <<'EOF'
+#!/bin/sh
+if [ "$1" = tool ] && [ "$2" = -n ] && [ "$3" = golangci-lint ]; then
+  printf '%s\n' "$CELESTIA_FAKE_LINT"
+  exit
+fi
+exit 1
+EOF
+  cat >"$fake_bin/golangci-lint" <<'EOF'
+#!/bin/sh
+printf '%s %s\n' "$GOOS" "$GOARCH" >>"$CELESTIA_PLATFORM_LOG"
+EOF
+  chmod +x "$fake_bin/go" "$fake_bin/golangci-lint"
+  PATH="$fake_bin:$PATH" \
+    CELESTIA_FAKE_LINT="$fake_bin/golangci-lint" \
+    CELESTIA_PLATFORM_LOG="$platform_log" \
+    bash "$root/.github/scripts/platformlint.sh" "$work_dir/type-assertion"
+  printf 'linux amd64\naix ppc64\nplan9 amd64\n' \
+    >"$work_dir/platform-targets.expected"
+  if ! cmp -s "$work_dir/platform-targets.expected" "$platform_log"; then
+    printf 'Go platform lint dispatched unexpected targets:\n' >&2
+    cat "$platform_log" >&2
+    return 1
+  fi
   printf 'module celestia.research/type-assertion\n\ngo 1.26.5\n' \
     >"$work_dir/type-assertion/go.mod"
-  cat >"$work_dir/type-assertion/assertion.go" <<'EOF'
+  printf 'package typeassertion\n' \
+    >"$work_dir/type-assertion/typeassertion.go"
+  cat >"$work_dir/type-assertion/assertion_linux.go" <<'EOF'
+//go:build linux
+
 package typeassertion
 
 func assertion(value any) int {
@@ -202,7 +222,8 @@ EOF
   set +e
   output=$(
     cd "$work_dir/type-assertion" &&
-      "$golangci_lint" run --config "$root/.golangci.yml" ./... 2>&1
+      env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+        "$golangci_lint" run --config "$root/.golangci.yml" ./... 2>&1
   )
   status=$?
   set -e
@@ -211,7 +232,9 @@ EOF
       "$output" >&2
     return 1
   fi
-  cat >"$work_dir/type-assertion/assertion.go" <<'EOF'
+  cat >"$work_dir/type-assertion/assertion_linux.go" <<'EOF'
+//go:build linux
+
 package typeassertion
 
 func assertion(value any) int {
@@ -225,7 +248,8 @@ func assertion(value any) int {
 var _ = assertion
 EOF
   (
-    cd "$work_dir/type-assertion" &&
+    cd "$work_dir/type-assertion"
+    env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
       "$golangci_lint" run --config "$root/.golangci.yml" ./...
   ) || {
     printf 'errcheck rejected a checked type assertion\n' >&2
