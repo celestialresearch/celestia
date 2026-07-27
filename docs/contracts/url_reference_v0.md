@@ -314,7 +314,7 @@ and exit `3` only with `failed`. Any other exit, missing response or
 status/exit mismatch is an execution failure. A valid `rejected` response after
 Go admission records execution `completed`, protocol `valid`, verification
 `not_run` and terminal `failed`; it cannot retroactively reject admission. A
-valid `failed` response records execution `failed`, protocol `valid` and
+valid `failed` response records execution `exit_failed`, protocol `valid` and
 terminal `failed`. Only `completed` proceeds to independent verification.
 
 Worker status is a claim. It cannot determine admission, protocol validity,
@@ -325,9 +325,10 @@ verification, durability or the final Celestia outcome.
 Every admitted attempt records independent dimensions:
 ```text
 admission:    accepted | rejected
-execution:    not_started | running | completed | failed | cancelled | timed_out
+execution:    completed | start_failed | timed_out | cancelled | output_overflow |
+              error_overflow | exit_failed | cleanup_failed
 protocol:     not_run | valid | rejected
-verification: not_run | verified | rejected | inconclusive
+verification: not_run | verified | rejected
 durability:   pending | durable | indeterminate
 recovery:     none | pending | corrupt
 ```
