@@ -263,6 +263,7 @@ section 'Project'
 run_check 'Config' check_config
 if [[ "$profile" == config ]]; then
   finish
+  exit $?
 fi
 if [[ "${DEVCHECK_SELF_TEST:-true}" == true ]]; then
   run_check 'Verification Scripts' bash ./.github/scripts/verification_test.sh
