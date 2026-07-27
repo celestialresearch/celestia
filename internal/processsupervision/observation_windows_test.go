@@ -215,7 +215,7 @@ func TestStreamResultStates(t *testing.T) {
 		t.Fatalf("cleanup precedence: status=%s complete=%t error=%v", status, complete, err)
 	}
 	status, err, complete = applyStreamResult(Completed, nil, true, streamResult{cleanupErr: errors.New("close")}, "output", OutputOverflow)
-	if status != CleanupFailed || err == nil || complete {
+	if status != Completed || err == nil || complete {
 		t.Fatalf("stream cleanup: status=%s complete=%t error=%v", status, complete, err)
 	}
 }
@@ -254,8 +254,60 @@ func TestInputResultStates(t *testing.T) {
 		t.Fatalf("input error: status=%s complete=%t error=%v", status, complete, err)
 	}
 	status, err, complete = applyInputResult(Completed, nil, true, inputResult{cleanupErr: errors.New("close")})
-	if status != CleanupFailed || err == nil || complete {
+	if status != Completed || err == nil || complete {
 		t.Fatalf("input cleanup: status=%s complete=%t error=%v", status, complete, err)
+	}
+}
+
+func TestCleanupFailurePreservesPrimaryStatus(t *testing.T) {
+	for _, initial := range []Status{Completed, TimedOut, Cancelled, ExitFailed} {
+		status, err, complete := applyStreamResult(
+			initial,
+			errors.New("primary"),
+			true,
+			streamResult{cleanupErr: errors.New("cleanup")},
+			"output",
+			OutputOverflow,
+		)
+		if status != initial || err == nil || complete {
+			t.Fatalf("initial=%s status=%s complete=%t error=%v", initial, status, complete, err)
+		}
+	}
+}
+
+func TestTerminationFailurePreservesPrimaryCause(t *testing.T) {
+	primary := context.DeadlineExceeded
+	cause, complete := terminateForCleanup(primary, func() error {
+		return errors.New("termination failed")
+	})
+	if complete ||
+		!errors.Is(cause, primary) ||
+		!strings.Contains(cause.Error(), "termination failed") {
+		t.Fatalf("complete=%t error=%v", complete, cause)
+	}
+}
+
+func TestFinalCleanupDeadline(t *testing.T) {
+	complete, err := finaliseCleanup(time.Now().Add(time.Second), func() error {
+		return nil
+	})
+	if !complete || err != nil {
+		t.Fatalf("timely cleanup: complete=%t error=%v", complete, err)
+	}
+	complete, err = finaliseCleanup(time.Now().Add(time.Millisecond), func() error {
+		time.Sleep(2 * time.Millisecond)
+		return nil
+	})
+	if complete || err == nil {
+		t.Fatalf("late cleanup: complete=%t error=%v", complete, err)
+	}
+	called := false
+	complete, err = finaliseCleanup(time.Now().Add(-time.Second), func() error {
+		called = true
+		return nil
+	})
+	if !called || complete || err == nil {
+		t.Fatalf("overdue cleanup: called=%t complete=%t error=%v", called, complete, err)
 	}
 }
 

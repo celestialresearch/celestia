@@ -412,6 +412,28 @@ func TestSupervisorCleansDescendant(t *testing.T) {
 	assertDescendantCleaned(t, "descendant", 2)
 }
 
+func TestSupervisorCleansDescendantAfterParentExit(t *testing.T) {
+	worker := hostileWorker(t)
+	limits := testLimits()
+	limits.Processes = 2
+	outcome := runFixture(t, worker, limits, "descendant_exit")
+	if outcome.Status == processsupervision.Completed &&
+		strings.TrimSpace(string(outcome.Stdout)) == "blocked" &&
+		outcome.CleanupComplete {
+		t.Skip("host denied child creation; cleanup path was not exercised")
+	}
+	if outcome.Status != processsupervision.Completed || !outcome.CleanupComplete {
+		t.Fatalf(
+			"status=%s cleanup=%t stdout=%q error=%v",
+			outcome.Status,
+			outcome.CleanupComplete,
+			outcome.Stdout,
+			outcome.Err,
+		)
+	}
+	assertProcessExited(t, outcome.Stdout)
+}
+
 func TestSupervisorCleansGrandchild(t *testing.T) {
 	assertDescendantCleaned(t, "grandchild", 3)
 }
@@ -431,9 +453,14 @@ func assertDescendantCleaned(t *testing.T, mode string, processes uint32) {
 	if outcome.Status != processsupervision.TimedOut {
 		t.Fatalf("status=%s stdout=%q error=%v", outcome.Status, outcome.Stdout, outcome.Err)
 	}
-	pid, err := strconv.ParseUint(strings.TrimSpace(string(outcome.Stdout)), 10, 32)
+	assertProcessExited(t, outcome.Stdout)
+}
+
+func assertProcessExited(t *testing.T, output []byte) {
+	t.Helper()
+	pid, err := strconv.ParseUint(strings.TrimSpace(string(output)), 10, 32)
 	if err != nil {
-		t.Fatalf("parse descendant identity %q: %v", outcome.Stdout, err)
+		t.Fatalf("parse descendant identity %q: %v", output, err)
 	}
 	handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
 	if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
