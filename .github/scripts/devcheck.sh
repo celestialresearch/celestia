@@ -16,7 +16,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
 profile=${DEVCHECK_PROFILE:-full}
 case "$profile" in
-  full | shell) ;;
+  config | full | shell) ;;
   *)
     printf 'Unknown verification profile: %s\n' "$profile" >&2
     exit 2
@@ -261,6 +261,9 @@ fi
 
 section 'Project'
 run_check 'Config' check_config
+if [[ "$profile" == config ]]; then
+  finish
+fi
 if [[ "${DEVCHECK_SELF_TEST:-true}" == true ]]; then
   run_check 'Verification Scripts' bash ./.github/scripts/verification_test.sh
 else
