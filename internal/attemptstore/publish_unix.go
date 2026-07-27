@@ -207,7 +207,10 @@ func interruptedRecordRemovalsFor(
 	if !present {
 		return removals, nil
 	}
-	stat := target.Sys().(*syscall.Stat_t)
+	stat, ok := target.Sys().(*syscall.Stat_t)
+	if !ok {
+		return nil, ErrCorrupt
+	}
 	if stat.Nlink == 2 && linked != 1 || stat.Nlink == 1 && linked != 0 {
 		return nil, ErrCorrupt
 	}
@@ -245,7 +248,10 @@ func interruptedTemporaries(
 		if err != nil || !validInterruptedRecord(info) {
 			return nil, 0, ErrCorrupt
 		}
-		stat := info.Sys().(*syscall.Stat_t)
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return nil, 0, ErrCorrupt
+		}
 		sameTarget := targetPresent && os.SameFile(target, info)
 		if stat.Nlink == 2 && !sameTarget {
 			return nil, 0, ErrCorrupt

@@ -24,6 +24,10 @@ var (
 	errLockUnsupported = errors.New("attempt locks unsupported")
 )
 
+func openLockFileReadOnly(_ *os.Root, _, _ string) (*os.File, error) {
+	return nil, errLockUnsupported
+}
+
 func openAttemptLockFile(root *os.Root, _ string, name string, create bool) (*os.File, error) {
 	file, err := root.OpenFile(name, os.O_RDWR, 0o600)
 	if err == nil {

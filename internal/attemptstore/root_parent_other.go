@@ -14,5 +14,5 @@
 package attemptstore
 
 func secureEvidenceParent(string) error {
-	return nil
+	return ErrUnsupported
 }

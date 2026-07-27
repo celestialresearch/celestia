@@ -47,11 +47,12 @@ type Limits struct {
 }
 
 type Outcome struct {
-	Status          Status
-	Stdout          []byte
-	Stderr          []byte
-	ExitCode        uint32
-	WorkerSHA256    [32]byte
+	Status       Status
+	Stdout       []byte
+	Stderr       []byte
+	ExitCode     uint32
+	WorkerSHA256 [32]byte
+	// Duration covers execution through the first terminal supervision event.
 	Duration        time.Duration
 	CleanupComplete bool
 	Err             error

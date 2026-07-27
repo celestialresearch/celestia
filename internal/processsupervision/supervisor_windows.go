@@ -185,7 +185,6 @@ func (supervisor *Supervisor) run(
 	)
 	outcome := supervisor.observe(ctx, process, frame, remaining)
 	outcome.WorkerSHA256 = hash
-	outcome.Duration = time.Since(started)
 	return outcome
 }
 

@@ -71,6 +71,31 @@ func TestRecoverRejectsMissingLock(t *testing.T) {
 	}
 }
 
+func TestReadOnlyLockOpenDoesNotRequireWriteAccess(t *testing.T) {
+	directory := t.TempDir()
+	const name = "attempt.lock"
+	path := filepath.Join(directory, name)
+	if err := os.WriteFile(path, nil, 0o400); err != nil {
+		t.Fatalf("write read-only lock: %v", err)
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatalf("open lock root: %v", err)
+	}
+	defer func() {
+		if err := root.Close(); err != nil {
+			t.Errorf("close lock root: %v", err)
+		}
+	}()
+	file, err := openLockFileReadOnly(root, directory, name)
+	if err != nil {
+		t.Fatalf("open read-only lock: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close read-only lock: %v", err)
+	}
+}
+
 func TestRecoverRejectsReplacedLockDirectory(t *testing.T) {
 	tests := map[string]func(*testing.T, string){
 		"directory": func(t *testing.T, path string) {

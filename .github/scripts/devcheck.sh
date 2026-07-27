@@ -98,6 +98,22 @@ has_go_packages() {
   [[ -n "$packages" ]]
 }
 
+go_platform_lint() {
+  local goarch
+  local goos
+  local lint
+  local targets
+
+  lint=$(go tool -n golangci-lint) || return
+  targets='linux amd64
+aix ppc64
+plan9 amd64'
+  while read -r goos goarch; do
+    env GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
+      "$lint" run ./... || return
+  done <<<"$targets"
+}
+
 check_config() {
   local script_list
   local scripts=()
@@ -297,6 +313,7 @@ if has_go_packages; then
   run_no_output 'Go Format' go tool golangci-lint fmt --diff
   run_check 'Go Vet' go vet ./...
   run_check 'Go Lint' go tool golangci-lint run
+  run_check 'Go Platform Lint' go_platform_lint
   run_check 'Go Test' go_standard_tests
   run_check 'Go Race' go_race_tests
   run_check 'Go Coverage' bash ./.github/scripts/coveragecheck.sh cached

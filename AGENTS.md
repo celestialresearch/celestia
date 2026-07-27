@@ -57,6 +57,8 @@ whenever adding, configuring, suppressing, replacing or removing an analyser.
   indirect replacement.
 - Keep `ineffassign` enabled. Keep proprietary-header enforcement in
   `licencecheck.sh`; do not add a duplicate Go-only header linter.
+- Keep checked type assertions enabled through `errcheck`; do not duplicate
+  the rule with `forcetypeassert`.
 - Verify all remote GitHub Actions use full 40-character commit SHAs and exact
   release annotations.
 - Check workflow token permissions, untrusted pull-request execution, script

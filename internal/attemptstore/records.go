@@ -454,16 +454,6 @@ func publicationExists(path, attemptID string) (bool, error) {
 		if publication.AttemptID != attemptID {
 			return false, ErrCorrupt
 		}
-		records, err := readBundle(path, attemptID)
-		if err != nil {
-			return false, err
-		}
-		if err := verifyHash(path, receiptFile, publication.ReceiptHash); err != nil {
-			return false, err
-		}
-		if err := validateBundleFiles(path, records.Receipt.TerminalFile, true); err != nil {
-			return false, err
-		}
 		return true, nil
 	}
 	if errors.Is(err, os.ErrNotExist) {
