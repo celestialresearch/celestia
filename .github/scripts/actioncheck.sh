@@ -39,15 +39,59 @@ remote_actions() (
 
   while IFS= read -r -d '' file; do
     awk -v file="$file" '
-      /^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*/ {
+      /^[[:space:]]*(-[[:space:]]*)?uses[[:space:]]*:[[:space:]]*/ {
         line = $0
-        sub(/^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*/, "", line)
+        sub(/^[[:space:]]*(-[[:space:]]*)?uses[[:space:]]*:[[:space:]]*/, "", line)
         if (line !~ /^(\.\/|docker:\/\/)/) {
           print file ":" NR ":" line
         }
       }
     ' "$file"
   done <"$inventory"
+)
+
+check_permissions() (
+  local file inventory status=0
+
+  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-permissions.XXXXXX")
+  trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
+  action_files >"$inventory" || return
+  while IFS= read -r -d '' file; do
+    if ! awk -v file="$file" '
+      /^jobs:[[:space:]]*$/ {
+        in_jobs = 1
+        next
+      }
+      in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
+        job = $0
+        sub(/^  /, "", job)
+        sub(/:[[:space:]]*$/, "", job)
+      }
+      /^[[:space:]]+security-events[[:space:]]*:[[:space:]]*write[[:space:]]*$/ {
+        if (!in_jobs || job == "") {
+          print file ": security-events write must be job-scoped" >"/dev/stderr"
+          failed = 1
+        } else {
+          writes[job] = 1
+        }
+      }
+      /^[[:space:]]*(-[[:space:]]*)?uses[[:space:]]*:[[:space:]]*github\/codeql-action\/analyze@/ {
+        analyzes[job] = 1
+      }
+      END {
+        for (name in writes) {
+          if (!analyzes[name]) {
+            print file ": " name " has security-events write without CodeQL analysis" >"/dev/stderr"
+            failed = 1
+          }
+        }
+        exit failed
+      }
+    ' "$file"; then
+      status=1
+    fi
+  done <"$inventory"
+  return "$status"
 )
 
 parse_action() {
@@ -272,6 +316,7 @@ main() {
   fi
   action_files >/dev/null
 
+  check_permissions || return
   case "$1" in
   verify)
     check_actions false

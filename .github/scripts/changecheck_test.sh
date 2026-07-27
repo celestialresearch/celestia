@@ -88,12 +88,12 @@ main() {
 
   output=$(classify_path_directly .github/workflows/codeql.yml)
   assert_value true ci "$output"
-  assert_value false full "$output"
+  assert_value true full "$output"
 
   output=$(classify_path_directly .github/workflows/compatibility.yml)
   assert_value true ci "$output"
   assert_value true compatibility "$output"
-  assert_value false full "$output"
+  assert_value true full "$output"
 
   output=$(classify_path_directly go.mod)
   assert_value true go "$output"

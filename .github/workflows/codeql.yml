@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.ref }}
@@ -43,6 +42,9 @@ jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
     needs: classify
+    permissions:
+      contents: read
+      security-events: write
     if: >-
       needs.classify.outputs.full == 'true' ||
       needs.classify.outputs.ci == 'true' ||

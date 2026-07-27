@@ -146,3 +146,53 @@ if parse_action "$invalid_entry" >/dev/null 2>&1; then
   printf 'action parser accepted a non-canonical semantic version\n' >&2
   exit 1
 fi
+
+printf 'steps:\n  - uses : example/action@main\n' >"$action_file"
+entry=$(remote_actions)
+if [[ -z "$entry" ]]; then
+  printf 'action inventory missed a spaced action key\n' >&2
+  exit 1
+fi
+if parse_action "$entry" >/dev/null 2>&1; then
+  printf 'action parser missed a spaced unpinned action\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+permissions:
+  security-events: write
+jobs:
+  classify:
+    steps:
+      - run: true
+EOF
+if check_permissions >/dev/null 2>&1; then
+  printf 'permission check accepted workflow-scoped security write\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+jobs:
+  classify:
+    permissions:
+      security-events: write
+    steps:
+      - run: true
+EOF
+if check_permissions >/dev/null 2>&1; then
+  printf 'permission check accepted unrelated security write\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+jobs:
+  analyze:
+    permissions:
+      security-events: write
+    steps:
+      - uses: github/codeql-action/analyze@0000000000000000000000000000000000000001 # v1.0.0
+EOF
+if ! check_permissions; then
+  printf 'permission check rejected CodeQL analysis authority\n' >&2
+  exit 1
+fi
