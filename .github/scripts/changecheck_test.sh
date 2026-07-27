@@ -104,12 +104,12 @@ main() {
   assert_value true rust "$output"
   assert_value true dependencies "$output"
 
-  output=$(classify_path_directly internal/urlreference/urlreference.go)
+  output=$(classify_path_directly internal/urlreferencev1/urlreference.go)
   assert_value true go "$output"
   assert_value false full "$output"
 
   for path in \
-    internal/workerprotocol/protocol.go \
+    internal/workerprotocolv1/protocol.go \
     internal/urladmission/admission.go \
     worker/url-reference/src/main.rs \
     .github/scripts/devcheck.sh \
@@ -133,7 +133,7 @@ main() {
   assert_value true full "$output"
   base=$(git -C "$fixture_repo" rev-parse HEAD)
   commit_file "$fixture_repo" docs/mixed.md
-  commit_file "$fixture_repo" internal/urlreference/mixed.go
+  commit_file "$fixture_repo" internal/urlreferencev1/mixed.go
   output=$(
     cd "$fixture_repo"
     bash "$root/.github/scripts/changecheck.sh" "$base" HEAD
@@ -151,9 +151,9 @@ main() {
   )
   assert_value true full "$output"
 
-  commit_file "$fixture_repo" internal/workerprotocol/deleted.go
+  commit_file "$fixture_repo" internal/workerprotocolv1/deleted.go
   base=$(git -C "$fixture_repo" rev-parse HEAD)
-  git -C "$fixture_repo" rm -q internal/workerprotocol/deleted.go
+  git -C "$fixture_repo" rm -q internal/workerprotocolv1/deleted.go
   git -C "$fixture_repo" commit -q -m deletion
   output=$(
     cd "$fixture_repo"

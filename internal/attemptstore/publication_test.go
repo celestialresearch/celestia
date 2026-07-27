@@ -336,7 +336,7 @@ func TestReadRecordRejectsNonCanonicalJSON(t *testing.T) {
 		"leading whitespace": append([]byte(" "), canonical...),
 		"duplicate field": append(
 			bytes.TrimSuffix(canonical, []byte("}")),
-			[]byte(`,"version":0}`)...,
+			[]byte(`,"version":1}`)...,
 		),
 	}
 	for name, data := range tests {

@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	"celestia.research/governed-operation/internal/processsupervision"
-	"celestia.research/governed-operation/internal/urlreference"
+	"celestia.research/governed-operation/internal/urlreferencev1"
 )
 
 type Operation struct{}

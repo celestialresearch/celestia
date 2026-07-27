@@ -28,13 +28,13 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"celestia.research/governed-operation/internal/urlreference"
-	"celestia.research/governed-operation/internal/workerprotocol"
+	"celestia.research/governed-operation/internal/urlreferencev1"
+	"celestia.research/governed-operation/internal/workerprotocolv1"
 )
 
 const (
 	URLVerifierID      = "go-url-reference"
-	URLVerifierVersion = "0"
+	URLVerifierVersion = "1"
 )
 
 func invalidRecordFile(path string, info os.FileInfo) bool {
@@ -130,10 +130,10 @@ func validateAdmitted(record Admitted) error {
 		len(record.RequestFrame) == 0 {
 		return ErrCorrupt
 	}
-	var request requestV0
+	var request requestV1
 	switch record.Version {
-	case 0:
-		request, err = decodeRequestV0(record.RequestFrame, admittedAt)
+	case Version:
+		request, err = decodeRequestV1(record.RequestFrame, admittedAt)
 	default:
 		return ErrCorrupt
 	}
@@ -161,6 +161,22 @@ func validateObservation(record Observation) error {
 }
 
 func validateObservationEvidence(admitted Admitted, observation Observation) error {
+	return validateObservationEvidenceWith(admitted, observation, validateVerificationEvidence)
+}
+
+func validateRetainedObservationEvidence(admitted Admitted, observation Observation) error {
+	return validateObservationEvidenceWith(
+		admitted,
+		observation,
+		validateRetainedVerificationEvidence,
+	)
+}
+
+func validateObservationEvidenceWith(
+	admitted Admitted,
+	observation Observation,
+	validateVerification func(workerprotocol.Request, workerprotocol.Response, Observation) error,
+) error {
 	if len(observation.Stdout) > workerprotocol.MaxResponseBytes ||
 		len(observation.Stderr) > workerprotocol.StderrBytes {
 		return ErrCorrupt
@@ -174,11 +190,28 @@ func validateObservationEvidence(admitted Admitted, observation Observation) err
 		if responseErr != nil {
 			return ErrCorrupt
 		}
-		return validateVerificationEvidence(request, response, observation)
+		return validateVerification(request, response, observation)
 	case "rejected":
 		if responseErr == nil {
 			return ErrCorrupt
 		}
+	}
+	return nil
+}
+
+func validateRetainedVerificationEvidence(
+	_ workerprotocol.Request,
+	response workerprotocol.Response,
+	observation Observation,
+) error {
+	if response.Status != workerprotocol.Completed {
+		return nil
+	}
+	if observation.VerificationID != URLVerifierID ||
+		observation.VerificationVer != URLVerifierVersion ||
+		observation.ExpectedOutput == "" ||
+		observation.VerificationPass != (*response.Output == observation.ExpectedOutput) {
+		return ErrCorrupt
 	}
 	return nil
 }
@@ -191,7 +224,7 @@ func decodeObservationEvidence(
 	if err != nil {
 		return workerprotocol.Request{}, workerprotocol.Response{}, err
 	}
-	retained, err := decodeRequestV0(admitted.RequestFrame, admittedAt)
+	retained, err := decodeRequestV1(admitted.RequestFrame, admittedAt)
 	if err != nil {
 		return workerprotocol.Request{}, workerprotocol.Response{}, err
 	}

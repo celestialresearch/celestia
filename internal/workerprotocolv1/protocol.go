@@ -24,15 +24,15 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"celestia.research/governed-operation/internal/urlreference"
+	"celestia.research/governed-operation/internal/urlreferencev1"
 )
 
 const (
-	ProtocolVersion  = 0
+	ProtocolVersion  = 1
 	OperationID      = "url-reference"
-	OperationVersion = 0
+	OperationVersion = 1
 	WorkerID         = "celestia-url-reference"
-	WorkerVersion    = "0"
+	WorkerVersion    = "1"
 	MediaType        = "text/plain; charset=utf-8"
 	MaxResponseBytes = 65536
 	MaxOutputBytes   = 8192

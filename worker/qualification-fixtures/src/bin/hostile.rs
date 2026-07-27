@@ -86,13 +86,13 @@ fn semantic_lie(request: &str) {
         },
     );
     let response = json!({
-        "protocol_version": 0,
+        "protocol_version": 1,
         "operation_id": "url-reference",
-        "operation_version": 0,
+        "operation_version": 1,
         "attempt_id": request["attempt_id"],
         "request_nonce": request["request_nonce"],
         "worker_id": "celestia-url-reference",
-        "worker_version": "0",
+        "worker_version": "1",
         "status": "completed",
         "output_media_type": "text/plain; charset=utf-8",
         "output_length": output.len(),
@@ -109,13 +109,13 @@ fn semantic_lie(request: &str) {
 
 fn terminal_response(request: &Value, status: &str, code: &str, exit: i32) -> ! {
     let response = json!({
-        "protocol_version": 0,
+        "protocol_version": 1,
         "operation_id": "url-reference",
-        "operation_version": 0,
+        "operation_version": 1,
         "attempt_id": request["attempt_id"],
         "request_nonce": request["request_nonce"],
         "worker_id": "celestia-url-reference",
-        "worker_version": "0",
+        "worker_version": "1",
         "status": status,
         "diagnostics": [{"code": code, "message": "hostile fixture terminal response"}],
         "duration_ns": 1

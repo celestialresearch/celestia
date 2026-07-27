@@ -5,7 +5,7 @@ operation is qualified locally on Windows. No public CLI exists and other
 platforms fail closed.
 
 The first operation is constrained by
-[`docs/contracts/url_reference_v0.md`](docs/contracts/url_reference_v0.md).
+[`docs/contracts/url_reference_v1.md`](docs/contracts/url_reference_v1.md).
 
 Repository history and push requirements are defined in
 [`policies/commit.md`](policies/commit.md).

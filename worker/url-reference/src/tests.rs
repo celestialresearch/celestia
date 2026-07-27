@@ -16,8 +16,18 @@ use serde::Deserialize;
 #[serde(deny_unknown_fields)]
 struct ConformanceFixture {
     version: u8,
+    boundaries: ConformanceBounds,
     accepted: Vec<ConformanceCase>,
     rejected: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConformanceBounds {
+    label_max: usize,
+    host_max: usize,
+    input_max: usize,
+    port_digits_max: usize,
 }
 
 #[derive(Deserialize)]
@@ -31,9 +41,14 @@ struct ConformanceCase {
 #[test]
 fn matches_conformance_fixture() {
     let fixture: ConformanceFixture =
-        serde_json::from_str(include_str!("../../../testdata/url-reference-v0.json"))
+        serde_json::from_str(include_str!("../../../testdata/url-reference-v1.json"))
             .expect("valid conformance fixture");
-    assert_eq!(fixture.version, 0);
+    assert_eq!(fixture.version, 1);
+    assert_eq!(fixture.boundaries.label_max, 63);
+    assert_eq!(fixture.boundaries.host_max, 253);
+    assert_eq!(fixture.boundaries.input_max, 4_096);
+    assert_eq!(fixture.boundaries.port_digits_max, 5);
+    assert_conformance_boundaries(&fixture.boundaries);
     assert!(!fixture.accepted.is_empty());
     assert!(!fixture.rejected.is_empty());
     for case in fixture.accepted {
@@ -44,6 +59,42 @@ fn matches_conformance_fixture() {
         for (name, mode) in [("fang", Mode::Fang), ("defang", Mode::Defang)] {
             assert_eq!(transform(&input, &mode), Err(()), "{name}: {input}");
         }
+    }
+}
+
+fn assert_conformance_boundaries(bounds: &ConformanceBounds) {
+    let label = "a".repeat(bounds.label_max);
+    let host = format!("{label}.{label}.{label}.{}", "a".repeat(61));
+    let prefix = "https://example.test/";
+    let accepted = [
+        format!("https://{label}.test/"),
+        format!("https://{host}/"),
+        "https://example.test:1/".to_owned(),
+        "https://example.test:65535/".to_owned(),
+        format!("{prefix}{}", "a".repeat(bounds.input_max - prefix.len())),
+    ];
+    let rejected = [
+        format!("https://{}.test/", "a".repeat(bounds.label_max + 1)),
+        format!("https://{host}a/"),
+        "https://example.test:0/".to_owned(),
+        "https://example.test:65536/".to_owned(),
+        format!(
+            "{prefix}{}",
+            "a".repeat(bounds.input_max - prefix.len() + 1)
+        ),
+    ];
+    for input in accepted {
+        assert!(
+            transform(&input, &Mode::Fang).is_ok(),
+            "rejected boundary input"
+        );
+    }
+    for input in rejected {
+        assert!(
+            transform(&input, &Mode::Fang).is_err(),
+            "accepted out-of-bound input: length={} input={input}",
+            input.len()
+        );
     }
 }
 

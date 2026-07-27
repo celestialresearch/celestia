@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"celestia.research/governed-operation/internal/urladmission"
-	"celestia.research/governed-operation/internal/urlreference"
-	"celestia.research/governed-operation/internal/workerprotocol"
+	"celestia.research/governed-operation/internal/urlreferencev1"
+	"celestia.research/governed-operation/internal/workerprotocolv1"
 )
 
 const (

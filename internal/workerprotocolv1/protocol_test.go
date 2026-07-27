@@ -113,23 +113,23 @@ func TestDecodeResponseRejects(t *testing.T) {
 		{"unpaired high surrogate", strings.Replace(valid, `"completed"`, `"\ud800"`, 1), 0},
 		{"unpaired low surrogate", strings.Replace(valid, `"completed"`, `"\udc00"`, 1), 0},
 		{"malformed", "{", 0},
-		{"duplicate", strings.Replace(valid, `"protocol_version":0`, `"protocol_version":0,"protocol_version":0`, 1), 0},
+		{"duplicate", strings.Replace(valid, `"protocol_version":1`, `"protocol_version":1,"protocol_version":1`, 1), 0},
 		{"unknown", strings.Replace(valid, "{", `{"unknown":0,`, 1), 0},
 		{"missing protocol", removeField(valid, "protocol_version"), 0},
 		{"missing duration", removeField(valid, "duration_ns"), 0},
 		{"missing diagnostics", removeField(valid, "diagnostics"), 0},
 		{"null diagnostics", strings.Replace(valid, `"diagnostics":[]`, `"diagnostics":null`, 1), 0},
-		{"null protocol", strings.Replace(valid, `"protocol_version":0`, `"protocol_version":null`, 1), 0},
-		{"negative zero protocol", strings.Replace(valid, `"protocol_version":0`, `"protocol_version":-0`, 1), 0},
+		{"null protocol", strings.Replace(valid, `"protocol_version":1`, `"protocol_version":null`, 1), 0},
+		{"negative zero protocol", strings.Replace(valid, `"protocol_version":1`, `"protocol_version":-0`, 1), 0},
 		{"null duration", strings.Replace(valid, `"duration_ns":1000`, `"duration_ns":null`, 1), 0},
 		{"null worker ID", strings.Replace(valid, `"worker_id":"celestia-url-reference"`, `"worker_id":null`, 1), 0},
-		{"wrong protocol", strings.Replace(valid, `"protocol_version":0`, `"protocol_version":1`, 1), 0},
+		{"wrong protocol", strings.Replace(valid, `"protocol_version":1`, `"protocol_version":2`, 1), 0},
 		{"wrong operation", strings.Replace(valid, `"operation_id":"url-reference"`, `"operation_id":"other"`, 1), 0},
-		{"wrong operation version", strings.Replace(valid, `"operation_version":0`, `"operation_version":1`, 1), 0},
+		{"wrong operation version", strings.Replace(valid, `"operation_version":1`, `"operation_version":2`, 1), 0},
 		{"wrong attempt", strings.Replace(valid, request.AttemptID, "other", 1), 0},
 		{"wrong nonce", strings.Replace(valid, request.RequestNonce, "other", 1), 0},
 		{"wrong worker", strings.Replace(valid, `"worker_id":"celestia-url-reference"`, `"worker_id":"other"`, 1), 0},
-		{"wrong worker version", strings.Replace(valid, `"worker_version":"0"`, `"worker_version":"1"`, 1), 0},
+		{"wrong worker version", strings.Replace(valid, `"worker_version":"1"`, `"worker_version":"2"`, 1), 0},
 		{"negative duration", strings.Replace(valid, `"duration_ns":1000`, `"duration_ns":-1`, 1), 0},
 		{"long duration", strings.Replace(valid, `"duration_ns":1000`, `"duration_ns":2000000001`, 1), 0},
 		{"unsupported status", strings.Replace(valid, `"status":"completed"`, `"status":"other"`, 1), 0},
@@ -229,7 +229,7 @@ func TestValidateRequestRejects(t *testing.T) {
 		name   string
 		mutate func(*Request)
 	}{
-		{"constants", func(request *Request) { request.ProtocolVersion = 1 }},
+		{"constants", func(request *Request) { request.ProtocolVersion = 2 }},
 		{"attempt", func(request *Request) { request.AttemptID = "attempt" }},
 		{"repeated correlation", func(request *Request) {
 			request.RequestNonce = request.AttemptID
@@ -298,9 +298,9 @@ func TestDecodeRequestRejects(t *testing.T) {
 		" " + frame,
 		strings.Replace(frame, `"url-reference"`, `"\ud800"`, 1),
 		strings.Replace(frame, `"url-reference"`, `"\udc00"`, 1),
-		strings.Replace(frame, `"protocol_version":0`, `"protocol_version":-0`, 1),
-		strings.Replace(frame, `"protocol_version":0`, `"protocol_version":null`, 1),
-		strings.Replace(frame, `"protocol_version":0`, `"protocol_version":0,"protocol_version":0`, 1),
+		strings.Replace(frame, `"protocol_version":1`, `"protocol_version":-0`, 1),
+		strings.Replace(frame, `"protocol_version":1`, `"protocol_version":null`, 1),
+		strings.Replace(frame, `"protocol_version":1`, `"protocol_version":1,"protocol_version":1`, 1),
 		removeField(frame, "protocol_version"),
 		strings.Replace(frame, `"limits":{`, `"limits":{"unknown":0,`, 1),
 		strings.Replace(frame, `"input_bytes":4096`, `"input_bytes":0e0`, 1),
@@ -367,7 +367,7 @@ func TestValidateFieldsRejects(t *testing.T) {
 	if err := validateFields([]byte(`{`), Completed); !errors.Is(err, ErrProtocol) {
 		t.Fatalf("malformed error = %v, want ErrProtocol", err)
 	}
-	data := []byte(`{"protocol_version":0,"operation_id":"url-reference","operation_version":0,"attempt_id":"attempt","request_nonce":"nonce","worker_id":"celestia-url-reference","worker_version":"0","status":"failed","unknown":[],"duration_ns":0}`)
+	data := []byte(`{"protocol_version":1,"operation_id":"url-reference","operation_version":1,"attempt_id":"attempt","request_nonce":"nonce","worker_id":"celestia-url-reference","worker_version":"1","status":"failed","unknown":[],"duration_ns":0}`)
 	if err := validateFields(data, Failed); !errors.Is(err, ErrProtocol) {
 		t.Fatalf("missing field error = %v, want ErrProtocol", err)
 	}

@@ -21,10 +21,10 @@ import (
 	"time"
 
 	"celestia.research/governed-operation/internal/urladmission"
-	"celestia.research/governed-operation/internal/workerprotocol"
+	"celestia.research/governed-operation/internal/workerprotocolv1"
 )
 
-const Version = 0
+const Version = 1
 
 const (
 	attemptsDirectory = "attempts"

@@ -1,4 +1,4 @@
-# Attempt Evidence v0
+# Attempt Evidence v1
 
 Status: implemented for the internal URL-reference operation.
 
@@ -19,10 +19,11 @@ The complete bundle is moved to `<root>/attempts/<attempt-id>/` before its
 publication marker is written.
 
 `admitted.json` retains the original input and exact request frame.
-Inspection uses the current v0 frame decoder and requires its attempt identity
-and input to match the duplicated admitted fields. The decoder enforces the
-v0 URL grammar, deadline, input length, input hash, mode and fixed operation
-limits. It does not rerun admission or generate new identities.
+Inspection uses the versioned `workerprotocolv1` frame semantics. It requires
+the request attempt identity and input to match the duplicated admitted fields
+then enforces the deadline, input length, input hash, mode and fixed operation
+limits. It does not rerun admission, the URL grammar, the transformation or
+the worker.
 `observation.json` retains the worker identity, exact bounded streams, process
 outcome, protocol result, verification result and terminal status.
 `recovery.json` records an interrupted attempt as `indeterminate`.
@@ -40,7 +41,7 @@ durable terminal outcome.
 - Windows evidence roots require a fixed local drive whose DOS device target is
   a hard-disk volume. UNC, device, mapped, substituted, removable and RAM-disk
   roots are rejected before evidence access. Network-mounted Unix filesystems
-  are not qualified by v0.
+  are not qualified by v1.
 - Each attempt has a permanent lock file. Its operating-system exclusive lock
   is held from staging through terminal publication.
 - Writers create a permanent ownership marker before staging. A missing lock or
@@ -66,8 +67,8 @@ durable terminal outcome.
   the source parent after this cross-directory move.
 - Inspection accepts only fixed record names, regular files, matching attempt
   identities, matching schema versions, matching terminal states and matching
-  hashes. It replays protocol validation and deterministic URL verification
-  against the retained request and response.
+  hashes. It validates the retained protocol relationship without replaying
+  URL grammar or transformation semantics.
 - Recovery never reruns the worker. It publishes an `indeterminate` recovery
   record for an incomplete attempt or resumes publication of an existing valid
   terminal record.
@@ -75,10 +76,10 @@ durable terminal outcome.
   surrounding whitespace and are limited to 512 bytes.
 - A persistence failure cannot produce `verified`.
 
-Celestia has no pre-release persistence compatibility guarantee. Evidence
-created before the first supported release may be rejected after an internal
-schema or semantic change. Persistent compatibility must be defined before
-operational evidence is retained across upgrades.
+v1 is the first supported evidence format. `workerprotocolv1` defines
+immutable v1 frame semantics. `urlreferencev1` defines the admission and
+publication semantics but inspection does not replay them. Incompatible
+changes require a new evidence version.
 
 The filesystem and same user remain trusted. This format does not defend
 against an authorised user replacing the complete evidence root or modifying

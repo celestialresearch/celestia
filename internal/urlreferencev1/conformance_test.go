@@ -16,13 +16,22 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strings"
 	"testing"
 )
 
 type conformanceFixture struct {
 	Version  int               `json:"version"`
+	Bounds   conformanceBounds `json:"boundaries"`
 	Accepted []conformanceCase `json:"accepted"`
 	Rejected []string          `json:"rejected"`
+}
+
+type conformanceBounds struct {
+	LabelMax      int `json:"label_max"`
+	HostMax       int `json:"host_max"`
+	InputMax      int `json:"input_max"`
+	PortDigitsMax int `json:"port_digits_max"`
 }
 
 type conformanceCase struct {
@@ -45,12 +54,13 @@ func TestConformanceFixture(t *testing.T) {
 			}
 		}
 	}
+	assertConformanceBoundaries(t, fixture.Bounds)
 }
 
 func loadConformanceFixture(t *testing.T) conformanceFixture {
 	t.Helper()
 
-	data, err := os.ReadFile("../../testdata/url-reference-v0.json")
+	data, err := os.ReadFile("../../testdata/url-reference-v1.json")
 	if err != nil {
 		t.Fatalf("read conformance fixture: %v", err)
 	}
@@ -63,10 +73,45 @@ func loadConformanceFixture(t *testing.T) conformanceFixture {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		t.Fatalf("trailing conformance fixture data: %v", err)
 	}
-	if fixture.Version != 0 || len(fixture.Accepted) == 0 || len(fixture.Rejected) == 0 {
+	if fixture.Version != 1 ||
+		fixture.Bounds != (conformanceBounds{63, 253, 4096, 5}) ||
+		len(fixture.Accepted) == 0 ||
+		len(fixture.Rejected) == 0 {
 		t.Fatalf("invalid conformance fixture: %+v", fixture)
 	}
 	return fixture
+}
+
+func assertConformanceBoundaries(t *testing.T, bounds conformanceBounds) {
+	t.Helper()
+
+	label := strings.Repeat("a", bounds.LabelMax)
+	host := label + "." + label + "." + label + "." + strings.Repeat("a", 61)
+	accepted := []string{
+		"https://" + label + ".test/",
+		"https://" + host + "/",
+		"https://example.test:1/",
+		"https://example.test:65535/",
+	}
+	prefix := "https://example.test/"
+	accepted = append(accepted, prefix+strings.Repeat("a", bounds.InputMax-len(prefix)))
+	rejected := []string{
+		"https://" + strings.Repeat("a", bounds.LabelMax+1) + ".test/",
+		"https://" + host + "a/",
+		"https://example.test:0/",
+		"https://example.test:65536/",
+		prefix + strings.Repeat("a", bounds.InputMax-len(prefix)+1),
+	}
+	for _, input := range accepted {
+		if err := ValidateInput(input); err != nil {
+			t.Fatalf("boundary input rejected: length=%d error=%v", len(input), err)
+		}
+	}
+	for _, input := range rejected {
+		if err := ValidateInput(input); err == nil {
+			t.Fatalf("out-of-bound input accepted: length=%d", len(input))
+		}
+	}
 }
 
 func assertConformanceCase(t *testing.T, test conformanceCase) {

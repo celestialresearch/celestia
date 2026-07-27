@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"celestia.research/governed-operation/internal/urladmission"
-	"celestia.research/governed-operation/internal/urlreference"
-	"celestia.research/governed-operation/internal/workerprotocol"
+	"celestia.research/governed-operation/internal/urlreferencev1"
+	"celestia.research/governed-operation/internal/workerprotocolv1"
 )
 
 func TestStoreRejectsInvalidEvidenceRoots(t *testing.T) {
@@ -630,7 +630,7 @@ func testObservation(attemptID string) Observation {
 		CleanupComplete:  true,
 		ProtocolStatus:   "valid",
 		VerificationID:   "go-url-reference",
-		VerificationVer:  "0",
+		VerificationVer:  URLVerifierVersion,
 		ExpectedOutput:   "hxxps://example[.]test/path",
 		VerificationPass: true,
 		TerminalStatus:   "verified",
