@@ -14,8 +14,11 @@
 package attemptstore
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestEvidenceRootPathPolicy(t *testing.T) {
@@ -32,6 +35,41 @@ func TestEvidenceRootPathPolicy(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if actual := validEvidenceRootPath(test.path); actual != test.want {
 				t.Fatalf("validEvidenceRootPath(%q) = %t, want %t", test.path, actual, test.want)
+			}
+		})
+	}
+}
+
+func TestEvidenceVolumePolicy(t *testing.T) {
+	tests := []struct {
+		name      string
+		driveType uint32
+		target    string
+		targetErr error
+		want      bool
+	}{
+		{name: "fixed local volume", driveType: windows.DRIVE_FIXED, target: `\Device\HarddiskVolume3`, want: true},
+		{name: "mapped remote", driveType: windows.DRIVE_REMOTE, target: `\Device\Mup\server\share`},
+		{name: "substituted drive", driveType: windows.DRIVE_FIXED, target: `\??\C:\evidence`},
+		{name: "removable drive", driveType: windows.DRIVE_REMOVABLE, target: `\Device\HarddiskVolume4`},
+		{name: "RAM disk", driveType: windows.DRIVE_RAMDISK, target: `\Device\HarddiskVolume5`},
+		{name: "unknown drive", driveType: windows.DRIVE_UNKNOWN},
+		{name: "missing root", driveType: windows.DRIVE_NO_ROOT_DIR},
+		{name: "lookup failure", driveType: windows.DRIVE_FIXED, targetErr: errors.New("lookup failed")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			driveType := func(string) (uint32, error) {
+				return test.driveType, nil
+			}
+			deviceTarget := func(string) (string, error) {
+				if test.targetErr != nil {
+					return "", test.targetErr
+				}
+				return test.target, nil
+			}
+			if actual := validEvidenceVolume("C:", driveType, deviceTarget); actual != test.want {
+				t.Fatalf("validEvidenceVolume() = %t, want %t", actual, test.want)
 			}
 		})
 	}
