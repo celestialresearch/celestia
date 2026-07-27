@@ -123,6 +123,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Stage DragonFly CA Bundle
+        if: matrix.operating-system == 'dragonflybsd'
+        run: |
+          install -D -m 0644 \
+            /etc/ssl/certs/ca-certificates.crt \
+            .github/generated/dragonfly-ca.pem
       - name: Start ${{ matrix.name }}
         uses: cross-platform-actions/action@5ea7e8e4677bd726033a10b094ba1c5762b15dee # v1.3.0
         with:

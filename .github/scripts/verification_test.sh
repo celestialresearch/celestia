@@ -89,9 +89,24 @@ main() (
   }
   grep -Fq "https://mirror.clarkson.edu/dragonflybsd/\${ABI}/LATEST" \
     "$root/.github/scripts/dragonfly-bootstrap.sh" || {
-    printf 'DragonFly direct-mirror fallback is missing\n' >&2
+    printf 'DragonFly direct mirror is missing\n' >&2
     return 1
   }
+  grep -Fq "SSL_CA_CERT_FILE=\"\$ca_bundle\"" \
+    "$root/.github/scripts/dragonfly-bootstrap.sh" || {
+    printf 'DragonFly trusted CA handoff is missing\n' >&2
+    return 1
+  }
+  grep -Fq '.github/generated/dragonfly-ca.pem' \
+    "$root/.github/workflows/compatibility.yml" || {
+    printf 'DragonFly CA bundle staging is missing\n' >&2
+    return 1
+  }
+  if grep -Fq 'http://mirror.clarkson.edu' \
+    "$root/.github/scripts/dragonfly-bootstrap.sh"; then
+    printf 'DragonFly bootstrap permits unauthenticated package transport\n' >&2
+    return 1
+  fi
   for variable in CELESTIA_SHELL_CACHE CELESTIA_SHELL_TARGET \
     CELESTIA_SHELL_TMP; do
     grep -Fq "\$start.Environment['$variable']" "$shellcheck_script" || {
