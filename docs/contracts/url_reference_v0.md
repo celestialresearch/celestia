@@ -175,7 +175,8 @@ Timing has five distinct phases:
   allowance and a separate two-second startup budget;
 - successful process resume starts the worker's full two-second execution
   timer;
-- termination and process-tree join use a separate one-second cleanup budget.
+- termination and process-tree observation use a separate one-second cleanup
+  deadline.
 
 Staging and startup use synchronous filesystem and Windows calls. Their
 deadlines are checked between calls and immediately before process resume; they
@@ -192,8 +193,13 @@ fields and duplicate JSON object keys are rejected.
 Standard error is diagnostic text only. It is bounded, retained as bytes and
 never parsed as protocol or authority.
 
-The worker receives an empty temporary working directory, a documented
-environment allowlist and no unnecessary inherited handles. It may not open
+Pipe cancellation and joins may use one bounded grace after that deadline.
+Synchronous handle closure and AppContainer deletion are not pre-emptible. An
+overrun or incomplete join records `cleanup_failed`.
+
+The worker receives a private per-attempt directory containing only its staged
+image and `Temp` at launch, a documented environment allowlist and no
+unnecessary inherited handles. It may not open
 credentials, use a shell, spawn a process, load a user-selected library or
 access a network. Worker launch remains disabled on each platform until the Go
 supervisor's containment and complete process-tree cleanup are qualified
@@ -294,8 +300,9 @@ underscores. Messages contain at most 512 UTF-8 bytes. Messages are
 worker-controlled, potentially sensitive evidence and are not stable API text.
 They are retained in the protected attempt bundle but are never copied to
 ordinary logs, standard error or CLI output. Operator-facing diagnostics are
-selected by Go from the validated code. Unknown worker codes collapse to the
-host-owned `worker_failure` code and message.
+selected by Go from validated status-code pairs and use only host-owned
+messages. `completed` exposes none. `invalid_reference` is recognised only for
+`rejected`; every other pair becomes `worker_failure`.
 
 For `completed`, every shown field is required and diagnostics may be empty.
 For `rejected` and `failed`, output media type, length, hash and output are
@@ -392,6 +399,10 @@ with a missing lock from pre-lock v0 bundles. Recovery may only:
 - validate and publish a complete pending attempt;
 - retain and report an incomplete pending attempt;
 - report a corrupt pending or published attempt.
+
+If staging fails before `admitted.json` is durable, the permanent ownership
+marker burns the generated identity but the result does not expose that identity
+as inspectable or recoverable.
 
 If execution succeeds but publication fails, the result is `indeterminate`.
 The CLI may display a clearly labelled non-durable output but must not describe
