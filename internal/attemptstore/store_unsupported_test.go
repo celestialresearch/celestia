@@ -22,4 +22,7 @@ func TestStoreRejectsUnsupportedPlatform(t *testing.T) {
 	if _, err := New("/celestia-evidence"); !errors.Is(err, ErrUnsupported) {
 		t.Fatalf("unsupported platform result: %v", err)
 	}
+	if err := secureEvidenceParent("/celestia"); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("unsupported parent result: %v", err)
+	}
 }

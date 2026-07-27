@@ -62,6 +62,7 @@ func (supervisor *Supervisor) observe(
 		overflow,
 		input,
 	)
+	executionDuration := time.Since(process.started)
 	cleanupDeadline := time.Now().Add(supervisor.limits.CleanupTimeout)
 	joinDeadline := cleanupDeadline.Add(100 * time.Millisecond)
 	if status != Completed {
@@ -88,7 +89,7 @@ func (supervisor *Supervisor) observe(
 	)
 	out := awaitStream(stdoutReader, stdout, cleanupDeadline, joinDeadline)
 	diagnostics := awaitStream(stderrReader, stderr, cleanupDeadline, joinDeadline)
-	outcome := finishOutcome(process, status, cause, cleanupComplete, out, diagnostics)
+	outcome := finishOutcome(process, status, cause, cleanupComplete, executionDuration, out, diagnostics)
 	if err := process.close(); err != nil {
 		outcome.Status = CleanupFailed
 		outcome.CleanupComplete = false
@@ -192,6 +193,7 @@ func finishOutcome(
 	status Status,
 	cause error,
 	cleanupComplete bool,
+	duration time.Duration,
 	out streamResult,
 	diagnostics streamResult,
 ) Outcome {
@@ -217,7 +219,7 @@ func finishOutcome(
 		Stdout:          out.data,
 		Stderr:          diagnostics.data,
 		ExitCode:        exitCode,
-		Duration:        time.Since(process.started),
+		Duration:        duration,
 		CleanupComplete: cleanupComplete,
 		Err:             cause,
 	}

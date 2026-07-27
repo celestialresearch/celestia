@@ -27,6 +27,7 @@ property unless each detects a demonstrated distinct failure class.
 The baseline applies whenever Go packages exist:
 - compiler, `go vet`, `staticcheck`, `unused`, `errcheck`, `ineffassign`;
 - resource and error checks already listed in `.golangci.yml`;
+- checked type assertions through `errcheck`;
 - enum, tag, Unicode and security checks already listed there;
 - `cyclop` with a maximum function complexity of 12;
 - `funlen` with maxima of 80 lines and 50 statements;
@@ -36,6 +37,9 @@ The baseline applies whenever Go packages exist:
 
 `.golangci.yml` is the executable allowlist. This policy is the normative
 contract for changing that allowlist.
+
+The local gate analyses the host plus representative Linux, AIX and Plan 9
+targets so platform files are not hidden by the developer's host.
 
 ## Admission
 

@@ -189,7 +189,7 @@ func (store *Store) hasOwnershipMarker(attemptID string) (present bool, err erro
 		pathIsLinked(filepath.Join(directory, name), pathInfo) {
 		return false, ErrCorrupt
 	}
-	file, err := root.OpenFile(name, os.O_RDWR, 0)
+	file, err := openLockFileReadOnly(root, directory, name)
 	if err != nil {
 		return false, fmt.Errorf("open attempt ownership marker: %w", err)
 	}
@@ -212,7 +212,7 @@ func (store *Store) validateAttemptLock(attemptID string) (err error) {
 		err = errors.Join(err, root.Close())
 	}()
 	name := attemptID + ".lock"
-	file, err := openAttemptLockFile(root, directory, name, false)
+	file, err := openLockFileReadOnly(root, directory, name)
 	if errors.Is(err, os.ErrNotExist) {
 		return ErrCorrupt
 	}

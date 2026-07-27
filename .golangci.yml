@@ -9,6 +9,8 @@ linters:
     cyclop:
       max-complexity: 12
       package-average: 0.0
+    errcheck:
+      check-type-assertions: true
     funlen:
       lines: 80
       statements: 50

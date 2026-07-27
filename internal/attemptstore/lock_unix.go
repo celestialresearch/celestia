@@ -24,6 +24,10 @@ import (
 
 var errLockHeld = errors.New("attempt lock held")
 
+func openLockFileReadOnly(root *os.Root, _ string, name string) (*os.File, error) {
+	return root.OpenFile(name, os.O_RDONLY, 0)
+}
+
 func openAttemptLockFile(root *os.Root, _ string, name string, create bool) (*os.File, error) {
 	file, err := root.OpenFile(name, os.O_RDWR, 0o600)
 	if err == nil {

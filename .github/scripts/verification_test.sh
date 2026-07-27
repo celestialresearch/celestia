@@ -158,6 +158,18 @@ main() (
     printf 'race tests omit the package parallelism bound\n' >&2
     return 1
   }
+  for target in 'linux amd64' 'aix ppc64' 'plan9 amd64'; do
+    grep -Fq "$target" "$root/.github/scripts/devcheck.sh" || {
+      printf 'Go platform lint omits %s\n' "$target" >&2
+      return 1
+    }
+  done
+  # shellcheck disable=SC2016 # This probe matches literal shell source.
+  grep -Fq 'lint=$(go tool -n golangci-lint)' \
+    "$root/.github/scripts/devcheck.sh" || {
+    printf 'Go platform lint does not preserve the host executable\n' >&2
+    return 1
+  }
 
   sleep 60 &
   change_pid=$!

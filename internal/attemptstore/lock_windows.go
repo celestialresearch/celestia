@@ -24,8 +24,17 @@ import (
 
 var errLockHeld = errors.New("attempt lock held")
 
+func openLockFileReadOnly(_ *os.Root, directory, name string) (*os.File, error) {
+	return openWindowsLockFile(
+		directory,
+		name,
+		windows.GENERIC_READ,
+		windows.OPEN_EXISTING,
+		nil,
+	)
+}
+
 func openAttemptLockFile(_ *os.Root, directory, name string, create bool) (*os.File, error) {
-	path := filepath.Join(directory, name)
 	disposition := uint32(windows.OPEN_EXISTING)
 	var attributes *windows.SecurityAttributes
 	var descriptor *windows.SECURITY_DESCRIPTOR
@@ -41,34 +50,50 @@ func openAttemptLockFile(_ *os.Root, directory, name string, create bool) (*os.F
 			SecurityDescriptor: descriptor,
 		}
 	}
-	pointer, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return nil, err
-	}
-	handle, err := windows.CreateFile(
-		pointer,
+	file, err := openWindowsLockFile(
+		directory,
+		name,
 		windows.GENERIC_READ|windows.GENERIC_WRITE,
-		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
-		attributes,
 		disposition,
-		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_WRITE_THROUGH,
-		0,
+		attributes,
 	)
 	if errors.Is(err, windows.ERROR_FILE_EXISTS) ||
 		errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
 		if !create {
 			return nil, err
 		}
-		handle, err = windows.CreateFile(
-			pointer,
+		return openWindowsLockFile(
+			directory,
+			name,
 			windows.GENERIC_READ|windows.GENERIC_WRITE,
-			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
-			nil,
 			windows.OPEN_EXISTING,
-			windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_WRITE_THROUGH,
-			0,
+			nil,
 		)
 	}
+	return file, err
+}
+
+func openWindowsLockFile(
+	directory,
+	name string,
+	access,
+	disposition uint32,
+	attributes *windows.SecurityAttributes,
+) (*os.File, error) {
+	path := filepath.Join(directory, name)
+	pointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, err
+	}
+	handle, err := windows.CreateFile(
+		pointer,
+		access,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
+		attributes,
+		disposition,
+		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_WRITE_THROUGH,
+		0,
+	)
 	if err != nil {
 		if errors.Is(err, windows.ERROR_FILE_NOT_FOUND) ||
 			errors.Is(err, windows.ERROR_PATH_NOT_FOUND) {

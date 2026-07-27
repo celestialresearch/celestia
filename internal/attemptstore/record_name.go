@@ -9,9 +9,23 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris || windows
+
 package attemptstore
 
-import "strings"
+import (
+	"crypto/rand"
+	"fmt"
+	"strings"
+)
+
+func recordTempName(name string) (string, error) {
+	var identity [16]byte
+	if _, err := rand.Read(identity[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(".%s.%x", name, identity), nil
+}
 
 func recordNames() []string {
 	return []string{

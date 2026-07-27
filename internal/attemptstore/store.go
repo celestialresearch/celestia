@@ -384,13 +384,7 @@ func (store *Store) recoverOwned(
 	if published, err := publicationExists(path, attemptID); err != nil {
 		return err
 	} else if published {
-		if err := confirmPublication(path); err != nil {
-			return fmt.Errorf("confirm recovered publication: %w", err)
-		}
-		if acceptPublished {
-			return nil
-		}
-		return ErrDuplicate
+		return recoverPublished(path, attemptID, acceptPublished)
 	}
 	if err := store.ensureTerminal(path, attemptID, reason); err != nil {
 		return err
@@ -408,6 +402,19 @@ func (store *Store) recoverOwned(
 		return err
 	}
 	return publishMarker(path, attemptID)
+}
+
+func recoverPublished(path, attemptID string, acceptPublished bool) error {
+	if _, err := inspectPublished(path, attemptID); err != nil {
+		return err
+	}
+	if err := confirmPublication(path); err != nil {
+		return fmt.Errorf("confirm recovered publication: %w", err)
+	}
+	if acceptPublished {
+		return nil
+	}
+	return ErrDuplicate
 }
 
 func (store *Store) migrationRequired(attemptID string) (bool, error) {
