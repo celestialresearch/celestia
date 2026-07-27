@@ -22,8 +22,9 @@ Status: implemented and locally qualified for the probes below on Windows.
   earlier of the admitted start deadline and the startup budget between
   synchronous Windows operations and immediately before resume. These checks
   do not pre-empt a blocking Windows call.
-- Successful resume is the execution boundary. The full execution timer starts
-  after resume, so setup latency cannot reduce its allowance.
+- The execution timer starts immediately before `ResumeThread`. A failed resume
+  remains a start failure; a successful resume receives no unmeasured execution
+  interval.
 - The complete Job Object process tree must reach zero active processes before
   cleanup succeeds.
 

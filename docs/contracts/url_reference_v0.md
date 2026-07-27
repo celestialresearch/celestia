@@ -9,8 +9,9 @@ must never be used automatically as a network target.
 The operation identifier is `url-reference`, operation version is `0` and
 protocol version is `0`. The only modes are `fang` and `defang`.
 
-This contract is internal and versioned. Any incompatible change requires a
-new operation or protocol version and fixtures for both versions.
+This contract is internal and pre-release. No compatibility with earlier
+internal v0 records is promised. Compatibility and version-transition rules
+must be fixed before operational evidence is retained across upgrades.
 
 ## Change Brief
 
@@ -173,8 +174,8 @@ Timing has five distinct phases:
 - evidence staging must finish before that start deadline;
 - containment startup is checked against the earlier of the remaining start
   allowance and a separate ten-second startup budget;
-- successful process resume starts the worker's full two-second execution
-  timer;
+- the worker's two-second execution timer starts immediately before process
+  resume;
 - termination and process-tree observation use a separate one-second cleanup
   deadline.
 
@@ -195,7 +196,8 @@ never parsed as protocol or authority.
 
 Pipe cancellation and joins may use one bounded grace after that deadline.
 Synchronous handle closure and AppContainer deletion are not pre-emptible. An
-overrun or incomplete join records `cleanup_failed`.
+overrun or incomplete join records incomplete cleanup without replacing the
+primary execution outcome.
 
 The worker receives a private per-attempt directory containing only its staged
 image and `Temp` at launch, a documented environment allowlist and no
@@ -328,6 +330,7 @@ Every admitted attempt records independent dimensions:
 admission:    accepted | rejected
 execution:    completed | start_failed | timed_out | cancelled | output_overflow |
               error_overflow | exit_failed | cleanup_failed
+cleanup:      complete | incomplete
 protocol:     not_run | valid | rejected
 verification: not_run | verified | rejected
 durability:   pending | durable | indeterminate
