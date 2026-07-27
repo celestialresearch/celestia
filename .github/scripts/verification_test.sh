@@ -96,10 +96,20 @@ main() (
     return 1
   }
   # shellcheck disable=SC2016 # This probe matches literal PowerShell source.
-  [[ $(grep -Fc 'GIT_CONFIG_KEY_0=safe.directory' "$shellcheck_script") -eq 3 &&
+  [[ $(grep -Fc 'GIT_CONFIG_COUNT=3' "$shellcheck_script") -eq 1 &&
+    $(grep -Fc 'GIT_CONFIG_KEY_0=safe.directory' "$shellcheck_script") -eq 1 &&
     $(grep -Fc 'GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE"' \
-      "$shellcheck_script") -eq 3 ]] || {
+      "$shellcheck_script") -eq 1 &&
+    $(grep -Fc 'GIT_CONFIG_KEY_1=safe.directory' "$shellcheck_script") -eq 1 &&
+    $(grep -Fc 'GIT_CONFIG_VALUE_1="$PWD"' "$shellcheck_script") -eq 1 &&
+    $(grep -Fc 'GIT_CONFIG_KEY_2=safe.directory' "$shellcheck_script") -eq 1 &&
+    $(grep -Fc 'GIT_CONFIG_VALUE_2="$CELESTIA_CYGWIN_ROOT"' \
+      "$shellcheck_script") -eq 1 ]] || {
     printf 'Windows shell check omits command-scoped Git ownership\n' >&2
+    return 1
+  }
+  grep -Fq '[System.IO.Path]::GetTempPath()' "$shellcheck_script" || {
+    printf 'Windows shell check stores mutable data in the checkout\n' >&2
     return 1
   }
   grep -Fq "\$start.RedirectStandardOutput = \$true" \
@@ -706,7 +716,8 @@ EOF
   set +e
   output=$(
     cd "$work_dir" &&
-      FAIL_GIT_COMMAND=grep REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
+      CELESTIA_GIT_BIN="$fake_bin/git" FAIL_GIT_COMMAND=grep \
+        REAL_GIT="$real_git" \
         bash .github/scripts/policycheck.sh 2>&1
   )
   status=$?
@@ -722,7 +733,8 @@ EOF
   set +e
   output=$(
     cd "$work_dir" &&
-      FAIL_GIT_COMMAND=ls-files REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
+      CELESTIA_GIT_BIN="$fake_bin/git" FAIL_GIT_COMMAND=ls-files \
+        REAL_GIT="$real_git" \
         bash .github/scripts/coveragecheck.sh cached 2>&1
   )
   status=$?
@@ -739,7 +751,8 @@ EOF
   set +e
   output=$(
     cd "$work_dir" &&
-      FAIL_GIT_COMMAND=ls-files REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
+      CELESTIA_GIT_BIN="$fake_bin/git" FAIL_GIT_COMMAND=ls-files \
+        REAL_GIT="$real_git" \
         bash .github/scripts/modcheck.sh diff 2>&1
   )
   status=$?
@@ -763,7 +776,8 @@ EOF
   set +e
   output=$(
     cd "$licence_dir" &&
-      FAIL_GIT_COMMAND=ls-files REAL_GIT="$real_git" PATH="$fake_bin:$PATH" \
+      CELESTIA_GIT_BIN="$fake_bin/git" FAIL_GIT_COMMAND=ls-files \
+        REAL_GIT="$real_git" \
         bash .github/scripts/licencecheck.sh verify 2>&1
   )
   status=$?

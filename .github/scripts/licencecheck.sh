@@ -12,6 +12,8 @@
 
 set -euo pipefail
 
+git_bin=${CELESTIA_GIT_BIN:-git}
+
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
 file_inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-licence-files.XXXXXX")
@@ -194,10 +196,10 @@ cache_key() {
     while IFS= read -r -d '' file; do
       style=$(style_for "$file")
       printf '%s\0%s\0' "$file" "$style"
-      git hash-object -- "$file"
+      "$git_bin" hash-object -- "$file"
     done <"$eligible_inventory"
-    git hash-object .github/scripts/licencecheck.sh
-  } | git hash-object --stdin
+    "$git_bin" hash-object .github/scripts/licencecheck.sh
+  } | "$git_bin" hash-object --stdin
 }
 
 cached_diff() {
@@ -236,7 +238,7 @@ if (($# != 1)); then
   exit 2
 fi
 
-if ! git ls-files -co --exclude-standard -z >"$file_inventory"; then
+if ! "$git_bin" ls-files -co --exclude-standard -z >"$file_inventory"; then
   printf 'Failed to inventory repository files\n' >&2
   exit 1
 fi

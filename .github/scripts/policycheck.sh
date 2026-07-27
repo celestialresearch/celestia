@@ -15,6 +15,7 @@ set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
 status=0
+git_bin=${CELESTIA_GIT_BIN:-git}
 source_inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-policy.XXXXXX")
 trap 'rm -f -- "$source_inventory"' EXIT
 
@@ -28,7 +29,7 @@ git_grep() {
   local grep_status
 
   set +e
-  result=$(git grep "$@" 2>/dev/null)
+  result=$("$git_bin" grep "$@" 2>/dev/null)
   grep_status=$?
   set -e
   if ((grep_status > 1)); then
@@ -146,7 +147,7 @@ check_source_files() {
 }
 
 check_module
-if ! git ls-files -co --exclude-standard -z >"$source_inventory"; then
+if ! "$git_bin" ls-files -co --exclude-standard -z >"$source_inventory"; then
   printf 'Failed to inventory repository files\n' >&2
   exit 1
 fi

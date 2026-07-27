@@ -12,6 +12,8 @@
 
 set -euo pipefail
 
+git_bin=${CELESTIA_GIT_BIN:-git}
+
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
@@ -91,7 +93,7 @@ cache_key() (
 
   inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage.XXXXXX")
   trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
-  if ! git ls-files -co --exclude-standard -z >"$inventory"; then
+  if ! "$git_bin" ls-files -co --exclude-standard -z >"$inventory"; then
     printf 'Failed to inventory coverage inputs\n' >&2
     return 1
   fi
@@ -100,10 +102,10 @@ cache_key() (
     while IFS= read -r -d '' file; do
       [[ -f "$file" ]] || continue
       printf '%s\0' "$file"
-      git hash-object -- "$file"
+      "$git_bin" hash-object -- "$file"
     done <"$inventory"
     go env GOVERSION GOOS GOARCH CGO_ENABLED CC CXX GOFLAGS
-  } | git hash-object --stdin
+  } | "$git_bin" hash-object --stdin
 )
 
 create_report() {

@@ -12,6 +12,8 @@
 
 set -euo pipefail
 
+git_bin=${CELESTIA_GIT_BIN:-git}
+
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
@@ -94,7 +96,7 @@ check_update_diff() (
 
   inventory=$work_dir/inventory
   files=$work_dir/files
-  if ! git ls-files -co --exclude-standard -z >"$inventory"; then
+  if ! "$git_bin" ls-files -co --exclude-standard -z >"$inventory"; then
     printf 'Failed to inventory module inputs\n' >&2
     return 1
   fi
@@ -121,15 +123,15 @@ check_update_diff() (
 
 cache_key() {
   {
-    git hash-object go.mod
+    "$git_bin" hash-object go.mod
     if [[ -f go.sum ]]; then
-      git hash-object go.sum
+      "$git_bin" hash-object go.sum
     else
       printf 'no-go-sum\n'
     fi
-    git hash-object .github/scripts/modcheck.sh
+    "$git_bin" hash-object .github/scripts/modcheck.sh
     go env GOVERSION GOOS GOARCH
-  } | git hash-object --stdin
+  } | "$git_bin" hash-object --stdin
 }
 
 check_cached_update_diff() {

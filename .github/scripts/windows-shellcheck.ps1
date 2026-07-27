@@ -15,6 +15,28 @@ Set-StrictMode -Version Latest
 $root = (Resolve-Path -LiteralPath "$PSScriptRoot\..\..").Path
 $maximumOutputBytes = 1MB
 $shellDeadline = [TimeSpan]::FromMinutes(10)
+$cygpath = 'C:\cygwin\bin\cygpath.exe'
+
+if (-not (Test-Path -LiteralPath $cygpath -PathType Leaf)) {
+    throw "Cygwin path converter does not exist: $cygpath"
+}
+$cygwinGitRoot = (& $cygpath -u $root).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $cygwinGitRoot) {
+    throw 'Failed to resolve the Cygwin repository path'
+}
+$sharedCommand = (
+    'export ' +
+    'CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" ' +
+    'CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" ' +
+    'TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")" ' +
+    'GIT_CONFIG_COUNT=3 ' +
+    'GIT_CONFIG_KEY_0=safe.directory ' +
+    'GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE" ' +
+    'GIT_CONFIG_KEY_1=safe.directory ' +
+    'GIT_CONFIG_VALUE_1="$PWD" ' +
+    'GIT_CONFIG_KEY_2=safe.directory ' +
+    'GIT_CONFIG_VALUE_2="$CELESTIA_CYGWIN_ROOT"'
+)
 
 function New-StreamCapture {
     param([System.IO.Stream]$Stream)
@@ -92,7 +114,7 @@ $checks = @(
             '--noprofile',
             '--norc',
             '-c',
-            'export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE"; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
+            $sharedCommand + '; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
         )
         Environment = @{}
     },
@@ -103,7 +125,7 @@ $checks = @(
             '--noprofile',
             '--norc',
             '-c',
-            'export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE"; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
+            $sharedCommand + '; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
         )
         Environment = @{
             CHERE_INVOKING = '1'
@@ -118,7 +140,9 @@ $checks = @(
             '-o',
             'igncr',
             '-c',
-            'cd "$(/usr/bin/cygpath "$GITHUB_WORKSPACE")" || exit; export CELESTIA_CACHE_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_CACHE")" CARGO_TARGET_DIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TARGET")" TMPDIR="$("/usr/bin/cygpath" "$CELESTIA_SHELL_TMP")" GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE"; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
+            'cd "$(/usr/bin/cygpath "$GITHUB_WORKSPACE")" || exit; ' +
+            $sharedCommand +
+            '; exec /usr/bin/bash ./.github/scripts/devcheck.sh'
         )
         Environment = @{}
     }
@@ -131,7 +155,9 @@ foreach ($check in $checks) {
 }
 
 $runID = [guid]::NewGuid().ToString('N')
-$mutableRoot = Join-Path $root ".cache\windows-shell\$runID"
+$mutableRoot = Join-Path (
+    [System.IO.Path]::GetTempPath()
+) "celestia-windows-shell\$runID"
 [System.IO.Directory]::CreateDirectory($mutableRoot) | Out-Null
 $running = @()
 $failure = $null
@@ -159,6 +185,7 @@ try {
         $start.Environment['DEVCHECK_CURRENCY'] = 'false'
         $start.Environment['DEVCHECK_PROFILE'] = 'shell'
         $start.Environment['GITHUB_WORKSPACE'] = $root
+        $start.Environment['CELESTIA_CYGWIN_ROOT'] = $cygwinGitRoot
         $start.Environment['CELESTIA_SHELL_CACHE'] = (
             Join-Path $shellRoot 'cache'
         )
