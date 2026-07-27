@@ -79,6 +79,21 @@ check_private_keys() {
   done
 }
 
+is_generated_source() {
+  local count=0
+  local file=$1
+  local line
+
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^//\ Code\ generated\ .*\ DO\ NOT\ EDIT\.$ ]]; then
+      return 0
+    fi
+    count=$((count + 1))
+    ((count < 30)) || break
+  done <"$file"
+  return 1
+}
+
 check_source_files() {
   local base
   local file
@@ -109,8 +124,7 @@ check_source_files() {
       fail "$file: use an intent-named residual coverage file"
     fi
 
-    if head -n 30 "$file" |
-      grep -Eq '^// Code generated .* DO NOT EDIT\.$'; then
+    if is_generated_source "$file"; then
       continue
     fi
 
