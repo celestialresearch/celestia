@@ -403,19 +403,26 @@ func (supervisor *Supervisor) observe(
 		inputDone <- result
 	}()
 
-	waited := make(chan error, 1)
-	go func() {
-		_, err := windows.WaitForSingleObject(process.info.Process, windows.INFINITE)
-		waited <- err
-	}()
 	if remaining <= 0 {
 		remaining = time.Nanosecond
 	}
 	timer := time.NewTimer(remaining)
 	defer timer.Stop()
+	poll := time.NewTicker(time.Millisecond)
+	defer poll.Stop()
 
-	status, cause := awaitProcess(ctx, timer.C, waited, overflow, input)
+	status, cause := awaitProcess(
+		ctx,
+		timer.C,
+		poll.C,
+		func() (bool, error) {
+			return processComplete(process.info.Process)
+		},
+		overflow,
+		input,
+	)
 	cleanupDeadline := time.Now().Add(supervisor.limits.CleanupTimeout)
+	joinDeadline := cleanupDeadline.Add(100 * time.Millisecond)
 	if status != Completed {
 		if err := windows.TerminateJobObject(process.job, 1); err != nil {
 			status = CleanupFailed
@@ -431,15 +438,15 @@ func (supervisor *Supervisor) observe(
 		status = CleanupFailed
 		cause = errors.Join(cause, waitErr)
 	}
-	inputResult := awaitInput(inputWriter, inputDone, cleanupDeadline)
+	inputResult := awaitInput(inputWriter, inputDone, cleanupDeadline, joinDeadline)
 	status, cause, cleanupComplete = applyInputResult(
 		status,
 		cause,
 		cleanupComplete,
 		inputResult,
 	)
-	out := awaitStream(stdoutReader, stdout, cleanupDeadline)
-	diagnostics := awaitStream(stderrReader, stderr, cleanupDeadline)
+	out := awaitStream(stdoutReader, stdout, cleanupDeadline, joinDeadline)
+	diagnostics := awaitStream(stderrReader, stderr, cleanupDeadline, joinDeadline)
 	outcome := finishOutcome(process, status, cause, cleanupComplete, out, diagnostics)
 	if err := process.close(); err != nil {
 		outcome.Status = CleanupFailed
@@ -460,24 +467,25 @@ func cleanupRemaining(deadline time.Time) time.Duration {
 func awaitProcess(
 	ctx context.Context,
 	timeout <-chan time.Time,
-	waited <-chan error,
+	poll <-chan time.Time,
+	complete func() (bool, error),
 	overflow <-chan Status,
 	input <-chan inputResult,
 ) (Status, error) {
 	for {
-		if status, cause, ready := readWaitResult(waited); ready {
+		if status, cause, ready := readProcessResult(complete); ready {
 			return status, cause
 		}
 		if timeoutReady(timeout) {
-			return resolveProcessBoundary(waited, TimedOut, context.DeadlineExceeded)
+			return resolveProcessBoundary(complete, TimedOut, context.DeadlineExceeded)
 		}
 		select {
-		case cause := <-waited:
-			return processWaitResult(cause)
+		case <-poll:
+			continue
 		case <-ctx.Done():
-			return resolveProcessBoundary(waited, Cancelled, ctx.Err())
+			return resolveProcessBoundary(complete, Cancelled, ctx.Err())
 		case <-timeout:
-			return resolveProcessBoundary(waited, TimedOut, context.DeadlineExceeded)
+			return resolveProcessBoundary(complete, TimedOut, context.DeadlineExceeded)
 		case status := <-overflow:
 			return status, errStreamLimit
 		case result := <-input:
@@ -492,6 +500,21 @@ func awaitProcess(
 	}
 }
 
+func processComplete(process windows.Handle) (bool, error) {
+	event, err := windows.WaitForSingleObject(process, 0)
+	if err != nil {
+		return false, fmt.Errorf("wait for worker: %w", err)
+	}
+	switch event {
+	case uint32(windows.WAIT_OBJECT_0):
+		return true, nil
+	case uint32(windows.WAIT_TIMEOUT):
+		return false, nil
+	default:
+		return false, fmt.Errorf("unexpected worker wait result: %d", event)
+	}
+}
+
 func timeoutReady(timeout <-chan time.Time) bool {
 	select {
 	case <-timeout:
@@ -501,29 +524,23 @@ func timeoutReady(timeout <-chan time.Time) bool {
 	}
 }
 
-func readWaitResult(waited <-chan error) (Status, error, bool) {
-	select {
-	case cause := <-waited:
-		status, err := processWaitResult(cause)
-		return status, err, true
-	default:
-		return Status(""), nil, false
+func readProcessResult(complete func() (bool, error)) (Status, error, bool) {
+	done, err := complete()
+	if err != nil {
+		return ExitFailed, err, true
 	}
-}
-
-func processWaitResult(cause error) (Status, error) {
-	if cause != nil {
-		return ExitFailed, cause
+	if done {
+		return Completed, nil, true
 	}
-	return Completed, nil
+	return Status(""), nil, false
 }
 
 func resolveProcessBoundary(
-	waited <-chan error,
+	complete func() (bool, error),
 	status Status,
 	cause error,
 ) (Status, error) {
-	if waitStatus, waitErr, ready := readWaitResult(waited); ready {
+	if waitStatus, waitErr, ready := readProcessResult(complete); ready {
 		return waitStatus, waitErr
 	}
 	return status, cause
@@ -588,7 +605,7 @@ func applyStreamResult(
 		return status, errors.Join(cause, result.err), cleanupComplete
 	}
 	if result.err != nil {
-		if status != CleanupFailed {
+		if status == Completed {
 			status = ExitFailed
 		}
 		cause = errors.Join(cause, fmt.Errorf("read worker %s: %w", name, result.err))
@@ -619,7 +636,7 @@ func applyInputResult(
 func readExit(process windows.Handle, status Status, cause error) (Status, uint32, error) {
 	var exitCode uint32
 	if err := windows.GetExitCodeProcess(process, &exitCode); err != nil {
-		if status != CleanupFailed {
+		if status == Completed {
 			status = ExitFailed
 		}
 		cause = errors.Join(cause, fmt.Errorf("read exit code: %w", err))

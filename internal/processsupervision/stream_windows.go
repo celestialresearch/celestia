@@ -139,6 +139,7 @@ func awaitStream(
 	reader *streamReader,
 	result <-chan streamResult,
 	deadline time.Time,
+	joinDeadline time.Time,
 ) streamResult {
 	select {
 	case value := <-result:
@@ -162,7 +163,7 @@ func awaitStream(
 				fmt.Errorf("close worker %s: %w", reader.name, closeErr),
 			)
 		}
-		joinTimer := time.NewTimer(100 * time.Millisecond)
+		joinTimer := time.NewTimer(cleanupRemaining(joinDeadline))
 		defer joinTimer.Stop()
 		select {
 		case <-reader.done:
