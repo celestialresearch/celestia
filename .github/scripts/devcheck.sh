@@ -171,6 +171,12 @@ rust_docs() {
     cargo doc --workspace --no-deps --locked
 }
 
+fixture_docs() {
+  RUSTDOCFLAGS='-D warnings' \
+    cargo doc --manifest-path worker/qualification-fixtures/Cargo.toml \
+    --no-deps --locked
+}
+
 rust_coverage() {
   cargo llvm-cov --workspace --locked \
     --fail-under-lines 90
@@ -316,8 +322,12 @@ if [[ -f Cargo.toml ]]; then
     cargo test --workspace --all-targets --locked
   run_no_output 'Qualification Fixture Format' \
     cargo fmt --manifest-path worker/qualification-fixtures/Cargo.toml -- --check
+  run_check 'Qualification Fixture Clippy' \
+    cargo clippy --manifest-path worker/qualification-fixtures/Cargo.toml \
+    --all-targets --locked -- -D warnings
   run_check 'Qualification Fixtures' \
     cargo test --manifest-path worker/qualification-fixtures/Cargo.toml --bins --locked
+  run_check 'Qualification Fixture Docs' fixture_docs
   run_check 'Rust Docs' rust_docs
   run_check 'Rust Coverage' rust_coverage
   run_check 'Rust Release' bash ./.github/scripts/rustcheck.sh artefacts
