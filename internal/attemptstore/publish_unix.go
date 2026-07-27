@@ -28,26 +28,13 @@ func publishFile(source, target, directory string) (err error) {
 		}
 		return err
 	}
+	if err := syncDirectory(directory); err != nil {
+		return err
+	}
 	if err := os.Remove(source); err != nil {
 		return err
 	}
-	root, err := os.OpenRoot(directory)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Join(err, root.Close())
-	}()
-	handle, err := root.Open(".")
-	if err != nil {
-		return err
-	}
-	syncErr := handle.Sync()
-	closeErr := handle.Close()
-	if syncErr != nil {
-		return syncErr
-	}
-	return closeErr
+	return syncDirectory(directory)
 }
 
 func publishDirectory(source, target, directory string) error {
@@ -57,7 +44,10 @@ func publishDirectory(source, target, directory string) error {
 		}
 		return err
 	}
-	return syncDirectory(directory)
+	return errors.Join(
+		syncDirectory(directory),
+		syncDirectory(filepath.Dir(source)),
+	)
 }
 
 func secureEvidenceTree(path string) error {
@@ -98,6 +88,7 @@ func secureEvidenceFile(path string) error {
 }
 
 func createEvidenceDirectory(path string) error {
+	parent := filepath.Dir(path)
 	root, err := os.OpenRoot(filepath.Dir(path))
 	if err != nil {
 		return err
@@ -109,9 +100,25 @@ func createEvidenceDirectory(path string) error {
 	info, statErr := root.Lstat(name)
 	closeErr := root.Close()
 	if err := errors.Join(statErr, closeErr); err != nil {
+		return errors.Join(err, removeCreatedDirectory(path, parent))
+	}
+	if err := validateEvidenceDirectory(path, info); err != nil {
+		return errors.Join(err, removeCreatedDirectory(path, parent))
+	}
+	if err := syncDirectory(parent); err != nil {
+		return errors.Join(err, removeCreatedDirectory(path, parent))
+	}
+	return nil
+}
+
+func removeCreatedDirectory(path, parent string) error {
+	root, err := os.OpenRoot(parent)
+	if err != nil {
 		return err
 	}
-	return validateEvidenceDirectory(path, info)
+	removeErr := root.Remove(filepath.Base(path))
+	closeErr := root.Close()
+	return errors.Join(removeErr, closeErr, syncDirectory(parent))
 }
 
 func pathIsLinked(_ string, info os.FileInfo) bool {
