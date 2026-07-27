@@ -88,9 +88,14 @@ main() (
     printf 'OpenBSD Go bootstrap is missing\n' >&2
     return 1
   }
-  grep -Fq "https://mirror.clarkson.edu/dragonflybsd/\${ABI}/LATEST" \
+  grep -Fq "https://pkg.dragonflybsd.org/pkg/\${ABI}/LATEST" \
     "$root/.github/scripts/dragonfly-bootstrap.sh" || {
-    printf 'DragonFly direct mirror is missing\n' >&2
+    printf 'DragonFly automatic mirror is missing\n' >&2
+    return 1
+  }
+  grep -Fq "if [[ \"\$attempts\" -ge 5 ]]" \
+    "$root/.github/scripts/dragonfly-bootstrap.sh" || {
+    printf 'DragonFly retry budget is missing\n' >&2
     return 1
   }
   grep -Fq "SSL_CA_CERT_FILE=\"\$ca_bundle\"" \
@@ -103,7 +108,7 @@ main() (
     printf 'DragonFly CA bundle staging is missing\n' >&2
     return 1
   }
-  if grep -Fq 'http://mirror.clarkson.edu' \
+  if grep -Eq 'url: "http://' \
     "$root/.github/scripts/dragonfly-bootstrap.sh"; then
     printf 'DragonFly bootstrap permits unauthenticated package transport\n' >&2
     return 1

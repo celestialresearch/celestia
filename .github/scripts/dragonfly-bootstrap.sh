@@ -14,12 +14,19 @@ set -euo pipefail
 
 retry() {
   local attempts=0
+  local delay
   until "$@"; do
     attempts=$((attempts + 1))
-    if [[ "$attempts" -ge 3 ]]; then
+    if [[ "$attempts" -ge 5 ]]; then
       return 1
     fi
-    sleep $((attempts * 5))
+    case "$attempts" in
+    1) delay=5 ;;
+    2) delay=15 ;;
+    3) delay=30 ;;
+    *) delay=60 ;;
+    esac
+    sleep "$delay"
   done
 }
 
@@ -44,9 +51,9 @@ if [[ -f "$default_repo" ]]; then
 fi
 
 sudo tee "$celestia_repo" >/dev/null <<'EOF'
-Clarkson: {
-    url: "https://mirror.clarkson.edu/dragonflybsd/${ABI}/LATEST",
-    mirror_type: "NONE",
+AUTO: {
+    url: "https://pkg.dragonflybsd.org/pkg/${ABI}/LATEST",
+    mirror_type: "HTTP",
     enabled: yes
 }
 EOF
