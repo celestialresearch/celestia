@@ -26,7 +26,7 @@ func TestInspectReadsOwnedPublication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	if err := attempt.publishLocked(
 		testObservationFor(t, accepted),
 	); err != nil {
@@ -50,7 +50,7 @@ func TestInspectAllowsConcurrentReaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestInspectRejectsMissingCurrentLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	t.Cleanup(func() { _ = attempt.Close() })
+	cleanupAttempt(t, attempt)
 	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
