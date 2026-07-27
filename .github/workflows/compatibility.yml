@@ -152,7 +152,7 @@ jobs:
                 sudo pkg install -y go
                 ;;
               NetBSD)
-                sudo pkgin -y install go
+                sudo pkgin -y install go pkg_alternatives
                 ;;
               OpenBSD)
                 sudo pkg_add go

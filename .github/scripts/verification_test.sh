@@ -33,15 +33,12 @@ main() (
   # shellcheck disable=SC2329 # Invoked by the EXIT and signal trap.
   cleanup() {
     if [[ -n "$change_pid" ]]; then
-      kill "$change_pid" 2>/dev/null || true
       wait "$change_pid" 2>/dev/null || true
     fi
     if [[ -n "$currency_pid" ]]; then
-      kill "$currency_pid" 2>/dev/null || true
       wait "$currency_pid" 2>/dev/null || true
     fi
     if [[ -n "$action_pid" ]]; then
-      kill "$action_pid" 2>/dev/null || true
       wait "$action_pid" 2>/dev/null || true
     fi
     rm -rf -- "$work_dir"
@@ -57,13 +54,6 @@ main() (
     ;;
   esac
   trap cleanup EXIT HUP INT TERM
-  bash "$root/.github/scripts/changecheck_test.sh" &
-  change_pid=$!
-  bash "$root/.github/scripts/currencycheck_test.sh" &
-  currency_pid=$!
-  bash "$root/.github/scripts/actioncheck_test.sh" &
-  action_pid=$!
-
   shellcheck_script="$root/.github/scripts/windows-shellcheck.ps1"
   if grep -Fq '| head' "$shellcheck_script"; then
     printf 'Windows shell check uses an unowned output pipeline\n' >&2
@@ -78,7 +68,7 @@ main() (
     printf 'workflow uses non-portable find options\n' >&2
     return 1
   fi
-  grep -Fq 'sudo pkgin -y install go' \
+  grep -Fq 'sudo pkgin -y install go pkg_alternatives' \
     "$root/.github/workflows/compatibility.yml" || {
     printf 'NetBSD Go bootstrap is missing\n' >&2
     return 1
@@ -107,7 +97,8 @@ main() (
   }
   # shellcheck disable=SC2016 # This probe matches literal PowerShell source.
   [[ $(grep -Fc 'GIT_CONFIG_KEY_0=safe.directory' "$shellcheck_script") -eq 3 &&
-    $(grep -Fc 'GIT_CONFIG_VALUE_0="$PWD"' "$shellcheck_script") -eq 3 ]] || {
+    $(grep -Fc 'GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE"' \
+      "$shellcheck_script") -eq 3 ]] || {
     printf 'Windows shell check omits command-scoped Git ownership\n' >&2
     return 1
   }
@@ -141,6 +132,13 @@ main() (
     return 1
   }
 
+  bash "$root/.github/scripts/changecheck_test.sh" &
+  change_pid=$!
+  bash "$root/.github/scripts/currencycheck_test.sh" &
+  currency_pid=$!
+  bash "$root/.github/scripts/actioncheck_test.sh" &
+  action_pid=$!
+
   mkdir -p "$work_dir/.github/scripts" "$work_dir/a" "$work_dir/b"
   cp "$root/.github/scripts/coveragecheck.sh" \
     "$root/.github/scripts/modcheck.sh" \
@@ -148,7 +146,7 @@ main() (
     "$work_dir/.github/scripts/"
   printf 'default 90\ncache-max-age-minutes 0\n' \
     >"$work_dir/.github/.coverage"
-  printf 'module probe.local/coverage\n\ngo 1.26.5\n' >"$work_dir/go.mod"
+  printf 'module celestia.research/coverage\n\ngo 1.26.5\n' >"$work_dir/go.mod"
   git -C "$work_dir" init -q
 
   set +e
@@ -628,12 +626,14 @@ EOF
     printf 'coverage check accepted an under-covered package\n' >&2
     return 1
   }
-  grep -Eq 'probe.local/coverage/a[[:space:]]+100\.00%' <<<"$output" || {
+  grep -Eq 'celestia\.research/coverage/a[[:space:]]+100\.00%' \
+    <<<"$output" || {
     printf 'coverage output omitted the fully covered package:\n%s\n' \
       "$output" >&2
     return 1
   }
-  grep -Eq 'probe.local/coverage/b[[:space:]]+50\.00%' <<<"$output" || {
+  grep -Eq 'celestia\.research/coverage/b[[:space:]]+50\.00%' \
+    <<<"$output" || {
     printf 'coverage output omitted the under-covered package:\n%s\n' \
       "$output" >&2
     return 1
@@ -670,15 +670,11 @@ EOF
   output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
   status=$?
   set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy fixture unexpectedly satisfied the module policy\n' >&2
-    return 1
-  }
-  if grep -Eq 'invalid option|generated.go: source file exceeds' <<<"$output"; then
-    printf 'policy check misread an option-like generated filename:\n%s\n' \
+  [[ "$status" -eq 0 ]] || {
+    printf 'policy check rejected an option-like generated filename:\n%s\n' \
       "$output" >&2
     return 1
-  fi
+  }
   rm -- "$work_dir/-generated.go"
 
   printf '%s\n' '// probe' >"$work_dir/coverage_test.go"
@@ -848,12 +844,14 @@ EOF
     return 1
   }
 
-  wait "$change_pid"
+  status=0
+  wait "$change_pid" || status=1
   change_pid=
-  wait "$currency_pid"
+  wait "$currency_pid" || status=1
   currency_pid=
-  wait "$action_pid"
+  wait "$action_pid" || status=1
   action_pid=
+  return "$status"
 )
 
 main
