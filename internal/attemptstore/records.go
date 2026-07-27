@@ -375,7 +375,7 @@ func validateRecovery(record Recovery) error {
 	if record.Version != Version ||
 		!validIdentity(record.AttemptID) ||
 		record.TerminalStatus != "indeterminate" ||
-		!validRecoveryReason(record.Reason) {
+		record.Reason == "" {
 		return ErrCorrupt
 	}
 	return nil
