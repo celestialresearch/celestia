@@ -62,12 +62,12 @@ classify_path() {
     ci=true
     dependencies=true
     ;;
-  .github/workflows/compatibility.yml | .github/scripts/windows-shellcheck.ps1)
+  .github/scripts/windows-shellcheck.ps1)
     ci=true
     compatibility=true
     ;;
   .github/workflows/* | .github/codeql/*)
-    ci=true
+    mark_full
     ;;
   .github/scripts/changecheck.sh | .github/scripts/devcheck.sh | \
     .github/scripts/verification_test.sh | .github/scripts/policycheck.sh | \
