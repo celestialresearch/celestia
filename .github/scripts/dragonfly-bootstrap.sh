@@ -31,6 +31,12 @@ fi
 repo_dir=/usr/local/etc/pkg/repos
 default_repo="$repo_dir/df-latest.conf"
 celestia_repo="$repo_dir/celestia.conf"
+ca_bundle="$PWD/.github/generated/dragonfly-ca.pem"
+
+if [[ ! -s "$ca_bundle" ]]; then
+  echo 'DragonFly CA bundle is missing' >&2
+  exit 1
+fi
 
 sudo mkdir -p "$repo_dir"
 if [[ -f "$default_repo" ]]; then
@@ -38,30 +44,12 @@ if [[ -f "$default_repo" ]]; then
 fi
 
 sudo tee "$celestia_repo" >/dev/null <<'EOF'
-AUTO: {
-    url: "https://pkg.dragonflybsd.org/pkg/${ABI}/LATEST",
-    mirror_type: "HTTP",
-    enabled: yes
-}
-EOF
-
-if ! retry sudo pkg update -f; then
-  sudo tee "$celestia_repo" >/dev/null <<'EOF'
-Avalon: {
-    url: "https://avalon.dragonflybsd.org/dports/${ABI}/LATEST",
-    mirror_type: "NONE",
-    enabled: yes
-}
-EOF
-  if ! retry sudo pkg update -f; then
-    sudo tee "$celestia_repo" >/dev/null <<'EOF'
 Clarkson: {
     url: "https://mirror.clarkson.edu/dragonflybsd/${ABI}/LATEST",
     mirror_type: "NONE",
     enabled: yes
 }
 EOF
-    retry sudo pkg update -f
-  fi
-fi
-retry sudo pkg install -y go
+
+retry sudo env SSL_CA_CERT_FILE="$ca_bundle" pkg update -f
+retry sudo env SSL_CA_CERT_FILE="$ca_bundle" pkg install -y go
