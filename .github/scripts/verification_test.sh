@@ -88,6 +88,11 @@ main() (
     printf 'OpenBSD Go bootstrap is missing\n' >&2
     return 1
   }
+  grep -Fq "https://mirror.clarkson.edu/dragonflybsd/\${ABI}/LATEST" \
+    "$root/.github/scripts/dragonfly-bootstrap.sh" || {
+    printf 'DragonFly direct-mirror fallback is missing\n' >&2
+    return 1
+  }
   for variable in CELESTIA_SHELL_CACHE CELESTIA_SHELL_TARGET \
     CELESTIA_SHELL_TMP; do
     grep -Fq "\$start.Environment['$variable']" "$shellcheck_script" || {
@@ -542,8 +547,7 @@ EOF
   set +e
   output=$(
     cd "$repo_dir" &&
-      DEVCHECK_PROFILE=shell DEVCHECK_CURRENCY=false \
-        DEVCHECK_SELF_TEST=false \
+      DEVCHECK_PROFILE=config \
         bash .github/scripts/devcheck.sh 2>&1
   )
   status=$?

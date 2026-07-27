@@ -53,6 +53,15 @@ Avalon: {
     enabled: yes
 }
 EOF
-  retry sudo pkg update -f
+  if ! retry sudo pkg update -f; then
+    sudo tee "$celestia_repo" >/dev/null <<'EOF'
+Clarkson: {
+    url: "https://mirror.clarkson.edu/dragonflybsd/${ABI}/LATEST",
+    mirror_type: "NONE",
+    enabled: yes
+}
+EOF
+    retry sudo pkg update -f
+  fi
 fi
 retry sudo pkg install -y go
