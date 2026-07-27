@@ -118,6 +118,7 @@ func awaitInput(
 	writer *inputWriter,
 	input <-chan inputResult,
 	deadline time.Time,
+	joinDeadline time.Time,
 ) inputResult {
 	timer := time.NewTimer(cleanupRemaining(deadline))
 	defer timer.Stop()
@@ -132,7 +133,7 @@ func awaitInput(
 		if closeErr := writer.cancel(); closeErr != nil {
 			cleanupErr = errors.Join(cleanupErr, closeErr)
 		}
-		joinTimer := time.NewTimer(100 * time.Millisecond)
+		joinTimer := time.NewTimer(cleanupRemaining(joinDeadline))
 		defer joinTimer.Stop()
 		select {
 		case <-writer.done:

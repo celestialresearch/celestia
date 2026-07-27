@@ -554,12 +554,13 @@ func TestProcessCloseReportsThreadFailure(t *testing.T) {
 
 func TestAwaitProcessStates(t *testing.T) {
 	t.Run("wait error", func(t *testing.T) {
-		waited := make(chan error, 1)
-		waited <- errors.New("wait")
 		status, err := awaitProcess(
 			context.Background(),
 			make(chan time.Time),
-			waited,
+			make(chan time.Time),
+			func() (bool, error) {
+				return false, errors.New("wait")
+			},
 			make(chan Status),
 			make(chan inputResult),
 		)
@@ -573,7 +574,8 @@ func TestAwaitProcessStates(t *testing.T) {
 		status, err := awaitProcess(
 			context.Background(),
 			timeout,
-			make(chan error),
+			make(chan time.Time),
+			func() (bool, error) { return false, nil },
 			make(chan Status),
 			make(chan inputResult),
 		)
@@ -584,12 +586,11 @@ func TestAwaitProcessStates(t *testing.T) {
 	t.Run("ready completion wins at timeout cutoff", func(t *testing.T) {
 		timeout := make(chan time.Time, 1)
 		timeout <- time.Now()
-		waited := make(chan error, 1)
-		waited <- nil
 		status, err := awaitProcess(
 			context.Background(),
 			timeout,
-			waited,
+			make(chan time.Time),
+			func() (bool, error) { return true, nil },
 			make(chan Status),
 			make(chan inputResult),
 		)
@@ -600,12 +601,11 @@ func TestAwaitProcessStates(t *testing.T) {
 	t.Run("ready completion wins at cancellation cutoff", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		waited := make(chan error, 1)
-		waited <- nil
 		status, err := awaitProcess(
 			ctx,
 			make(chan time.Time),
-			waited,
+			make(chan time.Time),
+			func() (bool, error) { return true, nil },
 			make(chan Status),
 			make(chan inputResult),
 		)
@@ -619,7 +619,8 @@ func TestAwaitProcessStates(t *testing.T) {
 		status, err := awaitProcess(
 			context.Background(),
 			make(chan time.Time),
-			make(chan error),
+			make(chan time.Time),
+			func() (bool, error) { return false, nil },
 			overflow,
 			make(chan inputResult),
 		)
@@ -642,7 +643,8 @@ func TestAwaitProcessKeepsTimeout(t *testing.T) {
 		status, err := awaitProcess(
 			context.Background(),
 			timeout,
-			make(chan error),
+			make(chan time.Time),
+			func() (bool, error) { return false, nil },
 			make(chan Status),
 			input,
 		)
@@ -676,13 +678,16 @@ func TestExecutionAllowanceStartsAtResume(t *testing.T) {
 func TestAwaitInputStates(t *testing.T) {
 	input := make(chan inputResult, 1)
 	input <- inputResult{}
-	if result := awaitInput(nil, input, time.Now().Add(time.Second)); result != (inputResult{}) {
+	deadline := time.Now().Add(time.Second)
+	if result := awaitInput(nil, input, deadline, deadline); result != (inputResult{}) {
 		t.Fatalf("completed input: %+v", result)
 	}
+	deadline = time.Now().Add(time.Millisecond)
 	if result := awaitInput(
 		nil,
 		make(chan inputResult),
-		time.Now().Add(time.Millisecond),
+		deadline,
+		deadline.Add(100*time.Millisecond),
 	); result.cleanupErr == nil {
 		t.Fatal("blocked input join did not time out")
 	}
@@ -696,7 +701,8 @@ func TestAwaitInputCancelsBlockedWrite(t *testing.T) {
 	go func() {
 		result <- writer.write(make([]byte, 1<<20))
 	}()
-	observation := awaitInput(writer, result, time.Now().Add(time.Millisecond))
+	deadline := time.Now().Add(time.Millisecond)
+	observation := awaitInput(writer, result, deadline, deadline.Add(100*time.Millisecond))
 	if observation.cleanupErr == nil ||
 		!strings.Contains(observation.cleanupErr.Error(), "join worker input") {
 		t.Fatalf("input result=%v, want bounded join error", observation.cleanupErr)
@@ -714,7 +720,8 @@ func TestAwaitStreamCancelsBlockedRead(t *testing.T) {
 	result := make(chan streamResult, 1)
 	reader := newStreamReader("output", read)
 	go reader.read(8, OutputOverflow, result, make(chan Status, 1))
-	observation := awaitStream(reader, result, time.Now().Add(time.Millisecond))
+	deadline := time.Now().Add(time.Millisecond)
+	observation := awaitStream(reader, result, deadline, deadline.Add(100*time.Millisecond))
 	if observation.cleanupErr == nil ||
 		!strings.Contains(observation.cleanupErr.Error(), "join worker output") {
 		t.Fatalf("stream result=%v, want bounded join error", observation.cleanupErr)
@@ -764,6 +771,59 @@ func TestStreamResultStates(t *testing.T) {
 	)
 	if status != CleanupFailed || err == nil || complete {
 		t.Fatalf("stream cleanup: status=%s complete=%t error=%v", status, complete, err)
+	}
+}
+
+func TestStreamResultPreservesPrimaryStatus(t *testing.T) {
+	for _, initial := range []Status{
+		TimedOut,
+		Cancelled,
+		OutputOverflow,
+		ErrorOverflow,
+		ExitFailed,
+	} {
+		status, err, complete := applyStreamResult(
+			initial,
+			errors.New("primary"),
+			true,
+			streamResult{err: errors.New("read")},
+			"output",
+			OutputOverflow,
+		)
+		if status != initial || err == nil || !complete {
+			t.Fatalf(
+				"secondary read error: initial=%s status=%s complete=%t error=%v",
+				initial,
+				status,
+				complete,
+				err,
+			)
+		}
+	}
+}
+
+func TestReadExitPreservesPrimaryStatus(t *testing.T) {
+	for _, test := range []struct {
+		initial Status
+		want    Status
+	}{
+		{initial: Completed, want: ExitFailed},
+		{initial: TimedOut, want: TimedOut},
+		{initial: Cancelled, want: Cancelled},
+		{initial: OutputOverflow, want: OutputOverflow},
+		{initial: ErrorOverflow, want: ErrorOverflow},
+		{initial: CleanupFailed, want: CleanupFailed},
+	} {
+		status, _, err := readExit(0, test.initial, errors.New("primary"))
+		if status != test.want || err == nil {
+			t.Fatalf(
+				"initial=%s status=%s want=%s error=%v",
+				test.initial,
+				status,
+				test.want,
+				err,
+			)
+		}
 	}
 }
 
