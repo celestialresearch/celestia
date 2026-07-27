@@ -189,6 +189,7 @@ func secureDirectoryDescriptor() (*windows.SECURITY_DESCRIPTOR, error) {
 }
 
 func createEvidenceDirectory(path string) error {
+	parent := filepath.Dir(path)
 	descriptor, err := secureDirectoryDescriptor()
 	if err != nil {
 		return err
@@ -204,7 +205,23 @@ func createEvidenceDirectory(path string) error {
 	if err := windows.CreateDirectory(pointer, &attributes); err != nil {
 		return err
 	}
-	return secureEvidenceTree(path)
+	if err := secureEvidenceTree(path); err != nil {
+		return errors.Join(err, removeCreatedDirectory(path, parent))
+	}
+	if err := syncDirectory(parent); err != nil {
+		return errors.Join(err, removeCreatedDirectory(path, parent))
+	}
+	return nil
+}
+
+func removeCreatedDirectory(path, parent string) error {
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return err
+	}
+	removeErr := root.Remove(filepath.Base(path))
+	closeErr := root.Close()
+	return errors.Join(removeErr, closeErr, syncDirectory(parent))
 }
 
 func pathIsLinked(path string, _ os.FileInfo) bool {
@@ -220,6 +237,10 @@ func pathIsLinked(path string, _ os.FileInfo) bool {
 }
 
 func confirmPublication(directory string) error {
+	return syncAttemptLockDirectory(directory)
+}
+
+func syncDirectory(directory string) error {
 	return syncAttemptLockDirectory(directory)
 }
 

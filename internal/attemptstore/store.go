@@ -401,6 +401,8 @@ func (store *Store) recoverOwned(
 		if err := removePendingDirectory(pendingPath); err != nil {
 			return err
 		}
+	} else if err := removePendingDirectory(store.pendingPath(attemptID)); err != nil {
+		return err
 	}
 	return publishMarker(path, attemptID)
 }
