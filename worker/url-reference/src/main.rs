@@ -353,11 +353,7 @@ fn transform(input: &str, mode: &Mode) -> Result<String, ()> {
 }
 
 fn validate_text(input: &str) -> Result<(), ()> {
-    if input.is_empty()
-        || input.len() > MAX_OUTPUT_BYTES
-        || input.starts_with('\u{feff}')
-        || input.chars().any(rejected_character)
-    {
+    if input.is_empty() || input.len() > MAX_OUTPUT_BYTES || input.chars().any(rejected_character) {
         return Err(());
     }
     Ok(())
