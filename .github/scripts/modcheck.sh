@@ -94,7 +94,10 @@ check_update_diff() (
 
   inventory=$work_dir/inventory
   files=$work_dir/files
-  git ls-files -co --exclude-standard -z >"$inventory"
+  if ! git ls-files -co --exclude-standard -z >"$inventory"; then
+    printf 'Failed to inventory module inputs\n' >&2
+    return 1
+  fi
   : >"$files"
   while IFS= read -r -d '' file; do
     [[ -f "$file" ]] || continue
