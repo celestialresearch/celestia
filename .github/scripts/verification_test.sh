@@ -141,6 +141,16 @@ main() (
     printf 'coverage check omits Cygwin Go-path conversion\n' >&2
     return 1
   }
+  grep -Fq 'go test -p=2 -count=1 -shuffle=on ./...' \
+    "$root/.github/scripts/devcheck.sh" || {
+    printf 'standard tests omit the package parallelism bound\n' >&2
+    return 1
+  }
+  grep -Fq 'go test -p=2 -race -count=1 -shuffle=on ./...' \
+    "$root/.github/scripts/devcheck.sh" || {
+    printf 'race tests omit the package parallelism bound\n' >&2
+    return 1
+  }
 
   bash "$root/.github/scripts/changecheck_test.sh" &
   change_pid=$!

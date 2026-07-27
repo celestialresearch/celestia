@@ -159,11 +159,11 @@ fuzz_smoke() {
 }
 
 go_standard_tests() {
-  go test -count=1 -shuffle=on ./...
+  go test -p=2 -count=1 -shuffle=on ./...
 }
 
 go_race_tests() {
-  go test -race -count=1 -shuffle=on ./...
+  go test -p=2 -race -count=1 -shuffle=on ./...
 }
 
 rust_docs() {
