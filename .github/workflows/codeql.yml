@@ -59,7 +59,7 @@ jobs:
           - language: actions
             build-mode: none
           - language: go
-            build-mode: autobuild
+            build-mode: manual
           - language: rust
             build-mode: none
     steps:
@@ -98,6 +98,12 @@ jobs:
           else
             echo 'present=false' >>"$GITHUB_OUTPUT"
           fi
+      - name: Setup Go
+        if: steps.detect.outputs.present == 'true' && matrix.language == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
       - name: Init CodeQL
         if: steps.detect.outputs.present == 'true'
         uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
@@ -105,6 +111,12 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           config-file: ./.github/codeql/codeql-config.yml
+      - name: Build Go
+        if: steps.detect.outputs.present == 'true' && matrix.language == 'go'
+        shell: bash
+        run: |
+          go build ./...
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...
       - name: Analyze
         if: steps.detect.outputs.present == 'true'
         uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3

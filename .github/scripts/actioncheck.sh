@@ -16,16 +16,37 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
 currency_file=${ACTIONCHECK_CURRENCY_FILE:-.github/.currency}
 currency_script=${ACTIONCHECK_CURRENCY_SCRIPT:-.github/scripts/currencycheck.sh}
-action_policy_file=tools/actionpolicy/main.go
+action_policy_dir=tools/actionpolicy
 
 usage() {
   printf 'Usage: %s verify|currency|cached-currency\n' "${0##*/}" >&2
 }
 
 action_files() {
-  find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print0 ||
+  local linked
+
+  linked=$(
+    find .github/workflows -type l \
+      \( -name '*.yml' -o -name '*.yaml' \) -print -quit
+  )
+  if [[ -n "$linked" ]]; then
+    printf '%s: linked workflow metadata is unsupported\n' "$linked" >&2
+    return 1
+  fi
+  linked=$(
+    find . -type l \( -name 'action.yml' -o -name 'action.yaml' \) \
+      ! -path './.git/*' ! -path './.cache/*' -print -quit
+  )
+  if [[ -n "$linked" ]]; then
+    printf '%s: linked action metadata is unsupported\n' "$linked" >&2
+    return 1
+  fi
+
+  find .github/workflows -type f \
+    \( -name '*.yml' -o -name '*.yaml' \) -print0 ||
     return
-  find . -type f \( -name 'action.yml' -o -name 'action.yaml' \) \
+  find . -type f \
+    \( -name 'action.yml' -o -name 'action.yaml' \) \
     ! -path './.git/*' ! -path './.cache/*' -print0
 }
 
@@ -34,10 +55,18 @@ action_documents() {
   local file
 
   while IFS= read -r -d '' file; do
+    if [[ -L "$file" ]]; then
+      printf '%s: linked action metadata is unsupported\n' "$file" >&2
+      return 1
+    fi
     printf '%s\0' "$file"
     cat -- "$file" || return
     printf '\0'
   done <"$inventory"
+}
+
+policy_files() {
+  git ls-files -co --exclude-standard -z -- "$action_policy_dir"
 }
 
 remote_actions() (
@@ -50,7 +79,7 @@ remote_actions() (
   fi
 
   action_documents "$inventory" |
-    go run -tags actionpolicy "$action_policy_file" actions
+    go run "./$action_policy_dir" actions
 )
 
 check_permissions() (
@@ -60,23 +89,41 @@ check_permissions() (
   trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
   action_files >"$inventory" || return
   action_documents "$inventory" |
-    go run -tags actionpolicy "$action_policy_file" permissions
+    go run "./$action_policy_dir" permissions
 )
 
 parse_action() {
   local entry=$1
   local location value reference annotation
 
+  ACTION_KIND=
   location=${entry%%:*:*}
   value=${entry#*:*:}
   reference=${value%%[[:space:]]*}
   annotation=${value#"$reference"}
   annotation=${annotation#"${annotation%%[![:space:]]*}"}
 
+  if [[ "$reference" == ./* ]]; then
+    printf '%s: local actions require an explicit reviewed resolution policy\n' \
+      "$location" >&2
+    return 1
+  fi
+
+  if [[ "$reference" == docker://* ]]; then
+    if [[ ! "$reference" =~ ^docker://[^[:space:]@]+@sha256:[0-9a-f]{64}$ ]]; then
+      printf '%s: container images must use a lowercase SHA-256 digest\n' \
+        "$location" >&2
+      return 1
+    fi
+    ACTION_KIND=docker
+    return
+  fi
+
   if [[ ! "$reference" =~ ^([^/@]+/[^/@]+)(/[^@]+)?@([0-9a-f]{40})$ ]]; then
     printf '%s: remote actions must use a full 40-character commit SHA\n' "$location" >&2
     return 1
   fi
+  ACTION_KIND=github
   ACTION_REPOSITORY=${BASH_REMATCH[1]}
   ACTION_SHA=${BASH_REMATCH[3]}
 
@@ -182,7 +229,7 @@ check_actions() {
       continue
     fi
 
-    if [[ "$check_currency" == true ]]; then
+    if [[ "$check_currency" == true && "$ACTION_KIND" == github ]]; then
       key="$ACTION_REPOSITORY@$ACTION_TAG"
       if [[ "$checked_tags" != *$'\n'"$key"$'\n'* ]]; then
         if ! expected=$(tag_sha "$ACTION_REPOSITORY" "$ACTION_TAG"); then
@@ -237,8 +284,13 @@ cache_key() (
     while IFS= read -r -d '' file; do
       git hash-object -- "$file"
     done <"$inventory"
+    if ! policy_files >"$inventory"; then
+      return 1
+    fi
+    while IFS= read -r -d '' file; do
+      git hash-object -- "$file"
+    done <"$inventory"
     git hash-object .github/scripts/actioncheck.sh
-    git hash-object "$action_policy_file"
     git hash-object "$currency_file"
     git hash-object "$currency_script"
     git --version

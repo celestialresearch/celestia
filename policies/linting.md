@@ -26,13 +26,18 @@ property unless each detects a demonstrated distinct failure class.
 
 The baseline applies whenever Go packages exist:
 - compiler, `go vet`, `staticcheck`, `unused`, `errcheck`, `ineffassign`;
+- ASCII identifiers and bidirectional-text checks;
+- context propagation and context-free HTTP checks;
+- JSON encodability and struct-tag checks;
+- ambiguous nil-result, nil-error and receiver-ownership checks;
+- unused parameter and unresolved `TODO` or `FIXME` checks;
 - resource and error checks already listed in `.golangci.yml`;
 - checked type assertions through `errcheck`;
 - enum, tag, Unicode and security checks already listed there;
 - `cyclop` with a maximum function complexity of 12;
 - `funlen` with maxima of 80 lines and 50 statements;
 - neutral-English `misspell` restricted to Go comments;
-- test-helper and standard-testing checks;
+- test-helper, parallel-subtest and standard-testing checks;
 - `modernize` as secondary evidence after `go fix`.
 
 `.golangci.yml` is the executable allowlist. This policy is the normative
@@ -40,6 +45,13 @@ contract for changing that allowlist.
 
 The local gate analyses the host plus representative Linux, AIX and Plan 9
 targets so platform files are not hidden by the developer's host.
+
+The Rust baseline applies whenever a Cargo workspace exists:
+- compiler warnings and Clippy warnings are denied for every target;
+- production workspace crates deny non-ASCII identifiers;
+- production workspace crates forbid unsafe code;
+- qualification fixtures deny non-ASCII identifiers but may use reviewed
+  unsafe code when the hostile platform probe requires it.
 
 ## Admission
 

@@ -656,6 +656,6 @@ func expectDelimiter(decoder *json.Decoder, expected json.Delim) error {
 	return nil
 }
 
-func protocolError(format string, arguments ...any) error {
-	return fmt.Errorf("%w: %s", ErrProtocol, fmt.Sprintf(format, arguments...))
+func protocolError(message string) error {
+	return fmt.Errorf("%w: %s", ErrProtocol, message)
 }

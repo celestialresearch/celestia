@@ -68,6 +68,8 @@ func TestDecodeResponseForRequestCorrelation(t *testing.T) {
 	}
 	for name, change := range tests {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			invalid := request
 			change(&invalid)
 			if _, err := DecodeResponseForRequestCorrelation(

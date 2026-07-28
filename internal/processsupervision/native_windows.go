@@ -179,7 +179,7 @@ func (container *appContainer) closeWith(
 	return closeErr
 }
 
-func (container appContainer) identity() string {
+func (container *appContainer) identity() string {
 	sid := "<nil>"
 	if container.sid != nil {
 		sid = container.sid.String()
