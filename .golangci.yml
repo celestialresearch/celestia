@@ -29,21 +29,28 @@ linters:
     - errcheck
     - ineffassign
 
+    - asciicheck
     - bodyclose
+    - contextcheck
     - cyclop
     - durationcheck
     - errorlint
+    - errchkjson
     - exhaustive
     - funlen
     - gochecksumtype
+    - godox
     - makezero
     - misspell
     - modernize
     - noctx
     - nilerr
+    - nilnil
     - nilnesserr
+    - recvcheck
     - rowserrcheck
     - sqlclosecheck
+    - unparam
 
     - bidichk
     - gosec
@@ -52,4 +59,5 @@ linters:
     - nolintlint
 
     - thelper
+    - tparallel
     - usetesting

@@ -68,10 +68,11 @@ ACTIONCHECK_CACHE_MAX_AGE_MINUTES=0 bash ./.github/scripts/devcheck.sh
 
 The gate tests its coverage and repository-policy scripts. It then checks
 repository policy, merge markers, private-key markers and maintained shell
-scripts with pinned ShellCheck. It discovers workflows, action references, Go
-packages, fuzz targets and an optional Cargo workspace. `.github/.coverage`
-sets the default and optional package-specific statement-coverage floors. The
-default is 90 per cent.
+scripts with pinned ShellCheck. It discovers workflows, action and container
+image references, Go packages, fuzz targets and an optional Cargo workspace.
+Local action references fail closed until a reviewed resolver is implemented.
+`.github/.coverage` sets the default and optional package-specific
+statement-coverage floors. The default is 90 per cent.
 
 Package overrides use:
 ```text

@@ -29,6 +29,7 @@ main() (
   local action_pid=
   local change_pid=
   local currency_pid=
+  local go_version
   local golangci_lint
   local platform_log
 
@@ -63,6 +64,11 @@ main() (
   esac
   trap cleanup EXIT
   trap 'exit 1' HUP INT TERM
+  go_version=$(awk '$1 == "go" { print $2; exit }' "$root/go.mod")
+  if [[ ! "$go_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf 'verification fixture requires a patch-level Go version\n' >&2
+    return 1
+  fi
   golangci_lint=$(cd "$root" && go tool -n golangci-lint)
   shellcheck_script="$root/.github/scripts/windows-shellcheck.ps1"
   if grep -Fq '| head' "$shellcheck_script"; then
@@ -209,7 +215,7 @@ EOF
     cat "$platform_log" >&2
     return 1
   fi
-  printf 'module celestia.research/type-assertion\n\ngo 1.26.5\n' \
+  printf 'module celestia.research/type-assertion\n\ngo %s\n' "$go_version" \
     >"$work_dir/type-assertion/go.mod"
   printf 'package typeassertion\n' \
     >"$work_dir/type-assertion/typeassertion.go"
@@ -261,6 +267,154 @@ EOF
     return 1
   }
 
+  mkdir -p "$work_dir/linter-policy"
+  printf 'module celestia.research/linterfixture\n\ngo %s\n' "$go_version" \
+    >"$work_dir/linter-policy/go.mod"
+  cat >"$work_dir/linter-policy/fixture.go" <<'EOF'
+package linterfixture
+
+import (
+	"context"
+	"encoding/json"
+)
+
+type owner struct{}
+
+func (*owner) mutate() {
+}
+
+func (owner) inspect() {
+}
+
+func consume(context.Context) {
+}
+
+func inherit(ctx context.Context) {
+	consume(context.Background())
+}
+
+func maybe() (*int, error) {
+	return nil, nil
+}
+
+func unused(value int) int {
+	return 1
+}
+
+func encode() {
+	_, _ = json.Marshal(make(chan int))
+}
+
+func café() {}
+
+// TODO: unresolved work.
+func Use() {
+	var value owner
+	value.mutate()
+	value.inspect()
+	inherit(context.Background())
+	_, _ = maybe()
+	_ = unused(1)
+	encode()
+	café()
+}
+EOF
+  cat >"$work_dir/linter-policy/fixture_test.go" <<'EOF'
+package linterfixture
+
+import "testing"
+
+func TestParallel(t *testing.T) {
+	t.Parallel()
+	t.Run("child", func(t *testing.T) {})
+}
+EOF
+  set +e
+  output=$(
+    cd "$work_dir/linter-policy" &&
+      "$golangci_lint" run --config "$root/.golangci.yml" ./... 2>&1
+  )
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    printf 'admitted linters accepted defective fixtures\n' >&2
+    return 1
+  fi
+  for linter in \
+    asciicheck contextcheck errchkjson godox nilnil recvcheck tparallel unparam; do
+    if ! grep -Fq "($linter)" <<<"$output"; then
+      printf '%s did not reject its defective fixture:\n%s\n' \
+        "$linter" "$output" >&2
+      return 1
+    fi
+  done
+  cat >"$work_dir/linter-policy/fixture.go" <<'EOF'
+package linterfixture
+
+import (
+	"context"
+	"encoding/json"
+)
+
+type owner struct{}
+
+func (*owner) mutate() {
+}
+
+func (*owner) inspect() {
+}
+
+func consume(context.Context) {
+}
+
+func inherit(ctx context.Context) {
+	consume(ctx)
+}
+
+func maybe() (*int, error) {
+	value := 1
+	return &value, nil
+}
+
+func used(value int) int {
+	return value
+}
+
+func encode() error {
+	_, err := json.Marshal(map[string]int{"value": 1})
+	return err
+}
+
+func Use() error {
+	var value owner
+	value.mutate()
+	value.inspect()
+	inherit(context.Background())
+	_, _ = maybe()
+	_ = used(1)
+	return encode()
+}
+EOF
+  cat >"$work_dir/linter-policy/fixture_test.go" <<'EOF'
+package linterfixture
+
+import "testing"
+
+func TestParallel(t *testing.T) {
+	t.Parallel()
+	t.Run("child", func(t *testing.T) {
+		t.Parallel()
+	})
+}
+EOF
+  (
+    cd "$work_dir/linter-policy"
+    "$golangci_lint" run --config "$root/.golangci.yml" ./...
+  ) || {
+    printf 'admitted linters rejected correct fixtures\n' >&2
+    return 1
+  }
+
   sleep 60 &
   change_pid=$!
   terminate_child "$change_pid"
@@ -306,7 +460,8 @@ EOF
 
   rust_dir="$work_dir/rust"
   mkdir -p "$rust_dir/.github/scripts" "$rust_dir/.github/workflows" \
-    "$rust_dir/bin" "$rust_dir/worker/qualification-fixtures"
+    "$rust_dir/bin" "$rust_dir/worker/qualification-fixtures" \
+    "$rust_dir/worker/url-reference"
   cp "$root/.github/scripts/rustcheck.sh" "$rust_dir/.github/scripts/"
   cat >"$rust_dir/Cargo.toml" <<'EOF'
 [workspace]
@@ -314,11 +469,19 @@ resolver = "3"
 
 [workspace.package]
 rust-version = "1.94.1"
+
+[workspace.lints.rust]
+non_ascii_idents = "deny"
+unsafe_code = "forbid"
 EOF
   printf '%s\n' '[toolchain]' 'channel = "1.94.0"' \
     >"$rust_dir/rust-toolchain.toml"
-  printf '%s\n' '[package]' 'rust-version = "1.94.1"' \
+  printf '%s\n' '[package]' 'rust-version = "1.94.1"' '' \
+    '[lints.rust]' 'non_ascii_idents = "deny"' \
     >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
+  printf '%s\n' '[package]' 'name = "worker"' 'version = "0.0.0"' '' \
+    '[lints]' 'workspace = true' \
+    >"$rust_dir/worker/url-reference/Cargo.toml"
   cat >"$rust_dir/.github/workflows/main.yml" <<'EOF'
 steps:
   - name: Unrelated
@@ -374,7 +537,8 @@ EOF
     >"$rust_dir/rust-toolchain.toml"
   (cd "$rust_dir" && bash .github/scripts/rustcheck.sh config)
 
-  printf '%s\n' '[package]' 'rust-version = "1.94.0"' \
+  printf '%s\n' '[package]' 'rust-version = "1.94.0"' '' \
+    '[lints.rust]' 'non_ascii_idents = "deny"' \
     >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
   set +e
   output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
@@ -388,8 +552,27 @@ EOF
     printf 'Rust config check omitted fixture drift:\n%s\n' "$output" >&2
     return 1
   }
-  printf '%s\n' '[package]' 'rust-version = "1.94.1"' \
+  printf '%s\n' '[package]' 'rust-version = "1.94.1"' '' \
+    '[lints.rust]' 'non_ascii_idents = "deny"' \
     >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
+
+  cp "$rust_dir/Cargo.toml" "$rust_dir/Cargo.toml.lints"
+  sed '/unsafe_code = "forbid"/d' "$rust_dir/Cargo.toml.lints" \
+    >"$rust_dir/Cargo.toml"
+  set +e
+  output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+  status=$?
+  set -e
+  mv "$rust_dir/Cargo.toml.lints" "$rust_dir/Cargo.toml"
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted a missing unsafe-code prohibition\n' >&2
+    return 1
+  }
+  grep -Fq 'Rust lint policy mismatch' <<<"$output" || {
+    printf 'Rust config check omitted the lint-policy diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
 
   mv "$rust_dir/Cargo.toml" "$rust_dir/Cargo.toml.saved"
   set +e

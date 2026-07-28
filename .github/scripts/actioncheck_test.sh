@@ -147,6 +147,42 @@ if parse_action "$invalid_entry" >/dev/null 2>&1; then
   exit 1
 fi
 
+if parse_action '.github/workflows/main.yml:1:./local-action' \
+  >/dev/null 2>&1; then
+  printf 'action parser accepted an unresolved local action\n' >&2
+  exit 1
+fi
+
+linked_action="$work_dir/linked-action.yml"
+if ln -s "$action_file" "$linked_action" 2>/dev/null &&
+  [[ -L "$linked_action" ]]; then
+  original_action_files=$(declare -f action_files)
+  action_files() {
+    printf '%s\0' "$linked_action"
+  }
+  if action_documents <(action_files) >/dev/null 2>&1; then
+    printf 'action document reader followed linked metadata\n' >&2
+    exit 1
+  fi
+  eval "$original_action_files"
+fi
+
+if parse_action '.github/workflows/main.yml:1:docker://alpine:latest' \
+  >/dev/null 2>&1; then
+  printf 'action parser accepted a floating container image\n' >&2
+  exit 1
+fi
+docker_digest='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+if ! parse_action \
+  ".github/workflows/main.yml:1:docker://alpine@sha256:$docker_digest"; then
+  printf 'action parser rejected a digest-pinned container image\n' >&2
+  exit 1
+fi
+[[ "$ACTION_KIND" == docker ]] || {
+  printf 'action parser did not classify a container image\n' >&2
+  exit 1
+}
+
 printf 'runs:\n  using: composite\n  steps:\n    - uses : example/action@main\n' >"$action_file"
 entry=$(remote_actions)
 if [[ -z "$entry" ]]; then
@@ -218,6 +254,55 @@ if ! parse_action "$entry"; then
   printf 'action parser rejected a quoted pinned action\n' >&2
   exit 1
 fi
+
+cat >"$action_file" <<'EOF'
+jobs:
+  check:
+    container: alpine:latest
+    services:
+      database:
+        image: postgres:latest
+    steps:
+      - uses: docker://busybox:latest
+EOF
+entries=$(remote_actions)
+[[ "$(grep -Fc 'docker://' <<<"$entries")" -eq 3 ]] || {
+  printf 'action inventory omitted a container reference\n' >&2
+  exit 1
+}
+while IFS= read -r entry; do
+  if parse_action "$entry" >/dev/null 2>&1; then
+    printf 'action parser accepted an unpinned container reference\n' >&2
+    exit 1
+  fi
+done <<<"$entries"
+
+cat >"$action_file" <<EOF
+runs:
+  using: docker
+  image: docker://alpine@sha256:$docker_digest
+EOF
+entry=$(remote_actions)
+if ! parse_action "$entry"; then
+  printf 'action parser rejected a digest-pinned Docker action\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+image: &image alpine:latest
+action: &action example/action@main
+jobs:
+  check:
+    container: *image
+    steps:
+      - uses: *action
+EOF
+entries=$(remote_actions)
+[[ "$(grep -Fc 'docker://alpine:latest' <<<"$entries")" -eq 1 &&
+  "$(grep -Fc 'example/action@main' <<<"$entries")" -eq 1 ]] || {
+  printf 'action inventory omitted an aliased reference\n' >&2
+  exit 1
+}
 
 cat >"$action_file" <<'EOF'
 permissions:
@@ -313,10 +398,14 @@ if ! check_permissions; then
   exit 1
 fi
 
-action_policy_file="$work_dir/actionpolicy.go"
-cp -- "$root/tools/actionpolicy/main.go" "$action_policy_file"
+action_policy_dir="$work_dir/actionpolicy"
+mkdir -p "$action_policy_dir"
+cp -- "$root/tools/actionpolicy/main.go" "$action_policy_dir/main.go"
+policy_files() {
+  printf '%s\0' "$action_policy_dir/main.go"
+}
 first_key=$(cache_key)
-printf '\n// cache mutation\n' >>"$action_policy_file"
+printf '\n// cache mutation\n' >>"$action_policy_dir/main.go"
 second_key=$(cache_key)
 [[ "$first_key" != "$second_key" ]] || {
   printf 'action cache ignored the structural policy parser\n' >&2

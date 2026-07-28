@@ -4,6 +4,9 @@ Date: 2026-07-25
 
 Scope: local Windows evidence collected before the v1 protocol and durable
 evidence contracts were established. It does not qualify the v1 implementation.
+The source revision, exact commands and raw outputs were not retained. The
+results below are historical notes rather than reproducible qualification
+evidence.
 
 ## Host
 - Windows 11 Pro 10.0.26200, amd64.
@@ -25,11 +28,12 @@ AppContainer setup, worker staging and execution, verification, durable
 publication and cleanup. It is a local baseline rather than a portability or
 service-level guarantee.
 
-## Evidence
-- Uncached Go tests pass.
-- Repository-wide Go race tests pass.
-- Rust tests and Clippy with warnings denied pass.
-- The package coverage policy passes at its declared floors.
-- Hostile containment, process, protocol, semantic and evidence cases pass.
+## Recorded Results
+- Uncached Go tests were recorded as passing.
+- Repository-wide Go race tests were recorded as passing.
+- Rust tests and Clippy with warnings denied were recorded as passing.
+- The package coverage policy was recorded as passing at its declared floors.
+- Hostile containment, process, protocol, semantic and evidence cases were
+  recorded as passing.
 
 The complete repository gate and final diff review remain separate evidence.

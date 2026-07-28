@@ -28,6 +28,47 @@ fixture_rust_version() {
     worker/qualification-fixtures/Cargo.toml
 }
 
+toml_value() {
+  file=$1
+  section=$2
+  key=$3
+  awk -v section="$section" -v key="$key" '
+    $0 == "[" section "]" {
+      active = 1
+      next
+    }
+    /^\[/ {
+      active = 0
+    }
+    active && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      value = $0
+      sub(/^[^=]*=[[:space:]]*/, "", value)
+      sub(/[[:space:]]*#.*$/, "", value)
+      gsub(/^"|"$/, "", value)
+      print value
+      exit
+    }
+  ' "$file"
+}
+
+check_lint_policy() {
+  root_ascii=$(toml_value Cargo.toml workspace.lints.rust non_ascii_idents)
+  root_unsafe=$(toml_value Cargo.toml workspace.lints.rust unsafe_code)
+  worker_workspace=$(
+    toml_value worker/url-reference/Cargo.toml lints workspace
+  )
+  fixture_ascii=$(
+    toml_value worker/qualification-fixtures/Cargo.toml \
+      lints.rust non_ascii_idents
+  )
+  if [[ "$root_ascii" != deny || "$root_unsafe" != forbid ||
+    "$worker_workspace" != true || "$fixture_ascii" != deny ]]; then
+    printf 'Rust lint policy mismatch: ascii=%s unsafe=%s worker=%s fixture=%s\n' \
+      "$root_ascii" "$root_unsafe" "$worker_workspace" "$fixture_ascii" >&2
+    return 1
+  fi
+}
+
 workflow_tools() {
   awk '
     FNR == 1 {
@@ -114,6 +155,7 @@ check_config() {
       "$manifest" "$fixture" "$toolchain" "$workflow"
     return 1
   fi
+  check_lint_policy
 }
 
 check_tool() {
