@@ -122,3 +122,27 @@ func TestStageRollbackKeepsMarkerWhenPendingSurvives(t *testing.T) {
 		t.Fatalf("ownership marker lost: present=%t error=%v", marker, err)
 	}
 }
+
+func TestStagedAttemptRollbackSyncsPendingRoot(t *testing.T) {
+	store := newTestStore(t)
+	accepted, _ := testAccepted(t)
+	pendingPath := store.pendingPath(accepted.Request.AttemptID)
+	if err := createEvidenceDirectory(pendingPath); err != nil {
+		t.Fatalf("create pending attempt: %v", err)
+	}
+	syncErr := errors.New("injected pending-root sync failure")
+	var synced string
+	err := removeStagedAttemptWith(pendingPath, func(path string) error {
+		synced = path
+		return syncErr
+	})
+	if !errors.Is(err, syncErr) {
+		t.Fatalf("remove staged attempt error = %v, want %v", err, syncErr)
+	}
+	if synced != store.pendingRoot() {
+		t.Fatalf("synced path = %q, want %q", synced, store.pendingRoot())
+	}
+	if _, err := os.Lstat(pendingPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("pending attempt retained: %v", err)
+	}
+}

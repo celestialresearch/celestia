@@ -59,8 +59,15 @@ func (store *Store) prepareAttemptDirectories(
 }
 
 func removeStagedAttempt(path string) error {
+	return removeStagedAttemptWith(path, syncDirectory)
+}
+
+func removeStagedAttemptWith(path string, syncParent func(string) error) error {
 	if err := os.RemoveAll(path); err != nil {
 		return fmt.Errorf("roll back staged attempt: %w", err)
+	}
+	if err := syncParent(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("sync staged-attempt rollback: %w", err)
 	}
 	return nil
 }
