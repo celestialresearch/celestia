@@ -93,8 +93,9 @@ func (store *Store) acquireAttemptLock(
 			file.Close(),
 		)
 	}
-	reservation.keep = true
 	lock = &attemptLock{file: file, key: key}
+	activeAttemptLocks.Store(key, lock)
+	reservation.keep = true
 	return lock, nil
 }
 
@@ -212,6 +213,18 @@ func (store *Store) validateAttemptLock(attemptID string) (err error) {
 		err = errors.Join(err, root.Close())
 	}()
 	name := attemptID + ".lock"
+	key := filepath.Join(directory, name)
+	if active, loaded := activeAttemptLocks.Load(key); loaded {
+		owner, ok := active.(*attemptLock)
+		if !ok {
+			return ErrActive
+		}
+		pathInfo, err := root.Lstat(name)
+		if err != nil {
+			return ErrCorrupt
+		}
+		return validateLockFile(owner.file, pathInfo)
+	}
 	file, err := openLockFileReadOnly(root, directory, name)
 	if errors.Is(err, os.ErrNotExist) {
 		return ErrCorrupt
