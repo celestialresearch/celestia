@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
+	"strings"
 	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
@@ -23,6 +25,16 @@ import (
 type document struct {
 	path string
 	data []byte
+}
+
+const (
+	maxYAMLDepth      = 256
+	maxYAMLNodeVisits = 1 << 20
+)
+
+type yamlValidator struct {
+	active    map[*yaml.Node]bool
+	remaining int
 }
 
 func inspect(document document, mode string, output io.Writer) error {
@@ -36,13 +48,30 @@ func inspect(document document, mode string, output io.Writer) error {
 	}
 
 	root := rootDocument.Content[0]
-	if err := validateYAML(root, make(map[*yaml.Node]bool)); err != nil {
+	validator := yamlValidator{
+		active:    make(map[*yaml.Node]bool),
+		remaining: maxYAMLNodeVisits,
+	}
+	if err := validator.validate(root, 0); err != nil {
 		return fmt.Errorf("%s: invalid workflow structure: %w", document.path, err)
 	}
 	if mode == actionsMode {
 		return printActions(output, document.path, root)
 	}
+	if isActionMetadata(document.path) {
+		return nil
+	}
 	return checkPermissions(document.path, root)
+}
+
+func isActionMetadata(path string) bool {
+	name := filepath.Base(path)
+	if name != "action.yml" && name != "action.yaml" {
+		return false
+	}
+	clean := filepath.ToSlash(filepath.Clean(path))
+	return !strings.HasPrefix(clean, ".github/workflows/") &&
+		!strings.Contains(clean, "/.github/workflows/")
 }
 
 func mappingValue(mapping *yaml.Node, name string) *yaml.Node {
@@ -77,23 +106,42 @@ func validateDocumentPath(path []byte) error {
 	return nil
 }
 
-func validateYAML(node *yaml.Node, active map[*yaml.Node]bool) error {
+func (validator *yamlValidator) validate(node *yaml.Node, depth int) error {
+	if err := validator.consume(depth); err != nil {
+		return err
+	}
+
 	node = resolveAlias(node)
 	if node == nil {
 		return nil
 	}
-	if active[node] {
+	if validator.active[node] {
 		return errors.New("YAML aliases form a cycle")
 	}
-	active[node] = true
-	defer delete(active, node)
+	validator.active[node] = true
+	defer delete(validator.active, node)
 
+	return validator.validateKind(node, depth)
+}
+
+func (validator *yamlValidator) consume(depth int) error {
+	if depth > maxYAMLDepth {
+		return errors.New("YAML nesting exceeds the depth limit")
+	}
+	if validator.remaining == 0 {
+		return errors.New("YAML structure exceeds the traversal budget")
+	}
+	validator.remaining--
+	return nil
+}
+
+func (validator *yamlValidator) validateKind(node *yaml.Node, depth int) error {
 	switch node.Kind {
 	case yaml.MappingNode:
-		return validateYAMLMapping(node, active)
+		return validator.validateMapping(node, depth)
 	case yaml.SequenceNode:
 		for _, child := range node.Content {
-			if err := validateYAML(child, active); err != nil {
+			if err := validator.validate(child, depth+1); err != nil {
 				return err
 			}
 		}
@@ -109,7 +157,7 @@ func validateYAML(node *yaml.Node, active map[*yaml.Node]bool) error {
 	return nil
 }
 
-func validateYAMLMapping(node *yaml.Node, active map[*yaml.Node]bool) error {
+func (validator *yamlValidator) validateMapping(node *yaml.Node, depth int) error {
 	if len(node.Content)%2 != 0 {
 		return errors.New("YAML mapping is incomplete")
 	}
@@ -129,7 +177,7 @@ func validateYAMLMapping(node *yaml.Node, active map[*yaml.Node]bool) error {
 			return fmt.Errorf("duplicate YAML key %q", key.Value)
 		}
 		keys[key.Value] = struct{}{}
-		if err := validateYAML(node.Content[index+1], active); err != nil {
+		if err := validator.validate(node.Content[index+1], depth+1); err != nil {
 			return err
 		}
 	}

@@ -106,9 +106,13 @@ fi
 unset -f git
 currency_file="$work_dir/currency"
 currency_script="$work_dir/currencycheck.sh"
+module_file="$work_dir/go.mod"
+module_sum_file="$work_dir/go.sum"
 action_file="$work_dir/action.yml"
 printf 'exceptions-v1\n' >"$currency_file"
 printf 'checker-v1\n' >"$currency_script"
+printf 'module-v1\n' >"$module_file"
+printf 'sum-v1\n' >"$module_sum_file"
 printf 'uses: example/action@0000000000000000000000000000000000000001 # v1.0.0\n' >"$action_file"
 action_files() {
   printf '%s\0' "$action_file"
@@ -126,6 +130,32 @@ third_key=$(cache_key)
   printf 'action cache ignored the currency checker\n' >&2
   exit 1
 }
+printf 'module-v2\n' >"$module_file"
+fourth_key=$(cache_key)
+[[ "$third_key" != "$fourth_key" ]] || {
+  printf 'action cache ignored the module manifest\n' >&2
+  exit 1
+}
+printf 'sum-v2\n' >"$module_sum_file"
+fifth_key=$(cache_key)
+[[ "$fourth_key" != "$fifth_key" ]] || {
+  printf 'action cache ignored the module checksum inventory\n' >&2
+  exit 1
+}
+original_toolchain_fingerprint=$(declare -f toolchain_fingerprint)
+toolchain_fingerprint() {
+  printf 'toolchain-v1\n'
+}
+sixth_key=$(cache_key)
+toolchain_fingerprint() {
+  printf 'toolchain-v2\n'
+}
+seventh_key=$(cache_key)
+[[ "$sixth_key" != "$seventh_key" ]] || {
+  printf 'action cache ignored the Go toolchain\n' >&2
+  exit 1
+}
+eval "$original_toolchain_fingerprint"
 cache_root="$work_dir/cache"
 key=$(cache_key)
 mkdir -p -- "$cache_root/actioncheck"
@@ -348,6 +378,31 @@ entries=$(remote_actions)
   exit 1
 }
 
+{
+  printf 'level0: &level0 [value, value, value, value, value, value, value, value, value, value]\n'
+  for level in 1 2 3 4 5 6 7; do
+    printf 'level%s: &level%s [' "$level" "$level"
+    item=0
+    while ((item < 10)); do
+      if ((item > 0)); then
+        printf ', '
+      fi
+      printf '*level%s' "$((level - 1))"
+      item=$((item + 1))
+    done
+    printf ']\n'
+  done
+} >"$action_file"
+if remote_actions >"$output_file" 2>"$error_file"; then
+  printf 'action parser accepted an excessive alias expansion\n' >&2
+  exit 1
+fi
+grep -Fq 'traversal budget' "$error_file" || {
+  printf 'action parser did not report its traversal bound\n' >&2
+  exit 1
+}
+
+action_file="$work_dir/main.yml"
 cat >"$action_file" <<'EOF'
 permissions:
   security-events: write
@@ -398,6 +453,8 @@ EOF
 done
 
 cat >"$action_file" <<'EOF'
+permissions:
+  contents: read
 jobs:
   classify:
     permissions:
@@ -411,6 +468,8 @@ if check_permissions >/dev/null 2>&1; then
 fi
 
 cat >"$action_file" <<'EOF'
+permissions:
+  contents: read
 jobs:
   classify:
     permissions:
@@ -424,6 +483,8 @@ if check_permissions >/dev/null 2>&1; then
 fi
 
 cat >"$action_file" <<'EOF'
+permissions:
+  contents: read
 jobs:
   analyze:
     permissions: &security-write
@@ -441,6 +502,8 @@ if check_permissions >/dev/null 2>&1; then
 fi
 
 cat >"$action_file" <<'EOF'
+permissions:
+  contents: read
 jobs:
   analyze:
     permissions:

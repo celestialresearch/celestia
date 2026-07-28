@@ -20,7 +20,11 @@ import (
 )
 
 func checkPermissions(path string, root *yaml.Node) error {
-	_, err := validatePermissions(mappingValue(root, "permissions"), false)
+	workflowPermissions := mappingValue(root, "permissions")
+	if workflowPermissions == nil {
+		return fmt.Errorf("%s: workflow permissions: explicit permissions are required", path)
+	}
+	_, err := validatePermissions(workflowPermissions, false)
 	if err != nil {
 		return fmt.Errorf("%s: workflow permissions: %w", path, err)
 	}
