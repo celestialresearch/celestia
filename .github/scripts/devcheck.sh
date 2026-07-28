@@ -103,6 +103,7 @@ check_config() {
   local scripts=()
 
   go tool golangci-lint config verify || return
+  bash ./.github/scripts/actioncheck.sh verify || return
   go tool actionlint || return
   bash ./.github/scripts/rustcheck.sh config || return
   script_list=$(find .github/scripts -type f -name '*.sh' -print | sort) ||
