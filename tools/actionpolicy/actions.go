@@ -55,8 +55,8 @@ func printJobActions(output io.Writer, path string, jobs *yaml.Node) error {
 	}
 	for index := 0; index < len(jobs.Content); index += 2 {
 		job := resolveAlias(jobs.Content[index+1])
-		if job.Kind != yaml.MappingNode {
-			return fmt.Errorf("%s:%d: job must be a mapping", path, job.Line)
+		if job == nil || job.Kind != yaml.MappingNode {
+			return fmt.Errorf("%s:%d: job must be a mapping", path, jobs.Content[index+1].Line)
 		}
 		if err := printUses(
 			output,
@@ -134,8 +134,8 @@ func printStepActions(output io.Writer, path string, steps *yaml.Node) error {
 	}
 	for _, step := range steps.Content {
 		step = resolveAlias(step)
-		if step.Kind != yaml.MappingNode {
-			return fmt.Errorf("%s:%d: step must be a mapping", path, step.Line)
+		if step == nil || step.Kind != yaml.MappingNode {
+			return fmt.Errorf("%s:%d: step must be a mapping", path, steps.Line)
 		}
 		if err := printUses(
 			output,

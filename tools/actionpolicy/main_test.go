@@ -14,6 +14,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -390,6 +391,52 @@ jobs:
 			want: "alias keys are unsupported",
 		},
 	})
+}
+
+func TestInspectDocumentsBoundsAliasExpansion(t *testing.T) {
+	t.Parallel()
+
+	var input strings.Builder
+	input.WriteString("level0: &level0 [value, value, value, value, value, value, value, value, value, value]\n")
+	for level := 1; level <= 7; level++ {
+		fmt.Fprintf(&input, "level%d: &level%d [", level, level)
+		for item := range 10 {
+			if item > 0 {
+				input.WriteString(", ")
+			}
+			fmt.Fprintf(&input, "*level%d", level-1)
+		}
+		input.WriteString("]\n")
+	}
+
+	stream := "main.yml\x00" + input.String() + "\x00"
+	err := inspectDocuments(
+		strings.NewReader(stream),
+		&bytes.Buffer{},
+		actionsMode,
+		streamLimits{documents: 1, pathBytes: 64, dataBytes: 4096, totalBytes: 4160},
+	)
+	if err == nil || !strings.Contains(err.Error(), "traversal budget") {
+		t.Fatalf("inspectDocuments() error = %v, want traversal budget rejection", err)
+	}
+}
+
+func TestInspectDocumentsBoundsNesting(t *testing.T) {
+	t.Parallel()
+
+	input := strings.Repeat("[", maxYAMLDepth+1) +
+		"value" +
+		strings.Repeat("]", maxYAMLDepth+1)
+	stream := "main.yml\x00value: " + input + "\x00"
+	err := inspectDocuments(
+		strings.NewReader(stream),
+		&bytes.Buffer{},
+		actionsMode,
+		streamLimits{documents: 1, pathBytes: 64, dataBytes: 2048, totalBytes: 2112},
+	)
+	if err == nil || !strings.Contains(err.Error(), "depth limit") {
+		t.Fatalf("inspectDocuments() error = %v, want depth rejection", err)
+	}
 }
 
 func TestInspectDocumentsRejectsInvalidJobs(t *testing.T) {

@@ -16,6 +16,8 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
 currency_file=${ACTIONCHECK_CURRENCY_FILE:-.github/.currency}
 currency_script=${ACTIONCHECK_CURRENCY_SCRIPT:-.github/scripts/currencycheck.sh}
+module_file=${ACTIONCHECK_MODULE_FILE:-go.mod}
+module_sum_file=${ACTIONCHECK_MODULE_SUM_FILE:-go.sum}
 action_policy_dir=tools/actionpolicy
 
 usage() {
@@ -71,6 +73,10 @@ action_documents() {
 
 policy_files() {
   git ls-files -co --exclude-standard -z -- "$action_policy_dir"
+}
+
+toolchain_fingerprint() {
+  go env GOVERSION GOOS GOARCH
 }
 
 remote_actions() (
@@ -307,6 +313,9 @@ cache_key() (
     git hash-object .github/scripts/actioncheck.sh
     git hash-object "$currency_file"
     git hash-object "$currency_script"
+    git hash-object "$module_file"
+    git hash-object "$module_sum_file"
+    toolchain_fingerprint
     git --version
     date -u +%F
   } | git hash-object --stdin

@@ -23,6 +23,8 @@ func TestPermissionsResolveAliases(t *testing.T) {
 	t.Parallel()
 
 	stream := "main.yml\x00" + `access: &access write
+permissions:
+  contents: read
 jobs:
   classify:
     permissions:
@@ -68,7 +70,9 @@ jobs:
 func TestPermissionsRejectWriteAll(t *testing.T) {
 	t.Parallel()
 
-	input := `jobs:
+	input := `permissions:
+  contents: read
+jobs:
   analyze:
     permissions: write-all
     steps:
@@ -82,6 +86,67 @@ func TestPermissionsRejectWriteAll(t *testing.T) {
 	)
 	if err == nil || !strings.Contains(err.Error(), "write-all is prohibited") {
 		t.Fatalf("inspectDocuments() error = %v, want write-all rejection", err)
+	}
+}
+
+func TestPermissionsRequireWorkflowDefault(t *testing.T) {
+	t.Parallel()
+
+	input := `jobs:
+  inspect:
+    permissions:
+      contents: read
+    steps:
+      - run: "true"
+`
+	err := inspectDocuments(
+		strings.NewReader("main.yml\x00"+input+"\x00"),
+		&bytes.Buffer{},
+		permissionsMode,
+		streamLimits{documents: 1, pathBytes: 64, dataBytes: 512, totalBytes: 576},
+	)
+	if err == nil || !strings.Contains(err.Error(), "explicit permissions are required") {
+		t.Fatalf("inspectDocuments() error = %v, want explicit permission rejection", err)
+	}
+}
+
+func TestPermissionsIgnoreActionMetadata(t *testing.T) {
+	t.Parallel()
+
+	input := `name: Example
+runs:
+  using: composite
+  steps:
+    - run: "true"
+      shell: bash
+`
+	err := inspectDocuments(
+		strings.NewReader("action.yml\x00"+input+"\x00"),
+		&bytes.Buffer{},
+		permissionsMode,
+		streamLimits{documents: 1, pathBytes: 64, dataBytes: 512, totalBytes: 576},
+	)
+	if err != nil {
+		t.Fatalf("inspectDocuments() error = %v", err)
+	}
+}
+
+func TestPermissionsDoNotExemptWorkflowNamedAction(t *testing.T) {
+	t.Parallel()
+
+	input := `jobs:
+  inspect:
+    steps:
+      - run: "true"
+`
+	err := inspectDocuments(
+		strings.NewReader(".github/workflows/action.yml\x00"+input+"\x00"),
+		&bytes.Buffer{},
+		permissionsMode,
+		streamLimits{documents: 1, pathBytes: 64, dataBytes: 512, totalBytes: 576},
+	)
+	if err == nil || !strings.Contains(err.Error(), "explicit permissions are required") {
+		t.Fatalf("inspectDocuments() error = %v, want workflow permission rejection", err)
 	}
 }
 
