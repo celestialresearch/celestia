@@ -59,7 +59,7 @@ jobs:
           - language: actions
             build-mode: none
           - language: go
-            build-mode: manual
+            build-mode: autobuild
           - language: rust
             build-mode: none
     steps:
@@ -67,58 +67,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Detect Language
-        id: detect
-        shell: bash
-        env:
-          LANGUAGE: ${{ matrix.language }}
-        run: |
-          case "$LANGUAGE" in
-            actions)
-              if ! detected=$(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print); then
-                exit 1
-              fi
-              ;;
-            go)
-              if ! detected=$(find . -type f -name '*.go' -print); then
-                exit 1
-              fi
-              ;;
-            rust)
-              if ! detected=$(find . -type f -name '*.rs' -print); then
-                exit 1
-              fi
-              ;;
-            *)
-              echo "unsupported CodeQL language: $LANGUAGE" >&2
-              exit 1
-          esac
-          if [[ -n "$detected" ]]; then
-            echo 'present=true' >>"$GITHUB_OUTPUT"
-          else
-            echo 'present=false' >>"$GITHUB_OUTPUT"
-          fi
       - name: Setup Go
-        if: steps.detect.outputs.present == 'true' && matrix.language == 'go'
+        if: matrix.language == 'go'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
       - name: Init CodeQL
-        if: steps.detect.outputs.present == 'true'
         uses: github/codeql-action/init@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           config-file: ./.github/codeql/codeql-config.yml
-      - name: Build Go
-        if: steps.detect.outputs.present == 'true' && matrix.language == 'go'
-        shell: bash
-        run: |
-          go build ./...
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build ./...
       - name: Analyze
-        if: steps.detect.outputs.present == 'true'
         uses: github/codeql-action/analyze@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # v4.37.3
         with:
           category: /language:${{ matrix.language }}
