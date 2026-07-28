@@ -59,6 +59,26 @@ func TestRecoverRejectsActiveAttempt(t *testing.T) {
 	}
 }
 
+func TestValidateAttemptLockRejectsIncompleteOwner(t *testing.T) {
+	store := newTestStore(t)
+	accepted, _ := testAccepted(t)
+	attemptID := accepted.Request.AttemptID
+	key := filepath.Join(store.root, locksDirectory, attemptID+".lock")
+	t.Cleanup(func() {
+		activeAttemptLocks.Delete(key)
+	})
+
+	activeAttemptLocks.Store(key, struct{}{})
+	if err := store.validateAttemptLock(attemptID); !errors.Is(err, ErrActive) {
+		t.Fatalf("reserved attempt lock error = %v, want %v", err, ErrActive)
+	}
+
+	activeAttemptLocks.Store(key, &attemptLock{})
+	if err := store.validateAttemptLock(attemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("missing owned attempt lock error = %v, want %v", err, ErrCorrupt)
+	}
+}
+
 func TestStageCreatesOwnershipMarker(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
