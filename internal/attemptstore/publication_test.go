@@ -614,14 +614,64 @@ func TestObservationPreservesPrimaryOutcomeDuringCleanupFailure(t *testing.T) {
 		{process: "cancelled", terminal: "cancelled"},
 		{process: "exit_failed", terminal: "failed"},
 		{process: "completed", terminal: "failed"},
+		{process: "output_overflow", terminal: "failed"},
+		{process: "error_overflow", terminal: "failed"},
+		{process: "cleanup_failed", terminal: "failed"},
+		{process: "start_failed", terminal: "failed"},
 	}
 	for _, test := range tests {
 		observation := base
 		observation.ProcessStatus = test.process
 		observation.TerminalStatus = test.terminal
+		if test.process == "start_failed" {
+			observation.Stdout = nil
+			observation.Stderr = nil
+		}
 		if err := validateObservation(observation); err != nil {
 			t.Fatalf("%s with cleanup failure rejected: %v", test.process, err)
 		}
+	}
+}
+
+func TestObservationRejectsInvalidCleanupImpairedStates(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	base := observationWithoutVerification(testObservationFor(t, accepted))
+	base.ProcessStatus = "start_failed"
+	base.ProcessError = "start and cleanup failed"
+	base.ProtocolStatus = "not_run"
+	base.CleanupComplete = false
+	base.TerminalStatus = "failed"
+	tests := []struct {
+		name   string
+		mutate func(*Observation)
+	}{
+		{
+			name: "start exit code",
+			mutate: func(observation *Observation) {
+				observation.ExitCode = 1
+			},
+		},
+		{
+			name: "start output",
+			mutate: func(observation *Observation) {
+				observation.Stdout = []byte("unexpected")
+			},
+		},
+		{
+			name: "unknown process",
+			mutate: func(observation *Observation) {
+				observation.ProcessStatus = "unknown"
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			observation := base
+			test.mutate(&observation)
+			if err := validateObservation(observation); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("invalid cleanup-impaired state accepted: %+v", observation)
+			}
+		})
 	}
 }
 
