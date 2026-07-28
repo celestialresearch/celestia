@@ -115,7 +115,10 @@ func validateYAMLMapping(node *yaml.Node, active map[*yaml.Node]bool) error {
 	}
 	keys := make(map[string]struct{}, len(node.Content)/2)
 	for index := 0; index < len(node.Content); index += 2 {
-		key := resolveAlias(node.Content[index])
+		key := node.Content[index]
+		if key.Kind == yaml.AliasNode {
+			return errors.New("YAML alias keys are unsupported")
+		}
 		if key == nil || key.Kind != yaml.ScalarNode {
 			return errors.New("YAML mapping key is not scalar")
 		}

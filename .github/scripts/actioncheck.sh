@@ -25,18 +25,22 @@ usage() {
 action_files() {
   local linked
 
-  linked=$(
+  if ! linked=$(
     find .github/workflows -type l \
       \( -name '*.yml' -o -name '*.yaml' \) -print -quit
-  )
+  ); then
+    return 1
+  fi
   if [[ -n "$linked" ]]; then
     printf '%s: linked workflow metadata is unsupported\n' "$linked" >&2
     return 1
   fi
-  linked=$(
+  if ! linked=$(
     find . -type l \( -name 'action.yml' -o -name 'action.yaml' \) \
       ! -path './.git/*' ! -path './.cache/*' -print -quit
-  )
+  ); then
+    return 1
+  fi
   if [[ -n "$linked" ]]; then
     printf '%s: linked action metadata is unsupported\n' "$linked" >&2
     return 1
@@ -214,14 +218,19 @@ latest_tag() {
     '
 }
 
-check_actions() {
+check_actions() (
   local check_currency=$1
-  local checked_latest=$'\n'
-  local checked_tags=$'\n'
+  local tag_cache latest_cache
   local entries entry expected latest status=0
   local key
 
-  entries=$(remote_actions)
+  tag_cache=$(mktemp "${TMPDIR:-/tmp}/celestia-action-tags.XXXXXX")
+  latest_cache=$(mktemp "${TMPDIR:-/tmp}/celestia-action-latest.XXXXXX")
+  trap 'rm -f -- "$tag_cache" "$latest_cache"' EXIT HUP INT TERM
+
+  if ! entries=$(remote_actions); then
+    return 1
+  fi
   while IFS= read -r entry; do
     [[ -n "$entry" ]] || continue
     if ! parse_action "$entry"; then
@@ -231,45 +240,50 @@ check_actions() {
 
     if [[ "$check_currency" == true && "$ACTION_KIND" == github ]]; then
       key="$ACTION_REPOSITORY@$ACTION_TAG"
-      if [[ "$checked_tags" != *$'\n'"$key"$'\n'* ]]; then
+      expected=$(awk -F '|' -v key="$key" '$1 == key { print $2; exit }' "$tag_cache")
+      if [[ -z "$expected" ]]; then
         if ! expected=$(tag_sha "$ACTION_REPOSITORY" "$ACTION_TAG"); then
           status=1
           continue
         fi
-        if [[ -z "$expected" || "$expected" != "$ACTION_SHA" ]]; then
-          printf '%s@%s does not resolve to %s\n' \
-            "$ACTION_REPOSITORY" "$ACTION_TAG" "$ACTION_SHA" >&2
-          status=1
-        fi
-        checked_tags+="$key"$'\n'
+        printf '%s|%s\n' "$key" "$expected" >>"$tag_cache"
       fi
-      if [[ "$checked_latest" != *$'\n'"$ACTION_REPOSITORY"$'\n'* ]]; then
+      if [[ -z "$expected" || "$expected" != "$ACTION_SHA" ]]; then
+        printf '%s@%s does not resolve to %s\n' \
+          "$ACTION_REPOSITORY" "$ACTION_TAG" "$ACTION_SHA" >&2
+        status=1
+      fi
+      latest=$(
+        awk -F '|' -v repository="$ACTION_REPOSITORY" \
+          '$1 == repository { print $2; exit }' "$latest_cache"
+      )
+      if [[ -z "$latest" ]]; then
         if ! latest=$(latest_tag "$ACTION_REPOSITORY"); then
           status=1
           continue
         fi
-        if [[ -z "$latest" ]]; then
-          printf '%s has no discoverable stable semantic release\n' \
-            "$ACTION_REPOSITORY" >&2
+        printf '%s|%s\n' "$ACTION_REPOSITORY" "$latest" >>"$latest_cache"
+      fi
+      if [[ -z "$latest" ]]; then
+        printf '%s has no discoverable stable semantic release\n' \
+          "$ACTION_REPOSITORY" >&2
+        status=1
+      elif [[ "$latest" != "$ACTION_TAG" ]]; then
+        if bash "$currency_script" \
+          allows action "$ACTION_REPOSITORY" "$ACTION_TAG"; then
+          printf '%s retains %s by documented exception; latest is %s\n' \
+            "$ACTION_REPOSITORY" "$ACTION_TAG" "$latest"
+        else
+          printf '%s uses %s; latest stable release is %s\n' \
+            "$ACTION_REPOSITORY" "$ACTION_TAG" "$latest" >&2
           status=1
-        elif [[ "$latest" != "$ACTION_TAG" ]]; then
-          if bash "$currency_script" \
-            allows action "$ACTION_REPOSITORY" "$ACTION_TAG"; then
-            printf '%s retains %s by documented exception; latest is %s\n' \
-              "$ACTION_REPOSITORY" "$ACTION_TAG" "$latest"
-          else
-            printf '%s uses %s; latest stable release is %s\n' \
-              "$ACTION_REPOSITORY" "$ACTION_TAG" "$latest" >&2
-            status=1
-          fi
         fi
-        checked_latest+="$ACTION_REPOSITORY"$'\n'
       fi
     fi
   done <<<"$entries"
 
   return "$status"
-}
+)
 
 cache_key() (
   local file inventory

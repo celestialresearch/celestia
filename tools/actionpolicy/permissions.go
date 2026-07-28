@@ -20,12 +20,9 @@ import (
 )
 
 func checkPermissions(path string, root *yaml.Node) error {
-	workflowWrite, err := securityWrite(mappingValue(root, "permissions"))
+	_, err := validatePermissions(mappingValue(root, "permissions"), false)
 	if err != nil {
 		return fmt.Errorf("%s: workflow permissions: %w", path, err)
-	}
-	if workflowWrite {
-		return fmt.Errorf("%s: security-events write must be job-scoped", path)
 	}
 
 	jobs := mappingValue(root, "jobs")
@@ -44,7 +41,7 @@ func checkPermissions(path string, root *yaml.Node) error {
 		if job.Kind != yaml.MappingNode {
 			continue
 		}
-		granted, err := securityWrite(mappingValue(job, "permissions"))
+		granted, err := validatePermissions(mappingValue(job, "permissions"), true)
 		if err != nil {
 			failures = append(
 				failures,
@@ -65,13 +62,13 @@ func checkPermissions(path string, root *yaml.Node) error {
 	return errors.Join(stringsToErrors(failures)...)
 }
 
-func securityWrite(permissions *yaml.Node) (bool, error) {
+func validatePermissions(permissions *yaml.Node, allowSecurityWrite bool) (bool, error) {
 	permissions = resolveAlias(permissions)
 	if permissions == nil {
 		return false, nil
 	}
 	if permissions.Kind == yaml.ScalarNode {
-		if permissions.Value == "read-all" || permissions.Value == "{}" {
+		if permissions.Value == "read-all" {
 			return false, nil
 		}
 		if permissions.Value == "write-all" {
@@ -82,20 +79,38 @@ func securityWrite(permissions *yaml.Node) (bool, error) {
 	if permissions.Kind != yaml.MappingNode {
 		return false, errors.New("permissions must be a mapping")
 	}
-	value := resolveAlias(mappingValue(permissions, "security-events"))
-	if value == nil {
-		return false, nil
+
+	securityWrite := false
+	for index := 0; index < len(permissions.Content); index += 2 {
+		key := resolveAlias(permissions.Content[index])
+		value := resolveAlias(permissions.Content[index+1])
+		granted, err := validatePermissionValue(key.Value, value, allowSecurityWrite)
+		if err != nil {
+			return false, err
+		}
+		securityWrite = securityWrite || granted
 	}
-	if value.Kind != yaml.ScalarNode {
-		return false, errors.New("security-events permission must be scalar")
+	return securityWrite, nil
+}
+
+func validatePermissionValue(
+	name string,
+	value *yaml.Node,
+	allowSecurityWrite bool,
+) (bool, error) {
+	if value == nil || value.Kind != yaml.ScalarNode {
+		return false, fmt.Errorf("%s permission must be scalar", name)
 	}
 	switch value.Value {
-	case "write":
-		return true, nil
 	case "read", "none":
 		return false, nil
+	case "write":
+		if name == "security-events" && allowSecurityWrite {
+			return true, nil
+		}
+		return false, fmt.Errorf("%s write permission is prohibited", name)
 	default:
-		return false, errors.New("security-events permission is unsupported")
+		return false, fmt.Errorf("%s permission is unsupported", name)
 	}
 }
 
