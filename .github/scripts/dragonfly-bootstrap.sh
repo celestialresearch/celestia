@@ -52,7 +52,7 @@ fi
 
 sudo tee "$celestia_repo" >/dev/null <<'EOF'
 AUTO: {
-    url: "https://pkg.dragonflybsd.org/pkg/${ABI}/LATEST",
+    url: "https://avalon.dragonflybsd.org/dports/${ABI}/LATEST",
     mirror_type: "NONE",
     enabled: yes
 }
