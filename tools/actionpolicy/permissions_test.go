@@ -38,7 +38,7 @@ jobs:
 		permissionsMode,
 		streamLimits{documents: 1, pathBytes: 64, dataBytes: 512, totalBytes: 576},
 	)
-	if err == nil || !strings.Contains(err.Error(), "without CodeQL analysis") {
+	if err == nil || !strings.Contains(err.Error(), "only the reviewed CodeQL analysis job") {
 		t.Fatalf("inspectDocuments() error = %v, want permission rejection", err)
 	}
 }
@@ -54,16 +54,100 @@ jobs:
       contents: read
       security-events: write
     steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@0000000000000000000000000000000000000000
       - uses: github/codeql-action/analyze@0000000000000000000000000000000000000000
 `
 	err := inspectDocuments(
-		strings.NewReader("main.yml\x00"+input+"\x00"),
+		strings.NewReader(".github/workflows/codeql.yml\x00"+input+"\x00"),
 		&bytes.Buffer{},
 		permissionsMode,
-		streamLimits{documents: 1, pathBytes: 64, dataBytes: 512, totalBytes: 576},
+		streamLimits{documents: 1, pathBytes: 64, dataBytes: 1024, totalBytes: 1088},
 	)
 	if err != nil {
 		t.Fatalf("inspectDocuments() error = %v", err)
+	}
+}
+
+func TestPermissionsRejectUnreviewedCodeQLAuthority(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		path  string
+		steps string
+		want  string
+	}{
+		{
+			name: "wrong workflow",
+			path: "main.yml",
+			steps: `      - uses: github/codeql-action/init@0000000000000000000000000000000000000000
+      - uses: github/codeql-action/analyze@0000000000000000000000000000000000000000
+`,
+			want: "only the reviewed CodeQL analysis job",
+		},
+		{
+			name: "run step",
+			path: ".github/workflows/codeql.yml",
+			steps: `      - run: echo "${{ github.token }}"
+      - uses: github/codeql-action/init@0000000000000000000000000000000000000000
+      - uses: github/codeql-action/analyze@0000000000000000000000000000000000000000
+`,
+			want: "run steps are prohibited",
+		},
+		{
+			name: "disabled analysis",
+			path: ".github/workflows/codeql.yml",
+			steps: `      - uses: github/codeql-action/init@0000000000000000000000000000000000000000
+      - uses: github/codeql-action/analyze@0000000000000000000000000000000000000000
+        if: false
+`,
+			want: "analysis must be unconditional",
+		},
+		{
+			name: "unapproved action",
+			path: ".github/workflows/codeql.yml",
+			steps: `      - uses: example/privileged@0000000000000000000000000000000000000000
+      - uses: github/codeql-action/init@0000000000000000000000000000000000000000
+      - uses: github/codeql-action/analyze@0000000000000000000000000000000000000000
+`,
+			want: "is not approved",
+		},
+		{
+			name: "checkout credentials",
+			path: ".github/workflows/codeql.yml",
+			steps: `      - uses: actions/checkout@0000000000000000000000000000000000000000
+      - uses: github/codeql-action/init@0000000000000000000000000000000000000000
+      - uses: github/codeql-action/analyze@0000000000000000000000000000000000000000
+`,
+			want: "checkout must disable credential persistence",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			input := `permissions:
+  contents: read
+jobs:
+  analyze:
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+` + test.steps
+			err := inspectDocuments(
+				strings.NewReader(test.path+"\x00"+input+"\x00"),
+				&bytes.Buffer{},
+				permissionsMode,
+				streamLimits{documents: 1, pathBytes: 64, dataBytes: 1024, totalBytes: 1088},
+			)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("inspectDocuments() error = %v, want %q", err, test.want)
+			}
+		})
 	}
 }
 

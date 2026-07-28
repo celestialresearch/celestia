@@ -509,21 +509,6 @@ if check_permissions >/dev/null 2>&1; then
   exit 1
 fi
 
-cat >"$action_file" <<'EOF'
-permissions:
-  contents: read
-jobs:
-  analyze:
-    permissions:
-      security-events: write
-    steps:
-      - uses: github/codeql-action/analyze@0000000000000000000000000000000000000001 # v1.0.0
-EOF
-if ! check_permissions; then
-  printf 'permission check rejected CodeQL analysis authority\n' >&2
-  exit 1
-fi
-
 action_policy_dir="$work_dir/actionpolicy"
 mkdir -p "$action_policy_dir"
 cp -- "$root/tools/actionpolicy/main.go" "$action_policy_dir/main.go"

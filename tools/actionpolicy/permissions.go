@@ -14,6 +14,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -56,10 +57,10 @@ func checkPermissions(path string, root *yaml.Node) error {
 		if !granted {
 			continue
 		}
-		if !hasCodeQLAnalysis(mappingValue(job, "steps")) {
+		if err := validateCodeQLJob(path, name, job); err != nil {
 			failures = append(
 				failures,
-				fmt.Sprintf("%s: %s has security-events write without CodeQL analysis", path, name),
+				fmt.Sprintf("%s: %s security-events write: %v", path, name, err),
 			)
 		}
 	}
@@ -118,23 +119,82 @@ func validatePermissionValue(
 	}
 }
 
-func hasCodeQLAnalysis(steps *yaml.Node) bool {
+func validateCodeQLJob(path, name string, job *yaml.Node) error {
+	if filepath.ToSlash(filepath.Clean(path)) != ".github/workflows/codeql.yml" ||
+		name != "analyze" {
+		return errors.New("only the reviewed CodeQL analysis job may write")
+	}
+	steps := mappingValue(job, "steps")
 	steps = resolveAlias(steps)
 	if steps == nil || steps.Kind != yaml.SequenceNode {
+		return errors.New("steps must be a sequence")
+	}
+	counts := codeQLStepCounts{}
+	for _, step := range steps.Content {
+		if err := validateCodeQLStep(step, &counts); err != nil {
+			return err
+		}
+	}
+	if counts.initialise != 1 || counts.analyze != 1 {
+		return errors.New("exactly one CodeQL initialisation and analysis step is required")
+	}
+	return nil
+}
+
+type codeQLStepCounts struct {
+	initialise int
+	analyze    int
+}
+
+func validateCodeQLStep(step *yaml.Node, counts *codeQLStepCounts) error {
+	step = resolveAlias(step)
+	if step.Kind != yaml.MappingNode {
+		return errors.New("step must be a mapping")
+	}
+	if mappingValue(step, "run") != nil {
+		return errors.New("run steps are prohibited")
+	}
+	uses := resolveAlias(mappingValue(step, "uses"))
+	if uses == nil || uses.Kind != yaml.ScalarNode {
+		return errors.New("every step must use an approved action")
+	}
+	return validateCodeQLAction(step, uses.Value, counts)
+}
+
+func validateCodeQLAction(
+	step *yaml.Node,
+	uses string,
+	counts *codeQLStepCounts,
+) error {
+	switch {
+	case strings.HasPrefix(uses, "actions/checkout@"):
+		if !checkoutCredentialsDisabled(step) {
+			return errors.New("checkout must disable credential persistence")
+		}
+	case strings.HasPrefix(uses, "actions/setup-go@"):
+	case strings.HasPrefix(uses, "github/codeql-action/init@"):
+		if mappingValue(step, "if") != nil {
+			return errors.New("CodeQL initialisation must be unconditional")
+		}
+		counts.initialise++
+	case strings.HasPrefix(uses, "github/codeql-action/analyze@"):
+		if mappingValue(step, "if") != nil {
+			return errors.New("CodeQL analysis must be unconditional")
+		}
+		counts.analyze++
+	default:
+		return fmt.Errorf("action %q is not approved", uses)
+	}
+	return nil
+}
+
+func checkoutCredentialsDisabled(step *yaml.Node) bool {
+	with := resolveAlias(mappingValue(step, "with"))
+	if with == nil || with.Kind != yaml.MappingNode {
 		return false
 	}
-	for _, step := range steps.Content {
-		step = resolveAlias(step)
-		if step.Kind != yaml.MappingNode {
-			continue
-		}
-		uses := resolveAlias(mappingValue(step, "uses"))
-		if uses != nil && uses.Kind == yaml.ScalarNode &&
-			strings.HasPrefix(uses.Value, "github/codeql-action/analyze@") {
-			return true
-		}
-	}
-	return false
+	value := resolveAlias(mappingValue(with, "persist-credentials"))
+	return value != nil && value.Kind == yaml.ScalarNode && value.Value == "false"
 }
 
 func stringsToErrors(values []string) []error {
