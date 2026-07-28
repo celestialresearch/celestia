@@ -85,14 +85,15 @@ func TestPermissionsRejectWriteAll(t *testing.T) {
 	}
 }
 
-func TestSecurityWrite(t *testing.T) {
+func TestValidatePermissions(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		input     string
-		wantWrite bool
-		wantError string
+		name       string
+		input      string
+		allowWrite bool
+		wantWrite  bool
+		wantError  string
 	}{
 		{name: "none"},
 		{name: "read all", input: "read-all"},
@@ -101,7 +102,27 @@ func TestSecurityWrite(t *testing.T) {
 		{name: "contents only", input: "{contents: read}"},
 		{name: "security read", input: "{security-events: read}"},
 		{name: "security none", input: "{security-events: none}"},
-		{name: "security write", input: "{security-events: write}", wantWrite: true},
+		{
+			name:       "security write",
+			input:      "{security-events: write}",
+			allowWrite: true,
+			wantWrite:  true,
+		},
+		{
+			name:      "workflow security write",
+			input:     "{security-events: write}",
+			wantError: "write permission is prohibited",
+		},
+		{
+			name:      "contents write",
+			input:     "{contents: write}",
+			wantError: "write permission is prohibited",
+		},
+		{
+			name:      "identity token write",
+			input:     "{id-token: write}",
+			wantError: "write permission is prohibited",
+		},
 		{
 			name:      "security invalid",
 			input:     "{security-events: invalid}",
@@ -126,18 +147,22 @@ func TestSecurityWrite(t *testing.T) {
 				}
 				node = document.Content[0]
 			}
-			write, err := securityWrite(node)
+			write, err := validatePermissions(node, test.allowWrite)
 			if write != test.wantWrite {
-				t.Errorf("securityWrite() write = %t, want %t", write, test.wantWrite)
+				t.Errorf(
+					"validatePermissions() write = %t, want %t",
+					write,
+					test.wantWrite,
+				)
 			}
 			if test.wantError == "" {
 				if err != nil {
-					t.Fatalf("securityWrite() error = %v", err)
+					t.Fatalf("validatePermissions() error = %v", err)
 				}
 				return
 			}
 			if err == nil || !strings.Contains(err.Error(), test.wantError) {
-				t.Fatalf("securityWrite() error = %v, want %q", err, test.wantError)
+				t.Fatalf("validatePermissions() error = %v, want %q", err, test.wantError)
 			}
 		})
 	}

@@ -143,16 +143,21 @@ latest_crate() {
 }
 
 manifest_dependencies() {
-  local manifest
+  local inventory manifest
   local manifests=()
 
+  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-cargo-manifests.XXXXXX")
+  if ! find "$root" \
+    \( -name .git -o -name .cache -o -name target \) -prune -o \
+    -type f -name Cargo.toml -print0 >"$inventory"; then
+    rm -f -- "$inventory"
+    printf 'Failed to inventory Cargo manifests\n' >&2
+    return 1
+  fi
   while IFS= read -r -d '' manifest; do
     manifests+=("$manifest")
-  done < <(
-    find "$root" \
-      \( -name .git -o -name .cache -o -name target \) -prune -o \
-      -type f -name Cargo.toml -print0
-  )
+  done <"$inventory"
+  rm -f -- "$inventory"
   ((${#manifests[@]} > 0)) || {
     printf 'No Cargo manifests found\n' >&2
     return 1

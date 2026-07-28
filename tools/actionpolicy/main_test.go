@@ -351,6 +351,47 @@ permissions:
 	})
 }
 
+func TestInspectDocumentsRejectsAliasKeys(t *testing.T) {
+	t.Parallel()
+
+	testInvalidDocuments(t, []invalidDocument{
+		{
+			name: "action key",
+			path: "main.yml",
+			input: `name: &uses_key uses
+jobs:
+  check:
+    steps:
+      - *uses_key: example/action@main
+`,
+			mode: actionsMode,
+			want: "alias keys are unsupported",
+		},
+		{
+			name: "permission key",
+			path: "main.yml",
+			input: `name: &permissions_key permissions
+*permissions_key:
+  security-events: write
+`,
+			mode: permissionsMode,
+			want: "alias keys are unsupported",
+		},
+		{
+			name: "container-image key",
+			path: "main.yml",
+			input: `name: &image_key image
+jobs:
+  check:
+    container:
+      *image_key: alpine:latest
+`,
+			mode: actionsMode,
+			want: "alias keys are unsupported",
+		},
+	})
+}
+
 func TestInspectDocumentsRejectsInvalidJobs(t *testing.T) {
 	t.Parallel()
 

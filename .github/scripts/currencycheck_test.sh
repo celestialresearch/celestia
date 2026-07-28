@@ -298,3 +298,30 @@ grep -Fq 'Failed to inventory Cargo dependencies' <<<"$result" || {
   printf 'currency check hid dependency inventory failure:\n%s\n' "$result" >&2
   exit 1
 }
+
+cat >"$manifest_dir/failing-bin/find" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\0' "$PWD/Cargo.toml"
+exit 2
+EOF
+chmod +x "$manifest_dir/failing-bin/find"
+set +e
+result=$(
+  cd "$manifest_dir" &&
+    PATH="$manifest_dir/failing-bin:$PATH" \
+      RUSTUP_BIN=celestia_test_rustup \
+      RUSTUP_TEST_OUTPUT='stable-probe - up to date : 1.0.0' \
+      CARGO_BIN=celestia_test_cargo \
+      CARGO_TEST_VERSIONS="$manifest_dir/crate-versions" \
+      bash .github/scripts/currencycheck.sh currency 2>&1
+)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'currency check accepted a partial Cargo manifest inventory\n' >&2
+  exit 1
+}
+grep -Fq 'Failed to inventory Cargo manifests' <<<"$result" || {
+  printf 'currency check hid manifest discovery failure:\n%s\n' "$result" >&2
+  exit 1
+}

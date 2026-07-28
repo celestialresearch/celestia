@@ -73,6 +73,10 @@ if remote_actions >/dev/null 2>&1; then
   printf 'action parsing ignored a failed file inventory\n' >&2
   exit 1
 fi
+if check_actions false >/dev/null 2>&1; then
+  printf 'action check ignored a failed file inventory\n' >&2
+  exit 1
+fi
 if cache_key >/dev/null 2>&1; then
   printf 'action cache ignored a failed file inventory\n' >&2
   exit 1
@@ -127,6 +131,7 @@ key=$(cache_key)
 mkdir -p -- "$cache_root/actioncheck"
 printf 'wrong-key\n' >"$cache_root/actioncheck/$key"
 check_calls=0
+original_check_actions=$(declare -f check_actions)
 check_actions() {
   check_calls=$((check_calls + 1))
 }
@@ -140,6 +145,45 @@ ACTIONCHECK_CACHE_MAX_AGE_MINUTES=1440 cached_currency >/dev/null
   printf 'action cache ignored a valid marker\n' >&2
   exit 1
 }
+unset -f check_actions
+eval "$original_check_actions"
+
+tag_sha() {
+  case "$2" in
+  v1.0.0) printf '%040d\n' 1 ;;
+  v0.9.0) printf '%040d\n' 3 ;;
+  *) return 1 ;;
+  esac
+}
+latest_tag() {
+  printf 'v1.0.0\n'
+}
+cat >"$action_file" <<'EOF'
+jobs:
+  first:
+    uses: example/action@0000000000000000000000000000000000000001 # v1.0.0
+  second:
+    uses: example/action@0000000000000000000000000000000000000002 # v1.0.0
+EOF
+if check_actions true >/dev/null 2>&1; then
+  printf 'action currency accepted a mismatched repeated release SHA\n' >&2
+  exit 1
+fi
+cat >"$currency_script" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+cat >"$action_file" <<'EOF'
+jobs:
+  first:
+    uses: example/action@0000000000000000000000000000000000000001 # v1.0.0
+  second:
+    uses: example/action@0000000000000000000000000000000000000003 # v0.9.0
+EOF
+if check_actions true >/dev/null 2>&1; then
+  printf 'action currency accepted an unexcepted repeated stale release\n' >&2
+  exit 1
+fi
 
 invalid_entry='.github/workflows/main.yml:1:actions/checkout@0000000000000000000000000000000000000001 # v01.0.0'
 if parse_action "$invalid_entry" >/dev/null 2>&1; then
@@ -341,6 +385,17 @@ if check_permissions >/dev/null 2>&1; then
   printf 'permission check accepted workflow-wide write authority\n' >&2
   exit 1
 fi
+
+for permission in contents id-token; do
+  cat >"$action_file" <<EOF
+permissions:
+  $permission: write
+EOF
+  if check_permissions >/dev/null 2>&1; then
+    printf 'permission check accepted %s write authority\n' "$permission" >&2
+    exit 1
+  fi
+done
 
 cat >"$action_file" <<'EOF'
 jobs:
