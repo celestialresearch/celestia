@@ -99,6 +99,11 @@ main() (
     printf 'DragonFly automatic mirror is missing\n' >&2
     return 1
   }
+  grep -Fq 'mirror_type: "NONE"' \
+    "$root/.github/scripts/dragonfly-bootstrap.sh" || {
+    printf 'DragonFly direct repository mode is missing\n' >&2
+    return 1
+  }
   grep -Fq "if [[ \"\$attempts\" -ge 5 ]]" \
     "$root/.github/scripts/dragonfly-bootstrap.sh" || {
     printf 'DragonFly retry budget is missing\n' >&2
