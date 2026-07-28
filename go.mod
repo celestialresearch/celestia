@@ -9,7 +9,10 @@ tool (
 	golang.org/x/vuln/cmd/govulncheck
 )
 
-require golang.org/x/sys v0.47.0
+require (
+	go.yaml.in/yaml/v3 v3.0.4
+	golang.org/x/sys v0.47.0
+)
 
 require (
 	4d63.com/gocheckcompilerdirectives v1.3.0 // indirect
@@ -216,7 +219,6 @@ require (
 	go.augendre.info/fatcontext v0.9.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20260209203927-2842357ff358 // indirect
 	golang.org/x/mod v0.38.0 // indirect

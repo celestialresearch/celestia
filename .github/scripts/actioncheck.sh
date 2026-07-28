@@ -16,6 +16,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
 currency_file=${ACTIONCHECK_CURRENCY_FILE:-.github/.currency}
 currency_script=${ACTIONCHECK_CURRENCY_SCRIPT:-.github/scripts/currencycheck.sh}
+action_policy_file=tools/actionpolicy/main.go
 
 usage() {
   printf 'Usage: %s verify|currency|cached-currency\n' "${0##*/}" >&2
@@ -28,8 +29,19 @@ action_files() {
     ! -path './.git/*' ! -path './.cache/*' -print0
 }
 
+action_documents() {
+  local inventory=$1
+  local file
+
+  while IFS= read -r -d '' file; do
+    printf '%s\0' "$file"
+    cat -- "$file" || return
+    printf '\0'
+  done <"$inventory"
+}
+
 remote_actions() (
-  local file inventory
+  local inventory
 
   inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-actions.XXXXXX")
   trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
@@ -37,61 +49,18 @@ remote_actions() (
     return 1
   fi
 
-  while IFS= read -r -d '' file; do
-    awk -v file="$file" '
-      /^[[:space:]]*(-[[:space:]]*)?uses[[:space:]]*:[[:space:]]*/ {
-        line = $0
-        sub(/^[[:space:]]*(-[[:space:]]*)?uses[[:space:]]*:[[:space:]]*/, "", line)
-        if (line !~ /^(\.\/|docker:\/\/)/) {
-          print file ":" NR ":" line
-        }
-      }
-    ' "$file"
-  done <"$inventory"
+  action_documents "$inventory" |
+    go run -tags actionpolicy "$action_policy_file" actions
 )
 
 check_permissions() (
-  local file inventory status=0
+  local inventory
 
   inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-permissions.XXXXXX")
   trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
   action_files >"$inventory" || return
-  while IFS= read -r -d '' file; do
-    if ! awk -v file="$file" '
-      /^jobs:[[:space:]]*$/ {
-        in_jobs = 1
-        next
-      }
-      in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ {
-        job = $0
-        sub(/^  /, "", job)
-        sub(/:[[:space:]]*$/, "", job)
-      }
-      /^[[:space:]]+security-events[[:space:]]*:[[:space:]]*write[[:space:]]*$/ {
-        if (!in_jobs || job == "") {
-          print file ": security-events write must be job-scoped" >"/dev/stderr"
-          failed = 1
-        } else {
-          writes[job] = 1
-        }
-      }
-      /^[[:space:]]*(-[[:space:]]*)?uses[[:space:]]*:[[:space:]]*github\/codeql-action\/analyze@/ {
-        analyzes[job] = 1
-      }
-      END {
-        for (name in writes) {
-          if (!analyzes[name]) {
-            print file ": " name " has security-events write without CodeQL analysis" >"/dev/stderr"
-            failed = 1
-          }
-        }
-        exit failed
-      }
-    ' "$file"; then
-      status=1
-    fi
-  done <"$inventory"
-  return "$status"
+  action_documents "$inventory" |
+    go run -tags actionpolicy "$action_policy_file" permissions
 )
 
 parse_action() {
@@ -269,6 +238,7 @@ cache_key() (
       git hash-object -- "$file"
     done <"$inventory"
     git hash-object .github/scripts/actioncheck.sh
+    git hash-object "$action_policy_file"
     git hash-object "$currency_file"
     git hash-object "$currency_script"
     git --version

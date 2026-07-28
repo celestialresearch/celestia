@@ -147,7 +147,7 @@ if parse_action "$invalid_entry" >/dev/null 2>&1; then
   exit 1
 fi
 
-printf 'steps:\n  - uses : example/action@main\n' >"$action_file"
+printf 'runs:\n  using: composite\n  steps:\n    - uses : example/action@main\n' >"$action_file"
 entry=$(remote_actions)
 if [[ -z "$entry" ]]; then
   printf 'action inventory missed a spaced action key\n' >&2
@@ -155,6 +155,67 @@ if [[ -z "$entry" ]]; then
 fi
 if parse_action "$entry" >/dev/null 2>&1; then
   printf 'action parser missed a spaced unpinned action\n' >&2
+  exit 1
+fi
+
+printf 'runs:\n  using: composite\n  steps:\n    - "uses": example/action@main\n' >"$action_file"
+entry=$(remote_actions)
+if [[ -z "$entry" ]]; then
+  printf 'action inventory missed a quoted action key\n' >&2
+  exit 1
+fi
+if parse_action "$entry" >/dev/null 2>&1; then
+  printf 'action parser missed a quoted unpinned action\n' >&2
+  exit 1
+fi
+
+printf 'runs:\n  using: composite\n  steps:\n    - { uses: example/action@main }\n' >"$action_file"
+entry=$(remote_actions)
+if [[ -z "$entry" ]]; then
+  printf 'action inventory missed a flow action mapping\n' >&2
+  exit 1
+fi
+if parse_action "$entry" >/dev/null 2>&1; then
+  printf 'action parser missed a flow-mapped unpinned action\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+runs:
+  using: composite
+  steps:
+    - { uses: example/action@0000000000000000000000000000000000000001 } # v1.0.0
+EOF
+entry=$(remote_actions)
+if ! parse_action "$entry"; then
+  printf 'action parser rejected a flow-mapped pinned action\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+jobs:
+  call:
+    "uses": example/workflow/.github/workflows/check.yml@main
+EOF
+entry=$(remote_actions)
+if [[ -z "$entry" ]]; then
+  printf 'action inventory missed a reusable workflow\n' >&2
+  exit 1
+fi
+if parse_action "$entry" >/dev/null 2>&1; then
+  printf 'action parser missed an unpinned reusable workflow\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+jobs:
+  check:
+    steps:
+      - "uses": example/action@0000000000000000000000000000000000000001 # v1.0.0
+EOF
+entry=$(remote_actions)
+if ! parse_action "$entry"; then
+  printf 'action parser rejected a quoted pinned action\n' >&2
   exit 1
 fi
 
@@ -168,6 +229,31 @@ jobs:
 EOF
 if check_permissions >/dev/null 2>&1; then
   printf 'permission check accepted workflow-scoped security write\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+permissions:
+  "security-events": write
+jobs:
+  classify:
+    steps:
+      - run: true
+EOF
+if check_permissions >/dev/null 2>&1; then
+  printf 'permission check missed a quoted workflow permission\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+permissions: write-all
+jobs:
+  classify:
+    steps:
+      - run: true
+EOF
+if check_permissions >/dev/null 2>&1; then
+  printf 'permission check accepted workflow-wide write authority\n' >&2
   exit 1
 fi
 
@@ -186,6 +272,36 @@ fi
 
 cat >"$action_file" <<'EOF'
 jobs:
+  classify:
+    permissions:
+      security-events: write # SARIF upload
+    steps:
+      - run: true
+EOF
+if check_permissions >/dev/null 2>&1; then
+  printf 'permission check missed an unrelated commented security write\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+jobs:
+  analyze:
+    permissions: &security-write
+      security-events: write
+    steps:
+      - uses: github/codeql-action/analyze@0000000000000000000000000000000000000001 # v1.0.0
+  classify:
+    permissions: *security-write
+    steps:
+      - run: true
+EOF
+if check_permissions >/dev/null 2>&1; then
+  printf 'permission check missed aliased security write authority\n' >&2
+  exit 1
+fi
+
+cat >"$action_file" <<'EOF'
+jobs:
   analyze:
     permissions:
       security-events: write
@@ -196,3 +312,13 @@ if ! check_permissions; then
   printf 'permission check rejected CodeQL analysis authority\n' >&2
   exit 1
 fi
+
+action_policy_file="$work_dir/actionpolicy.go"
+cp -- "$root/tools/actionpolicy/main.go" "$action_policy_file"
+first_key=$(cache_key)
+printf '\n// cache mutation\n' >>"$action_policy_file"
+second_key=$(cache_key)
+[[ "$first_key" != "$second_key" ]] || {
+  printf 'action cache ignored the structural policy parser\n' >&2
+  exit 1
+}
