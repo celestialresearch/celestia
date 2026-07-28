@@ -142,20 +142,28 @@ fifth_key=$(cache_key)
   printf 'action cache ignored the module checksum inventory\n' >&2
   exit 1
 }
-original_toolchain_fingerprint=$(declare -f toolchain_fingerprint)
-toolchain_fingerprint() {
-  printf 'toolchain-v1\n'
-}
+toolchain_dir="$work_dir/toolchain"
+toolchain_value="$toolchain_dir/value"
+mkdir -p "$toolchain_dir"
+cat >"$toolchain_dir/go" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cat -- "$ACTIONCHECK_TEST_TOOLCHAIN_VALUE"
+EOF
+chmod 0700 "$toolchain_dir/go"
+printf 'toolchain-v1\n' >"$toolchain_value"
+original_path=$PATH
+PATH="$toolchain_dir:$PATH"
+export ACTIONCHECK_TEST_TOOLCHAIN_VALUE=$toolchain_value
 sixth_key=$(cache_key)
-toolchain_fingerprint() {
-  printf 'toolchain-v2\n'
-}
+printf 'toolchain-v2\n' >"$toolchain_value"
 seventh_key=$(cache_key)
 [[ "$sixth_key" != "$seventh_key" ]] || {
   printf 'action cache ignored the Go toolchain\n' >&2
   exit 1
 }
-eval "$original_toolchain_fingerprint"
+PATH=$original_path
+unset ACTIONCHECK_TEST_TOOLCHAIN_VALUE
 cache_root="$work_dir/cache"
 key=$(cache_key)
 mkdir -p -- "$cache_root/actioncheck"
