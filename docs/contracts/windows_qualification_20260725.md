@@ -1,9 +1,9 @@
-# Windows Qualification v1
+# Historical Windows Qualification
 
 Date: 2026-07-25
 
-Scope: local Windows evidence for the internal governed URL-reference
-operation.
+Scope: local Windows evidence collected before the v1 protocol and durable
+evidence contracts were established. It does not qualify the v1 implementation.
 
 ## Host
 - Windows 11 Pro 10.0.26200, amd64.

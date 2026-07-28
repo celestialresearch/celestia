@@ -245,8 +245,9 @@ All fields are required:
 
 Identifiers and nonces use unpadded base64url. Hashes cover exact UTF-8 bytes.
 The deadline uses a `Z` offset and is the latest permitted process-resume time.
-Admission derives it from `timeout_ms`. After resume, `timeout_ms` supplies a
-fresh execution allowance measured by the supervisor's monotonic timer.
+Admission derives it from `StartTimeoutMS` (12,000 milliseconds). After resume,
+`timeout_ms` supplies a fresh 2,000-millisecond execution allowance measured by
+the supervisor's monotonic timer.
 Lengths and hashes must match the decoded exact input. The exact serialised
 request bytes are retained.
 
