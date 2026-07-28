@@ -39,9 +39,10 @@ Allowed types:
 
 Use `fix(security)` for security corrections rather than a separate type.
 
-The scope is optional. When present it must name the smallest stable ownership
-area such as `cli`, `protocol`, `worker`, `evidence`, `ci` or `repo`. Do not use
-a filename as a scope unless the file is itself the maintained system boundary.
+The scope is mandatory and must name the smallest stable ownership area such
+as `cli`, `protocol`, `worker`, `evidence`, `verification` or `repo`. Do not
+repeat the type as the scope or use a filename unless the file is itself the
+maintained system boundary.
 
 The summary must:
 - begin with a lowercase imperative verb;
@@ -57,7 +58,7 @@ chore(repo): establish verification scaffold
 feat(cli): implement governed URL-reference operation
 fix(protocol): reject mismatched response nonce
 test(worker): cover truncated response
-ci: qualify macOS Bash 3.2 verification
+ci(verification): qualify macOS Bash 3.2
 ```
 
 ## Commit Body
