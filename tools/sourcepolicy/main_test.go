@@ -358,10 +358,11 @@ func TestGoSkipMethods(t *testing.T) {
 }
 
 func TestGoSkipAcrossFiles(t *testing.T) {
-	t.Parallel()
 	root := t.TempDir()
 	helper := filepath.Join(root, "helper_test.go")
 	caller := filepath.Join(root, "caller_test.go")
+	linux := filepath.Join(root, "platform_linux.go")
+	windows := filepath.Join(root, "platform_windows.go")
 	sources := map[string][]byte{
 		helper: []byte(
 			"package fixture\n\nimport \"testing\"\n\n" +
@@ -371,18 +372,83 @@ func TestGoSkipAcrossFiles(t *testing.T) {
 			"package fixture\n\nimport \"testing\"\n\n" +
 				"func TestFixture(t *testing.T) { testContext(t).Skip(\"disabled\") }\n",
 		),
+		linux: []byte(
+			"//go:build linux\n\npackage fixture\n\nconst platform = \"linux\"\n",
+		),
+		windows: []byte(
+			"//go:build windows\n\npackage fixture\n\nconst platform = \"windows\"\n",
+		),
 	}
+	for path, source := range sources {
+		if err := os.WriteFile(path, source, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module fixture.invalid/sourcepolicy\n\ngo 1.26.5\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
 	findings, err := goPackageSkipFindings(
-		[]string{helper, caller},
-		func(path string) ([]byte, error) {
-			return sources[path], nil
+		[]string{
+			filepath.Base(helper),
+			filepath.Base(caller),
+			filepath.Base(linux),
+			filepath.Base(windows),
 		},
+		os.ReadFile,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(findings) != 1 {
 		t.Fatalf("findings = %v, want one", findings)
+	}
+}
+
+func TestGoSkipCandidateFailures(t *testing.T) {
+	t.Parallel()
+	_, err := goCandidateDirectories(
+		[]string{"broken_test.go"},
+		func(string) ([]byte, error) {
+			return []byte("package fixture\nfunc TestBroken("), nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "parse Go test") {
+		t.Fatalf("parse error = %v", err)
+	}
+
+	readErr := errors.New("read failure")
+	_, err = goCandidateDirectories(
+		[]string{"unreadable_test.go"},
+		func(string) ([]byte, error) { return nil, readErr },
+	)
+	if !errors.Is(err, readErr) {
+		t.Fatalf("read error = %v, want %v", err, readErr)
+	}
+}
+
+func TestGoBuildSelectionRejectsInvalidConstraint(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	path := filepath.Join(root, "invalid_test.go")
+	if err := os.WriteFile(
+		path,
+		[]byte("//go:build linux &&\n\npackage fixture\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	_, err := goBuildSelection(
+		[]string{path},
+		map[string]bool{root: true},
+		buildTarget{goos: "linux", goarch: "amd64"},
+	)
+	if err == nil || !strings.Contains(err.Error(), "match Go build constraints") {
+		t.Fatalf("constraint error = %v", err)
 	}
 }
 

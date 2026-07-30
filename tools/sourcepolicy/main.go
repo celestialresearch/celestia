@@ -40,6 +40,7 @@ const (
 	maxInventoryBytes     = 16 << 20
 	maxInventoryPaths     = 100_000
 	maxInventoryPathBytes = 32 << 10
+	maxGoBuildLoads       = 4
 	nolintMarker          = "//no" + "lint"
 	nosecMarker           = "#no" + "sec"
 )
@@ -168,15 +169,18 @@ func readSource(path string) (source []byte, err error) {
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > maxSourceBytes {
+	if !info.Mode().IsRegular() || info.Size() < 0 {
 		return nil, errors.New("source file is not a bounded regular file")
+	}
+	if info.Size() > maxSourceBytes {
+		return nil, fmt.Errorf("source file exceeds %d bytes", maxSourceBytes)
 	}
 	source, err = io.ReadAll(io.LimitReader(file, maxSourceBytes+1))
 	if err != nil {
 		return nil, err
 	}
 	if len(source) > maxSourceBytes {
-		return nil, errors.New("source file exceeds the size limit")
+		return nil, fmt.Errorf("source file exceeds %d bytes", maxSourceBytes)
 	}
 	return source, nil
 }
@@ -300,50 +304,6 @@ func goSkipFindings(path string, source []byte) []string {
 	return goSkipFindingsInPackage(files, []*ast.File{file}, map[*ast.File]string{
 		file: path,
 	})
-}
-
-func goPackageSkipFindings(
-	paths []string,
-	readFile func(string) ([]byte, error),
-) ([]string, error) {
-	directories := make(map[string]bool)
-	for _, path := range paths {
-		if strings.HasSuffix(path, "_test.go") {
-			directories[filepath.Dir(path)] = true
-		}
-	}
-	files := token.NewFileSet()
-	groups := make(map[string][]*ast.File)
-	names := make(map[*ast.File]string)
-	for _, path := range paths {
-		if filepath.Ext(path) != ".go" || !directories[filepath.Dir(path)] {
-			continue
-		}
-		source, err := readFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-		file, err := parser.ParseFile(files, path, source, 0)
-		if err != nil {
-			return nil, fmt.Errorf("%s: parse Go source: %w", path, err)
-		}
-		key := filepath.Dir(path) + "\x00" + file.Name.Name
-		groups[key] = append(groups[key], file)
-		names[file] = path
-	}
-	keys := make([]string, 0, len(groups))
-	for key := range groups {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-	var findings []string
-	for _, key := range keys {
-		findings = append(
-			findings,
-			goSkipFindingsInPackage(files, groups[key], names)...,
-		)
-	}
-	return findings, nil
 }
 
 func goSkipFindingsInPackage(

@@ -503,6 +503,7 @@ EOF
     "$root/.github/scripts/policycheck.sh" \
     "$work_dir/.github/scripts/"
   cp \
+    "$root/tools/sourcepolicy/goskip.go" \
     "$root/tools/sourcepolicy/main.go" \
     "$root/tools/sourcepolicy/suppression.go" \
     "$work_dir/tools/sourcepolicy/"
@@ -513,7 +514,10 @@ module celestia.research/coverage
 
 go 1.26.5
 
-require github.com/BurntSushi/toml v1.6.0
+require (
+	github.com/BurntSushi/toml v1.6.0
+	golang.org/x/tools v0.48.0
+)
 EOF
   cp "$root/go.sum" "$work_dir/go.sum"
   git -C "$work_dir" init -q
@@ -1238,6 +1242,20 @@ func TestSkipped(t *testing.T) {
 	testContext(t).Skip("unverified")
 }
 EOF
+  cat >"$work_dir/platform_linux.go" <<'EOF'
+//go:build linux
+
+package fixture
+
+const platform = "linux"
+EOF
+  cat >"$work_dir/platform_windows.go" <<'EOF'
+//go:build windows
+
+package fixture
+
+const platform = "windows"
+EOF
   set +e
   output=$(cd "$work_dir" &&
     bash .github/scripts/policycheck.sh test-skips 2>&1)
@@ -1247,7 +1265,11 @@ EOF
     printf 'policy check accepted a cross-file Go skip\n' >&2
     return 1
   }
-  rm -- "$work_dir/helper_test.go" "$work_dir/skipped_test.go"
+  rm -- \
+    "$work_dir/helper_test.go" \
+    "$work_dir/skipped_test.go" \
+    "$work_dir/platform_linux.go" \
+    "$work_dir/platform_windows.go"
 
   cat >"$work_dir/skipped_test.go" <<'EOF'
 package fixture
