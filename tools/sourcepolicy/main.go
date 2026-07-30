@@ -166,7 +166,30 @@ func readFindings(
 }
 
 func readSource(path string) (source []byte, err error) {
-	root, err := os.OpenRoot(".")
+	return readSourceWith(path, sourceReader{
+		openRoot: os.OpenRoot,
+		openFile: func(root *os.Root, name string) (*os.File, error) {
+			return root.Open(name)
+		},
+		stat: (*os.File).Stat,
+		read: func(reader io.Reader) ([]byte, error) {
+			return io.ReadAll(io.LimitReader(reader, maxSourceBytes+1))
+		},
+	})
+}
+
+type sourceReader struct {
+	openRoot func(string) (*os.Root, error)
+	openFile func(*os.Root, string) (*os.File, error)
+	stat     func(*os.File) (os.FileInfo, error)
+	read     func(io.Reader) ([]byte, error)
+}
+
+func readSourceWith(
+	path string,
+	reader sourceReader,
+) (source []byte, err error) {
+	root, err := reader.openRoot(".")
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +198,7 @@ func readSource(path string) (source []byte, err error) {
 			err = closeErr
 		}
 	}()
-	file, err := root.Open(filepath.FromSlash(path))
+	file, err := reader.openFile(root, filepath.FromSlash(path))
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +207,7 @@ func readSource(path string) (source []byte, err error) {
 			err = closeErr
 		}
 	}()
-	info, err := file.Stat()
+	info, err := reader.stat(file)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +217,7 @@ func readSource(path string) (source []byte, err error) {
 	if info.Size() > maxSourceBytes {
 		return nil, fmt.Errorf("source file exceeds %d bytes", maxSourceBytes)
 	}
-	source, err = io.ReadAll(io.LimitReader(file, maxSourceBytes+1))
+	source, err = reader.read(file)
 	if err != nil {
 		return nil, err
 	}

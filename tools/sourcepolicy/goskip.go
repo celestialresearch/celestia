@@ -337,6 +337,19 @@ func goSkipFindingsForTarget(
 	target buildTarget,
 	patterns []string,
 ) ([]string, error) {
+	return goSkipFindingsForTargetWith(target, patterns, packages.Load)
+}
+
+type packageLoader func(
+	*packages.Config,
+	...string,
+) ([]*packages.Package, error)
+
+func goSkipFindingsForTargetWith(
+	target buildTarget,
+	patterns []string,
+	load packageLoader,
+) ([]string, error) {
 	environment := append([]string{}, os.Environ()...)
 	environment = append(
 		environment,
@@ -344,7 +357,7 @@ func goSkipFindingsForTarget(
 		"GOARCH="+target.goarch,
 		"CGO_ENABLED=0",
 	)
-	loaded, err := packages.Load(&packages.Config{
+	loaded, err := load(&packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles |
 			packages.NeedCompiledGoFiles | packages.NeedSyntax |
 			packages.NeedTypes | packages.NeedTypesInfo,

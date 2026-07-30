@@ -669,6 +669,11 @@ func cargoConfigurationCases() []struct {
 		{"warn cap", `[build]` + "\n" + `rustflags = ["--cap-lints=warn"]`, 1},
 		{"deny cap", `[build]` + "\n" + `rustflags = ["--cap-lints", "deny"]`, 1},
 		{
+			"array table override",
+			`[[target]]` + "\n" + `runner = "untrusted"`,
+			1,
+		},
+		{
 			"rustdoc allow",
 			`[build]` + "\n" + `rustdocflags = ["--allow=warnings"]`,
 			1,
