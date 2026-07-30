@@ -13,9 +13,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -101,16 +103,28 @@ func TestRun(t *testing.T) {
 }
 
 func TestSourceFiles(t *testing.T) {
-	files, err := sourceFiles()
+	t.Parallel()
+	files, err := inventorySourceFiles("git", func(
+		context.Context,
+		string,
+		...string,
+	) ([]byte, error) {
+		return []byte("first.go\x00second.rs\x00"), nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) == 0 {
-		t.Fatal("source inventory is empty")
+	if !slices.Equal(files, []string{"first.go", "second.rs"}) {
+		t.Fatalf("files = %v", files)
 	}
-	t.Setenv("CELESTIA_GIT_BIN", filepath.Join(t.TempDir(), "missing-git"))
-	if _, err := sourceFiles(); err == nil {
-		t.Fatal("sourceFiles accepted a missing Git command")
+	if _, err := inventorySourceFiles("git", func(
+		context.Context,
+		string,
+		...string,
+	) ([]byte, error) {
+		return nil, errors.New("command failed")
+	}); err == nil {
+		t.Fatal("inventorySourceFiles accepted a command failure")
 	}
 }
 

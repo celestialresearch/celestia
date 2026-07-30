@@ -95,13 +95,21 @@ func sourceFiles() ([]string, error) {
 	if git == "" {
 		git = "git"
 	}
+	return inventorySourceFiles(git, commandOutput)
+}
+
+type commandRunner func(
+	context.Context,
+	string,
+	...string,
+) ([]byte, error)
+
+func inventorySourceFiles(git string, run commandRunner) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	// #nosec G204,G702 -- The testable Git command is an explicit repository control.
-	command := exec.CommandContext(
+	output, err := run(
 		ctx, git, "ls-files", "-co", "--exclude-standard", "-z",
 	)
-	output, err := command.Output()
 	if err != nil {
 		return nil, fmt.Errorf("inventory source files: %w", err)
 	}
@@ -113,6 +121,15 @@ func sourceFiles() ([]string, error) {
 		}
 	}
 	return files, nil
+}
+
+func commandOutput(
+	ctx context.Context,
+	name string,
+	args ...string,
+) ([]byte, error) {
+	// #nosec G204,G702 -- The testable Git command is an explicit repository control.
+	return exec.CommandContext(ctx, name, args...).Output()
 }
 
 func goSkipFindings(path string) []string {
