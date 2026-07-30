@@ -1,0 +1,740 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "governed-url-reference",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Transform one admitted URL reference and report its durable governed outcome",
+  "owner": "internal/urloperation",
+  "inputs": [
+    {
+      "id": "CEL-INPUT-URL-001",
+      "media_type": "text/plain; charset=utf-8",
+      "maximum_bytes": 4096,
+      "validation": "URL reference v1 grammar and declared operation mode"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-OUTPUT-URL-001",
+      "media_type": "text/plain; charset=utf-8",
+      "maximum_bytes": 8192,
+      "validation": "Exact independent Go transformation postcondition"
+    }
+  ],
+  "canonical_state": [
+    "Canonical v1 admitted and terminal evidence records beneath the configured evidence root"
+  ],
+  "derived_state": [
+    "Caller-facing result and host-owned diagnostic projection"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-EFFECT-EVIDENCE-001",
+      "kind": "durable filesystem evidence",
+      "authority": "CEL-AUTH-ADMISSION-001"
+    },
+    {
+      "id": "CEL-EFFECT-WORKER-001",
+      "kind": "one bounded native worker process",
+      "authority": "CEL-AUTH-EXECUTION-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-AUTH-ADMISSION-001",
+      "owner": "internal/urladmission",
+      "grant": "Accept one bounded URL reference matching the v1 grammar",
+      "refusal": "Reject malformed, ambiguous, unsupported or oversized input before execution"
+    },
+    {
+      "id": "CEL-AUTH-EXECUTION-001",
+      "owner": "internal/urloperation",
+      "grant": "Run the fixed configured worker only after admission and durable staging",
+      "refusal": "Refuse unavailable containment, invalid configuration or failed staging"
+    },
+    {
+      "id": "CEL-AUTH-VERIFICATION-001",
+      "owner": "internal/urloperation",
+      "grant": "Assign verified only after independent Go postcondition evaluation",
+      "refusal": "Treat worker claims, protocol rejection and semantic mismatch as non-verified"
+    },
+    {
+      "id": "CEL-AUTH-PUBLICATION-001",
+      "owner": "internal/attemptstore",
+      "grant": "Publish one canonical terminal bundle under exclusive attempt ownership",
+      "refusal": "Reject duplicates, corruption, contradictory records and incomplete ownership"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-TRUST-INPUT-001",
+      "source": "operator input",
+      "target": "internal/urladmission",
+      "treatment": "Bound bytes and validate the complete grammar before execution"
+    },
+    {
+      "id": "CEL-TRUST-WORKER-001",
+      "source": "Rust worker output",
+      "target": "internal/workerprotocolv1",
+      "treatment": "Bound raw streams and reject malformed, mismatched or unsupported protocol"
+    },
+    {
+      "id": "CEL-TRUST-VERIFY-001",
+      "source": "protocol-valid worker response",
+      "target": "internal/urloperation",
+      "treatment": "Recompute the expected transformation independently before verification"
+    },
+    {
+      "id": "CEL-TRUST-EVIDENCE-001",
+      "source": "filesystem evidence",
+      "target": "internal/attemptstore",
+      "treatment": "Validate ownership, paths, canonical records, identities, transitions and hashes"
+    }
+  ],
+  "bounds": {
+    "processes": 1,
+    "memory_bytes": 67108864,
+    "output_bytes": 65536,
+    "time_milliseconds": 15000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-RESOURCE-INPUT-001",
+      "kind": "input",
+      "owner": "internal/urladmission",
+      "acquisition": "Caller supplies one inert URL reference",
+      "bound": "4096 bytes",
+      "release": "Return from admission",
+      "cleanup_failure": "Reject without execution or retained input"
+    },
+    {
+      "id": "CEL-RESOURCE-LOCK-001",
+      "kind": "lock",
+      "owner": "internal/attemptstore",
+      "acquisition": "Acquire one exclusive non-replacing lock before staging",
+      "bound": "One lock per attempt",
+      "release": "Release after publication or failed staging",
+      "cleanup_failure": "Record indeterminate or reject the duplicate attempt"
+    },
+    {
+      "id": "CEL-RESOURCE-EVIDENCE-001",
+      "kind": "durable",
+      "owner": "internal/attemptstore",
+      "acquisition": "Create one exclusive pending evidence bundle",
+      "bound": "1048576 bytes",
+      "release": "Publish one terminal bundle or retain recoverable pending state",
+      "cleanup_failure": "Record indeterminate",
+      "recovery": "Remove uncommitted staging, never rerun the worker and publish committed interruption as indeterminate"
+    },
+    {
+      "id": "CEL-RESOURCE-IMAGE-001",
+      "kind": "file",
+      "owner": "internal/processsupervision",
+      "acquisition": "Copy, hash and lock one configured worker image",
+      "bound": "One fixed image",
+      "release": "Close the image and remove profile staging",
+      "cleanup_failure": "Record start failure or incomplete cleanup"
+    },
+    {
+      "id": "CEL-RESOURCE-PROCESS-001",
+      "kind": "process",
+      "owner": "internal/processsupervision",
+      "acquisition": "Create suspended and assign to one Job Object before resume",
+      "bound": "One process, 67108864 bytes and 2000 milliseconds",
+      "release": "Terminate when required and observe zero active processes",
+      "cleanup_failure": "Preserve the primary outcome and record incomplete cleanup",
+      "cancellation": "Terminate the complete owned Job Object on caller cancellation",
+      "join": "Observe the primary process and every owned descendant exit before return"
+    },
+    {
+      "id": "CEL-RESOURCE-STREAMS-001",
+      "kind": "stream",
+      "owner": "internal/processsupervision",
+      "acquisition": "Inherit only the three explicit standard-stream handles",
+      "bound": "65536 stdout, 8192 stderr and 65536 stdin bytes",
+      "release": "Close and join every stream owner",
+      "cleanup_failure": "Record overflow, process failure or incomplete cleanup"
+    },
+    {
+      "id": "CEL-RESOURCE-PROFILE-001",
+      "kind": "native_profile",
+      "owner": "internal/processsupervision",
+      "acquisition": "Create one capability-free AppContainer profile",
+      "bound": "One unique profile per attempt",
+      "release": "Delete after complete process-tree cleanup",
+      "cleanup_failure": "Record start failure or incomplete cleanup"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native Windows AppContainer and Job Object qualification"
+    },
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Operation and process supervisor return unsupported before admission",
+      "evidence": "Native hosted refusal test"
+    },
+    {
+      "os": "linux",
+      "arch": "arm64",
+      "support": "unsupported",
+      "refusal": "Operation and process supervisor return unsupported before admission",
+      "evidence": "Native hosted refusal test"
+    },
+    {
+      "os": "darwin",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Operation and process supervisor return unsupported before admission",
+      "evidence": "Native hosted refusal test"
+    },
+    {
+      "os": "darwin",
+      "arch": "arm64",
+      "support": "unsupported",
+      "refusal": "Operation and process supervisor return unsupported before admission",
+      "evidence": "Native hosted refusal test"
+    },
+    {
+      "os": "freebsd",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Operation and process supervisor return unsupported before admission",
+      "evidence": "Guest-native refusal test"
+    },
+    {
+      "os": "openbsd",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Operation and process supervisor return unsupported before admission",
+      "evidence": "Guest-native refusal test"
+    },
+    {
+      "os": "netbsd",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Operation and process supervisor return unsupported before admission",
+      "evidence": "Guest-native refusal test"
+    },
+    {
+      "os": "dragonfly",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Operation and process supervisor return unsupported before admission",
+      "evidence": "Guest-native refusal test"
+    },
+    {
+      "os": "plan9",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Operation and process supervisor return unsupported before admission",
+      "evidence": "Compile-only refusal evidence"
+    }
+  ],
+  "states": [
+    {
+      "id": "requested",
+      "kind": "intermediate"
+    },
+    {
+      "id": "admitted",
+      "kind": "intermediate"
+    },
+    {
+      "id": "rejected",
+      "kind": "refusal"
+    },
+    {
+      "id": "verified",
+      "kind": "success"
+    },
+    {
+      "id": "failed",
+      "kind": "failure"
+    },
+    {
+      "id": "timed-out",
+      "kind": "failure"
+    },
+    {
+      "id": "executed-unverified",
+      "kind": "failure"
+    },
+    {
+      "id": "cancelled",
+      "kind": "cancellation"
+    },
+    {
+      "id": "indeterminate",
+      "kind": "indeterminate"
+    }
+  ],
+  "allowed_transitions": [
+    {
+      "from": "requested",
+      "to": "rejected"
+    },
+    {
+      "from": "requested",
+      "to": "admitted"
+    },
+    {
+      "from": "admitted",
+      "to": "verified"
+    },
+    {
+      "from": "admitted",
+      "to": "failed"
+    },
+    {
+      "from": "admitted",
+      "to": "timed-out"
+    },
+    {
+      "from": "admitted",
+      "to": "executed-unverified"
+    },
+    {
+      "from": "admitted",
+      "to": "cancelled"
+    },
+    {
+      "from": "admitted",
+      "to": "indeterminate"
+    }
+  ],
+  "prohibited_transitions": [
+    {
+      "from": "requested",
+      "to": "verified"
+    },
+    {
+      "from": "requested",
+      "to": "failed"
+    },
+    {
+      "from": "requested",
+      "to": "timed-out"
+    },
+    {
+      "from": "requested",
+      "to": "executed-unverified"
+    },
+    {
+      "from": "requested",
+      "to": "cancelled"
+    },
+    {
+      "from": "requested",
+      "to": "indeterminate"
+    },
+    {
+      "from": "admitted",
+      "to": "requested"
+    },
+    {
+      "from": "admitted",
+      "to": "rejected"
+    },
+    {
+      "from": "rejected",
+      "to": "requested"
+    },
+    {
+      "from": "rejected",
+      "to": "admitted"
+    },
+    {
+      "from": "rejected",
+      "to": "verified"
+    },
+    {
+      "from": "rejected",
+      "to": "failed"
+    },
+    {
+      "from": "rejected",
+      "to": "timed-out"
+    },
+    {
+      "from": "rejected",
+      "to": "executed-unverified"
+    },
+    {
+      "from": "rejected",
+      "to": "cancelled"
+    },
+    {
+      "from": "rejected",
+      "to": "indeterminate"
+    },
+    {
+      "from": "verified",
+      "to": "requested"
+    },
+    {
+      "from": "verified",
+      "to": "admitted"
+    },
+    {
+      "from": "verified",
+      "to": "rejected"
+    },
+    {
+      "from": "verified",
+      "to": "failed"
+    },
+    {
+      "from": "verified",
+      "to": "timed-out"
+    },
+    {
+      "from": "verified",
+      "to": "executed-unverified"
+    },
+    {
+      "from": "verified",
+      "to": "cancelled"
+    },
+    {
+      "from": "verified",
+      "to": "indeterminate"
+    },
+    {
+      "from": "failed",
+      "to": "requested"
+    },
+    {
+      "from": "failed",
+      "to": "admitted"
+    },
+    {
+      "from": "failed",
+      "to": "rejected"
+    },
+    {
+      "from": "failed",
+      "to": "verified"
+    },
+    {
+      "from": "failed",
+      "to": "timed-out"
+    },
+    {
+      "from": "failed",
+      "to": "executed-unverified"
+    },
+    {
+      "from": "failed",
+      "to": "cancelled"
+    },
+    {
+      "from": "failed",
+      "to": "indeterminate"
+    },
+    {
+      "from": "timed-out",
+      "to": "requested"
+    },
+    {
+      "from": "timed-out",
+      "to": "admitted"
+    },
+    {
+      "from": "timed-out",
+      "to": "rejected"
+    },
+    {
+      "from": "timed-out",
+      "to": "verified"
+    },
+    {
+      "from": "timed-out",
+      "to": "failed"
+    },
+    {
+      "from": "timed-out",
+      "to": "executed-unverified"
+    },
+    {
+      "from": "timed-out",
+      "to": "cancelled"
+    },
+    {
+      "from": "timed-out",
+      "to": "indeterminate"
+    },
+    {
+      "from": "executed-unverified",
+      "to": "requested"
+    },
+    {
+      "from": "executed-unverified",
+      "to": "admitted"
+    },
+    {
+      "from": "executed-unverified",
+      "to": "rejected"
+    },
+    {
+      "from": "executed-unverified",
+      "to": "verified"
+    },
+    {
+      "from": "executed-unverified",
+      "to": "failed"
+    },
+    {
+      "from": "executed-unverified",
+      "to": "timed-out"
+    },
+    {
+      "from": "executed-unverified",
+      "to": "cancelled"
+    },
+    {
+      "from": "executed-unverified",
+      "to": "indeterminate"
+    },
+    {
+      "from": "cancelled",
+      "to": "requested"
+    },
+    {
+      "from": "cancelled",
+      "to": "admitted"
+    },
+    {
+      "from": "cancelled",
+      "to": "rejected"
+    },
+    {
+      "from": "cancelled",
+      "to": "verified"
+    },
+    {
+      "from": "cancelled",
+      "to": "failed"
+    },
+    {
+      "from": "cancelled",
+      "to": "timed-out"
+    },
+    {
+      "from": "cancelled",
+      "to": "executed-unverified"
+    },
+    {
+      "from": "cancelled",
+      "to": "indeterminate"
+    },
+    {
+      "from": "indeterminate",
+      "to": "requested"
+    },
+    {
+      "from": "indeterminate",
+      "to": "admitted"
+    },
+    {
+      "from": "indeterminate",
+      "to": "rejected"
+    },
+    {
+      "from": "indeterminate",
+      "to": "verified"
+    },
+    {
+      "from": "indeterminate",
+      "to": "failed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "timed-out"
+    },
+    {
+      "from": "indeterminate",
+      "to": "executed-unverified"
+    },
+    {
+      "from": "indeterminate",
+      "to": "cancelled"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-URL-INV-001",
+      "statement": "An invalid or unsupported request never reaches worker execution",
+      "owner": "internal/urladmission",
+      "severity": "critical",
+      "boundary": "operator input to admission",
+      "falsifier": "Observe the worker for an input rejected by the v1 grammar",
+      "production_controls": [
+        {
+          "id": "CEL-URL-PROD-001",
+          "owner": "TestOperationRejectsBeforeExecution"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-URL-ASSURE-001",
+          "owner": "admission refusal rule"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Native platform and administrator remain trusted"
+    },
+    {
+      "id": "CEL-URL-INV-002",
+      "statement": "The worker cannot grant authority or verify its own output",
+      "owner": "internal/urloperation",
+      "severity": "critical",
+      "boundary": "protocol-valid response to terminal outcome",
+      "falsifier": "A protocol-valid semantic lie reaches verified",
+      "production_controls": [
+        {
+          "id": "CEL-URL-PROD-002",
+          "owner": "TestOperationRejectsSemanticLie"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-URL-ASSURE-002",
+          "owner": "independent URL-reference oracle"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "The independent oracle itself requires mutation and differential evidence"
+    },
+    {
+      "id": "CEL-URL-INV-003",
+      "statement": "Cancellation and timeout cannot report complete cleanup unless the owned process tree is observed empty",
+      "owner": "internal/processsupervision",
+      "severity": "critical",
+      "boundary": "worker process tree lifecycle",
+      "falsifier": "Report complete cleanup after cancellation or timeout while an owned descendant remains alive",
+      "production_controls": [
+        {
+          "id": "CEL-URL-PROD-003",
+          "owner": "process-tree cleanup tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-URL-ASSURE-003",
+          "owner": "hostile lifecycle campaign"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Native termination or observation failure records incomplete cleanup and may require operator intervention; unqualified platforms remain disabled"
+    },
+    {
+      "id": "CEL-URL-INV-004",
+      "statement": "A verified result is not returned unless its terminal evidence is durably published",
+      "owner": "internal/attemptstore",
+      "severity": "critical",
+      "boundary": "terminal observation to publication",
+      "falsifier": "Return verified after publication failure or contradictory retained evidence",
+      "production_controls": [
+        {
+          "id": "CEL-URL-PROD-004",
+          "owner": "publication and recovery tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-URL-ASSURE-004",
+          "owner": "durable-transition fault campaign"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "An authorised same-user or administrator can rewrite local evidence"
+    }
+  ],
+  "success_semantics": "Verified means the named Go verifier established the deterministic postcondition and terminal evidence became durable",
+  "refusal_semantics": "Rejected input does not execute and unsupported input bytes are not retained",
+  "failure_semantics": "Execution, protocol or verification failure cannot become verified",
+  "cancellation_semantics": "Cancellation attempts bounded termination and reports cleanup complete only after observing the complete owned process tree empty",
+  "indeterminate_semantics": "Missing, contradictory or non-durable required evidence is never treated as allowed or verified",
+  "recovery_semantics": "Recovery removes uncommitted staging, never reruns the worker and publishes committed interrupted attempts as indeterminate",
+  "compatibility_or_reset_policy": "No pre-release persistence compatibility is promised before operational retention begins",
+  "falsifiers": [
+    "Rejected input reaches the worker",
+    "A worker-selected executable is launched",
+    "A stale or mismatched response is accepted",
+    "A semantic lie reaches verified",
+    "Cleanup is reported complete while a descendant survives return",
+    "Publication failure returns verified",
+    "Recovery races a live attempt"
+  ],
+  "production_controls": [
+    {
+      "id": "CEL-URL-PROD-001",
+      "owner": "internal/urladmission and internal/urloperation tests"
+    },
+    {
+      "id": "CEL-URL-PROD-002",
+      "owner": "internal/workerprotocolv1 and semantic-lie tests"
+    },
+    {
+      "id": "CEL-URL-PROD-003",
+      "owner": "internal/processsupervision hostile lifecycle tests"
+    },
+    {
+      "id": "CEL-URL-PROD-004",
+      "owner": "internal/attemptstore publication and recovery tests"
+    }
+  ],
+  "assurance_controls": [
+    {
+      "id": "CEL-URL-ASSURE-001",
+      "owner": "admission refusal rule"
+    },
+    {
+      "id": "CEL-URL-ASSURE-002",
+      "owner": "independent URL-reference oracle"
+    },
+    {
+      "id": "CEL-URL-ASSURE-003",
+      "owner": "hostile lifecycle campaign"
+    },
+    {
+      "id": "CEL-URL-ASSURE-004",
+      "owner": "durable-transition fault campaign"
+    }
+  ],
+  "residual_limitations": [
+    "Worker containment and execution are qualified only on Windows AMD64",
+    "Local hashes do not resist an authorised administrator",
+    "The URL operation does not establish any external fact"
+  ],
+  "non_goals": [
+    "Network access",
+    "URL retrieval",
+    "DNS resolution",
+    "Arbitrary prose transformation",
+    "General worker registration",
+    "Public command-line exposure"
+  ],
+  "deletion_criteria": [
+    "Explicit operator deletion under a separately defined retention action",
+    "Pre-release reset before operational evidence retention begins"
+  ]
+}

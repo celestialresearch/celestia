@@ -14,11 +14,246 @@ package attemptstore
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 )
+
+type failingRecordWriter struct {
+	name       string
+	chmodErr   error
+	writeErr   error
+	shortWrite bool
+	syncErr    error
+	closeErr   error
+	closeCalls int
+}
+
+func TestReadRootedReportsPostInspectionOpenFailure(t *testing.T) {
+	t.Parallel()
+	root := protectedTestDirectory(t)
+	name := recoveryFile
+	if err := writeRecord(root, name, map[string]string{"value": "fixture"}); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	failure := errors.New("injected record open failure")
+	_, err := readRootedWith(
+		root,
+		name,
+		func(*os.Root, string) (*os.File, error) { return nil, failure },
+	)
+	if !errors.Is(err, failure) {
+		t.Fatalf("readRootedWith() error = %v", err)
+	}
+}
+
+func (writer *failingRecordWriter) Name() string {
+	return writer.name
+}
+
+func (writer *failingRecordWriter) Chmod(os.FileMode) error {
+	return writer.chmodErr
+}
+
+func (writer *failingRecordWriter) Write(data []byte) (int, error) {
+	if writer.writeErr != nil {
+		return 0, writer.writeErr
+	}
+	if writer.shortWrite {
+		return len(data) - 1, nil
+	}
+	return len(data), nil
+}
+
+func (writer *failingRecordWriter) Sync() error {
+	return writer.syncErr
+}
+
+func (writer *failingRecordWriter) Close() error {
+	writer.closeCalls++
+	return writer.closeErr
+}
+
+type failingRecordReader struct {
+	info    os.FileInfo
+	statErr error
+	readErr error
+	data    []byte
+}
+
+func (reader *failingRecordReader) Stat() (os.FileInfo, error) {
+	return reader.info, reader.statErr
+}
+
+func (reader *failingRecordReader) Read(buffer []byte) (int, error) {
+	if reader.readErr != nil {
+		return 0, reader.readErr
+	}
+	if len(reader.data) == 0 {
+		return 0, io.EOF
+	}
+	count := copy(buffer, reader.data)
+	reader.data = reader.data[count:]
+	return count, nil
+}
+
+func TestWriteRecordFilePropagatesFailures(t *testing.T) {
+	injected := errors.New("injected record failure")
+	cases := []struct {
+		name   string
+		writer failingRecordWriter
+	}{
+		{name: "chmod", writer: failingRecordWriter{chmodErr: injected}},
+		{name: "write", writer: failingRecordWriter{writeErr: injected}},
+		{name: "short write", writer: failingRecordWriter{shortWrite: true}},
+		{name: "sync", writer: failingRecordWriter{syncErr: injected}},
+		{name: "close", writer: failingRecordWriter{closeErr: injected}},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			temporary := filepath.Join(t.TempDir(), "record.tmp")
+			if err := os.WriteFile(temporary, nil, 0o600); err != nil {
+				t.Fatalf("create temporary record: %v", err)
+			}
+			test.writer.name = temporary
+			err := writeRecordFile(t.TempDir(), "record.json", []byte("{}"), &test.writer)
+			want := injected
+			if test.writer.shortWrite {
+				want = io.ErrShortWrite
+			}
+			if !errors.Is(err, want) {
+				t.Fatalf("record failure = %v, want %v", err, want)
+			}
+			if test.writer.closeCalls != 1 {
+				t.Fatalf("close calls = %d", test.writer.closeCalls)
+			}
+			if _, err := os.Stat(temporary); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("temporary record remains: %v", err)
+			}
+		})
+	}
+}
+
+func TestWriteRecordFilePropagatesPublicationFailures(t *testing.T) {
+	t.Parallel()
+
+	statErr := errors.New("stat target")
+	publishErr := errors.New("publish target")
+	for _, test := range []struct {
+		name    string
+		stat    func(string) (os.FileInfo, error)
+		publish func(string, string, string) error
+		want    error
+	}{
+		{
+			name: "target stat",
+			stat: func(string) (os.FileInfo, error) {
+				return nil, statErr
+			},
+			publish: func(string, string, string) error {
+				t.Fatal("publish called after stat failure")
+				return nil
+			},
+			want: statErr,
+		},
+		{
+			name: "publication",
+			stat: func(string) (os.FileInfo, error) {
+				return nil, os.ErrNotExist
+			},
+			publish: func(string, string, string) error {
+				return publishErr
+			},
+			want: publishErr,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			temporary := filepath.Join(t.TempDir(), "record.tmp")
+			if err := os.WriteFile(temporary, nil, 0o600); err != nil {
+				t.Fatalf("create temporary record: %v", err)
+			}
+			writer := failingRecordWriter{name: temporary}
+			err := writeRecordFileWith(
+				t.TempDir(),
+				"record.json",
+				[]byte("{}"),
+				&writer,
+				test.stat,
+				test.publish,
+			)
+			if !errors.Is(err, test.want) {
+				t.Fatalf("record failure = %v, want %v", err, test.want)
+			}
+			if _, err := os.Lstat(temporary); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("temporary record remains: %v", err)
+			}
+		})
+	}
+}
+
+func TestReadRecordFilePropagatesFailures(t *testing.T) {
+	injected := errors.New("injected record failure")
+	root, err := canonicalEvidenceRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonical root: %v", err)
+	}
+	record := Recovery{
+		Version:        Version,
+		AttemptID:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		TerminalStatus: "indeterminate",
+		Reason:         "interrupted",
+	}
+	if err := writeRecord(root, recoveryFile, record); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	file := filepath.Join(root, recoveryFile)
+	info, err := os.Stat(file)
+	if err != nil {
+		t.Fatalf("stat record: %v", err)
+	}
+	cases := []struct {
+		name   string
+		reader failingRecordReader
+		want   error
+	}{
+		{name: "stat", reader: failingRecordReader{statErr: injected}, want: injected},
+		{name: "read", reader: failingRecordReader{info: info, readErr: injected}, want: injected},
+		{
+			name:   "oversized",
+			reader: failingRecordReader{info: info, data: make([]byte, maxRecordBytes+1)},
+			want:   ErrCorrupt,
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := readRecordFile(file, &test.reader); !errors.Is(err, test.want) {
+				t.Fatalf("read error = %v, want %v", err, test.want)
+			}
+		})
+	}
+	directoryInfo, err := os.Stat(t.TempDir())
+	if err != nil {
+		t.Fatalf("stat directory: %v", err)
+	}
+	if _, err := readRecordFile(file, &failingRecordReader{info: directoryInfo}); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("directory accepted: %v", err)
+	}
+}
+
+func TestDecodeRecordRejectsUnknownFields(t *testing.T) {
+	var recovery Recovery
+	encoded := []byte(
+		`{"version":1,` +
+			`"attempt_id":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",` +
+			`"terminal_status":"indeterminate","reason":"interrupted","extra":true}`,
+	)
+	if err := decodeRecord(encoded, &recovery); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("unknown field accepted: %v", err)
+	}
+}
 
 func TestRecordMetadataUsesRequiredFields(t *testing.T) {
 	type sample struct {
@@ -59,6 +294,51 @@ func TestWriteOrMatchRecordRequiresEquality(t *testing.T) {
 	}
 }
 
+func TestWriteOrMatchRecordRejectsCorruptDuplicate(t *testing.T) {
+	root, err := canonicalEvidenceRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonical root: %v", err)
+	}
+	record := Recovery{
+		Version:        Version,
+		AttemptID:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		TerminalStatus: "indeterminate",
+		Reason:         "interrupted",
+	}
+	if err := writeRecord(root, recoveryFile, record); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, recoveryFile), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("corrupt record: %v", err)
+	}
+	if err := writeOrMatchRecord(root, recoveryFile, record); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("corrupt duplicate accepted: %v", err)
+	}
+}
+
+func TestReadRootedRejectsLinkedAncestor(t *testing.T) {
+	root, err := canonicalEvidenceRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonical root: %v", err)
+	}
+	record := Recovery{
+		Version:        Version,
+		AttemptID:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		TerminalStatus: "indeterminate",
+		Reason:         "interrupted",
+	}
+	if err := writeRecord(root, recoveryFile, record); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	link := filepath.Join(t.TempDir(), "evidence-link")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatalf("create linked ancestor: %v", err)
+	}
+	if _, err := readRooted(link, recoveryFile); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("linked ancestor accepted: %v", err)
+	}
+}
+
 func TestNewRejectsLinkedRoot(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "target")
 	if err := os.Mkdir(target, 0o700); err != nil {
@@ -66,7 +346,7 @@ func TestNewRejectsLinkedRoot(t *testing.T) {
 	}
 	link := filepath.Join(t.TempDir(), "link")
 	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
+		t.Fatalf("create linked root: %v", err)
 	}
 	if _, err := New(link); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("linked root accepted: %v", err)
@@ -117,9 +397,43 @@ func TestPendingPublicationRequiresSource(t *testing.T) {
 	}
 }
 
+func TestPendingPublicationRejectsInvalidTarget(t *testing.T) {
+	if _, err := publishPendingDirectory(
+		t.TempDir(),
+		"invalid\x00target",
+		t.TempDir(),
+	); err == nil {
+		t.Fatal("invalid publication target accepted")
+	}
+}
+
 func TestCanonicalEvidenceRootRejectsInvalidPath(t *testing.T) {
 	if _, err := canonicalEvidenceRoot("invalid\x00path"); err == nil {
 		t.Fatal("invalid evidence root accepted")
+	}
+}
+
+func TestCanonicalEvidenceRootRejectsBrokenLink(t *testing.T) {
+	root := t.TempDir()
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(filepath.Join(root, "missing"), link); err != nil {
+		t.Fatalf("create broken link: %v", err)
+	}
+	if _, err := canonicalEvidenceRoot(filepath.Join(link, "child")); err == nil {
+		t.Fatal("broken-link root accepted")
+	}
+}
+
+func TestBundleValidationRejectsInvalidRoot(t *testing.T) {
+	if err := validateBundleFiles("invalid\x00path", observationFile, true); err == nil {
+		t.Fatal("invalid bundle root accepted")
+	}
+	file := filepath.Join(t.TempDir(), "bundle-file")
+	if err := os.WriteFile(file, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("write bundle file: %v", err)
+	}
+	if err := validateBundleFiles(file, observationFile, true); err == nil {
+		t.Fatal("bundle file accepted as a directory")
 	}
 }
 

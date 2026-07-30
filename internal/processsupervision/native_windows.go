@@ -35,17 +35,20 @@ var (
 	createAppContainerProfile     = userenv.NewProc("CreateAppContainerProfile")
 	deleteAppContainerProfile     = userenv.NewProc("DeleteAppContainerProfile")
 	getAppContainerFolderPath     = userenv.NewProc("GetAppContainerFolderPath")
-	ole32                         = windows.NewLazySystemDLL("ole32.dll")
-	coTaskMemFree                 = ole32.NewProc("CoTaskMemFree")
 	errAppContainerAlreadyExists  = windows.Errno(183)
 	errAppContainerNotImplemented = errors.New("AppContainer API unavailable")
 )
 
 type securityCapabilities struct {
 	appContainerSID *windows.SID
-	capabilities    unsafe.Pointer
-	capabilityCount uint32
-	reserved        uint32
+	_               unsafe.Pointer
+	_               uint32
+	_               uint32
+}
+
+type nativeCallResult struct {
+	code uintptr
+	err  error
 }
 
 type appContainer struct {
@@ -70,26 +73,42 @@ func createContainer(name string) (appContainer, error) {
 		return appContainer{}, fmt.Errorf("encode AppContainer description: %w", err)
 	}
 	var sid *windows.SID
-	result, _, callErr := createAppContainerProfile.Call(
-		uintptr(unsafe.Pointer(namePointer)), // #nosec G103 -- Win32 requires a PCWSTR address.
-		uintptr(unsafe.Pointer(display)),     // #nosec G103 -- Win32 requires a PCWSTR address.
-		uintptr(unsafe.Pointer(description)), // #nosec G103 -- Win32 requires a PCWSTR address.
+	code, _, callErr := createAppContainerProfile.Call(
+		uintptr(nativePointer(namePointer)),
+		uintptr(nativePointer(display)),
+		uintptr(nativePointer(description)),
 		0,
 		0,
-		uintptr(unsafe.Pointer(&sid)), // #nosec G103 -- Win32 writes the allocated SID pointer.
+		uintptr(nativePointer(&sid)),
 	)
-	if result != 0 {
-		if windows.Errno(result&0xffff) == errAppContainerAlreadyExists {
+	return completeContainerCreation(
+		name,
+		sid,
+		nativeCallResult{code: code, err: callErr},
+		containerFolder,
+		(*appContainer).close,
+	)
+}
+
+func completeContainerCreation(
+	name string,
+	sid *windows.SID,
+	result nativeCallResult,
+	folderFor func(*windows.SID) (string, error),
+	rollback func(*appContainer) error,
+) (appContainer, error) {
+	if result.code != 0 {
+		if windows.Errno(result.code&0xffff) == errAppContainerAlreadyExists {
 			return appContainer{}, fmt.Errorf("create AppContainer: duplicate profile")
 		}
-		if errors.Is(callErr, windows.ERROR_PROC_NOT_FOUND) {
+		if errors.Is(result.err, windows.ERROR_PROC_NOT_FOUND) {
 			return appContainer{}, errAppContainerNotImplemented
 		}
-		return appContainer{}, fmt.Errorf("create AppContainer: HRESULT %#x", result)
+		return appContainer{}, fmt.Errorf("create AppContainer: HRESULT %#x", result.code)
 	}
 	if sid == nil {
 		container := appContainer{name: name}
-		if rollbackErr := container.close(); rollbackErr != nil {
+		if rollbackErr := rollback(&container); rollbackErr != nil {
 			return container, errors.Join(
 				errors.New("create AppContainer: missing SID"),
 				fmt.Errorf("rollback AppContainer %s: %w", container.identity(), rollbackErr),
@@ -97,10 +116,10 @@ func createContainer(name string) (appContainer, error) {
 		}
 		return appContainer{}, errors.New("create AppContainer: missing SID")
 	}
-	folder, err := containerFolder(sid)
+	folder, err := folderFor(sid)
 	if err != nil {
 		container := appContainer{name: name, sid: sid}
-		if rollbackErr := container.close(); rollbackErr != nil {
+		if rollbackErr := rollback(&container); rollbackErr != nil {
 			return container, errors.Join(
 				err,
 				fmt.Errorf("rollback AppContainer %s: %w", container.identity(), rollbackErr),
@@ -120,24 +139,36 @@ func containerFolder(sid *windows.SID) (string, error) {
 		return "", fmt.Errorf("encode AppContainer SID: %w", err)
 	}
 	var folder *uint16
-	result, _, callErr := getAppContainerFolderPath.Call(
-		uintptr(unsafe.Pointer(sidText)), // #nosec G103 -- Win32 requires a PCWSTR address.
-		uintptr(unsafe.Pointer(&folder)), // #nosec G103 -- Win32 writes the allocated path pointer.
+	code, _, callErr := getAppContainerFolderPath.Call(
+		uintptr(nativePointer(sidText)),
+		uintptr(nativePointer(&folder)),
 	)
-	if result != 0 {
-		if errors.Is(callErr, windows.ERROR_PROC_NOT_FOUND) {
+	return completeContainerFolder(
+		folder,
+		nativeCallResult{code: code, err: callErr},
+		func() {
+			windows.CoTaskMemFree(
+				nativePointer(folder),
+			)
+		},
+	)
+}
+
+func completeContainerFolder(
+	folder *uint16,
+	result nativeCallResult,
+	free func(),
+) (string, error) {
+	if result.code != 0 {
+		if errors.Is(result.err, windows.ERROR_PROC_NOT_FOUND) {
 			return "", errAppContainerNotImplemented
 		}
-		return "", fmt.Errorf("get AppContainer folder: HRESULT %#x", result)
+		return "", fmt.Errorf("get AppContainer folder: HRESULT %#x", result.code)
 	}
 	if folder == nil {
 		return "", errors.New("get AppContainer folder: missing path")
 	}
-	defer func() {
-		_, _, _ = coTaskMemFree.Call(
-			uintptr(unsafe.Pointer(folder)), // #nosec G103 -- Win32 requires the allocated path address.
-		)
-	}()
+	defer free()
 	return windows.UTF16PtrToString(folder), nil
 }
 
@@ -192,17 +223,52 @@ func deleteContainer(name string) error {
 	if err != nil {
 		return fmt.Errorf("encode AppContainer name: %w", err)
 	}
-	result, _, _ := deleteAppContainerProfile.Call(
-		uintptr(unsafe.Pointer(namePointer)), // #nosec G103 -- Win32 requires a PCWSTR address.
+	result, _, callErr := deleteAppContainerProfile.Call(
+		uintptr(nativePointer(namePointer)),
 	)
+	return completeContainerDeletion(result, callErr)
+}
+
+func completeContainerDeletion(result uintptr, callErr error) error {
 	if result != 0 {
+		if callErr != nil && !errors.Is(callErr, windows.ERROR_SUCCESS) {
+			return fmt.Errorf(
+				"delete AppContainer: HRESULT %#x: %w",
+				result,
+				callErr,
+			)
+		}
 		return fmt.Errorf("delete AppContainer: HRESULT %#x", result)
 	}
 	return nil
 }
 
 func createJob(limits Limits) (windows.Handle, bool, error) {
-	job, err := windows.CreateJobObject(nil, nil)
+	return createJobWith(
+		limits,
+		func() (windows.Handle, error) {
+			return windows.CreateJobObject(nil, nil)
+		},
+		func(job windows.Handle, information windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION) error {
+			_, err := windows.SetInformationJobObject(
+				job,
+				windows.JobObjectExtendedLimitInformation,
+				uintptr(nativePointer(&information)),
+				uint32(unsafe.Sizeof(information)),
+			)
+			return err
+		},
+		windows.CloseHandle,
+	)
+}
+
+func createJobWith(
+	limits Limits,
+	create func() (windows.Handle, error),
+	configure func(windows.Handle, windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION) error,
+	closeJob func(windows.Handle) error,
+) (windows.Handle, bool, error) {
+	job, err := create()
 	if err != nil {
 		return 0, true, fmt.Errorf("create job: %w", err)
 	}
@@ -215,19 +281,21 @@ func createJob(limits Limits) (windows.Handle, bool, error) {
 			windows.JOB_OBJECT_LIMIT_ACTIVE_PROCESS |
 			windows.JOB_OBJECT_LIMIT_JOB_MEMORY
 	information.JobMemoryLimit = uintptr(limits.MemoryBytes)
-	_, err = windows.SetInformationJobObject(
-		job,
-		windows.JobObjectExtendedLimitInformation,
-		uintptr(unsafe.Pointer(&information)), // #nosec G103 -- Win32 reads the typed job structure.
-		uint32(unsafe.Sizeof(information)),
-	)
-	if err != nil {
-		return failedJob(job, fmt.Errorf("configure job: %w", err))
+	if err := configure(job, information); err != nil {
+		return failedJobWith(job, fmt.Errorf("configure job: %w", err), closeJob)
 	}
 	return job, true, nil
 }
 
 func failedJob(job windows.Handle, operationErr error) (windows.Handle, bool, error) {
-	closeErr := windows.CloseHandle(job)
+	return failedJobWith(job, operationErr, windows.CloseHandle)
+}
+
+func failedJobWith(
+	job windows.Handle,
+	operationErr error,
+	closeJob func(windows.Handle) error,
+) (windows.Handle, bool, error) {
+	closeErr := closeJob(job)
 	return 0, closeErr == nil, errors.Join(operationErr, closeErr)
 }

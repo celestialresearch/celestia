@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"celestia.research/governed-operation/internal/workerprotocolv1"
 )
@@ -231,6 +232,7 @@ func TestObjectFieldsV1RejectsMalformed(t *testing.T) {
 	tests := map[string][]byte{
 		"non-object":    []byte(`[]`),
 		"duplicate":     []byte(`{"x":0,"x":1}`),
+		"invalid key":   []byte(`{1:0}`),
 		"missing value": []byte(`{"x":}`),
 		"missing close": []byte(`{"x":0`),
 		"trailing data": []byte(`{}x`),
@@ -241,6 +243,154 @@ func TestObjectFieldsV1RejectsMalformed(t *testing.T) {
 				t.Fatal("malformed v1 object decoded")
 			}
 		})
+	}
+}
+
+func TestRequestV1FieldValidators(t *testing.T) {
+	validRequestFields := map[string]json.RawMessage{
+		"protocol_version":  []byte("1"),
+		"operation_id":      []byte(`"url-reference"`),
+		"operation_version": []byte("1"),
+		"attempt_id":        []byte(`"attempt"`),
+		"request_nonce":     []byte(`"nonce"`),
+		"input_media_type":  []byte(`"text/plain; charset=utf-8"`),
+		"input_length":      []byte("1"),
+		"input_sha256":      []byte(`"hash"`),
+		"mode":              []byte(`"fang"`),
+		"deadline":          []byte(`"deadline"`),
+		"timeout_ms":        []byte("2000"),
+		"limits":            []byte(`{}`),
+		"input":             []byte(`"x"`),
+	}
+	for name, mutate := range map[string]func(map[string]json.RawMessage){
+		"wrong count": func(fields map[string]json.RawMessage) {
+			delete(fields, "input")
+		},
+		"non-decimal integer": func(fields map[string]json.RawMessage) {
+			fields["input_length"] = []byte("-1")
+		},
+		"non-string": func(fields map[string]json.RawMessage) {
+			fields["input"] = []byte("1")
+		},
+		"missing limits": func(fields map[string]json.RawMessage) {
+			delete(fields, "limits")
+			fields["replacement"] = []byte(`{}`)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fields := make(map[string]json.RawMessage, len(validRequestFields))
+			for key, value := range validRequestFields {
+				fields[key] = bytes.Clone(value)
+			}
+			mutate(fields)
+			if requestFieldsV1(fields) {
+				t.Fatal("invalid request fields accepted")
+			}
+		})
+	}
+
+	validLimits := map[string]json.RawMessage{
+		"input_bytes":  []byte("4096"),
+		"output_bytes": []byte("8192"),
+		"stderr_bytes": []byte("8192"),
+		"memory_bytes": []byte("67108864"),
+		"processes":    []byte("1"),
+	}
+	if !limitFieldsV1(validLimits) {
+		t.Fatal("valid limits rejected")
+	}
+	delete(validLimits, "processes")
+	if limitFieldsV1(validLimits) {
+		t.Fatal("incomplete limits accepted")
+	}
+	validLimits["processes"] = []byte("-1")
+	if limitFieldsV1(validLimits) {
+		t.Fatal("non-decimal limit accepted")
+	}
+}
+
+func TestRequestV1EscapeHelpers(t *testing.T) {
+	for name, test := range map[string]struct {
+		data    string
+		next    int
+		invalid bool
+	}{
+		"ordinary escape": {data: `\n`, next: 1},
+		"non-surrogate":   {data: `\u1234`, next: 5},
+		"invalid hex":     {data: `\u12x4`, next: 5},
+		"low surrogate":   {data: `\udc00`, next: 5, invalid: true},
+		"invalid low":     {data: `\ud800\u12x4`, next: 11, invalid: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			next, invalid := inspectEscapedRuneV1([]byte(test.data), 0)
+			if next != test.next || invalid != test.invalid {
+				t.Fatalf(
+					"inspectEscapedRuneV1()=(%d,%t), want (%d,%t)",
+					next,
+					invalid,
+					test.next,
+					test.invalid,
+				)
+			}
+		})
+	}
+	for name, data := range map[string]string{
+		"wrong length": "123",
+		"invalid":      "12x4",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, ok := decodeHexV1([]byte(data)); ok {
+				t.Fatal("invalid hexadecimal escape accepted")
+			}
+		})
+	}
+}
+
+func TestRequestV1ValueBindings(t *testing.T) {
+	accepted, admittedAt := testAccepted(t)
+	request, err := decodeRequestV1(accepted.Frame, admittedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.InputLength++
+	if validRequestV1Input(request) {
+		t.Fatal("input length mismatch accepted")
+	}
+	request.InputLength--
+	request.Deadline = "not-a-deadline"
+	if validRequestV1(request, admittedAt) {
+		t.Fatal("invalid retained deadline accepted")
+	}
+	if validRequestV1Deadline(
+		admittedAt.Add(requestV1StartTimeoutMS*time.Millisecond).Format(time.RFC3339),
+		admittedAt,
+	) {
+		t.Fatal("non-canonical deadline accepted")
+	}
+	if validRequestV1Deadline("not-a-deadline", admittedAt) {
+		t.Fatal("invalid deadline accepted")
+	}
+}
+
+func TestDecodeRequestV1RejectsTypedIntegerOverflow(t *testing.T) {
+	accepted, admittedAt := testAccepted(t)
+	frame := bytes.Replace(
+		accepted.Frame,
+		[]byte(`"protocol_version":1`),
+		[]byte(`"protocol_version":999999999999999999999999999999`),
+		1,
+	)
+	if !validRequestV1Frame(frame) {
+		t.Fatal("overflow fixture did not reach the typed decoder")
+	}
+	if _, err := decodeRequestV1(frame, admittedAt); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("integer overflow accepted: %v", err)
+	}
+}
+
+func TestRawStringV1RejectsEmpty(t *testing.T) {
+	if rawStringV1(nil) || rawStringV1([]byte("null")) {
+		t.Fatal("empty raw string accepted")
 	}
 }
 

@@ -93,6 +93,7 @@ func TestTransformRejects(t *testing.T) {
 		{"Unicode host", "https://bücher.example/"},
 		{"Unicode lookalike", "https://example。test/"},
 		{"invalid percent", "https://example.test/%2"},
+		{"invalid UTF-8", "https://example.test/" + string([]byte{0xff})},
 		{"embedded NUL", "https://example.test/\x00"},
 		{"leading whitespace", " https://example.test/"},
 		{"trailing whitespace", "https://example.test/ "},

@@ -25,6 +25,43 @@ import (
 
 const evidenceDirectoryAccess = windows.STANDARD_RIGHTS_ALL | 0x1ff
 
+type ownedPathOperations struct {
+	current    func() (*windows.SID, error)
+	descriptor func(string) (*windows.SECURITY_DESCRIPTOR, error)
+	owner      func(*windows.SECURITY_DESCRIPTOR) (*windows.SID, error)
+	control    func(*windows.SECURITY_DESCRIPTOR) (windows.SECURITY_DESCRIPTOR_CONTROL, error)
+}
+
+type evidenceFileOperations struct {
+	owned   func(string) error
+	acl     func(string) error
+	encode  func(string) (*uint16, error)
+	open    func(*uint16) (windows.Handle, error)
+	inspect func(windows.Handle) (windows.ByHandleFileInformation, error)
+	close   func(windows.Handle) error
+}
+
+type evidenceDirectoryOperations struct {
+	descriptor func() (*windows.SECURITY_DESCRIPTOR, error)
+	encode     func(string) (*uint16, error)
+	create     func(*uint16, *windows.SecurityAttributes) error
+	secure     func(string) error
+	remove     func(string, string) error
+	sync       func(string) error
+}
+
+type recordRepairOperations struct {
+	openRoot      func(string) (*os.Root, error)
+	closeRoot     func(*os.Root) error
+	openDirectory func(*os.Root, string) (*os.File, error)
+	readDirectory func(*os.File) ([]os.DirEntry, error)
+	closeFile     func(*os.File) error
+	lstat         func(*os.Root, string) (os.FileInfo, error)
+	invalid       func(string, os.FileInfo) bool
+	remove        func(*os.Root, string) error
+	confirm       func(string) error
+}
+
 func publishFile(source, target, _ string) error {
 	sourcePointer, err := windows.UTF16PtrFromString(source)
 	if err != nil {
@@ -65,23 +102,51 @@ func secureEvidenceTree(path string) error {
 }
 
 func secureOwnedPath(path string) error {
-	userSID, err := currentUserSID()
-	if err != nil {
-		return err
-	}
-	descriptor, err := windows.GetNamedSecurityInfo(
+	return secureOwnedPathWith(
 		path,
-		windows.SE_FILE_OBJECT,
-		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION,
+		ownedPathOperations{
+			current: currentUserSID,
+			descriptor: func(path string) (*windows.SECURITY_DESCRIPTOR, error) {
+				return windows.GetNamedSecurityInfo(
+					path,
+					windows.SE_FILE_OBJECT,
+					windows.OWNER_SECURITY_INFORMATION|
+						windows.DACL_SECURITY_INFORMATION,
+				)
+			},
+			owner: func(
+				descriptor *windows.SECURITY_DESCRIPTOR,
+			) (*windows.SID, error) {
+				owner, _, err := descriptor.Owner()
+				return owner, err
+			},
+			control: func(
+				descriptor *windows.SECURITY_DESCRIPTOR,
+			) (windows.SECURITY_DESCRIPTOR_CONTROL, error) {
+				control, _, err := descriptor.Control()
+				return control, err
+			},
+		},
 	)
+}
+
+func secureOwnedPathWith(
+	path string,
+	operations ownedPathOperations,
+) error {
+	userSID, err := operations.current()
 	if err != nil {
 		return err
 	}
-	owner, _, err := descriptor.Owner()
+	descriptor, err := operations.descriptor(path)
+	if err != nil {
+		return err
+	}
+	owner, err := operations.owner(descriptor)
 	if err != nil || owner == nil || !owner.Equals(userSID) {
 		return ErrCorrupt
 	}
-	control, _, err := descriptor.Control()
+	control, err := operations.control(descriptor)
 	if err != nil || control&windows.SE_DACL_PROTECTED == 0 {
 		return ErrCorrupt
 	}
@@ -89,31 +154,56 @@ func secureOwnedPath(path string) error {
 }
 
 func secureEvidenceFile(path string) error {
-	if err := secureOwnedPath(path); err != nil {
-		return err
-	}
-	if err := secureDirectoryACL(path); err != nil {
-		return err
-	}
-	pointer, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return err
-	}
-	handle, err := windows.CreateFile(
-		pointer,
-		windows.GENERIC_READ,
-		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
-		nil,
-		windows.OPEN_EXISTING,
-		windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_FLAG_OPEN_REPARSE_POINT,
-		0,
+	return secureEvidenceFileWith(
+		path,
+		evidenceFileOperations{
+			owned:  secureOwnedPath,
+			acl:    secureDirectoryACL,
+			encode: windows.UTF16PtrFromString,
+			open: func(pointer *uint16) (windows.Handle, error) {
+				return windows.CreateFile(
+					pointer,
+					windows.GENERIC_READ,
+					windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
+					nil,
+					windows.OPEN_EXISTING,
+					windows.FILE_ATTRIBUTE_NORMAL|
+						windows.FILE_FLAG_OPEN_REPARSE_POINT,
+					0,
+				)
+			},
+			inspect: func(
+				handle windows.Handle,
+			) (windows.ByHandleFileInformation, error) {
+				var information windows.ByHandleFileInformation
+				err := windows.GetFileInformationByHandle(handle, &information)
+				return information, err
+			},
+			close: windows.CloseHandle,
+		},
 	)
+}
+
+func secureEvidenceFileWith(
+	path string,
+	operations evidenceFileOperations,
+) error {
+	if err := operations.owned(path); err != nil {
+		return err
+	}
+	if err := operations.acl(path); err != nil {
+		return err
+	}
+	pointer, err := operations.encode(path)
 	if err != nil {
 		return err
 	}
-	var information windows.ByHandleFileInformation
-	infoErr := windows.GetFileInformationByHandle(handle, &information)
-	closeErr := windows.CloseHandle(handle)
+	handle, err := operations.open(pointer)
+	if err != nil {
+		return err
+	}
+	information, infoErr := operations.inspect(handle)
+	closeErr := operations.close(handle)
 	if err := errors.Join(infoErr, closeErr); err != nil {
 		return err
 	}
@@ -126,7 +216,14 @@ func secureEvidenceFile(path string) error {
 }
 
 func secureDirectoryACL(path string) error {
-	userSID, err := currentUserSID()
+	return secureDirectoryACLWith(path, currentUserSID)
+}
+
+func secureDirectoryACLWith(
+	path string,
+	current func() (*windows.SID, error),
+) error {
+	userSID, err := current()
 	if err != nil {
 		return err
 	}
@@ -164,14 +261,22 @@ func evidenceACEIdentifies(ace *windows.ACCESS_ALLOWED_ACE, expected *windows.SI
 		return false
 	}
 	// GetAce exposes the variable-length SID through the fixed ACE prefix.
-	aceSID := (*windows.SID)(unsafe.Pointer(&ace.SidStart)) //nolint:gosec // validated ACE bounds precede this Win32 SID conversion
+	aceSID := (*windows.SID)(unsafe.Pointer(&ace.SidStart)) // #nosec G103 -- validated ACE bounds precede this Win32 SID conversion.
 	return aceSID.IsValid() &&
 		uintptr(ace.Header.AceSize) == sidOffset+uintptr(aceSID.Len()) &&
 		aceSID.Equals(expected)
 }
 
 func currentUserSID() (*windows.SID, error) {
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	return currentUserSIDWith(func() (*windows.Tokenuser, error) {
+		return windows.GetCurrentProcessToken().GetTokenUser()
+	})
+}
+
+func currentUserSIDWith(
+	current func() (*windows.Tokenuser, error),
+) (*windows.SID, error) {
+	user, err := current()
 	if err != nil {
 		return nil, err
 	}
@@ -179,22 +284,49 @@ func currentUserSID() (*windows.SID, error) {
 }
 
 func secureDirectoryDescriptor() (*windows.SECURITY_DESCRIPTOR, error) {
-	sid, err := currentUserSID()
+	return secureDirectoryDescriptorWith(
+		currentUserSID,
+		windows.SecurityDescriptorFromString,
+	)
+}
+
+func secureDirectoryDescriptorWith(
+	current func() (*windows.SID, error),
+	parse func(string) (*windows.SECURITY_DESCRIPTOR, error),
+) (*windows.SECURITY_DESCRIPTOR, error) {
+	sid, err := current()
 	if err != nil {
 		return nil, err
 	}
-	return windows.SecurityDescriptorFromString(
+	return parse(
 		fmt.Sprintf("O:%sD:P(A;OICI;FA;;;%s)", sid, sid),
 	)
 }
 
 func createEvidenceDirectory(path string) error {
+	return createEvidenceDirectoryWith(
+		path,
+		evidenceDirectoryOperations{
+			descriptor: secureDirectoryDescriptor,
+			encode:     windows.UTF16PtrFromString,
+			create:     windows.CreateDirectory,
+			secure:     secureEvidenceTree,
+			remove:     removeCreatedDirectory,
+			sync:       syncDirectory,
+		},
+	)
+}
+
+func createEvidenceDirectoryWith(
+	path string,
+	operations evidenceDirectoryOperations,
+) error {
 	parent := filepath.Dir(path)
-	descriptor, err := secureDirectoryDescriptor()
+	descriptor, err := operations.descriptor()
 	if err != nil {
 		return err
 	}
-	pointer, err := windows.UTF16PtrFromString(filepath.Clean(path))
+	pointer, err := operations.encode(filepath.Clean(path))
 	if err != nil {
 		return err
 	}
@@ -202,14 +334,14 @@ func createEvidenceDirectory(path string) error {
 		Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
 		SecurityDescriptor: descriptor,
 	}
-	if err := windows.CreateDirectory(pointer, &attributes); err != nil {
+	if err := operations.create(pointer, &attributes); err != nil {
 		return err
 	}
-	if err := secureEvidenceTree(path); err != nil {
-		return errors.Join(err, removeCreatedDirectory(path, parent))
+	if err := operations.secure(path); err != nil {
+		return errors.Join(err, operations.remove(path, parent))
 	}
-	if err := syncDirectory(parent); err != nil {
-		return errors.Join(err, removeCreatedDirectory(path, parent))
+	if err := operations.sync(parent); err != nil {
+		return errors.Join(err, operations.remove(path, parent))
 	}
 	return nil
 }
@@ -245,19 +377,47 @@ func syncDirectory(directory string) error {
 }
 
 func repairInterruptedRecords(path string) (err error) {
-	root, err := os.OpenRoot(path)
+	return repairInterruptedRecordsWith(
+		path,
+		recordRepairOperations{
+			openRoot:  os.OpenRoot,
+			closeRoot: (*os.Root).Close,
+			openDirectory: func(root *os.Root, name string) (*os.File, error) {
+				return root.Open(name)
+			},
+			readDirectory: func(directory *os.File) ([]os.DirEntry, error) {
+				return directory.ReadDir(-1)
+			},
+			closeFile: (*os.File).Close,
+			lstat: func(root *os.Root, name string) (os.FileInfo, error) {
+				return root.Lstat(name)
+			},
+			invalid: invalidRecordFile,
+			remove: func(root *os.Root, name string) error {
+				return root.Remove(name)
+			},
+			confirm: confirmPublication,
+		},
+	)
+}
+
+func repairInterruptedRecordsWith(
+	path string,
+	operations recordRepairOperations,
+) (err error) {
+	root, err := operations.openRoot(path)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		err = errors.Join(err, root.Close())
+		err = errors.Join(err, operations.closeRoot(root))
 	}()
-	directory, err := root.Open(".")
+	directory, err := operations.openDirectory(root, ".")
 	if err != nil {
 		return err
 	}
-	entries, readErr := directory.ReadDir(-1)
-	closeErr := directory.Close()
+	entries, readErr := operations.readDirectory(directory)
+	closeErr := operations.closeFile(directory)
 	if err := errors.Join(readErr, closeErr); err != nil {
 		return err
 	}
@@ -266,12 +426,12 @@ func repairInterruptedRecords(path string) (err error) {
 		if !recordTemporary(entry.Name()) {
 			continue
 		}
-		info, err := root.Lstat(entry.Name())
+		info, err := operations.lstat(root, entry.Name())
 		if err != nil ||
-			invalidRecordFile(filepath.Join(path, entry.Name()), info) {
+			operations.invalid(filepath.Join(path, entry.Name()), info) {
 			return ErrCorrupt
 		}
-		if err := root.Remove(entry.Name()); err != nil {
+		if err := operations.remove(root, entry.Name()); err != nil {
 			return err
 		}
 		removed = true
@@ -279,7 +439,7 @@ func repairInterruptedRecords(path string) (err error) {
 	if !removed {
 		return nil
 	}
-	return confirmPublication(path)
+	return operations.confirm(path)
 }
 
 func recordTemporary(candidate string) bool {

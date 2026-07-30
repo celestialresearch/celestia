@@ -48,9 +48,17 @@ func TestPublishClassifiesReleaseAfterPublication(t *testing.T) {
 	owner.once.Do(func() {
 		owner.releaseErr = errors.New("injected release failure")
 	})
+	released := false
 	t.Cleanup(func() {
-		_ = unlockAttemptFile(owner.file)
-		_ = owner.file.Close()
+		if released {
+			return
+		}
+		if err := errors.Join(
+			unlockAttemptFile(owner.file),
+			owner.file.Close(),
+		); err != nil {
+			t.Errorf("clean up injected owner: %v", err)
+		}
 	})
 	err = attempt.Publish(testObservationFor(t, accepted))
 	if !errors.Is(err, ErrRelease) {
@@ -62,6 +70,7 @@ func TestPublishClassifiesReleaseAfterPublication(t *testing.T) {
 	if err := owner.file.Close(); err != nil {
 		t.Fatalf("close injected owner: %v", err)
 	}
+	released = true
 	activeAttemptLocks.Delete(owner.key)
 	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
 		t.Fatalf("published attempt not inspectable: %v", err)

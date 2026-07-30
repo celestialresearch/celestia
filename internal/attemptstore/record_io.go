@@ -24,6 +24,19 @@ import (
 	"reflect"
 )
 
+type recordWriter interface {
+	Name() string
+	Chmod(os.FileMode) error
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
+type recordReader interface {
+	io.Reader
+	Stat() (os.FileInfo, error)
+}
+
 func writeRecord(path, name string, value any) (err error) {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -36,6 +49,28 @@ func writeRecord(path, name string, value any) (err error) {
 	if err != nil {
 		return err
 	}
+	return writeRecordFile(path, name, data, temporary)
+}
+
+func writeRecordFile(path, name string, data []byte, temporary recordWriter) (err error) {
+	return writeRecordFileWith(
+		path,
+		name,
+		data,
+		temporary,
+		os.Stat,
+		publishFile,
+	)
+}
+
+func writeRecordFileWith(
+	path,
+	name string,
+	data []byte,
+	temporary recordWriter,
+	stat func(string) (os.FileInfo, error),
+	publish func(string, string, string) error,
+) (err error) {
 	temporaryName := temporary.Name()
 	defer func() {
 		removeErr := os.Remove(temporaryName)
@@ -46,8 +81,10 @@ func writeRecord(path, name string, value any) (err error) {
 	if err := temporary.Chmod(0o600); err != nil {
 		return errors.Join(err, temporary.Close())
 	}
-	if _, err := temporary.Write(data); err != nil {
+	if written, err := temporary.Write(data); err != nil {
 		return errors.Join(err, temporary.Close())
+	} else if written != len(data) {
+		return errors.Join(io.ErrShortWrite, temporary.Close())
 	}
 	if err := temporary.Sync(); err != nil {
 		return errors.Join(err, temporary.Close())
@@ -56,12 +93,12 @@ func writeRecord(path, name string, value any) (err error) {
 		return err
 	}
 	target := filepath.Join(path, name)
-	if _, err := os.Stat(target); err == nil {
+	if _, err := stat(target); err == nil {
 		return ErrDuplicate
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	if err := publishFile(temporaryName, target, path); err != nil {
+	if err := publish(temporaryName, target, path); err != nil {
 		return err
 	}
 	return nil
@@ -86,20 +123,29 @@ func writeOrMatchRecord(path, name string, value any) error {
 }
 
 func readRecord(path, name string, target any) error {
+	_, err := readRecordHash(path, name, target)
+	return err
+}
+
+func readRecordHash(path, name string, target any) (string, error) {
 	data, err := readRooted(path, name)
 	if err != nil {
-		return fmt.Errorf("read %s: %w", name, err)
+		return "", fmt.Errorf("read %s: %w", name, err)
 	}
+	if err := decodeRecord(data, target); err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:]), nil
+}
+
+func decodeRecord(data []byte, target any) error {
 	if err := requireRecordFields(data, target); err != nil {
 		return err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		return ErrCorrupt
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return ErrCorrupt
 	}
 	canonical, err := json.Marshal(target)
@@ -130,6 +176,20 @@ func fileHash(path, name string) (string, error) {
 }
 
 func readRooted(path, name string) (data []byte, err error) {
+	return readRootedWith(
+		path,
+		name,
+		func(root *os.Root, name string) (*os.File, error) {
+			return root.Open(name)
+		},
+	)
+}
+
+func readRootedWith(
+	path string,
+	name string,
+	openRecord func(*os.Root, string) (*os.File, error),
+) (data []byte, err error) {
 	if err := rejectLinkedAncestors(path); err != nil {
 		return nil, err
 	}
@@ -147,21 +207,25 @@ func readRooted(path, name string) (data []byte, err error) {
 	if invalidRecordFile(filepath.Join(path, name), info) {
 		return nil, ErrCorrupt
 	}
-	file, err := root.Open(name)
+	file, err := openRecord(root, name)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
 		err = errors.Join(err, file.Close())
 	}()
-	info, err = file.Stat()
+	return readRecordFile(filepath.Join(path, name), file)
+}
+
+func readRecordFile(path string, file recordReader) ([]byte, error) {
+	info, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
-	if invalidRecordFile(filepath.Join(path, name), info) {
+	if invalidRecordFile(path, info) {
 		return nil, ErrCorrupt
 	}
-	data, err = io.ReadAll(io.LimitReader(file, maxRecordBytes+1))
+	data, err := io.ReadAll(io.LimitReader(file, maxRecordBytes+1))
 	if err != nil {
 		return nil, err
 	}

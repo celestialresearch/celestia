@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 	"unicode/utf16"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -49,6 +50,9 @@ func TestContainerRejectsDuplicateProfile(t *testing.T) {
 }
 
 func TestContainerRejectsInvalidNames(t *testing.T) {
+	if _, err := createContainer("invalid\x00name"); err == nil {
+		t.Fatal("invalid AppContainer name was created")
+	}
 	if err := deleteContainer("invalid\x00name"); err == nil {
 		t.Fatal("invalid AppContainer name was accepted")
 	}
@@ -65,7 +69,7 @@ func TestContainerFolderRejectsMissingSID(t *testing.T) {
 func TestSupervisorRejectsReparseWorker(t *testing.T) {
 	link := filepath.Join(t.TempDir(), "worker.exe")
 	if err := os.Symlink(os.Args[0], link); err != nil {
-		t.Skipf("create worker symlink: %v", err)
+		t.Fatalf("create worker symlink: %v", err)
 	}
 	if _, err := New(link, testNativeLimits()); err == nil {
 		t.Fatal("reparse worker was accepted")
@@ -161,7 +165,11 @@ func TestSupervisorDetectsWorkerChange(t *testing.T) {
 	if err := os.WriteFile(worker, []byte("changed"), 0o600); err != nil {
 		t.Fatalf("change worker: %v", err)
 	}
-	outcome := supervisor.Run(context.Background(), []byte("malformed"))
+	outcome := supervisor.RunBefore(
+		context.Background(),
+		[]byte("malformed"),
+		time.Now().Add(supervisor.limits.StartupTimeout),
+	)
 	if outcome.Status != StartFailed || outcome.Err == nil {
 		t.Fatalf("changed worker: status=%s error=%v", outcome.Status, outcome.Err)
 	}
@@ -177,7 +185,11 @@ func TestSupervisorReportsWorkerHashOnLaunchFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new supervisor: %v", err)
 	}
-	outcome := supervisor.Run(context.Background(), []byte("malformed"))
+	outcome := supervisor.RunBefore(
+		context.Background(),
+		[]byte("malformed"),
+		time.Now().Add(supervisor.limits.StartupTimeout),
+	)
 	expected := sha256.Sum256(content)
 	if outcome.Status != StartFailed ||
 		outcome.WorkerSHA256 != expected ||
@@ -199,6 +211,46 @@ func TestFailedLaunchPreservesCleanupState(t *testing.T) {
 			outcome.Status,
 			outcome.CleanupComplete,
 		)
+	}
+}
+
+func TestRunRejectsExpiredStartupDeadline(t *testing.T) {
+	supervisor, err := New(os.Getenv("CELESTIA_TEST_HOSTILE_WORKER"), testNativeLimits())
+	if err != nil {
+		t.Fatalf("new supervisor: %v", err)
+	}
+	outcome := supervisor.RunBefore(context.Background(), []byte("{}"), time.Now().Add(-time.Second))
+	if outcome.Status != StartFailed ||
+		!outcome.CleanupComplete ||
+		!errors.Is(outcome.Err, context.DeadlineExceeded) {
+		t.Fatalf("status=%s cleanup=%t error=%v", outcome.Status, outcome.CleanupComplete, outcome.Err)
+	}
+}
+
+func TestPrepareLaunchCleansCancelledStartup(t *testing.T) {
+	supervisor, err := New(os.Getenv("CELESTIA_TEST_HOSTILE_WORKER"), testNativeLimits())
+	if err != nil {
+		t.Fatalf("new supervisor: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	resources, complete, err := supervisor.prepareLaunch(
+		ctx,
+		time.Now().Add(supervisor.limits.StartupTimeout),
+	)
+	if resources != nil ||
+		!complete ||
+		!errors.Is(err, context.Canceled) {
+		t.Fatalf("resources=%v complete=%t error=%v", resources, complete, err)
+	}
+}
+
+func TestCleanupSucceeded(t *testing.T) {
+	if !cleanupSucceeded(true, nil) {
+		t.Fatal("successful cleanup rejected")
+	}
+	if cleanupSucceeded(false, nil) || cleanupSucceeded(true, errors.New("cleanup")) {
+		t.Fatal("incomplete cleanup accepted")
 	}
 }
 
@@ -291,6 +343,53 @@ func TestEnvironmentUsesWindowsDirectory(t *testing.T) {
 	}
 }
 
+func TestEnvironmentRejectsInvalidTemporaryDirectory(t *testing.T) {
+	folder := filepath.Join(t.TempDir(), "worker")
+	if err := os.WriteFile(folder, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("write parent file: %v", err)
+	}
+	if _, err := environmentBlock(folder); err == nil {
+		t.Fatal("invalid temporary directory accepted")
+	}
+}
+
+func TestEnvironmentReportsWindowsDirectoryFailure(t *testing.T) {
+	t.Parallel()
+
+	expected := errors.New("directory unavailable")
+	_, err := environmentBlockWith(
+		t.TempDir(),
+		func() (string, error) {
+			return "", expected
+		},
+		os.MkdirAll,
+		windows.UTF16FromString,
+	)
+	if !errors.Is(err, expected) {
+		t.Fatalf("environmentBlockWith error = %v, want %v", err, expected)
+	}
+}
+
+func TestEnvironmentReportsEncodingFailure(t *testing.T) {
+	t.Parallel()
+
+	expected := errors.New("encoding unavailable")
+	_, err := environmentBlockWith(
+		t.TempDir(),
+		func() (string, error) {
+			return `C:\Windows`, nil
+		},
+		os.MkdirAll,
+		func(string) ([]uint16, error) {
+			return nil, expected
+		},
+	)
+	if !errors.Is(err, expected) ||
+		!strings.Contains(err.Error(), "encode worker environment") {
+		t.Fatalf("environmentBlockWith error = %v, want %v", err, expected)
+	}
+}
+
 func TestCloseHandleRetainsFailedHandle(t *testing.T) {
 	handle, err := windows.CreateEvent(nil, 0, 0, nil)
 	if err != nil {
@@ -357,6 +456,8 @@ func TestWaitMillisecondsRoundsUp(t *testing.T) {
 		timeout time.Duration
 		want    uint32
 	}{
+		{name: "zero", timeout: 0, want: 0},
+		{name: "negative", timeout: -time.Nanosecond, want: 0},
 		{name: "whole", timeout: time.Millisecond, want: 1},
 		{name: "sub-millisecond", timeout: time.Nanosecond, want: 1},
 		{name: "fractional", timeout: time.Millisecond + time.Nanosecond, want: 2},
@@ -366,6 +467,121 @@ func TestWaitMillisecondsRoundsUp(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if got := waitMilliseconds(test.timeout); got != test.want {
 				t.Fatalf("waitMilliseconds(%s) = %d, want %d", test.timeout, got, test.want)
+			}
+		})
+	}
+}
+
+type waitCleanupCase struct {
+	name         string
+	event        uint32
+	waitErr      error
+	emptyResults []bool
+	emptyErr     error
+	times        []time.Time
+	wantComplete bool
+	wantError    string
+	wantSleeps   int
+}
+
+func TestWaitCleanupProcessStates(t *testing.T) {
+	runWaitCleanupCases(t, []waitCleanupCase{
+		{
+			name:      "wait failure",
+			waitErr:   errors.New("wait"),
+			times:     []time.Time{time.Unix(0, 0)},
+			wantError: "wait for worker cleanup",
+		},
+		{
+			name:      "process timeout",
+			event:     uint32(windows.WAIT_TIMEOUT),
+			times:     []time.Time{time.Unix(0, 0)},
+			wantError: "worker cleanup deadline",
+		},
+		{
+			name:      "unexpected event",
+			event:     42,
+			times:     []time.Time{time.Unix(0, 0)},
+			wantError: "unexpected worker wait",
+		},
+	})
+}
+
+func TestWaitCleanupTreeStates(t *testing.T) {
+	runWaitCleanupCases(t, []waitCleanupCase{
+		{
+			name:         "empty tree",
+			event:        windows.WAIT_OBJECT_0,
+			emptyResults: []bool{true},
+			times:        []time.Time{time.Unix(0, 0)},
+			wantComplete: true,
+		},
+		{
+			name:         "job query failure",
+			event:        windows.WAIT_OBJECT_0,
+			emptyErr:     errors.New("job"),
+			times:        []time.Time{time.Unix(0, 0)},
+			wantError:    "job",
+			emptyResults: []bool{false},
+		},
+		{
+			name:         "tree becomes empty",
+			event:        windows.WAIT_OBJECT_0,
+			emptyResults: []bool{false, true},
+			times:        []time.Time{time.Unix(0, 0), time.Unix(0, 0)},
+			wantComplete: true,
+			wantSleeps:   1,
+		},
+		{
+			name:         "tree deadline",
+			event:        windows.WAIT_OBJECT_0,
+			emptyResults: []bool{false},
+			times:        []time.Time{time.Unix(0, 0), time.Unix(1, 0)},
+			wantError:    "process tree cleanup deadline",
+		},
+	})
+}
+
+func runWaitCleanupCases(t *testing.T, tests []waitCleanupCase) {
+	t.Helper()
+	process := windows.Handle(7)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			timeIndex := 0
+			now := func() time.Time {
+				index := min(timeIndex, len(test.times)-1)
+				timeIndex++
+				return test.times[index]
+			}
+			emptyIndex := 0
+			empty := func() (bool, error) {
+				index := min(emptyIndex, len(test.emptyResults)-1)
+				emptyIndex++
+				return test.emptyResults[index], test.emptyErr
+			}
+			sleeps := 0
+			complete, err := waitCleanupWith(
+				process,
+				time.Second,
+				func(handle windows.Handle, timeout uint32) (uint32, error) {
+					if handle != process || timeout != 1000 {
+						t.Fatalf("handle=%d timeout=%d", handle, timeout)
+					}
+					return test.event, test.waitErr
+				},
+				empty,
+				now,
+				func(time.Duration) { sleeps++ },
+			)
+			if complete != test.wantComplete || sleeps != test.wantSleeps {
+				t.Fatalf("complete=%t sleeps=%d", complete, sleeps)
+			}
+			if test.wantError == "" {
+				if err != nil {
+					t.Fatalf("error=%v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("error=%v, want %q", err, test.wantError)
 			}
 		})
 	}
@@ -387,6 +603,98 @@ func TestStreamCancelClosesUnwrappedHandle(t *testing.T) {
 	if err := windows.CloseHandle(handle); !errors.Is(err, windows.ERROR_INVALID_HANDLE) {
 		t.Fatalf("handle remains open: %v", err)
 	}
+}
+
+func TestStreamAndInputCancellationReportCloseFailures(t *testing.T) {
+	t.Run("wrapped input", func(t *testing.T) {
+		file := closedTemporaryFile(t)
+		writer := &inputWriter{file: file, done: make(chan struct{})}
+		if err := writer.cancel(); err == nil {
+			t.Fatal("closed input file was reported closed")
+		}
+	})
+	t.Run("unwrapped input", func(t *testing.T) {
+		handle := closedEvent(t)
+		writer := &inputWriter{handle: handle, done: make(chan struct{})}
+		if err := writer.cancel(); err == nil {
+			t.Fatal("closed input handle was reported closed")
+		}
+	})
+	t.Run("wrapped stream", func(t *testing.T) {
+		file := closedTemporaryFile(t)
+		reader := &streamReader{
+			name: "output", file: file, done: make(chan struct{}),
+		}
+		if err := reader.cancel(); err == nil {
+			t.Fatal("closed stream file was reported closed")
+		}
+	})
+	t.Run("unwrapped stream", func(t *testing.T) {
+		handle := closedEvent(t)
+		reader := &streamReader{
+			name: "output", handle: handle, done: make(chan struct{}),
+		}
+		if err := reader.cancel(); err == nil {
+			t.Fatal("closed stream handle was reported closed")
+		}
+	})
+}
+
+func TestStreamAndInputJoinPreserveCancellationFailure(t *testing.T) {
+	deadline := time.Now().Add(-time.Second)
+	t.Run("input", func(t *testing.T) {
+		writer := &inputWriter{
+			file: closedTemporaryFile(t), done: make(chan struct{}),
+		}
+		result := awaitInput(
+			writer,
+			make(chan inputResult),
+			deadline,
+			deadline,
+		)
+		if result.cleanupErr == nil ||
+			!strings.Contains(result.cleanupErr.Error(), "cleanup deadline exceeded") {
+			t.Fatalf("cleanup failure lost: %v", result.cleanupErr)
+		}
+	})
+	t.Run("stream", func(t *testing.T) {
+		reader := &streamReader{
+			name: "output", file: closedTemporaryFile(t),
+			done: make(chan struct{}),
+		}
+		result := awaitStream(
+			reader,
+			make(chan streamResult),
+			deadline,
+			deadline,
+		)
+		if result.cleanupErr == nil ||
+			!strings.Contains(result.cleanupErr.Error(), "close worker output") {
+			t.Fatalf("cleanup failure lost: %v", result.cleanupErr)
+		}
+	})
+}
+
+func closedTemporaryFile(t *testing.T) *os.File {
+	t.Helper()
+	file, err := os.CreateTemp(t.TempDir(), "closed")
+	if err != nil {
+		t.Fatalf("create temporary file: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close temporary file: %v", err)
+	}
+	return file
+}
+
+func closedEvent(t *testing.T) windows.Handle {
+	t.Helper()
+	handle, err := windows.CreateEvent(nil, 0, 0, nil)
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	closeNativeHandle(t, handle)
+	return handle
 }
 
 func TestStartupCleanupJoinsWorker(t *testing.T) {
@@ -431,6 +739,24 @@ func TestStartupCleanupJoinsWorker(t *testing.T) {
 				t.Fatalf("stop startup: %v", err)
 			}
 		})
+	}
+}
+
+func TestNativeStructureLayouts(t *testing.T) {
+	t.Parallel()
+	var capabilities securityCapabilities
+	if size := unsafe.Sizeof(capabilities); size != 24 {
+		t.Fatalf("security capabilities size = %d, want 24", size)
+	}
+	if offset := unsafe.Offsetof(capabilities.appContainerSID); offset != 0 {
+		t.Fatalf("AppContainer SID offset = %d, want 0", offset)
+	}
+	var accounting jobAccounting
+	if size := unsafe.Sizeof(accounting); size != 48 {
+		t.Fatalf("job accounting size = %d, want 48", size)
+	}
+	if offset := unsafe.Offsetof(accounting.activeProcesses); offset != 40 {
+		t.Fatalf("active process offset = %d, want 40", offset)
 	}
 }
 
@@ -527,7 +853,41 @@ func TestJobCloseReportsFailure(t *testing.T) {
 	}
 }
 
-func TestProcessCloseReportsThreadFailure(t *testing.T) {
+func TestProcessCloseReportsResourceFailures(t *testing.T) {
+	t.Run("thread", func(t *testing.T) {
+		process := testLaunchedProcess(t)
+		closeNativeHandle(t, process.info.Thread)
+		assertProcessCloseError(t, &process, "close worker thread")
+	})
+	t.Run("process", func(t *testing.T) {
+		process := testLaunchedProcess(t)
+		closeNativeHandle(t, process.info.Process)
+		assertProcessCloseError(t, &process, "close worker process")
+	})
+	t.Run("job", func(t *testing.T) {
+		process := testLaunchedProcess(t)
+		closeNativeHandle(t, process.job)
+		assertProcessCloseError(t, &process, "close worker job")
+	})
+	t.Run("image", func(t *testing.T) {
+		process := testLaunchedProcess(t)
+		if err := process.image.Close(); err != nil {
+			t.Fatalf("close image: %v", err)
+		}
+		assertProcessCloseError(t, &process, "close worker image")
+	})
+	t.Run("container", func(t *testing.T) {
+		process := testLaunchedProcess(t)
+		process.container = appContainer{
+			name:        "invalid\x00profile",
+			sidReleased: true,
+		}
+		assertProcessCloseError(t, &process, "delete AppContainer profile")
+	})
+}
+
+func testLaunchedProcess(t *testing.T) launchedProcess {
+	t.Helper()
 	thread, err := windows.CreateEvent(nil, 0, 0, nil)
 	if err != nil {
 		t.Fatalf("create thread handle: %v", err)
@@ -550,10 +910,7 @@ func TestProcessCloseReportsThreadFailure(t *testing.T) {
 		closeNativeHandle(t, job)
 		t.Fatalf("create image: %v", err)
 	}
-	if err := windows.CloseHandle(thread); err != nil {
-		t.Fatalf("close thread handle: %v", err)
-	}
-	process := launchedProcess{
+	return launchedProcess{
 		info: windows.ProcessInformation{
 			Process: processHandle,
 			Thread:  thread,
@@ -565,9 +922,17 @@ func TestProcessCloseReportsThreadFailure(t *testing.T) {
 			profileDeleted: true,
 		},
 	}
+}
+
+func assertProcessCloseError(
+	t *testing.T,
+	process *launchedProcess,
+	message string,
+) {
+	t.Helper()
 	if err := process.close(); err == nil ||
-		!strings.Contains(err.Error(), "close worker thread") {
-		t.Fatalf("thread cleanup failure hidden: %v", err)
+		!strings.Contains(err.Error(), message) {
+		t.Fatalf("%s failure hidden: %v", message, err)
 	}
 }
 
@@ -588,62 +953,5 @@ func TestStartRejectsInvalidImage(t *testing.T) {
 	}()
 	if _, err := startSuspended(container, filepath.Join(container.folder, "missing.exe"), pipes); err == nil {
 		t.Fatal("missing image was started")
-	}
-}
-
-func testNativeLimits() Limits {
-	return Limits{
-		InputBytes:     65_536,
-		OutputBytes:    8192,
-		ErrorBytes:     8192,
-		MemoryBytes:    67_108_864,
-		Processes:      1,
-		StartupTimeout: 10 * time.Second,
-		Timeout:        500 * time.Millisecond,
-		CleanupTimeout: time.Second,
-	}
-}
-
-func copyFile(t *testing.T, target, source string) {
-	t.Helper()
-	// #nosec G304,G703 -- both paths are test-controlled fixture locations.
-	data, err := os.ReadFile(source)
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	// #nosec G703 -- the destination is a test-owned temporary directory.
-	if err := os.WriteFile(target, data, 0o600); err != nil {
-		t.Fatalf("write fixture: %v", err)
-	}
-}
-
-func closeContainer(t *testing.T, container *appContainer) {
-	t.Helper()
-	if err := container.close(); err != nil {
-		t.Errorf("close container: %v", err)
-	}
-}
-
-func closeFile(t *testing.T, file *os.File) {
-	t.Helper()
-	if err := file.Close(); err != nil {
-		t.Errorf("close file: %v", err)
-	}
-}
-
-func nativePipe(t *testing.T) (windows.Handle, windows.Handle) {
-	t.Helper()
-	var read windows.Handle
-	var write windows.Handle
-	if err := windows.CreatePipe(&read, &write, nil, 0); err != nil {
-		t.Fatalf("create pipe: %v", err)
-	}
-	return read, write
-}
-
-func closeNativeHandle(t *testing.T, handle windows.Handle) {
-	t.Helper()
-	if err := windows.CloseHandle(handle); err != nil {
-		t.Errorf("close handle: %v", err)
 	}
 }

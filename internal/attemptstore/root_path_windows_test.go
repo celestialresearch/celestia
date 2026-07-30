@@ -74,3 +74,17 @@ func TestEvidenceVolumePolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestWindowsVolumeLookupsFailClosed(t *testing.T) {
+	t.Parallel()
+
+	if _, err := windowsDriveType("C:\x00\\"); err == nil {
+		t.Fatal("windowsDriveType() accepted an embedded NUL")
+	}
+	if _, err := windowsDeviceTarget("C:\x00"); err == nil {
+		t.Fatal("windowsDeviceTarget() accepted an embedded NUL")
+	}
+	if _, err := windowsDeviceTarget("?:"); err == nil {
+		t.Fatal("windowsDeviceTarget() accepted a nonexistent DOS device")
+	}
+}

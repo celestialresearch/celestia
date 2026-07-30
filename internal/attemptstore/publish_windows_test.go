@@ -33,6 +33,13 @@ func TestPublishFileRejectsInvalidPaths(t *testing.T) {
 	}
 }
 
+func removeTestPath(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("remove test path: %v", err)
+	}
+}
+
 func TestEvidenceACERejectsTruncatedSID(t *testing.T) {
 	userSID, err := currentUserSID()
 	if err != nil {
@@ -56,6 +63,23 @@ func TestPublishFileRejectsDuplicate(t *testing.T) {
 	}
 	if err := publishFile(source, target, root); !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("duplicate target accepted: %v", err)
+	}
+}
+
+func TestRemoveCreatedDirectoryRemovesOnlyOwnedDirectory(t *testing.T) {
+	parent := t.TempDir()
+	path := filepath.Join(parent, "created")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("create owned directory: %v", err)
+	}
+	if err := removeCreatedDirectory(path, parent); err != nil {
+		t.Fatalf("remove created directory: %v", err)
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("created directory remains: %v", err)
+	}
+	if info, err := os.Lstat(parent); err != nil || !info.IsDir() {
+		t.Fatalf("parent changed: info=%v error=%v", info, err)
 	}
 }
 
@@ -110,7 +134,7 @@ func TestRecordTempRejectsMissingDirectory(t *testing.T) {
 		t.Fatalf("create protected record temporary file: %v", err)
 	}
 	name := temporary.Name()
-	t.Cleanup(func() { _ = os.Remove(name) })
+	t.Cleanup(func() { removeTestPath(t, name) })
 	if err := temporary.Close(); err != nil {
 		t.Fatalf("close protected record temporary file: %v", err)
 	}
@@ -211,7 +235,7 @@ func TestSecureEvidenceFileRejectsReadOnlyDACL(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatalf("close record: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Remove(path) })
+	t.Cleanup(func() { removeTestPath(t, path) })
 	setReadOnlyDACL(t, path)
 	if err := secureEvidenceFile(path); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("read-only evidence file accepted: %v", err)
@@ -278,12 +302,12 @@ func TestSecureEvidenceFileRejectsHardLink(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatalf("close record: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Remove(path) })
+	t.Cleanup(func() { removeTestPath(t, path) })
 	link := filepath.Join(store.root, "record-link")
 	if err := os.Link(path, link); err != nil {
 		t.Fatalf("create hard link: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Remove(link) })
+	t.Cleanup(func() { removeTestPath(t, link) })
 	if err := secureEvidenceFile(path); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("hard-linked evidence file accepted: %v", err)
 	}

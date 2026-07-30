@@ -179,7 +179,7 @@ func TestStageRejectsLinkedLockFile(t *testing.T) {
 		accepted.Request.AttemptID+".lock",
 	)
 	if err := os.Link(source, target); err != nil {
-		t.Skipf("hard links unavailable: %v", err)
+		t.Fatalf("create hard-link fixture: %v", err)
 	}
 	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("linked lock accepted: %v", err)
@@ -217,24 +217,114 @@ func TestRecoverAfterOwnerProcessDeath(t *testing.T) {
 	}
 	scanner := bufio.NewScanner(stdout)
 	if !scanner.Scan() || scanner.Text() != "staged" {
-		_ = command.Process.Kill()
-		_ = command.Wait()
-		t.Fatalf("helper did not stage: %v", scanner.Err())
+		t.Fatalf(
+			"helper did not stage: %v; cleanup: %v",
+			scanner.Err(),
+			stopLockHelper(command),
+		)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, "owner still active"); !errors.Is(err, ErrActive) {
-		_ = command.Process.Kill()
-		_ = command.Wait()
-		t.Fatalf("recovered before owner death: %v", err)
+		t.Fatalf(
+			"recovered before owner death: %v; cleanup: %v",
+			err,
+			stopLockHelper(command),
+		)
 	}
-	_ = command.Process.Kill()
-	if err := command.Wait(); err == nil {
-		t.Fatal("killed helper exited successfully")
+	if err := stopLockHelper(command); err != nil {
+		t.Fatalf("stop helper: %v", err)
 	}
 	if err := store.Recover(accepted.Request.AttemptID, "owner process ended"); err != nil {
 		t.Fatalf("recover after owner death: %v", err)
 	}
 	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
 		t.Fatalf("inspect recovered attempt: %v", err)
+	}
+}
+
+func TestRecoverAfterTerminalPublicationCrashPoints(t *testing.T) {
+	tests := []struct {
+		name      string
+		mode      string
+		published bool
+	}{
+		{name: "admitted", mode: "crash-admitted"},
+		{name: "observation", mode: "crash-observation"},
+		{name: "receipt", mode: "crash-receipt"},
+		{name: "directory", mode: "crash-directory"},
+		{name: "publication", mode: "crash-publication", published: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store, accepted, _ := lockProcessFixture(t)
+			command := lockHelperCommand(t.Context(), test.mode, store.root)
+			output, err := command.CombinedOutput()
+			if err == nil {
+				t.Fatal("crash helper exited successfully")
+			}
+			if len(output) != 0 {
+				t.Fatalf("crash helper output: %s", output)
+			}
+			if test.published {
+				assertPublishedCrash(t, store, accepted.Request.AttemptID)
+				return
+			}
+			if err := store.Recover(
+				accepted.Request.AttemptID, "abrupt owner death",
+			); err != nil {
+				t.Fatalf("Recover() error = %v", err)
+			}
+			if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
+				t.Fatalf("Inspect() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestRecoverCleansUncommittedCrashPoints(t *testing.T) {
+	tests := []struct {
+		mode        string
+		recoverable bool
+	}{
+		{mode: "crash-lock"},
+		{mode: "crash-pending-directory", recoverable: true},
+		{mode: "crash-admitted-before-marker", recoverable: true},
+	}
+	for _, test := range tests {
+		mode := test.mode
+		t.Run(mode, func(t *testing.T) {
+			store, accepted, admittedAt := lockProcessFixture(t)
+			command := lockHelperCommand(t.Context(), mode, store.root)
+			output, err := command.CombinedOutput()
+			if err == nil || len(output) != 0 {
+				t.Fatalf("crash helper error=%v output=%s", err, output)
+			}
+			recoveryErr := store.Recover(
+				accepted.Request.AttemptID, "uncommitted stage",
+			)
+			if test.recoverable && !errors.Is(recoveryErr, ErrUncommitted) {
+				t.Fatalf("Recover() error = %v", recoveryErr)
+			}
+			if !test.recoverable && !errors.Is(recoveryErr, os.ErrNotExist) {
+				t.Fatalf("Recover() error = %v", recoveryErr)
+			}
+			attempt, err := store.Stage(accepted, admittedAt)
+			if err != nil {
+				t.Fatalf("Stage() after cleanup error = %v", err)
+			}
+			cleanupAttempt(t, attempt)
+		})
+	}
+}
+
+func assertPublishedCrash(t *testing.T, store *Store, attemptID string) {
+	t.Helper()
+	if err := store.Recover(attemptID, "already published"); !errors.Is(
+		err, ErrDuplicate,
+	) {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if _, err := store.Inspect(attemptID); err != nil {
+		t.Fatalf("Inspect() error = %v", err)
 	}
 }
 
@@ -261,16 +351,131 @@ func TestAttemptLockHelper(t *testing.T) {
 			t.Fatalf("stage: %v", err)
 		}
 		defer func() {
-			_ = attempt.Close()
+			if err := attempt.Close(); err != nil {
+				t.Errorf("close staged attempt: %v", err)
+			}
 		}()
 		fmt.Println("staged")
 		interrupt := make(chan os.Signal, 1)
 		signal.Notify(interrupt, os.Interrupt)
 		defer signal.Stop(interrupt)
 		<-interrupt
+	case "crash-admitted", "crash-observation", "crash-receipt",
+		"crash-directory", "crash-publication":
+		runCrashHelper(t, store, accepted, admittedAt, mode)
+	case "crash-lock", "crash-pending-directory", "crash-admitted-before-marker":
+		runUncommittedCrashHelper(t, store, accepted, admittedAt, mode)
 	default:
 		t.Fatalf("unknown helper mode %q", mode)
 	}
+}
+
+func TestAttemptLockHelperRejectsUnknownMode(t *testing.T) {
+	store, _, _ := lockProcessFixture(t)
+	command := lockHelperCommand(t.Context(), "unknown", store.root)
+	output, err := command.CombinedOutput()
+	if err == nil {
+		t.Fatal("unknown helper mode succeeded")
+	}
+	if !strings.Contains(string(output), `unknown helper mode "unknown"`) {
+		t.Fatalf("unexpected helper output: %q", output)
+	}
+}
+
+func stopLockHelper(command *exec.Cmd) error {
+	killErr := command.Process.Kill()
+	if errors.Is(killErr, os.ErrProcessDone) {
+		killErr = nil
+	}
+	waitErr := command.Wait()
+	if exitErr, ok := errors.AsType[*exec.ExitError](waitErr); ok &&
+		exitErr != nil {
+		waitErr = nil
+	}
+	return errors.Join(killErr, waitErr)
+}
+
+func runUncommittedCrashHelper(
+	t *testing.T,
+	store *Store,
+	accepted urladmission.Accepted,
+	admittedAt time.Time,
+	mode string,
+) {
+	t.Helper()
+	request, err := validateAccepted(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("validate accepted: %v", err)
+	}
+	if _, err := store.acquireAttemptLock(request.AttemptID, true); err != nil {
+		t.Fatalf("acquire lock: %v", err)
+	}
+	if mode == "crash-lock" {
+		os.Exit(73)
+	}
+	_, path, err := store.prepareAttemptDirectories(
+		request.AttemptID, createEvidenceDirectory,
+	)
+	if err != nil {
+		t.Fatalf("prepare directories: %v", err)
+	}
+	if mode == "crash-admitted-before-marker" {
+		if err := writeRecord(
+			path, admittedFile,
+			admittedRecord(request, accepted.Frame, admittedAt),
+		); err != nil {
+			t.Fatalf("write admitted: %v", err)
+		}
+	}
+	os.Exit(73)
+}
+
+func runCrashHelper(
+	t *testing.T,
+	store *Store,
+	accepted urladmission.Accepted,
+	admittedAt time.Time,
+	mode string,
+) {
+	t.Helper()
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if mode == "crash-admitted" {
+		os.Exit(73)
+	}
+	observation := testObservationFor(t, accepted)
+	if err := writeOrMatchRecord(
+		attempt.path, observationFile, observation,
+	); err != nil {
+		t.Fatalf("write observation: %v", err)
+	}
+	if mode == "crash-observation" {
+		os.Exit(73)
+	}
+	if err := writeOrMatchReceipt(
+		attempt.path, accepted.Request.AttemptID, "observation",
+		observationFile, observation.TerminalStatus,
+	); err != nil {
+		t.Fatalf("write receipt: %v", err)
+	}
+	if mode == "crash-receipt" {
+		os.Exit(73)
+	}
+	if _, err := attempt.publishDirectory(); err != nil {
+		t.Fatalf("publish directory: %v", err)
+	}
+	if mode == "crash-directory" {
+		os.Exit(73)
+	}
+	if err := publishMarker(
+		store.finalPath(accepted.Request.AttemptID),
+		accepted.Request.AttemptID,
+	); err != nil {
+		t.Fatalf("publish marker: %v", err)
+	}
+	os.Exit(73)
 }
 
 func lockHelperCommand(ctx context.Context, mode, root string) *exec.Cmd {

@@ -13,7 +13,12 @@
 
 package attemptstore
 
-import "testing"
+import (
+	"bytes"
+	"errors"
+	"io"
+	"testing"
+)
 
 func TestRecordTempNameSupportsRecovery(t *testing.T) {
 	t.Parallel()
@@ -24,5 +29,44 @@ func TestRecordTempNameSupportsRecovery(t *testing.T) {
 	}
 	if !temporaryRecordName(admittedFile, name) {
 		t.Fatalf("recordTempName() = %q is not recoverable", name)
+	}
+}
+
+func TestRecordTempNameRejectsEntropyFailure(t *testing.T) {
+	t.Parallel()
+
+	for _, randomness := range []struct {
+		name   string
+		reader *bytes.Reader
+		want   error
+	}{
+		{name: "empty", reader: bytes.NewReader(nil), want: io.EOF},
+		{
+			name:   "short",
+			reader: bytes.NewReader(make([]byte, 15)),
+			want:   io.ErrUnexpectedEOF,
+		},
+	} {
+		t.Run(randomness.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := recordTempNameWith(
+				admittedFile,
+				randomness.reader,
+			); !errors.Is(err, randomness.want) {
+				t.Fatalf("entropy error=%v, want %v", err, randomness.want)
+			}
+		})
+	}
+}
+
+func TestTemporaryRecordNameRejectsInvalidHex(t *testing.T) {
+	for _, candidate := range []string{
+		"." + admittedFile + "." + "0000000000000000000000000000000/",
+		"." + admittedFile + "." + "0000000000000000000000000000000A",
+		"." + admittedFile + "." + "gggggggggggggggggggggggggggggggg",
+	} {
+		if temporaryRecordName(admittedFile, candidate) {
+			t.Fatalf("invalid temporary name accepted: %q", candidate)
+		}
 	}
 }

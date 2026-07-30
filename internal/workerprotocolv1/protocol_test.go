@@ -162,8 +162,44 @@ func TestDecodeResponseRejectsCorrelation(t *testing.T) {
 
 	request := testRequest()
 	data := []byte(validResponseJSON(t, request))
-	if _, err := DecodeResponse(data, Correlation{}, 0); !errors.Is(err, ErrProtocol) {
-		t.Fatalf("DecodeResponse() error = %v, want ErrProtocol", err)
+	correlation := testCorrelation(t, request)
+	tests := []struct {
+		name        string
+		correlation Correlation
+	}{
+		{name: "all fields", correlation: Correlation{}},
+		{
+			name: "attempt identifier",
+			correlation: Correlation{
+				attemptID: base64.RawURLEncoding.EncodeToString(
+					bytes.Repeat([]byte{0xC3}, 32),
+				),
+				nonce:     correlation.nonce,
+				mediaType: correlation.mediaType,
+			},
+		},
+		{
+			name: "request nonce",
+			correlation: Correlation{
+				attemptID: correlation.attemptID,
+				nonce: base64.RawURLEncoding.EncodeToString(
+					bytes.Repeat([]byte{0xD4}, 32),
+				),
+				mediaType: correlation.mediaType,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := DecodeResponse(
+				data, test.correlation, 0,
+			); !errors.Is(err, ErrProtocol) {
+				t.Fatalf(
+					"DecodeResponse() error = %v, want ErrProtocol", err,
+				)
+			}
+		})
 	}
 }
 
@@ -298,6 +334,13 @@ func TestDecodeRequestRejects(t *testing.T) {
 		"",
 		string([]byte{0xff}),
 		" " + frame,
+		strings.Replace(
+			frame,
+			`"input_length":21`,
+			`"input_length":999999999999999999999999999999999999`,
+			1,
+		),
+		strings.Replace(frame, `"mode":"defang"`, `"mode":"invalid"`, 1),
 		strings.Replace(frame, `"url-reference"`, `"\ud800"`, 1),
 		strings.Replace(frame, `"url-reference"`, `"\udc00"`, 1),
 		strings.Replace(frame, `"protocol_version":1`, `"protocol_version":-0`, 1),
@@ -339,6 +382,70 @@ func TestHasUnpairedSurrogate(t *testing.T) {
 			t.Parallel()
 			if got := !hasUnpairedSurrogate([]byte(test.data)); got != test.paired {
 				t.Fatalf("paired = %t, want %t", got, test.paired)
+			}
+		})
+	}
+}
+
+func TestInspectEscapedRune(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		data    string
+		index   int
+		next    int
+		invalid bool
+	}{
+		{"ordinary escape", `\n`, 0, 1, false},
+		{"non-surrogate", `\u1234`, 0, 5, false},
+		{"invalid hex", `\u12x4`, 0, 5, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			next, invalid := inspectEscapedRune([]byte(test.data), test.index)
+			if next != test.next || invalid != test.invalid {
+				t.Fatalf(
+					"inspectEscapedRune() = (%d, %t), want (%d, %t)",
+					next,
+					invalid,
+					test.next,
+					test.invalid,
+				)
+			}
+		})
+	}
+}
+
+func TestDecodeHex4(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		data  string
+		value uint16
+		ok    bool
+	}{
+		{"wrong length", "123", 0, false},
+		{"decimal", "1234", 0x1234, true},
+		{"lowercase", "abcf", 0xabcf, true},
+		{"uppercase", "ABCF", 0xabcf, true},
+		{"invalid", "12x4", 0, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			value, ok := decodeHex4([]byte(test.data))
+			if value != test.value || ok != test.ok {
+				t.Fatalf(
+					"decodeHex4(%q) = (%#x, %t), want (%#x, %t)",
+					test.data,
+					value,
+					ok,
+					test.value,
+					test.ok,
+				)
 			}
 		})
 	}
@@ -415,25 +522,33 @@ func TestProtocolScannerErrors(t *testing.T) {
 
 func unexpectedDelimiter() error {
 	decoder := json.NewDecoder(bytes.NewBufferString(`[]`))
-	_, _ = decoder.Token()
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
 	return scanValue(decoder, 0)
 }
 
 func invalidObjectKey() error {
 	decoder := json.NewDecoder(bytes.NewBufferString(`[tru`))
-	_, _ = decoder.Token()
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
 	return scanObject(decoder, 0)
 }
 
 func invalidObjectValue() error {
 	decoder := json.NewDecoder(bytes.NewBufferString(`{"a"`))
-	_, _ = decoder.Token()
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
 	return scanObject(decoder, 0)
 }
 
 func wrongDelimiter() error {
 	decoder := json.NewDecoder(bytes.NewBufferString(`[]`))
-	_, _ = decoder.Token()
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
 	return expectDelimiter(decoder, '}')
 }
 

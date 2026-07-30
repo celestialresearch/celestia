@@ -44,10 +44,13 @@ durable terminal outcome.
   are not qualified by v1.
 - Each attempt has a permanent lock file. Its operating-system exclusive lock
   is held from staging through terminal publication.
-- Writers create a permanent ownership marker before staging. A missing lock or
-  marker is corruption.
-- A staging failure before `admitted.json` is durable burns the identity but
-  does not expose it as an inspectable or recoverable attempt.
+- Writers publish `admitted.json` before creating the permanent ownership
+  marker. The marker is the staging commit point.
+- An error after marker object creation retains the pending admitted bundle for
+  recovery; it does not roll back across the possible commit point.
+- Recovery holds the attempt lock while removing a pending directory that has
+  no ownership marker and returns `ErrUncommitted`. The identity may then be
+  staged again. A missing marker on a committed attempt is corruption.
 - Recovery uses a non-blocking acquisition and refuses an active attempt.
   Process death releases the lock without a timestamp or stale-age guess.
 - Lock files are never replaced or removed, preventing ownership from splitting

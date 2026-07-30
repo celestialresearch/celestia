@@ -399,15 +399,22 @@ per-attempt lock file provides the cross-process ownership identity. Execution
 holds its operating-system lock from staging through publication. Recovery
 fails while that lock is held and may proceed after process death releases it.
 Lock files are not deleted because replacing a locked inode would split
-ownership. A permanent ownership marker makes a missing lock corrupt. Recovery
-may only:
+ownership. The permanent ownership marker is created only after
+`admitted.json` is durable and marks the staging commit point. Recovery may
+only:
 - validate and publish a complete pending attempt;
-- retain and report an incomplete pending attempt;
+- remove an uncommitted pending stage while holding its attempt lock;
+- retain and report a committed incomplete pending attempt;
 - report a corrupt pending or published attempt.
 
-If staging fails before `admitted.json` is durable, the permanent ownership
-marker burns the generated identity but the result does not expose that identity
-as inspectable or recoverable.
+If marker object creation succeeds but its security, synchronisation or close
+step reports an error, staging retains the pending admitted bundle for
+recovery. It does not delete state across that possible commit point.
+
+If interruption leaves a pending directory without the ownership marker,
+recovery removes it and returns `ErrUncommitted`. The identity may then be
+staged again. A marker without the corresponding pending or published attempt
+remains corrupt.
 
 If execution succeeds but publication fails, the result is `indeterminate`.
 The CLI may display a clearly labelled non-durable output but must not describe

@@ -78,27 +78,141 @@ type inputResult struct {
 }
 
 type jobAccounting struct {
-	totalUserTime             int64
-	totalKernelTime           int64
-	thisPeriodTotalUserTime   int64
-	thisPeriodTotalKernelTime int64
-	totalPageFaultCount       uint32
-	totalProcesses            uint32
-	activeProcesses           uint32
-	totalTerminatedProcesses  uint32
+	_               int64
+	_               int64
+	_               int64
+	_               int64
+	_               uint32
+	_               uint32
+	activeProcesses uint32
+	_               uint32
+}
+
+type launchPreparationOperations struct {
+	createContainer func() (appContainer, error)
+	stageImage      func(string, string) (*os.File, [32]byte, string, bool, error)
+	newPipes        func() (pipeSet, bool, error)
+	createJob       func(Limits) (windows.Handle, bool, error)
+}
+
+type processStartOperations struct {
+	start      func(appContainer, string, pipeSet) (windows.ProcessInformation, error)
+	assign     func(windows.Handle, windows.Handle) error
+	closePipes func(*pipeSet) error
+	resume     func(windows.Handle) (uint32, error)
+}
+
+type suspendedProcessOperations struct {
+	newAttributes func(uint32) (*windows.ProcThreadAttributeListContainer, error)
+	update        func(*windows.ProcThreadAttributeListContainer, uintptr, unsafe.Pointer, uintptr) error
+	encode        func(string) (*uint16, error)
+	environment   func(string) ([]uint16, error)
+	create        func(
+		*uint16,
+		*uint16,
+		*windows.SecurityAttributes,
+		*windows.SecurityAttributes,
+		bool,
+		uint32,
+		*uint16,
+		*uint16,
+		*windows.StartupInfo,
+		*windows.ProcessInformation,
+	) error
+}
+
+type startupStopOperations struct {
+	closeChild       func(*pipeSet) error
+	terminateJob     func(windows.Handle, uint32) error
+	terminateProcess func(windows.Handle, uint32) error
+	wait             func(windows.Handle, windows.Handle, time.Duration) (bool, error)
+	closeHandle      func(windows.Handle) error
+}
+
+type supervisorCreationOperations struct {
+	open  func(string) (*os.File, error)
+	hash  func(*os.File) ([32]byte, error)
+	close func(*os.File) error
+}
+
+func defaultLaunchPreparationOperations() launchPreparationOperations {
+	return launchPreparationOperations{
+		createContainer: createContainerName,
+		stageImage:      stageImage,
+		newPipes:        newPipes,
+		createJob:       createJob,
+	}
+}
+
+func defaultProcessStartOperations() processStartOperations {
+	return processStartOperations{
+		start:      startSuspended,
+		assign:     windows.AssignProcessToJobObject,
+		closePipes: (*pipeSet).closeChildEnds,
+		resume:     windows.ResumeThread,
+	}
+}
+
+func defaultSuspendedProcessOperations() suspendedProcessOperations {
+	return suspendedProcessOperations{
+		newAttributes: windows.NewProcThreadAttributeList,
+		update: func(
+			attributes *windows.ProcThreadAttributeListContainer,
+			attribute uintptr,
+			value unsafe.Pointer,
+			size uintptr,
+		) error {
+			return attributes.Update(attribute, value, size)
+		},
+		encode:      windows.UTF16PtrFromString,
+		environment: environmentBlock,
+		create:      windows.CreateProcess,
+	}
+}
+
+func defaultStartupStopOperations() startupStopOperations {
+	return startupStopOperations{
+		closeChild:       (*pipeSet).closeChildEnds,
+		terminateJob:     windows.TerminateJobObject,
+		terminateProcess: windows.TerminateProcess,
+		wait:             waitCleanup,
+		closeHandle:      windows.CloseHandle,
+	}
+}
+
+func defaultSupervisorCreationOperations() supervisorCreationOperations {
+	return supervisorCreationOperations{
+		open: openLocalImage,
+		hash: hashFile,
+		close: func(file *os.File) error {
+			return file.Close()
+		},
+	}
 }
 
 func newSupervisor(workerPath string, limits Limits) (*Supervisor, error) {
+	return newSupervisorWith(
+		workerPath,
+		limits,
+		defaultSupervisorCreationOperations(),
+	)
+}
+
+func newSupervisorWith(
+	workerPath string,
+	limits Limits,
+	operations supervisorCreationOperations,
+) (*Supervisor, error) {
 	if !validWorkerPath(workerPath) || !validLimits(limits) {
 		return nil, fmt.Errorf("%w: worker path or limits", ErrInvalid)
 	}
 	cleanPath := filepath.Clean(workerPath)
-	worker, err := openLocalImage(cleanPath)
+	worker, err := operations.open(cleanPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w: open worker: %w", ErrInvalid, err)
 	}
-	hash, hashErr := hashFile(worker)
-	closeErr := worker.Close()
+	hash, hashErr := operations.hash(worker)
+	closeErr := operations.close(worker)
 	if err := errors.Join(hashErr, closeErr); err != nil {
 		return nil, fmt.Errorf("%w: measure worker: %w", ErrInvalid, err)
 	}
@@ -211,7 +325,15 @@ func (supervisor *Supervisor) prepareLaunch(
 	ctx context.Context,
 	startupDeadline time.Time,
 ) (*launchResources, bool, error) {
-	container, err := createContainerName()
+	return supervisor.prepareLaunchWith(ctx, startupDeadline, defaultLaunchPreparationOperations())
+}
+
+func (supervisor *Supervisor) prepareLaunchWith(
+	ctx context.Context,
+	startupDeadline time.Time,
+	operations launchPreparationOperations,
+) (*launchResources, bool, error) {
+	container, err := operations.createContainer()
 	if err != nil {
 		if container.name != "" {
 			cleanupErr := container.close()
@@ -223,7 +345,7 @@ func (supervisor *Supervisor) prepareLaunch(
 		cleanupErr := container.close()
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
-	image, hash, imagePath, imageCleanupComplete, err := stageImage(
+	image, hash, imagePath, imageCleanupComplete, err := operations.stageImage(
 		container.folder,
 		supervisor.workerPath,
 	)
@@ -243,7 +365,7 @@ func (supervisor *Supervisor) prepareLaunch(
 			cleanupErr == nil,
 			errors.Join(errors.New("configured worker identity changed"), cleanupErr)
 	}
-	pipes, pipeCleanupComplete, err := newPipes()
+	pipes, pipeCleanupComplete, err := operations.newPipes()
 	if err != nil {
 		cleanupErr := errors.Join(image.Close(), container.close())
 		return nil,
@@ -254,7 +376,7 @@ func (supervisor *Supervisor) prepareLaunch(
 		cleanupErr := errors.Join(pipes.close(), image.Close(), container.close())
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
-	job, jobCleanupComplete, err := createJob(supervisor.limits)
+	job, jobCleanupComplete, err := operations.createJob(supervisor.limits)
 	if err != nil {
 		cleanupErr := errors.Join(pipes.close(), image.Close(), container.close())
 		return nil,
@@ -293,7 +415,15 @@ func (resources *launchResources) start(
 	ctx context.Context,
 	startupDeadline time.Time,
 ) (*launchedProcess, bool, error) {
-	info, err := startSuspended(resources.container, resources.imagePath, resources.pipes)
+	return resources.startWith(ctx, startupDeadline, defaultProcessStartOperations())
+}
+
+func (resources *launchResources) startWith(
+	ctx context.Context,
+	startupDeadline time.Time,
+	operations processStartOperations,
+) (*launchedProcess, bool, error) {
+	info, err := operations.start(resources.container, resources.imagePath, resources.pipes)
 	if err != nil {
 		return nil, true, err
 	}
@@ -301,14 +431,14 @@ func (resources *launchResources) start(
 		cleanupErr := resources.stopStart(info, false)
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
-	if err := windows.AssignProcessToJobObject(resources.job, info.Process); err != nil {
+	if err := operations.assign(resources.job, info.Process); err != nil {
 		stopErr := resources.stopStart(info, false)
 		return nil, stopErr == nil, errors.Join(
 			fmt.Errorf("assign worker job: %w", err),
 			stopErr,
 		)
 	}
-	if err := resources.pipes.closeChildEnds(); err != nil {
+	if err := operations.closePipes(&resources.pipes); err != nil {
 		stopErr := resources.stopStart(info, true)
 		return nil, stopErr == nil, errors.Join(err, stopErr)
 	}
@@ -317,7 +447,7 @@ func (resources *launchResources) start(
 		return nil, cleanupErr == nil, errors.Join(err, cleanupErr)
 	}
 	resumedAt := time.Now()
-	if _, err := windows.ResumeThread(info.Thread); err != nil {
+	if _, err := operations.resume(info.Thread); err != nil {
 		stopErr := resources.stopStart(info, true)
 		return nil, stopErr == nil, errors.Join(
 			fmt.Errorf("resume worker: %w", err),
@@ -338,14 +468,22 @@ func (resources *launchResources) stopStart(
 	info windows.ProcessInformation,
 	assigned bool,
 ) error {
-	pipeErr := resources.pipes.closeChildEnds()
+	return resources.stopStartWith(info, assigned, defaultStartupStopOperations())
+}
+
+func (resources *launchResources) stopStartWith(
+	info windows.ProcessInformation,
+	assigned bool,
+	operations startupStopOperations,
+) error {
+	pipeErr := operations.closeChild(&resources.pipes)
 	var stopErr error
 	if assigned {
-		stopErr = windows.TerminateJobObject(resources.job, 1)
+		stopErr = operations.terminateJob(resources.job, 1)
 	} else {
-		stopErr = windows.TerminateProcess(info.Process, 1)
+		stopErr = operations.terminateProcess(info.Process, 1)
 	}
-	complete, waitErr := waitCleanup(
+	complete, waitErr := operations.wait(
 		info.Process,
 		resources.job,
 		resources.cleanup,
@@ -357,8 +495,8 @@ func (resources *launchResources) stopStart(
 		pipeErr,
 		stopErr,
 		waitErr,
-		windows.CloseHandle(info.Thread),
-		windows.CloseHandle(info.Process),
+		operations.closeHandle(info.Thread),
+		operations.closeHandle(info.Process),
 	)
 }
 
@@ -375,30 +513,44 @@ func (resources *launchResources) close() error {
 }
 
 func createContainerName() (appContainer, error) {
+	return createContainerNameWith(rand.Reader, createContainer)
+}
+
+func createContainerNameWith(
+	randomSource io.Reader,
+	create func(string) (appContainer, error),
+) (appContainer, error) {
 	var random [16]byte
-	if _, err := io.ReadFull(rand.Reader, random[:]); err != nil {
+	if _, err := io.ReadFull(randomSource, random[:]); err != nil {
 		return appContainer{}, fmt.Errorf("generate AppContainer identity: %w", err)
 	}
-	return createContainer("celestia.worker." + hex.EncodeToString(random[:]))
+	return create("celestia.worker." + hex.EncodeToString(random[:]))
 }
 
 func newPipes() (pipeSet, bool, error) {
+	return newPipesWith(windows.CreatePipe, windows.SetHandleInformation)
+}
+
+func newPipesWith(
+	create func(*windows.Handle, *windows.Handle, *windows.SecurityAttributes, uint32) error,
+	restrict func(windows.Handle, uint32, uint32) error,
+) (pipeSet, bool, error) {
 	var pipes pipeSet
 	security := windows.SecurityAttributes{
 		Length:        uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
 		InheritHandle: 1,
 	}
-	if err := windows.CreatePipe(&pipes.stdinRead, &pipes.stdinWrite, &security, 0); err != nil {
+	if err := create(&pipes.stdinRead, &pipes.stdinWrite, &security, 0); err != nil {
 		return pipes, true, fmt.Errorf("create stdin pipe: %w", err)
 	}
-	if err := windows.CreatePipe(&pipes.stdoutRead, &pipes.stdoutWrite, &security, 0); err != nil {
+	if err := create(&pipes.stdoutRead, &pipes.stdoutWrite, &security, 0); err != nil {
 		return failedPipes(pipes, fmt.Errorf("create stdout pipe: %w", err))
 	}
-	if err := windows.CreatePipe(&pipes.stderrRead, &pipes.stderrWrite, &security, 0); err != nil {
+	if err := create(&pipes.stderrRead, &pipes.stderrWrite, &security, 0); err != nil {
 		return failedPipes(pipes, fmt.Errorf("create stderr pipe: %w", err))
 	}
 	for _, handle := range []windows.Handle{pipes.stdinWrite, pipes.stdoutRead, pipes.stderrRead} {
-		if err := windows.SetHandleInformation(handle, windows.HANDLE_FLAG_INHERIT, 0); err != nil {
+		if err := restrict(handle, windows.HANDLE_FLAG_INHERIT, 0); err != nil {
 			return failedPipes(pipes, fmt.Errorf("restrict parent pipe: %w", err))
 		}
 	}
@@ -415,40 +567,51 @@ func startSuspended(
 	imagePath string,
 	pipes pipeSet,
 ) (windows.ProcessInformation, error) {
-	attributes, err := windows.NewProcThreadAttributeList(2)
+	return startSuspendedWith(container, imagePath, pipes, defaultSuspendedProcessOperations())
+}
+
+func startSuspendedWith(
+	container appContainer,
+	imagePath string,
+	pipes pipeSet,
+	operations suspendedProcessOperations,
+) (windows.ProcessInformation, error) {
+	attributes, err := operations.newAttributes(2)
 	if err != nil {
 		return windows.ProcessInformation{}, fmt.Errorf("create process attributes: %w", err)
 	}
 	defer attributes.Delete()
 	capabilities := securityCapabilities{appContainerSID: container.sid}
-	if err := attributes.Update(
+	if err := operations.update(
+		attributes,
 		securityCapabilitiesAttribute,
-		unsafe.Pointer(&capabilities), // #nosec G103 -- Win32 reads the typed capability structure.
+		nativePointer(&capabilities),
 		unsafe.Sizeof(capabilities),
 	); err != nil {
 		return windows.ProcessInformation{}, fmt.Errorf("set AppContainer: %w", err)
 	}
 	handles := []windows.Handle{pipes.stdinRead, pipes.stdoutWrite, pipes.stderrWrite}
-	if err := attributes.Update(
+	if err := operations.update(
+		attributes,
 		windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-		unsafe.Pointer(&handles[0]), // #nosec G103 -- Win32 reads the contiguous handle list.
+		nativePointer(&handles[0]),
 		uintptr(len(handles))*unsafe.Sizeof(handles[0]),
 	); err != nil {
 		return windows.ProcessInformation{}, fmt.Errorf("set inherited handles: %w", err)
 	}
-	image, err := windows.UTF16PtrFromString(imagePath)
+	image, err := operations.encode(imagePath)
 	if err != nil {
 		return windows.ProcessInformation{}, fmt.Errorf("encode worker image path: %w", err)
 	}
-	command, err := windows.UTF16PtrFromString(windows.EscapeArg(imagePath))
+	command, err := operations.encode(windows.EscapeArg(imagePath))
 	if err != nil {
 		return windows.ProcessInformation{}, fmt.Errorf("encode worker command line: %w", err)
 	}
-	directory, err := windows.UTF16PtrFromString(container.folder)
+	directory, err := operations.encode(container.folder)
 	if err != nil {
 		return windows.ProcessInformation{}, fmt.Errorf("encode worker directory: %w", err)
 	}
-	environment, err := environmentBlock(container.folder)
+	environment, err := operations.environment(container.folder)
 	if err != nil {
 		return windows.ProcessInformation{}, err
 	}
@@ -463,7 +626,7 @@ func startSuspended(
 		ProcThreadAttributeList: attributes.List(),
 	}
 	var info windows.ProcessInformation
-	err = windows.CreateProcess(
+	err = operations.create(
 		image,
 		command,
 		nil,

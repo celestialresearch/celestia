@@ -14,10 +14,11 @@ package attemptstore
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
-func TestStageFailurePreservesAttemptOwnership(t *testing.T) {
+func TestStageFailureBeforeCommitCanRetry(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
 	request, err := validateAccepted(accepted, admittedAt)
@@ -43,6 +44,7 @@ func TestStageFailurePreservesAttemptOwnership(t *testing.T) {
 		admittedAt,
 		owner,
 		func(string, string, any) error { return writeErr },
+		store.createOwnershipMarkerState,
 	)
 	if !errors.Is(err, writeErr) {
 		t.Fatalf("stage failure: %v", err)
@@ -51,14 +53,93 @@ func TestStageFailurePreservesAttemptOwnership(t *testing.T) {
 	if err := owner.release(); err != nil {
 		t.Fatalf("release failed attempt: %v", err)
 	}
-	if marker, err := store.hasOwnershipMarker(request.AttemptID); err != nil || !marker {
-		t.Fatalf("ownership marker lost: present=%t error=%v", marker, err)
+	if marker, err := store.hasOwnershipMarker(request.AttemptID); err != nil || marker {
+		t.Fatalf("ownership marker present=%t error=%v", marker, err)
 	}
 	if _, err := os.Lstat(store.pendingPath(request.AttemptID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("pending attempt retained: %v", err)
 	}
-	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
-		t.Fatalf("failed attempt reused: %v", err)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("retry Stage() error = %v", err)
+	}
+	cleanupAttempt(t, attempt)
+}
+
+func TestStagePreservesCommittedStateAfterMarkerError(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	request, err := validateAccepted(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("validate accepted request: %v", err)
+	}
+	owner, err := store.acquireAttemptLock(request.AttemptID, true)
+	if err != nil {
+		t.Fatalf("acquire attempt lock: %v", err)
+	}
+	injected := errors.New("injected post-creation marker failure")
+	_, stageErr := store.stageOwned(
+		accepted, request, admittedAt, owner, writeRecord,
+		func(attemptID string) (bool, error) {
+			created, markerErr := store.createOwnershipMarkerState(attemptID)
+			if markerErr != nil {
+				return created, markerErr
+			}
+			return created, injected
+		},
+	)
+	if !errors.Is(stageErr, injected) {
+		t.Fatalf("stageOwned() error = %v", stageErr)
+	}
+	if err := owner.release(); err != nil {
+		t.Fatalf("release attempt lock: %v", err)
+	}
+	if _, err := os.Lstat(store.pendingPath(request.AttemptID)); err != nil {
+		t.Fatalf("committed pending attempt lost: %v", err)
+	}
+	if err := store.Recover(request.AttemptID, "marker finalisation failed"); err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if _, err := store.Inspect(request.AttemptID); err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+}
+
+func TestStageRequiresCommittedOwnershipMarker(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	request, err := validateAccepted(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("validate accepted request: %v", err)
+	}
+	_, err = store.stageOwned(
+		accepted, request, admittedAt, nil, writeRecord,
+		func(string) (bool, error) { return false, nil },
+	)
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("stage error = %v, want %v", err, ErrCorrupt)
+	}
+	if _, err := os.Lstat(store.pendingPath(request.AttemptID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("uncommitted attempt retained: %v", err)
+	}
+}
+
+func TestStageOwnedRejectsInvalidRoot(t *testing.T) {
+	accepted, admittedAt := testAccepted(t)
+	request, err := validateAccepted(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("validate accepted request: %v", err)
+	}
+	store := &Store{root: "invalid\x00root"}
+	if _, err := store.stageOwned(
+		accepted,
+		request,
+		admittedAt,
+		nil,
+		writeRecord,
+		func(string) (bool, error) { return true, nil },
+	); err == nil {
+		t.Fatal("invalid staging root accepted")
 	}
 }
 
@@ -74,6 +155,33 @@ func TestStageRejectsMarkerOnlyAttempt(t *testing.T) {
 	}
 	if marker, err := store.hasOwnershipMarker(attemptID); err != nil || !marker {
 		t.Fatalf("ownership marker lost: present=%t error=%v", marker, err)
+	}
+}
+
+func TestRecoverRejectsPublishedAttemptWithoutMarker(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("Stage() error = %v", err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	marker := filepath.Join(
+		store.root, locksDirectory,
+		accepted.Request.AttemptID+ownershipMarkerSuffix,
+	)
+	if err := os.Remove(marker); err != nil {
+		t.Fatalf("remove marker: %v", err)
+	}
+	if err := store.Recover(
+		accepted.Request.AttemptID, "missing marker",
+	); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	if _, err := os.Lstat(store.finalPath(accepted.Request.AttemptID)); err != nil {
+		t.Fatalf("published attempt changed: %v", err)
 	}
 }
 
@@ -93,13 +201,56 @@ func TestAttemptPreparationReturnsAcquiredPendingPath(t *testing.T) {
 		},
 	)
 	if pendingPath != "" {
-		t.Cleanup(func() { _ = os.RemoveAll(pendingPath) })
+		t.Cleanup(func() {
+			if err := os.RemoveAll(pendingPath); err != nil {
+				t.Errorf("remove pending fixture: %v", err)
+			}
+		})
 	}
 	if !errors.Is(err, createErr) {
 		t.Fatalf("prepare failure: %v", err)
 	}
 	if pendingPath != store.pendingPath(accepted.Request.AttemptID) || path != "" {
 		t.Fatalf("pending=%q bundle=%q", pendingPath, path)
+	}
+}
+
+func TestAttemptPreparationClassifiesCreationFailure(t *testing.T) {
+	store := newTestStore(t)
+	accepted, _ := testAccepted(t)
+	injected := errors.New("injected creation failure")
+	tests := []struct {
+		name string
+		err  error
+		want error
+	}{
+		{name: "existing pending attempt", err: os.ErrExist, want: ErrDuplicate},
+		{name: "creation failure", err: injected, want: injected},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, _, err := store.prepareAttemptDirectories(
+				accepted.Request.AttemptID,
+				func(string) error { return test.err },
+			)
+			if !errors.Is(err, test.want) {
+				t.Fatalf("prepare error = %v, want %v", err, test.want)
+			}
+		})
+	}
+}
+
+func TestRollbackWithoutStagedPathDoesNothing(t *testing.T) {
+	store := newTestStore(t)
+	called := false
+	if err := store.rollbackStage("", func(string) error {
+		called = true
+		return errors.New("unexpected rollback")
+	}); err != nil {
+		t.Fatalf("rollback error = %v", err)
+	}
+	if called {
+		t.Fatal("rollback called without a staged path")
 	}
 }
 
@@ -144,5 +295,47 @@ func TestStagedAttemptRollbackSyncsPendingRoot(t *testing.T) {
 	}
 	if _, err := os.Lstat(pendingPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("pending attempt retained: %v", err)
+	}
+}
+
+func TestStagedAttemptRollbackRejectsInvalidPath(t *testing.T) {
+	called := false
+	err := removeStagedAttemptWith("invalid\x00path", func(string) error {
+		called = true
+		return nil
+	})
+	if err == nil || called {
+		t.Fatalf("invalid rollback error=%v sync-called=%t", err, called)
+	}
+}
+
+func TestDuplicateCheckRejectsInvalidRoot(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	store := &Store{root: "invalid\x00root"}
+	if err := store.rejectDuplicateAttempt(
+		accepted.Request.AttemptID,
+	); err == nil {
+		t.Fatal("invalid duplicate-check root accepted")
+	}
+}
+
+func TestDuplicateCheckRejectsExistingAttempt(t *testing.T) {
+	store := newTestStore(t)
+	accepted, _ := testAccepted(t)
+	attemptID := accepted.Request.AttemptID
+
+	for _, path := range []string{
+		store.finalPath(attemptID),
+		store.pendingPath(attemptID),
+	} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatalf("create attempt path: %v", err)
+		}
+		if err := store.rejectDuplicateAttempt(attemptID); !errors.Is(err, ErrDuplicate) {
+			t.Fatalf("reject duplicate attempt: %v", err)
+		}
+		if err := os.RemoveAll(path); err != nil {
+			t.Fatalf("remove attempt path: %v", err)
+		}
 	}
 }

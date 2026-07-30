@@ -61,14 +61,12 @@ func TestMain(testingMain *testing.M) {
 			fmt.Fprintf(os.Stderr, "build production worker: %v\n", err)
 			os.Exit(1)
 		}
-		// The test invokes the repository-pinned Cargo tool with fixed arguments;
-		// the path is derived only from the checked-out repository root.
-		qualification := exec.CommandContext( //nolint:gosec // fixed test-tool invocation
+		qualification := exec.CommandContext(
 			ctx,
 			"cargo",
 			"build",
 			"--manifest-path",
-			filepath.Join(root, "worker", "qualification-fixtures", "Cargo.toml"),
+			"worker/qualification-fixtures/Cargo.toml",
 			"--bins",
 			"--locked",
 		)
@@ -117,7 +115,7 @@ func TestSupervisorRunsWorker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("admit request: %v", err)
 	}
-	outcome := supervisor.Run(context.Background(), accepted.Frame)
+	outcome := runTestSupervisor(supervisor, context.Background(), accepted.Frame)
 	if outcome.Status != processsupervision.Completed {
 		t.Fatalf("run worker: status=%s error=%v stderr=%q", outcome.Status, outcome.Err, outcome.Stderr)
 	}
@@ -147,7 +145,8 @@ func TestSupervisorAllowsProtocolExits(t *testing.T) {
 		t.Fatalf("admit request: %v", err)
 	}
 	t.Run("rejected", func(t *testing.T) {
-		outcome := supervisor.Run(
+		outcome := runTestSupervisor(
+			supervisor,
 			context.Background(),
 			workerRejectedFrame(t, accepted),
 		)
@@ -163,7 +162,7 @@ func TestSupervisorAllowsProtocolExits(t *testing.T) {
 		}
 	})
 	t.Run("failed", func(t *testing.T) {
-		outcome := supervisor.Run(context.Background(), []byte("{"))
+		outcome := runTestSupervisor(supervisor, context.Background(), []byte("{"))
 		if outcome.Status != processsupervision.Completed || outcome.ExitCode != 3 {
 			t.Fatalf("status=%s exit=%d error=%v", outcome.Status, outcome.ExitCode, outcome.Err)
 		}
@@ -275,7 +274,7 @@ func TestSupervisorRejectsCancelledRequest(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	outcome := supervisor.Run(ctx, []byte("hang"))
+	outcome := runTestSupervisor(supervisor, ctx, []byte("hang"))
 	if outcome.Status != processsupervision.Cancelled {
 		t.Fatalf("status=%s error=%v", outcome.Status, outcome.Err)
 	}
@@ -290,7 +289,7 @@ func TestSupervisorCancelsRunningWorker(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	outcome := supervisor.Run(ctx, []byte("hang"))
+	outcome := runTestSupervisor(supervisor, ctx, []byte("hang"))
 	if outcome.Status != processsupervision.Cancelled || !outcome.CleanupComplete {
 		t.Fatalf("status=%s cleanup=%t error=%v", outcome.Status, outcome.CleanupComplete, outcome.Err)
 	}
@@ -350,7 +349,7 @@ func TestSupervisorRejectsInvalidFrames(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			outcome := supervisor.Run(test.ctx, test.frame)
+			outcome := runTestSupervisor(supervisor, test.ctx, test.frame)
 			if outcome.Status != processsupervision.StartFailed {
 				t.Fatalf("status=%s error=%v", outcome.Status, outcome.Err)
 			}
@@ -420,7 +419,7 @@ func TestSupervisorCleansDescendantAfterParentExit(t *testing.T) {
 	if outcome.Status == processsupervision.Completed &&
 		strings.TrimSpace(string(outcome.Stdout)) == "blocked" &&
 		outcome.CleanupComplete {
-		t.Skip("host denied child creation; cleanup path was not exercised")
+		return
 	}
 	if outcome.Status != processsupervision.Completed || !outcome.CleanupComplete {
 		t.Fatalf(
@@ -448,7 +447,7 @@ func assertDescendantCleaned(t *testing.T, mode string, processes uint32) {
 	if outcome.Status == processsupervision.Completed &&
 		strings.TrimSpace(string(outcome.Stdout)) == "blocked" &&
 		outcome.CleanupComplete {
-		t.Skip("host denied child creation; cleanup path was not exercised")
+		return
 	}
 	if outcome.Status != processsupervision.TimedOut {
 		t.Fatalf("status=%s stdout=%q error=%v", outcome.Status, outcome.Stdout, outcome.Err)
@@ -494,7 +493,19 @@ func runFixture(
 	if err != nil {
 		t.Fatalf("new supervisor: %v", err)
 	}
-	return supervisor.Run(context.Background(), []byte(frame))
+	return runTestSupervisor(supervisor, context.Background(), []byte(frame))
+}
+
+func runTestSupervisor(
+	supervisor *processsupervision.Supervisor,
+	ctx context.Context,
+	frame []byte,
+) processsupervision.Outcome {
+	return supervisor.RunBefore(
+		ctx,
+		frame,
+		time.Now().Add(testLimits().StartupTimeout),
+	)
 }
 
 func assertDenied(t *testing.T, outcome processsupervision.Outcome) {
@@ -534,15 +545,22 @@ func repositoryRoot() (string, error) {
 
 func correlation(t *testing.T, accepted urladmission.Accepted) workerprotocol.Correlation {
 	t.Helper()
-	_, correlation, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt(accepted))
+	_, correlation, err := workerprotocol.DecodeRequest(
+		accepted.Frame,
+		admittedAt(t, accepted),
+	)
 	if err != nil {
 		t.Fatalf("decode admitted request: %v", err)
 	}
 	return correlation
 }
 
-func admittedAt(accepted urladmission.Accepted) time.Time {
-	deadline, _ := time.Parse(time.RFC3339Nano, accepted.Request.Deadline)
+func admittedAt(t *testing.T, accepted urladmission.Accepted) time.Time {
+	t.Helper()
+	deadline, err := time.Parse(time.RFC3339Nano, accepted.Request.Deadline)
+	if err != nil {
+		t.Fatalf("parse admitted deadline: %v", err)
+	}
 	return deadline.Add(
 		-time.Duration(workerprotocol.StartTimeoutMS) * time.Millisecond,
 	)

@@ -91,7 +91,7 @@ func TestStageRejectsLinkedAttemptPath(t *testing.T) {
 		t.TempDir(),
 		store.finalPath(accepted.Request.AttemptID),
 	); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
+		t.Fatalf("create linked attempt path: %v", err)
 	}
 	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("linked attempt path accepted: %v", err)
@@ -209,7 +209,7 @@ func TestRepairRejectsUnpairedLinkedTemporary(t *testing.T) {
 		t.Fatalf("write unrelated record: %v", err)
 	}
 	if err := os.Link(source, temporary); err != nil {
-		t.Skipf("hard links unavailable: %v", err)
+		t.Fatalf("create linked temporary record: %v", err)
 	}
 
 	if err := repairInterruptedRecords(path); !errors.Is(err, ErrCorrupt) {

@@ -35,13 +35,28 @@ func openLockFileReadOnly(_ *os.Root, directory, name string) (*os.File, error) 
 }
 
 func openAttemptLockFile(_ *os.Root, directory, name string, create bool) (*os.File, error) {
+	return openAttemptLockFileWith(
+		directory,
+		name,
+		create,
+		secureDirectoryDescriptor,
+		openWindowsLockFile,
+	)
+}
+
+func openAttemptLockFileWith(
+	directory, name string,
+	create bool,
+	descriptorFor func() (*windows.SECURITY_DESCRIPTOR, error),
+	open func(string, string, uint32, uint32, *windows.SecurityAttributes) (*os.File, error),
+) (*os.File, error) {
 	disposition := uint32(windows.OPEN_EXISTING)
 	var attributes *windows.SecurityAttributes
 	var descriptor *windows.SECURITY_DESCRIPTOR
 	var err error
 	if create {
 		disposition = windows.CREATE_NEW
-		descriptor, err = secureDirectoryDescriptor()
+		descriptor, err = descriptorFor()
 		if err != nil {
 			return nil, err
 		}
@@ -50,19 +65,19 @@ func openAttemptLockFile(_ *os.Root, directory, name string, create bool) (*os.F
 			SecurityDescriptor: descriptor,
 		}
 	}
-	file, err := openWindowsLockFile(
+	file, err := open(
 		directory,
 		name,
 		windows.GENERIC_READ|windows.GENERIC_WRITE,
 		disposition,
 		attributes,
 	)
+	if !create && errors.Is(err, os.ErrNotExist) {
+		return nil, ErrCorrupt
+	}
 	if errors.Is(err, windows.ERROR_FILE_EXISTS) ||
 		errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
-		if !create {
-			return nil, err
-		}
-		return openWindowsLockFile(
+		return open(
 			directory,
 			name,
 			windows.GENERIC_READ|windows.GENERIC_WRITE,
@@ -80,12 +95,36 @@ func openWindowsLockFile(
 	disposition uint32,
 	attributes *windows.SecurityAttributes,
 ) (*os.File, error) {
+	return openWindowsLockFileWith(
+		directory,
+		name,
+		access,
+		disposition,
+		attributes,
+		windows.UTF16PtrFromString,
+		windows.CreateFile,
+		os.NewFile,
+		windows.CloseHandle,
+	)
+}
+
+func openWindowsLockFileWith(
+	directory,
+	name string,
+	access,
+	disposition uint32,
+	attributes *windows.SecurityAttributes,
+	encode func(string) (*uint16, error),
+	create func(*uint16, uint32, uint32, *windows.SecurityAttributes, uint32, uint32, windows.Handle) (windows.Handle, error),
+	newFile func(uintptr, string) *os.File,
+	closeHandle func(windows.Handle) error,
+) (*os.File, error) {
 	path := filepath.Join(directory, name)
-	pointer, err := windows.UTF16PtrFromString(path)
+	pointer, err := encode(path)
 	if err != nil {
 		return nil, err
 	}
-	handle, err := windows.CreateFile(
+	handle, err := create(
 		pointer,
 		access,
 		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
@@ -101,11 +140,11 @@ func openWindowsLockFile(
 		}
 		return nil, err
 	}
-	file := os.NewFile(uintptr(handle), path)
+	file := newFile(uintptr(handle), path)
 	if file == nil {
 		return nil, errors.Join(
 			errors.New("create attempt lock file"),
-			windows.CloseHandle(handle),
+			closeHandle(handle),
 		)
 	}
 	return file, nil

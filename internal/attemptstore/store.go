@@ -46,6 +46,7 @@ var (
 	ErrDuplicate   = errors.New("duplicate attempt")
 	ErrCorrupt     = errors.New("corrupt attempt evidence")
 	ErrActive      = errors.New("attempt is active")
+	ErrUncommitted = errors.New("attempt staging did not commit")
 	ErrRelease     = errors.New("attempt ownership release failed")
 	ErrPublication = errors.New("attempt publication failed")
 	ErrUnsupported = errors.New("attempt evidence is unsupported")
@@ -108,11 +109,59 @@ type Records struct {
 	Recovery    *Recovery
 	Receipt     Receipt
 	Publication Publication
+	receiptHash string
 }
 
 type Store struct {
 	root         string
 	lockIdentity os.FileInfo
+}
+
+type storeCreationOperations struct {
+	prepareRoot         func(string) (string, error)
+	prepareDirectories  func(string) error
+	createLock          func(string) (bool, error)
+	validateDirectories func(string) error
+	syncLocks           func(string) error
+	lstat               func(string) (os.FileInfo, error)
+}
+
+type pendingPublicationOperations struct {
+	publish func(string, string, string) (string, error)
+	remove  func(string) error
+}
+
+type pendingRemovalOperations struct {
+	lstat  func(string) (os.FileInfo, error)
+	linked func(string, os.FileInfo) bool
+	secure func(string) error
+	remove func(string) error
+}
+
+type markerPublicationOperations struct {
+	read     func(string, string) (Records, error)
+	validate func(string, string, bool) error
+	write    func(string, string, any) error
+}
+
+type recoveryOperations struct {
+	recoverable func(string) (string, bool, error)
+	acquire     func(string, bool) (*attemptLock, error)
+	marker      func(string) (bool, error)
+	remove      func(string) error
+	release     func(*attemptLock) error
+	owned       func(string, string, *attemptLock) error
+}
+
+type ownedRecoveryOperations struct {
+	recoverable func(string) (string, bool, error)
+	repair      func(string) error
+	published   func(string, string) (bool, error)
+	recover     func(string, string) error
+	terminal    func(string, string, string) error
+	publish     func(string, string, string) (string, error)
+	remove      func(string) error
+	marker      func(string, string) error
 }
 
 type Attempt struct {
@@ -126,26 +175,40 @@ type Attempt struct {
 }
 
 func New(root string) (*Store, error) {
-	clean, err := prepareEvidenceRoot(root)
+	return newStoreWith(root, storeCreationOperations{
+		prepareRoot:         prepareEvidenceRoot,
+		prepareDirectories:  prepareEvidenceDirectories,
+		createLock:          createLockDirectory,
+		validateDirectories: validateEvidenceDirectories,
+		syncLocks:           syncAttemptLockDirectory,
+		lstat:               lstatEvidencePath,
+	})
+}
+
+func newStoreWith(
+	root string,
+	operations storeCreationOperations,
+) (*Store, error) {
+	clean, err := operations.prepareRoot(root)
 	if err != nil {
 		return nil, err
 	}
-	if err := prepareEvidenceDirectories(clean); err != nil {
+	if err := operations.prepareDirectories(clean); err != nil {
 		return nil, err
 	}
-	lockDirectoryCreated, err := createLockDirectory(clean)
+	lockDirectoryCreated, err := operations.createLock(clean)
 	if err != nil {
 		return nil, fmt.Errorf("create attempt locks: %w", err)
 	}
-	if err := validateEvidenceDirectories(clean); err != nil {
+	if err := operations.validateDirectories(clean); err != nil {
 		return nil, err
 	}
 	if lockDirectoryCreated {
-		if err := syncAttemptLockDirectory(clean); err != nil {
+		if err := operations.syncLocks(clean); err != nil {
 			return nil, fmt.Errorf("sync attempt locks: %w", err)
 		}
 	}
-	lockIdentity, err := lstatEvidencePath(filepath.Join(clean, locksDirectory))
+	lockIdentity, err := operations.lstat(filepath.Join(clean, locksDirectory))
 	if err != nil {
 		return nil, fmt.Errorf("inspect attempt locks: %w", err)
 	}
@@ -173,7 +236,10 @@ func (store *Store) Stage(
 			err = publishResult(err, owner.release())
 		}
 	}()
-	attempt, err = store.stageOwned(accepted, request, admittedAt, owner, writeRecord)
+	attempt, err = store.stageOwned(
+		accepted, request, admittedAt, owner, writeRecord,
+		store.createOwnershipMarkerState,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -187,9 +253,14 @@ func (store *Store) stageOwned(
 	admittedAt time.Time,
 	owner *attemptLock,
 	write func(string, string, any) error,
+	createMarker func(string) (bool, error),
 ) (attempt *Attempt, err error) {
 	pendingPath := ""
+	committed := false
 	defer func() {
+		if committed {
+			return
+		}
 		err = errors.Join(
 			err,
 			store.rollbackStage(
@@ -198,9 +269,6 @@ func (store *Store) stageOwned(
 			),
 		)
 	}()
-	if err := store.createOwnershipMarker(request.AttemptID); err != nil {
-		return nil, err
-	}
 	pendingPath, path, err := store.prepareAttemptDirectories(
 		request.AttemptID,
 		createEvidenceDirectory,
@@ -211,6 +279,13 @@ func (store *Store) stageOwned(
 	admitted := admittedRecord(request, accepted.Frame, admittedAt)
 	if err := write(path, admittedFile, admitted); err != nil {
 		return nil, fmt.Errorf("stage attempt: %w", err)
+	}
+	committed, err = createMarker(request.AttemptID)
+	if err != nil {
+		return nil, err
+	}
+	if !committed {
+		return nil, fmt.Errorf("%w: ownership marker was not created", ErrCorrupt)
 	}
 	attempt = &Attempt{
 		store:       store,
@@ -308,30 +383,61 @@ func (attempt *Attempt) publishLocked(observation Observation) error {
 }
 
 func (store *Store) Recover(attemptID, reason string) (err error) {
+	return store.recoverWith(
+		attemptID,
+		reason,
+		recoveryOperations{
+			recoverable: store.recoverablePath,
+			acquire:     store.acquireAttemptLock,
+			marker:      store.hasOwnershipMarker,
+			remove:      removeStagedAttempt,
+			release:     func(owner *attemptLock) error { return owner.release() },
+			owned:       store.recoverOwned,
+		},
+	)
+}
+
+func (store *Store) recoverWith(
+	attemptID, reason string,
+	operations recoveryOperations,
+) error {
 	if !validRecoveryReason(reason) {
 		return fmt.Errorf("%w: recovery reason", ErrInvalid)
 	}
-	if _, _, err := store.recoverablePath(attemptID); err != nil {
+	if _, _, err := operations.recoverable(attemptID); err != nil {
 		return err
 	}
-	owner, err := store.acquireAttemptLock(attemptID, false)
+	owner, err := operations.acquire(attemptID, false)
 	if err != nil {
 		if errors.Is(err, ErrCorrupt) || errors.Is(err, os.ErrNotExist) {
 			return ErrCorrupt
 		}
 		return err
 	}
-	marker, err := store.hasOwnershipMarker(attemptID)
+	_, final, err := operations.recoverable(attemptID)
 	if err != nil {
-		return errors.Join(err, releaseError(owner.release()))
+		return errors.Join(err, releaseError(operations.release(owner)))
+	}
+	marker, err := operations.marker(attemptID)
+	if err != nil {
+		return errors.Join(err, releaseError(operations.release(owner)))
 	}
 	if !marker {
+		if final {
+			return errors.Join(
+				fmt.Errorf("%w: published attempt has no ownership marker",
+					ErrCorrupt),
+				releaseError(operations.release(owner)),
+			)
+		}
+		removeErr := operations.remove(store.pendingPath(attemptID))
 		return errors.Join(
-			fmt.Errorf("%w: attempt %s has no ownership marker", ErrCorrupt, attemptID),
-			releaseError(owner.release()),
+			ErrUncommitted,
+			removeErr,
+			releaseError(operations.release(owner)),
 		)
 	}
-	return store.recoverOwned(attemptID, reason, owner)
+	return operations.owned(attemptID, reason, owner)
 }
 
 func (store *Store) recoverOwned(
@@ -342,41 +448,78 @@ func (store *Store) recoverOwned(
 	defer func() {
 		err = publishResult(err, owner.release())
 	}()
-	path, final, err := store.recoverablePath(attemptID)
+	return store.recoverOwnedStateWith(
+		attemptID,
+		reason,
+		ownedRecoveryOperations{
+			recoverable: store.recoverablePath,
+			repair:      repairInterruptedRecords,
+			published:   publicationExists,
+			recover:     recoverPublished,
+			terminal:    store.ensureTerminal,
+			publish:     publishPendingDirectory,
+			remove:      removePendingDirectory,
+			marker:      publishMarker,
+		},
+	)
+}
+
+func (store *Store) recoverOwnedStateWith(
+	attemptID, reason string,
+	operations ownedRecoveryOperations,
+) (err error) {
+	path, final, err := operations.recoverable(attemptID)
 	if err != nil {
 		return err
 	}
-	if err := repairInterruptedRecords(path); err != nil {
+	if err := operations.repair(path); err != nil {
 		return fmt.Errorf("repair interrupted records: %w", err)
 	}
-	if published, err := publicationExists(path, attemptID); err != nil {
+	if published, err := operations.published(path, attemptID); err != nil {
 		return err
 	} else if published {
-		return recoverPublished(path, attemptID)
+		return operations.recover(path, attemptID)
 	}
-	if err := store.ensureTerminal(path, attemptID, reason); err != nil {
+	if err := operations.terminal(path, attemptID, reason); err != nil {
 		return err
 	}
 	if !final {
 		pendingPath := store.pendingPath(attemptID)
-		path, err = publishPendingDirectory(path, store.finalPath(attemptID), store.attemptsPath())
+		path, err = operations.publish(
+			path,
+			store.finalPath(attemptID),
+			store.attemptsPath(),
+		)
 		if err != nil {
 			return err
 		}
-		if err := removePendingDirectory(pendingPath); err != nil {
+		if err := operations.remove(pendingPath); err != nil {
 			return err
 		}
-	} else if err := removePendingDirectory(store.pendingPath(attemptID)); err != nil {
+	} else if err := operations.remove(store.pendingPath(attemptID)); err != nil {
 		return err
 	}
-	return publishMarker(path, attemptID)
+	return operations.marker(path, attemptID)
 }
 
 func recoverPublished(path, attemptID string) error {
-	if _, err := inspectPublished(path, attemptID); err != nil {
+	return recoverPublishedWith(
+		path,
+		attemptID,
+		inspectPublished,
+		confirmPublication,
+	)
+}
+
+func recoverPublishedWith(
+	path, attemptID string,
+	inspect func(string, string) (Records, error),
+	confirm func(string) error,
+) error {
+	if _, err := inspect(path, attemptID); err != nil {
 		return err
 	}
-	if err := confirmPublication(path); err != nil {
+	if err := confirm(path); err != nil {
 		return fmt.Errorf("confirm recovered publication: %w", err)
 	}
 	return ErrDuplicate
@@ -424,10 +567,19 @@ func (attempt *Attempt) closeLocked() error {
 }
 
 func (attempt *Attempt) publishDirectory() (string, error) {
+	return attempt.publishDirectoryWith(pendingPublicationOperations{
+		publish: publishPendingDirectory,
+		remove:  removePendingDirectory,
+	})
+}
+
+func (attempt *Attempt) publishDirectoryWith(
+	operations pendingPublicationOperations,
+) (string, error) {
 	if attempt.pendingPath == "" {
 		return attempt.path, nil
 	}
-	path, err := publishPendingDirectory(
+	path, err := operations.publish(
 		attempt.path,
 		attempt.store.finalPath(attempt.admitted.AttemptID),
 		attempt.store.attemptsPath(),
@@ -438,27 +590,43 @@ func (attempt *Attempt) publishDirectory() (string, error) {
 	pendingPath := attempt.pendingPath
 	attempt.path = path
 	attempt.pendingPath = ""
-	if err := removePendingDirectory(pendingPath); err != nil {
+	if err := operations.remove(pendingPath); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
 func removePendingDirectory(path string) error {
-	info, err := os.Lstat(path)
+	return removePendingDirectoryWith(
+		path,
+		pendingRemovalOperations{
+			lstat:  os.Lstat,
+			linked: pathIsLinked,
+			secure: secureEvidenceTree,
+			remove: os.Remove,
+		},
+	)
+}
+
+func removePendingDirectoryWith(
+	path string,
+	operations pendingRemovalOperations,
+) error {
+	info, err := operations.lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("inspect pending attempt: %w", err)
 	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || pathIsLinked(path, info) {
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 ||
+		operations.linked(path, info) {
 		return ErrCorrupt
 	}
-	if err := secureEvidenceTree(path); err != nil {
+	if err := operations.secure(path); err != nil {
 		return err
 	}
-	if err := os.Remove(path); err != nil {
+	if err := operations.remove(path); err != nil {
 		return fmt.Errorf("remove pending attempt: %w", err)
 	}
 	return nil
@@ -531,23 +699,38 @@ func writeOrMatchReceipt(path, attemptID, kind, terminalFile, state string) erro
 }
 
 func publishMarker(path, attemptID string) error {
-	records, err := readBundle(path, attemptID)
+	return publishMarkerWith(
+		path,
+		attemptID,
+		markerPublicationOperations{
+			read:     readBundle,
+			validate: validateBundleFiles,
+			write:    writeRecord,
+		},
+	)
+}
+
+func publishMarkerWith(
+	path, attemptID string,
+	operations markerPublicationOperations,
+) error {
+	records, err := operations.read(path, attemptID)
 	if err != nil {
 		return fmt.Errorf("verify published bundle: %w", err)
 	}
-	if err := validateBundleFiles(path, records.Receipt.TerminalFile, false); err != nil {
+	if err := operations.validate(
+		path,
+		records.Receipt.TerminalFile,
+		false,
+	); err != nil {
 		return fmt.Errorf("verify published bundle files: %w", err)
-	}
-	receiptHash, err := fileHash(path, receiptFile)
-	if err != nil {
-		return err
 	}
 	publication := Publication{
 		Version:     Version,
 		AttemptID:   attemptID,
-		ReceiptHash: receiptHash,
+		ReceiptHash: records.receiptHash,
 	}
-	if err := writeRecord(path, publicationFile, publication); err != nil {
+	if err := operations.write(path, publicationFile, publication); err != nil {
 		return fmt.Errorf("write publication: %w", err)
 	}
 	return nil

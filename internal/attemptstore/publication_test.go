@@ -45,6 +45,22 @@ func TestPublishCreatesMarker(t *testing.T) {
 		records.Publication.ReceiptHash == "" {
 		t.Fatalf("publication=%+v", records.Publication)
 	}
+	receiptHash, err := fileHash(
+		store.finalPath(accepted.Request.AttemptID),
+		receiptFile,
+	)
+	if err != nil {
+		t.Fatalf("hash receipt: %v", err)
+	}
+	if records.receiptHash != receiptHash ||
+		records.Publication.ReceiptHash != receiptHash {
+		t.Fatalf(
+			"receipt hashes: retained=%q publication=%q file=%q",
+			records.receiptHash,
+			records.Publication.ReceiptHash,
+			receiptHash,
+		)
+	}
 }
 
 func TestInspectRejectsUnexpectedRecord(t *testing.T) {
@@ -512,6 +528,20 @@ func TestObservationRejectsInvalidTerminalTransitions(t *testing.T) {
 	}
 }
 
+func TestObservationRejectsTimeoutWithoutProcessError(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	observation := observationWithoutVerification(
+		testObservationFor(t, accepted),
+	)
+	observation.ProcessStatus = "timed_out"
+	observation.ProcessError = ""
+	observation.ProtocolStatus = "not_run"
+	observation.TerminalStatus = "timed_out"
+	if err := validateObservation(observation); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("timeout without process error accepted: %v", err)
+	}
+}
+
 func TestObservationAcceptsContractTransitions(t *testing.T) {
 	accepted, _ := testAccepted(t)
 	verified := testObservationFor(t, accepted)
@@ -794,6 +824,67 @@ func TestExistingTerminalRejectsIdentityMismatch(t *testing.T) {
 			}
 			if err := publishExistingTerminal(root, accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
 				t.Fatalf("mismatched terminal accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestExistingTerminalRejectsMalformedSibling(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	observation := testObservationFor(t, accepted)
+	recovery := Recovery{
+		Version:        Version,
+		AttemptID:      accepted.Request.AttemptID,
+		TerminalStatus: "indeterminate",
+		Reason:         "interrupted",
+	}
+	tests := []struct {
+		name       string
+		validFile  string
+		validValue any
+		badFile    string
+	}{
+		{
+			name:       "observation with malformed recovery",
+			validFile:  observationFile,
+			validValue: observation,
+			badFile:    recoveryFile,
+		},
+		{
+			name:       "recovery with malformed observation",
+			validFile:  recoveryFile,
+			validValue: recovery,
+			badFile:    observationFile,
+		},
+		{
+			name:    "malformed observation only",
+			badFile: observationFile,
+		},
+		{
+			name:    "malformed recovery only",
+			badFile: recoveryFile,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			if test.validFile != "" {
+				if err := writeRecord(root, test.validFile, test.validValue); err != nil {
+					t.Fatalf("write valid terminal: %v", err)
+				}
+			}
+			if err := os.WriteFile(
+				filepath.Join(root, test.badFile),
+				[]byte("{"),
+				0o600,
+			); err != nil {
+				t.Fatalf("write malformed terminal: %v", err)
+			}
+			if err := publishExistingTerminal(
+				root,
+				accepted.Request.AttemptID,
+			); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("malformed terminal accepted: %v", err)
 			}
 		})
 	}

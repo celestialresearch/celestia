@@ -21,6 +21,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestAwaitProcessStates(t *testing.T) {
@@ -102,6 +104,209 @@ func TestAwaitProcessKeepsTimeout(t *testing.T) {
 	}
 }
 
+func TestAwaitProcessKeepsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	for _, test := range []struct {
+		name     string
+		overflow chan Status
+		input    chan inputResult
+	}{
+		{
+			name:     "input cleanup failure",
+			overflow: make(chan Status),
+			input:    bufferedInputFailure(),
+		},
+		{
+			name:     "output overflow",
+			overflow: bufferedOverflow(),
+			input:    make(chan inputResult),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for range 100 {
+				status, err := awaitProcess(
+					ctx,
+					make(chan time.Time),
+					make(chan time.Time),
+					func() (bool, error) { return false, nil },
+					test.overflow,
+					test.input,
+				)
+				if status != Cancelled || !errors.Is(err, context.Canceled) {
+					t.Fatalf("status=%s error=%v", status, err)
+				}
+			}
+		})
+	}
+}
+
+func bufferedInputFailure() chan inputResult {
+	input := make(chan inputResult, 1)
+	input <- inputResult{cleanupErr: errors.New("cleanup")}
+	return input
+}
+
+func bufferedOverflow() chan Status {
+	overflow := make(chan Status, 1)
+	overflow <- OutputOverflow
+	return overflow
+}
+
+func TestAwaitProcessRechecksCompletionAfterLowerPriorityEvent(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		overflow chan Status
+		input    chan inputResult
+	}{
+		{
+			name:     "input",
+			overflow: make(chan Status),
+			input:    bufferedInputFailure(),
+		},
+		{
+			name:     "overflow",
+			overflow: bufferedOverflow(),
+			input:    make(chan inputResult),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			checks := 0
+			status, err := awaitProcess(
+				context.Background(),
+				make(chan time.Time),
+				make(chan time.Time),
+				func() (bool, error) {
+					checks++
+					return checks == 2, nil
+				},
+				test.overflow,
+				test.input,
+			)
+			if status != Completed || err != nil {
+				t.Fatalf("status=%s error=%v", status, err)
+			}
+		})
+	}
+}
+
+func TestAwaitProcessInputFailures(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		input  inputResult
+		status Status
+	}{
+		{
+			name:   "write failure",
+			input:  inputResult{err: errors.New("write")},
+			status: ExitFailed,
+		},
+		{
+			name:   "cleanup failure",
+			input:  inputResult{cleanupErr: errors.New("cleanup")},
+			status: CleanupFailed,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := make(chan inputResult, 1)
+			input <- test.input
+			status, err := awaitProcess(
+				context.Background(),
+				make(chan time.Time),
+				make(chan time.Time),
+				func() (bool, error) { return false, nil },
+				make(chan Status),
+				input,
+			)
+			if status != test.status || err == nil {
+				t.Fatalf("status=%s error=%v", status, err)
+			}
+		})
+	}
+}
+
+func TestAwaitProcessPollsCompletion(t *testing.T) {
+	poll := make(chan time.Time, 1)
+	poll <- time.Now()
+	status, err := awaitProcess(
+		context.Background(),
+		make(chan time.Time),
+		poll,
+		func() (bool, error) { return true, nil },
+		make(chan Status),
+		make(chan inputResult),
+	)
+	if status != Completed || err != nil {
+		t.Fatalf("status=%s error=%v", status, err)
+	}
+}
+
+func TestAwaitProcessReceivesBoundaryEvents(t *testing.T) {
+	type result struct {
+		status Status
+		err    error
+	}
+	t.Run("cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		checked := make(chan struct{})
+		results := make(chan result, 1)
+		go func() {
+			status, err := awaitProcess(
+				ctx,
+				make(chan time.Time),
+				make(chan time.Time),
+				func() (bool, error) {
+					select {
+					case <-checked:
+					default:
+						close(checked)
+					}
+					return false, nil
+				},
+				make(chan Status),
+				make(chan inputResult),
+			)
+			results <- result{status: status, err: err}
+		}()
+		<-checked
+		cancel()
+		got := <-results
+		if got.status != Cancelled || !errors.Is(got.err, context.Canceled) {
+			t.Fatalf("status = %s error = %v", got.status, got.err)
+		}
+	})
+	t.Run("timeout", func(t *testing.T) {
+		timeout := make(chan time.Time)
+		checked := make(chan struct{})
+		results := make(chan result, 1)
+		go func() {
+			status, err := awaitProcess(
+				context.Background(),
+				timeout,
+				make(chan time.Time),
+				func() (bool, error) {
+					select {
+					case <-checked:
+					default:
+						close(checked)
+					}
+					return false, nil
+				},
+				make(chan Status),
+				make(chan inputResult),
+			)
+			results <- result{status: status, err: err}
+		}()
+		<-checked
+		timeout <- time.Now()
+		got := <-results
+		if got.status != TimedOut || !errors.Is(got.err, context.DeadlineExceeded) {
+			t.Fatalf("status = %s error = %v", got.status, got.err)
+		}
+	})
+}
+
 func TestExecutionAllowanceStartsAtResume(t *testing.T) {
 	started := time.Date(2026, 7, 26, 0, 0, 0, 0, time.UTC)
 	now := started.Add(750 * time.Millisecond)
@@ -110,6 +315,33 @@ func TestExecutionAllowanceStartsAtResume(t *testing.T) {
 	}
 	if remaining := executionRemaining(started, 2*time.Second, started.Add(3*time.Second)); remaining >= 0 {
 		t.Fatalf("expired allowance=%s", remaining)
+	}
+}
+
+func TestEarliestDeadline(t *testing.T) {
+	t.Parallel()
+	first := time.Date(2026, 7, 28, 0, 0, 0, 0, time.UTC)
+	second := first.Add(time.Second)
+	if got := earliestDeadline(first, second); !got.Equal(first) {
+		t.Fatalf("earliestDeadline(first, second) = %s", got)
+	}
+	if got := earliestDeadline(second, first); !got.Equal(first) {
+		t.Fatalf("earliestDeadline(second, first) = %s", got)
+	}
+}
+
+func TestCleanupRemainingExpiresAtZero(t *testing.T) {
+	if remaining := cleanupRemaining(time.Now().Add(-time.Second)); remaining != 0 {
+		t.Fatalf("remaining=%s", remaining)
+	}
+}
+
+func TestExecutionAllowanceIsPositive(t *testing.T) {
+	if allowance := executionAllowance(0); allowance != time.Nanosecond {
+		t.Fatalf("zero allowance = %s", allowance)
+	}
+	if allowance := executionAllowance(time.Second); allowance != time.Second {
+		t.Fatalf("positive allowance = %s", allowance)
 	}
 }
 
@@ -123,6 +355,19 @@ func TestAwaitInputStates(t *testing.T) {
 	deadline = time.Now().Add(time.Millisecond)
 	if result := awaitInput(nil, make(chan inputResult), deadline, deadline.Add(100*time.Millisecond)); result.cleanupErr == nil {
 		t.Fatal("blocked input join did not time out")
+	}
+}
+
+func TestAwaitInputJoinDeadline(t *testing.T) {
+	writer := &inputWriter{done: make(chan struct{})}
+	result := awaitInput(
+		writer,
+		make(chan inputResult),
+		time.Now().Add(-time.Second),
+		time.Now().Add(-time.Second),
+	)
+	if result.cleanupErr == nil {
+		t.Fatal("unjoined input accepted")
 	}
 }
 
@@ -173,6 +418,22 @@ func TestAwaitStreamCancelsBlockedRead(t *testing.T) {
 	}
 }
 
+func TestAwaitStreamJoinDeadline(t *testing.T) {
+	reader := &streamReader{
+		name: "output",
+		done: make(chan struct{}),
+	}
+	result := awaitStream(
+		reader,
+		make(chan streamResult),
+		time.Now().Add(-time.Second),
+		time.Now().Add(-time.Second),
+	)
+	if result.cleanupErr == nil {
+		t.Fatal("unjoined stream accepted")
+	}
+}
+
 func TestCompletionFollowsResultPublication(t *testing.T) {
 	streamDone := make(chan struct{})
 	streamResult := make(chan streamResult, 1)
@@ -217,6 +478,20 @@ func TestStreamResultStates(t *testing.T) {
 	status, err, complete = applyStreamResult(Completed, nil, true, streamResult{cleanupErr: errors.New("close")}, "output", OutputOverflow)
 	if status != Completed || err == nil || complete {
 		t.Fatalf("stream cleanup: status=%s complete=%t error=%v", status, complete, err)
+	}
+}
+
+func TestStreamReadFailure(t *testing.T) {
+	status, err, complete := applyStreamResult(
+		Completed,
+		nil,
+		true,
+		streamResult{err: errors.New("read")},
+		"output",
+		OutputOverflow,
+	)
+	if status != ExitFailed || err == nil || !complete {
+		t.Fatalf("stream read: status=%s complete=%t error=%v", status, complete, err)
 	}
 }
 
@@ -287,6 +562,158 @@ func TestTerminationFailurePreservesPrimaryCause(t *testing.T) {
 	}
 }
 
+type cleanupProcessCase struct {
+	name          string
+	status        Status
+	treeEmpty     func() (bool, error)
+	terminate     func() error
+	wait          func(time.Duration) (bool, error)
+	wantComplete  bool
+	wantTerminate bool
+	wantError     string
+}
+
+func TestCleanupProcessTreeStates(t *testing.T) {
+	runCleanupProcessCases(t, []cleanupProcessCase{
+		{
+			name:         "completed empty tree",
+			status:       Completed,
+			treeEmpty:    func() (bool, error) { return true, nil },
+			terminate:    func() error { return nil },
+			wait:         func(time.Duration) (bool, error) { return true, nil },
+			wantComplete: true,
+		},
+		{
+			name:          "completed populated tree",
+			status:        Completed,
+			treeEmpty:     func() (bool, error) { return false, nil },
+			terminate:     func() error { return nil },
+			wait:          func(time.Duration) (bool, error) { return true, nil },
+			wantComplete:  true,
+			wantTerminate: true,
+		},
+		{
+			name:          "tree query failure",
+			status:        Completed,
+			treeEmpty:     func() (bool, error) { return false, errors.New("tree") },
+			terminate:     func() error { return nil },
+			wait:          func(time.Duration) (bool, error) { return true, nil },
+			wantTerminate: true,
+			wantError:     "tree",
+		},
+	})
+}
+
+func TestCleanupProcessFailureStates(t *testing.T) {
+	runCleanupProcessCases(t, []cleanupProcessCase{
+		{
+			name:          "termination failure",
+			status:        TimedOut,
+			treeEmpty:     func() (bool, error) { return true, nil },
+			terminate:     func() error { return errors.New("terminate") },
+			wait:          func(time.Duration) (bool, error) { return true, nil },
+			wantTerminate: true,
+			wantError:     "terminate",
+		},
+		{
+			name:          "wait failure",
+			status:        Cancelled,
+			treeEmpty:     func() (bool, error) { return true, nil },
+			terminate:     func() error { return nil },
+			wait:          func(time.Duration) (bool, error) { return false, errors.New("wait") },
+			wantTerminate: true,
+			wantError:     "wait",
+		},
+	})
+}
+
+func runCleanupProcessCases(t *testing.T, tests []cleanupProcessCase) {
+	t.Helper()
+	primary := context.DeadlineExceeded
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			terminated := false
+			terminate := func() error {
+				terminated = true
+				return test.terminate()
+			}
+			complete, err := cleanupProcessWith(
+				test.status,
+				primary,
+				time.Now().Add(time.Second),
+				test.treeEmpty,
+				terminate,
+				test.wait,
+			)
+			if complete != test.wantComplete || terminated != test.wantTerminate {
+				t.Fatalf("complete=%t terminated=%t", complete, terminated)
+			}
+			if !errors.Is(err, primary) {
+				t.Fatalf("primary error lost: %v", err)
+			}
+			if test.wantError != "" && !strings.Contains(err.Error(), test.wantError) {
+				t.Fatalf("error=%v, want %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestProcessCompleteStates(t *testing.T) {
+	tests := []struct {
+		name         string
+		event        uint32
+		waitErr      error
+		wantComplete bool
+		wantError    bool
+	}{
+		{name: "complete", event: windows.WAIT_OBJECT_0, wantComplete: true},
+		{name: "active", event: uint32(windows.WAIT_TIMEOUT)},
+		{name: "wait failure", waitErr: errors.New("wait"), wantError: true},
+		{name: "unexpected event", event: 42, wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			complete, err := processCompleteWith(1, func(handle windows.Handle, timeout uint32) (uint32, error) {
+				if handle != 1 || timeout != 0 {
+					t.Fatalf("handle=%d timeout=%d", handle, timeout)
+				}
+				return test.event, test.waitErr
+			})
+			if complete != test.wantComplete || (err != nil) != test.wantError {
+				t.Fatalf("complete=%t error=%v", complete, err)
+			}
+		})
+	}
+}
+
+func TestResolveProcessBoundaryStates(t *testing.T) {
+	status, err := resolveProcessBoundary(
+		func() (bool, error) { return true, nil },
+		TimedOut,
+		context.DeadlineExceeded,
+	)
+	if status != Completed || err != nil {
+		t.Fatalf("completed status=%s error=%v", status, err)
+	}
+	waitErr := errors.New("wait")
+	status, err = resolveProcessBoundary(
+		func() (bool, error) { return false, waitErr },
+		TimedOut,
+		context.DeadlineExceeded,
+	)
+	if status != ExitFailed || !errors.Is(err, waitErr) {
+		t.Fatalf("failed status=%s error=%v", status, err)
+	}
+	status, err = resolveProcessBoundary(
+		func() (bool, error) { return false, nil },
+		Cancelled,
+		context.Canceled,
+	)
+	if status != Cancelled || !errors.Is(err, context.Canceled) {
+		t.Fatalf("pending status=%s error=%v", status, err)
+	}
+}
+
 func TestFinalCleanupDeadline(t *testing.T) {
 	complete, err := finaliseCleanup(time.Now().Add(time.Second), func() error {
 		return nil
@@ -308,6 +735,22 @@ func TestFinalCleanupDeadline(t *testing.T) {
 	})
 	if !called || complete || err == nil {
 		t.Fatalf("overdue cleanup: called=%t complete=%t error=%v", called, complete, err)
+	}
+}
+
+func TestFinalCleanupProjection(t *testing.T) {
+	primary := errors.New("primary")
+	outcome := Outcome{CleanupComplete: true, Err: primary}
+	if actual := applyFinalCleanup(outcome, true, nil); !actual.CleanupComplete ||
+		!errors.Is(actual.Err, primary) {
+		t.Fatalf("complete cleanup changed outcome: %+v", actual)
+	}
+	cleanup := errors.New("cleanup")
+	actual := applyFinalCleanup(outcome, false, cleanup)
+	if actual.CleanupComplete ||
+		!errors.Is(actual.Err, primary) ||
+		!errors.Is(actual.Err, cleanup) {
+		t.Fatalf("failed cleanup outcome: %+v", actual)
 	}
 }
 

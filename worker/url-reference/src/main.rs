@@ -94,11 +94,7 @@ fn main() -> ExitCode {
 fn run() -> Result<ExitCode, ()> {
     let start = Instant::now();
     let data = read_request()?;
-    if !is_compact_frame(&data) {
-        return Err(());
-    }
-    let request: Request = serde_json::from_slice(&data).map_err(|_| ())?;
-    validate_request(&request)?;
+    let request = parse_request(&data)?;
     let output = match transform(&request.input, &request.mode) {
         Ok(output) => output,
         Err(()) => {
@@ -148,6 +144,15 @@ fn run() -> Result<ExitCode, ()> {
     Ok(ExitCode::SUCCESS)
 }
 
+fn parse_request(data: &[u8]) -> Result<Request, ()> {
+    if !is_compact_frame(data) {
+        return Err(());
+    }
+    let request: Request = serde_json::from_slice(data).map_err(|_| ())?;
+    validate_request(&request)?;
+    Ok(request)
+}
+
 fn is_compact_frame(data: &[u8]) -> bool {
     let mut escaped = false;
     let mut in_string = false;
@@ -170,10 +175,13 @@ fn is_compact_frame(data: &[u8]) -> bool {
 }
 
 fn write_response(response: &Response<'_>) -> Result<(), ()> {
+    write_response_to(response, &mut io::stdout())
+}
+
+fn write_response_to(response: &Response<'_>, writer: &mut impl Write) -> Result<(), ()> {
     let encoded = serde_json::to_vec(&response).map_err(|_| ())?;
-    let mut stdout = io::stdout();
-    stdout.write_all(&encoded).map_err(|_| ())?;
-    stdout.flush().map_err(|_| ())
+    writer.write_all(&encoded).map_err(|_| ())?;
+    writer.flush().map_err(|_| ())
 }
 
 fn duration_ns(start: Instant) -> u64 {

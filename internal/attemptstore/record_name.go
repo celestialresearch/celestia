@@ -16,12 +16,17 @@ package attemptstore
 import (
 	"crypto/rand"
 	"fmt"
+	"io"
 	"strings"
 )
 
 func recordTempName(name string) (string, error) {
+	return recordTempNameWith(name, rand.Reader)
+}
+
+func recordTempNameWith(name string, randomness io.Reader) (string, error) {
 	var identity [16]byte
-	if _, err := rand.Read(identity[:]); err != nil {
+	if _, err := io.ReadFull(randomness, identity[:]); err != nil {
 		return "", err
 	}
 	return fmt.Sprintf(".%s.%x", name, identity), nil

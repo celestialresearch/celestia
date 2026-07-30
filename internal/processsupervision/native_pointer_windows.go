@@ -9,27 +9,12 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build !windows || (windows && !amd64)
+//go:build windows && amd64
 
 package processsupervision
 
-import (
-	"context"
-	"errors"
-	"testing"
-	"time"
-)
+import "unsafe"
 
-func TestSupervisorFailsClosed(t *testing.T) {
-	if _, err := New("/worker", Limits{}); !errors.Is(err, ErrUnavailable) {
-		t.Fatalf("constructor error=%v", err)
-	}
-	outcome := (&Supervisor{}).RunBefore(
-		context.Background(),
-		[]byte("request"),
-		time.Now(),
-	)
-	if outcome.Status != StartFailed || !errors.Is(outcome.Err, ErrUnavailable) {
-		t.Fatalf("outcome=%+v", outcome)
-	}
+func nativePointer[T any](value *T) unsafe.Pointer {
+	return unsafe.Pointer(value) // #nosec G103 -- Win32 requires a pointer to the typed native value.
 }

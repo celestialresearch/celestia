@@ -153,7 +153,6 @@ func validateObservation(record Observation) error {
 		!validHash(record.WorkerSHA256) ||
 		!validProcessStatus(record.ProcessStatus) ||
 		!validProtocolStatus(record.ProtocolStatus) ||
-		!validTerminal(record.TerminalStatus) ||
 		record.DurationNS < 0 {
 		return ErrCorrupt
 	}
@@ -512,20 +511,28 @@ func publicationExists(path, attemptID string) (bool, error) {
 }
 
 func (store *Store) recoverablePath(attemptID string) (string, bool, error) {
+	return store.recoverablePathWith(attemptID, pathExists, confirmPublication)
+}
+
+func (store *Store) recoverablePathWith(
+	attemptID string,
+	existsAt func(string) (bool, error),
+	confirm func(string) error,
+) (string, bool, error) {
 	if !validIdentity(attemptID) {
 		return "", false, fmt.Errorf("%w: attempt identity", ErrInvalid)
 	}
 	finalPath := store.finalPath(attemptID)
-	if exists, err := pathExists(finalPath); err != nil {
+	if exists, err := existsAt(finalPath); err != nil {
 		return "", false, err
 	} else if exists {
-		if err := confirmPublication(store.attemptsPath()); err != nil {
+		if err := confirm(store.attemptsPath()); err != nil {
 			return "", false, fmt.Errorf("confirm attempt publication: %w", err)
 		}
 		return finalPath, true, nil
 	}
 	pendingPath := filepath.Join(store.pendingPath(attemptID), bundleDirectory)
-	if exists, err := pathExists(pendingPath); err != nil {
+	if exists, err := existsAt(pendingPath); err != nil {
 		return "", false, err
 	} else if exists {
 		return pendingPath, false, nil
@@ -541,7 +548,25 @@ func (store *Store) ensureTerminal(path, attemptID, reason string) error {
 	if admitted.AttemptID != attemptID {
 		return ErrCorrupt
 	}
-	if err := publishExistingTerminal(path, attemptID); err == nil {
+	return ensureTerminalWith(
+		path,
+		attemptID,
+		reason,
+		publishExistingTerminal,
+		writeOrMatchRecord,
+		writeOrMatchReceipt,
+	)
+}
+
+func ensureTerminalWith(
+	path string,
+	attemptID string,
+	reason string,
+	publishExisting func(string, string) error,
+	writeRecovery func(string, string, any) error,
+	writeReceipt func(string, string, string, string, string) error,
+) error {
+	if err := publishExisting(path, attemptID); err == nil {
 		return nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
@@ -552,10 +577,10 @@ func (store *Store) ensureTerminal(path, attemptID, reason string) error {
 		TerminalStatus: "indeterminate",
 		Reason:         reason,
 	}
-	if err := writeOrMatchRecord(path, recoveryFile, recovery); err != nil {
+	if err := writeRecovery(path, recoveryFile, recovery); err != nil {
 		return err
 	}
-	return writeOrMatchReceipt(path, attemptID, "recovery", recoveryFile, recovery.TerminalStatus)
+	return writeReceipt(path, attemptID, "recovery", recoveryFile, recovery.TerminalStatus)
 }
 
 func publishExistingTerminal(path, attemptID string) error {

@@ -143,8 +143,9 @@ func TestStageDoesNotRecreateMissingActiveLock(t *testing.T) {
 		t.Fatalf("start helper: %v", err)
 	}
 	defer func() {
-		_ = command.Process.Kill()
-		_ = command.Wait()
+		if err := stopLockHelper(command); err != nil {
+			t.Errorf("stop helper: %v", err)
+		}
 	}()
 	scanner := bufio.NewScanner(stdout)
 	if !scanner.Scan() || scanner.Text() != "staged" {

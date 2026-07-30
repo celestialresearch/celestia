@@ -83,8 +83,16 @@ func (store *Store) rollbackStage(
 }
 
 func canonicalEvidenceRoot(path string) (string, error) {
+	return canonicalEvidenceRootWith(path, os.Lstat, filepath.EvalSymlinks)
+}
+
+func canonicalEvidenceRootWith(
+	path string,
+	lstat func(string) (os.FileInfo, error),
+	evaluate func(string) (string, error),
+) (string, error) {
 	clean := filepath.Clean(path)
-	if info, err := os.Lstat(clean); err == nil {
+	if info, err := lstat(clean); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 || pathIsLinked(clean, info) {
 			return "", ErrCorrupt
 		}
@@ -94,7 +102,7 @@ func canonicalEvidenceRoot(path string) (string, error) {
 	existing := clean
 	var suffix []string
 	for {
-		if _, err := os.Lstat(existing); err == nil {
+		if _, err := lstat(existing); err == nil {
 			break
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return "", err
@@ -106,7 +114,7 @@ func canonicalEvidenceRoot(path string) (string, error) {
 		suffix = append(suffix, filepath.Base(existing))
 		existing = parent
 	}
-	resolved, err := filepath.EvalSymlinks(existing)
+	resolved, err := evaluate(existing)
 	if err != nil {
 		return "", err
 	}
@@ -117,17 +125,26 @@ func canonicalEvidenceRoot(path string) (string, error) {
 }
 
 func pathExists(path string) (bool, error) {
-	if err := rejectLinkedAncestors(path); err != nil {
+	return pathExistsWith(path, rejectLinkedAncestors, os.Lstat, pathIsLinked)
+}
+
+func pathExistsWith(
+	path string,
+	rejectLinks func(string) error,
+	lstat func(string) (os.FileInfo, error),
+	linked func(string, os.FileInfo) bool,
+) (bool, error) {
+	if err := rejectLinks(path); err != nil {
 		return false, err
 	}
-	info, err := os.Lstat(path)
+	info, err := lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	if info.Mode()&os.ModeSymlink != 0 || pathIsLinked(path, info) {
+	if info.Mode()&os.ModeSymlink != 0 || linked(path, info) {
 		return false, ErrCorrupt
 	}
 	return true, nil

@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,14 +118,40 @@ func TestAdmitRejects(t *testing.T) {
 func TestAdmitRandomFailure(t *testing.T) {
 	t.Parallel()
 
-	_, err := admit(
-		"https://example.test",
-		urlreference.Defang,
-		time.Unix(0, 0).UTC(),
-		io.LimitReader(bytes.NewReader(make([]byte, identityBytes)), identityBytes),
-	)
-	if err == nil || errors.Is(err, ErrRejected) {
-		t.Fatalf("admit() error = %v, want generation failure", err)
+	tests := []struct {
+		name       string
+		randomness io.Reader
+		want       string
+	}{
+		{
+			name:       "attempt",
+			randomness: bytes.NewReader(nil),
+			want:       "generate attempt identity",
+		},
+		{
+			name: "nonce",
+			randomness: io.LimitReader(
+				bytes.NewReader(make([]byte, identityBytes)),
+				identityBytes,
+			),
+			want: "generate request nonce",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := admit(
+				"https://example.test",
+				urlreference.Defang,
+				time.Unix(0, 0).UTC(),
+				test.randomness,
+			)
+			if err == nil || errors.Is(err, ErrRejected) ||
+				!strings.Contains(err.Error(), test.want) {
+				t.Fatalf("admit() error = %v, want %q generation failure",
+					err, test.want)
+			}
+		})
 	}
 }
 
@@ -139,5 +166,23 @@ func TestAdmitRejectsRepeatedIdentity(t *testing.T) {
 	)
 	if err == nil || errors.Is(err, ErrRejected) {
 		t.Fatalf("admit() error = %v, want entropy failure", err)
+	}
+}
+
+func TestAdmitRejectsUnencodableDeadline(t *testing.T) {
+	t.Parallel()
+
+	_, err := admit(
+		"https://example.test",
+		urlreference.Defang,
+		time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC),
+		bytes.NewReader(append(
+			bytes.Repeat([]byte{1}, identityBytes),
+			bytes.Repeat([]byte{2}, identityBytes)...,
+		)),
+	)
+	if err == nil || errors.Is(err, ErrRejected) ||
+		!strings.Contains(err.Error(), "encode admitted request") {
+		t.Fatalf("admit() error = %v, want request encoding failure", err)
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unsafe"
@@ -55,14 +56,12 @@ func TestMain(testingMain *testing.M) {
 		fmt.Fprintf(os.Stderr, "build production worker: %v\n", err)
 		os.Exit(1)
 	}
-	// The test invokes the repository-pinned Cargo tool with fixed arguments;
-	// the path is derived only from the checked-out repository root.
-	qualification := exec.CommandContext( //nolint:gosec // fixed test-tool invocation
+	qualification := exec.CommandContext(
 		ctx,
 		"cargo",
 		"build",
 		"--manifest-path",
-		filepath.Join(root, "worker", "qualification-fixtures", "Cargo.toml"),
+		"worker/qualification-fixtures/Cargo.toml",
 		"--bins",
 		"--locked",
 	)
@@ -189,6 +188,13 @@ func TestOperationDoesNotRejectAdmissionFailure(t *testing.T) {
 func TestOperationRejectsInvalidConfiguration(t *testing.T) {
 	if _, err := New("missing.exe", t.TempDir()); err == nil {
 		t.Fatal("invalid worker accepted")
+	}
+	evidenceFile := filepath.Join(t.TempDir(), "evidence")
+	if err := os.WriteFile(evidenceFile, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(testWorker(t), evidenceFile); err == nil {
+		t.Fatal("invalid evidence root accepted")
 	}
 }
 
@@ -370,6 +376,54 @@ func TestOperationRejectsInvalidContext(t *testing.T) {
 	}
 	if _, err := admittedStartDeadline(context.Background(), "invalid"); err == nil {
 		t.Fatal("invalid deadline accepted")
+	}
+}
+
+func TestOperationRejectsInvalidAcceptedDeadline(t *testing.T) {
+	operation, err := newTestOperation(t, testWorker(t))
+	if err != nil {
+		t.Fatalf("new operation: %v", err)
+	}
+	admittedAt := time.Now().UTC()
+	accepted := admittedFixture(t, admittedAt)
+	accepted.Request.Deadline = "invalid"
+	result, process := operation.executeAccepted(
+		context.Background(),
+		accepted,
+		admittedAt,
+	)
+	if result.Status != Failed ||
+		!errors.Is(result.Err, ErrProtocol) ||
+		process.Status != "" {
+		t.Fatalf("result=%+v process=%+v", result, process)
+	}
+}
+
+func TestEvaluateResponseRejectsInvalidVerificationInputs(t *testing.T) {
+	t.Parallel()
+
+	accepted := admittedFixture(t, time.Now().UTC())
+	process := processsupervision.Outcome{
+		Status:          processsupervision.Completed,
+		CleanupComplete: true,
+	}
+	result := evaluateResponse(accepted, process, workerprotocol.Response{
+		Status: workerprotocol.Completed,
+	})
+	if result.Status != ExecutedUnverified ||
+		!errors.Is(result.Err, ErrVerification) {
+		t.Fatalf("missing output result=%+v", result)
+	}
+
+	output := "unused"
+	accepted.Request.Input = "invalid"
+	result = evaluateResponse(accepted, process, workerprotocol.Response{
+		Status: workerprotocol.Completed,
+		Output: &output,
+	})
+	if result.Status != ExecutedUnverified ||
+		!errors.Is(result.Err, ErrVerification) {
+		t.Fatalf("invalid admitted input result=%+v", result)
 	}
 }
 
@@ -616,6 +670,88 @@ func TestOperationRejectsSemanticLie(t *testing.T) {
 	}
 }
 
+func TestExecuteRecordsPublicationFailure(t *testing.T) {
+	operation, err := newTestOperation(t, testWorker(t))
+	if err != nil {
+		t.Fatalf("new operation: %v", err)
+	}
+	failure := errors.Join(attemptstore.ErrPublication, errors.New("write fixture"))
+	operation.publish = func(
+		attempt *attemptstore.Attempt,
+		_ attemptstore.Observation,
+	) error {
+		return errors.Join(failure, attempt.Close())
+	}
+	result := operation.Execute(
+		context.Background(),
+		"https://example.test",
+		urlreference.Defang,
+	)
+	if result.Status != Indeterminate ||
+		!errors.Is(result.Err, ErrPersistence) ||
+		!errors.Is(result.Err, failure) {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestCancellationRacingPublicationPreservesOutcome(t *testing.T) {
+	operation, err := newTestOperation(t, testWorker(t))
+	if err != nil {
+		t.Fatalf("new operation: %v", err)
+	}
+	reached := make(chan struct{})
+	resume := make(chan struct{})
+	var resumeOnce sync.Once
+	releasePublication := func() {
+		resumeOnce.Do(func() {
+			close(resume)
+		})
+	}
+	defer releasePublication()
+	operation.publish = func(
+		attempt *attemptstore.Attempt,
+		observation attemptstore.Observation,
+	) error {
+		close(reached)
+		<-resume
+		return attempt.Publish(observation)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resultChannel := make(chan Result, 1)
+	go func() {
+		resultChannel <- operation.Execute(
+			ctx,
+			"https://example.test",
+			urlreference.Defang,
+		)
+	}()
+	select {
+	case <-reached:
+	case <-ctx.Done():
+		t.Fatalf("execution did not reach publication: %v", ctx.Err())
+	}
+	cancel()
+	releasePublication()
+	var result Result
+	select {
+	case result = <-resultChannel:
+	case <-time.After(30 * time.Second):
+		t.Fatal("execution did not return after publication")
+	}
+	if result.Status != Verified {
+		t.Fatalf("result=%+v", result)
+	}
+	records, err := operation.store.Inspect(result.AttemptID)
+	if err != nil {
+		t.Fatalf("inspect result: %v", err)
+	}
+	if records.Observation == nil ||
+		records.Observation.TerminalStatus != string(Verified) {
+		t.Fatalf("records=%+v", records)
+	}
+}
+
 func admittedFixture(t *testing.T, admittedAt time.Time) urladmission.Accepted {
 	t.Helper()
 	accepted, err := urladmission.Admit(
@@ -727,6 +863,30 @@ func TestPublicationFailureOverridesReleaseFailure(t *testing.T) {
 		!errors.Is(result.Err, ErrPersistence) ||
 		!errors.Is(result.Err, ErrCleanup) {
 		t.Fatalf("combined publication result=%+v", result)
+	}
+}
+
+func TestUnexpectedPublishErrorIsIndeterminate(t *testing.T) {
+	unexpected := errors.New("unexpected publication error")
+	result := Result{Status: Verified}
+	applyPublishError(&result, unexpected)
+	if result.Status != Indeterminate ||
+		!errors.Is(result.Err, ErrPersistence) ||
+		!errors.Is(result.Err, unexpected) {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestUnknownProcessStatusFails(t *testing.T) {
+	if status := terminalStatus(processsupervision.Outcome{}); status != Failed {
+		t.Fatalf("terminal status=%q, want %q", status, Failed)
+	}
+	process := processsupervision.Outcome{
+		Status: processsupervision.StartFailed,
+		Err:    errors.New("native start failure"),
+	}
+	if status := terminalStatus(process); status != Failed {
+		t.Fatalf("start failure terminal status=%q, want %q", status, Failed)
 	}
 }
 

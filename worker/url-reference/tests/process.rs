@@ -192,12 +192,12 @@ fn run_worker(input: Vec<u8>) -> Output {
     }
     if let Some(reason) = failure {
         let cleanup = child.terminate();
-        if let Some(handle) = writer {
-            let _ = join_writer(handle);
-        }
-        match cleanup {
-            Ok(()) => panic!("{reason}"),
-            Err(error) => panic!("{reason}; clean up worker: {error}"),
+        let writer_cleanup = writer.map(join_writer).transpose().map(|_| ());
+        match (cleanup, writer_cleanup) {
+            (Ok(()), Ok(())) => panic!("{reason}"),
+            (worker, output) => {
+                panic!("{reason}; worker cleanup: {worker:?}; output cleanup: {output:?}")
+            }
         }
     }
     if let Some(handle) = writer {
@@ -248,6 +248,8 @@ impl ChildGuard {
 
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        let _ = self.terminate();
+        if self.terminate().is_err() {
+            std::process::abort();
+        }
     }
 }

@@ -224,16 +224,16 @@ func TestStoreRejectsReceiptPathSubstitution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open attempt root: %v", err)
 	}
-	data, err := func() ([]byte, error) {
+	data, err := func() (data []byte, returnedErr error) {
 		defer func() {
-			_ = root.Close()
+			returnedErr = errors.Join(returnedErr, root.Close())
 		}()
 		file, openErr := root.Open(filepath.Base(receiptPath))
 		if openErr != nil {
 			return nil, openErr
 		}
 		defer func() {
-			_ = file.Close()
+			returnedErr = errors.Join(returnedErr, file.Close())
 		}()
 		return io.ReadAll(file)
 	}()
@@ -431,7 +431,7 @@ func TestRootedReadRejectsNonFiles(t *testing.T) {
 	}
 	link := filepath.Join(root, "link")
 	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
+		t.Fatalf("create record symlink: %v", err)
 	}
 	if _, err := readRooted(root, "link"); err == nil {
 		t.Fatal("symlink read was accepted")
@@ -648,6 +648,7 @@ func testObservationFor(tb testing.TB, accepted urladmission.Accepted) Observati
 	if err != nil {
 		tb.Fatalf("transform response fixture: %v", err)
 	}
+	observation.ExpectedOutput = output
 	mediaType := workerprotocol.MediaType
 	outputLength := len(output)
 	outputHash := sha256.Sum256([]byte(output))

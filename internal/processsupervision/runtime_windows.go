@@ -36,12 +36,26 @@ type inputWriter struct {
 }
 
 func environmentBlock(folder string) ([]uint16, error) {
-	systemRoot, err := windows.GetSystemWindowsDirectory()
+	return environmentBlockWith(
+		folder,
+		windows.GetSystemWindowsDirectory,
+		os.MkdirAll,
+		windows.UTF16FromString,
+	)
+}
+
+func environmentBlockWith(
+	folder string,
+	systemWindowsDirectory func() (string, error),
+	mkdirAll func(string, os.FileMode) error,
+	encode func(string) ([]uint16, error),
+) ([]uint16, error) {
+	systemRoot, err := systemWindowsDirectory()
 	if err != nil {
 		return nil, fmt.Errorf("find Windows directory: %w", err)
 	}
 	temp := filepath.Join(folder, "Temp")
-	if err := os.MkdirAll(temp, 0o700); err != nil {
+	if err := mkdirAll(temp, 0o700); err != nil {
 		return nil, fmt.Errorf("prepare worker temporary directory: %w", err)
 	}
 	values := []string{
@@ -53,7 +67,7 @@ func environmentBlock(folder string) ([]uint16, error) {
 	}
 	var block []uint16
 	for _, value := range values {
-		encoded, err := windows.UTF16FromString(value)
+		encoded, err := encode(value)
 		if err != nil {
 			return nil, fmt.Errorf("encode worker environment: %w", err)
 		}
@@ -77,10 +91,7 @@ func (writer *inputWriter) write(frame []byte) inputResult {
 			cleanupErr: writer.cancel(),
 		}
 	}
-	written, writeErr := io.Copy(writer.file, bytes.NewReader(frame))
-	if writeErr == nil && written != int64(len(frame)) {
-		writeErr = io.ErrShortWrite
-	}
+	_, writeErr := io.Copy(writer.file, bytes.NewReader(frame))
 	result := inputResult{cleanupErr: writer.cancel()}
 	if writeErr != nil {
 		result.err = fmt.Errorf("write worker frame: %w", writeErr)
@@ -153,9 +164,29 @@ func awaitInput(
 }
 
 func waitCleanup(process, job windows.Handle, timeout time.Duration) (bool, error) {
-	deadline := time.Now().Add(timeout)
-	wait := waitMilliseconds(timeout)
-	event, err := windows.WaitForSingleObject(process, wait)
+	return waitCleanupWith(
+		process,
+		timeout,
+		windows.WaitForSingleObject,
+		func() (bool, error) {
+			return jobEmpty(job)
+		},
+		time.Now,
+		time.Sleep,
+	)
+}
+
+func waitCleanupWith(
+	process windows.Handle,
+	timeout time.Duration,
+	waitForProcess func(windows.Handle, uint32) (uint32, error),
+	empty func() (bool, error),
+	now func() time.Time,
+	sleep func(time.Duration),
+) (bool, error) {
+	deadline := now().Add(timeout)
+	waitMS := waitMilliseconds(timeout)
+	event, err := waitForProcess(process, waitMS)
 	if err != nil {
 		return false, fmt.Errorf("wait for worker cleanup: %w", err)
 	}
@@ -166,26 +197,30 @@ func waitCleanup(process, job windows.Handle, timeout time.Duration) (bool, erro
 		return false, fmt.Errorf("unexpected worker wait result: %d", event)
 	}
 	for {
-		empty, err := jobEmpty(job)
+		isEmpty, err := empty()
 		if err != nil {
 			return false, err
 		}
-		if empty {
+		if isEmpty {
 			return true, nil
 		}
-		if !time.Now().Before(deadline) {
+		if !now().Before(deadline) {
 			return false, errors.New("process tree cleanup deadline exceeded")
 		}
-		time.Sleep(time.Millisecond)
+		sleep(time.Millisecond)
 	}
 }
 
 func waitMilliseconds(timeout time.Duration) uint32 {
-	milliseconds := uint64(timeout / time.Millisecond) // #nosec G115 -- valid limits require a positive duration.
+	if timeout <= 0 {
+		return 0
+	}
+	milliseconds := timeout / time.Millisecond
 	if timeout%time.Millisecond != 0 {
 		milliseconds++
 	}
-	if milliseconds >= uint64(^uint32(0)-1) {
+	const maximum = time.Duration(^uint32(0) - 1)
+	if milliseconds >= maximum {
 		return ^uint32(0) - 1
 	}
 	return uint32(milliseconds)
@@ -196,7 +231,7 @@ func jobEmpty(job windows.Handle) (bool, error) {
 	err := windows.QueryInformationJobObject(
 		job,
 		windows.JobObjectBasicAccountingInformation,
-		uintptr(unsafe.Pointer(&accounting)), // #nosec G103 -- Win32 writes the typed accounting structure.
+		uintptr(nativePointer(&accounting)),
 		uint32(unsafe.Sizeof(accounting)),
 		nil,
 	)

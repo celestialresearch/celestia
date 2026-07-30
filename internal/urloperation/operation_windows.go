@@ -30,6 +30,7 @@ type Operation struct {
 	supervisor *processsupervision.Supervisor
 	store      *attemptstore.Store
 	admit      func(string, urlreference.Mode, time.Time) (urladmission.Accepted, error)
+	publish    func(*attemptstore.Attempt, attemptstore.Observation) error
 }
 
 const (
@@ -55,6 +56,12 @@ func New(
 		supervisor: supervisor,
 		store:      store,
 		admit:      urladmission.Admit,
+		publish: func(
+			attempt *attemptstore.Attempt,
+			observation attemptstore.Observation,
+		) error {
+			return attempt.Publish(observation)
+		},
 	}, nil
 }
 
@@ -90,7 +97,7 @@ func (operation *Operation) Execute(
 	result, process := operation.executeAccepted(ctx, accepted, admittedAt)
 	result.AttemptID = accepted.Request.AttemptID
 	observation := observationFrom(result, process)
-	if err := attempt.Publish(observation); err != nil {
+	if err := operation.publish(attempt, observation); err != nil {
 		applyPublishError(&result, err)
 	}
 	return result

@@ -22,8 +22,31 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+type recordCreationOperations struct {
+	descriptor  func() (*windows.SECURITY_DESCRIPTOR, error)
+	name        func(string) (string, error)
+	encode      func(string) (*uint16, error)
+	create      func(*uint16, uint32, uint32, *windows.SecurityAttributes, uint32, uint32, windows.Handle) (windows.Handle, error)
+	newFile     func(uintptr, string) *os.File
+	closeHandle func(windows.Handle) error
+}
+
 func createRecordTemp(path, name string) (*os.File, error) {
-	descriptor, err := secureDirectoryDescriptor()
+	return createRecordTempWith(path, name, recordCreationOperations{
+		descriptor:  secureDirectoryDescriptor,
+		name:        recordTempName,
+		encode:      windows.UTF16PtrFromString,
+		create:      windows.CreateFile,
+		newFile:     os.NewFile,
+		closeHandle: windows.CloseHandle,
+	})
+}
+
+func createRecordTempWith(
+	path, name string,
+	operations recordCreationOperations,
+) (*os.File, error) {
+	descriptor, err := operations.descriptor()
 	if err != nil {
 		return nil, err
 	}
@@ -32,16 +55,16 @@ func createRecordTemp(path, name string) (*os.File, error) {
 		SecurityDescriptor: descriptor,
 	}
 	for range 8 {
-		temporaryName, err := recordTempName(name)
+		temporaryName, err := operations.name(name)
 		if err != nil {
 			return nil, err
 		}
 		filePath := filepath.Join(path, temporaryName)
-		pointer, err := windows.UTF16PtrFromString(filePath)
+		pointer, err := operations.encode(filePath)
 		if err != nil {
 			return nil, err
 		}
-		handle, err := windows.CreateFile(
+		handle, err := operations.create(
 			pointer,
 			windows.GENERIC_READ|windows.GENERIC_WRITE,
 			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE,
@@ -57,11 +80,11 @@ func createRecordTemp(path, name string) (*os.File, error) {
 		if err != nil {
 			return nil, err
 		}
-		file := os.NewFile(uintptr(handle), filePath)
+		file := operations.newFile(uintptr(handle), filePath)
 		if file == nil {
 			return nil, errors.Join(
 				errors.New("create record file"),
-				windows.CloseHandle(handle),
+				operations.closeHandle(handle),
 			)
 		}
 		return file, nil

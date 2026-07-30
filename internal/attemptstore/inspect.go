@@ -18,6 +18,13 @@ import (
 )
 
 func (store *Store) Inspect(attemptID string) (records Records, err error) {
+	return store.inspectWithLock(attemptID, store.acquireAttemptLock)
+}
+
+func (store *Store) inspectWithLock(
+	attemptID string,
+	acquire func(string, bool) (*attemptLock, error),
+) (records Records, err error) {
 	path, err := store.attemptPath(attemptID)
 	if err != nil {
 		return Records{}, err
@@ -36,7 +43,7 @@ func (store *Store) Inspect(attemptID string) (records Records, err error) {
 	if err == nil && published {
 		return store.inspectPublishedPath(path, attemptID)
 	}
-	owner, err := store.acquireAttemptLock(attemptID, false)
+	owner, err := acquire(attemptID, false)
 	if err != nil {
 		return Records{}, err
 	}
@@ -80,6 +87,26 @@ func inspectPublished(path, attemptID string) (Records, error) {
 }
 
 func validateBundleFiles(path, terminalFile string, published bool) (err error) {
+	return validateBundleFilesWith(
+		path,
+		terminalFile,
+		published,
+		func(root *os.Root) (*os.File, error) {
+			return root.Open(".")
+		},
+		func(directory *os.File) ([]os.DirEntry, error) {
+			return directory.ReadDir(-1)
+		},
+	)
+}
+
+func validateBundleFilesWith(
+	path string,
+	terminalFile string,
+	published bool,
+	openDirectory func(*os.Root) (*os.File, error),
+	readDirectory func(*os.File) ([]os.DirEntry, error),
+) (err error) {
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return fmt.Errorf("open evidence bundle: %w", err)
@@ -87,14 +114,14 @@ func validateBundleFiles(path, terminalFile string, published bool) (err error) 
 	defer func() {
 		err = errors.Join(err, root.Close())
 	}()
-	directory, err := root.Open(".")
+	directory, err := openDirectory(root)
 	if err != nil {
 		return fmt.Errorf("open evidence directory: %w", err)
 	}
 	defer func() {
 		err = errors.Join(err, directory.Close())
 	}()
-	entries, err := directory.ReadDir(-1)
+	entries, err := readDirectory(directory)
 	if err != nil {
 		return fmt.Errorf("read evidence directory: %w", err)
 	}
@@ -122,9 +149,11 @@ func readBundle(path, attemptID string) (Records, error) {
 	if err := readRecord(path, admittedFile, &records.Admitted); err != nil {
 		return Records{}, err
 	}
-	if err := readRecord(path, receiptFile, &records.Receipt); err != nil {
+	receiptHash, err := readRecordHash(path, receiptFile, &records.Receipt)
+	if err != nil {
 		return Records{}, err
 	}
+	records.receiptHash = receiptHash
 	if err := validateReceipt(attemptID, records.Admitted, records.Receipt); err != nil {
 		return Records{}, err
 	}

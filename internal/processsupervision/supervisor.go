@@ -62,14 +62,6 @@ func New(workerPath string, limits Limits) (*Supervisor, error) {
 	return newSupervisor(workerPath, limits)
 }
 
-func (supervisor *Supervisor) Run(ctx context.Context, frame []byte) Outcome {
-	return supervisor.run(
-		ctx,
-		frame,
-		time.Now().Add(supervisor.limits.StartupTimeout),
-	)
-}
-
 func (supervisor *Supervisor) RunBefore(
 	ctx context.Context,
 	frame []byte,
