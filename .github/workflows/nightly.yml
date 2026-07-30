@@ -47,4 +47,5 @@ jobs:
         env:
           DEVCHECK_CURRENCY: 'false'
           DEVCHECK_OUTPUT: failed
+          DEVCHECK_SELF_TEST: 'true'
         run: bash ./.github/scripts/devcheck.sh

@@ -190,6 +190,26 @@ main() (
     printf 'race tests omit the package parallelism bound\n' >&2
     return 1
   }
+  grep -Fq 'config | full | quick | shell' \
+    "$root/.github/scripts/devcheck.sh" || {
+    printf 'devcheck omits the quick profile\n' >&2
+    return 1
+  }
+  grep -Fq "\${DEVCHECK_SELF_TEST:-false}" \
+    "$root/.github/scripts/devcheck.sh" || {
+    printf 'verification self-tests are not explicitly owned\n' >&2
+    return 1
+  }
+  grep -Fq "DEVCHECK_PROFILE: \${{ needs.classify.outputs.full == 'true' && 'full' || 'quick' }}" \
+    "$root/.github/workflows/main.yml" || {
+    printf 'main verification does not select quick conservatively\n' >&2
+    return 1
+  }
+  [[ $(grep -Fc "self-test: 'true'" \
+    "$root/.github/workflows/main.yml") -eq 1 ]] || {
+    printf 'main verification has more than one self-test owner\n' >&2
+    return 1
+  }
   mkdir -p "$work_dir/type-assertion"
   fake_bin="$work_dir/platform-bin"
   platform_log="$work_dir/platform-targets"

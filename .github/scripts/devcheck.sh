@@ -16,7 +16,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
 profile=${DEVCHECK_PROFILE:-full}
 case "$profile" in
-  config | full | shell) ;;
+  config | full | quick | shell) ;;
   *)
     printf 'Unknown verification profile: %s\n' "$profile" >&2
     exit 2
@@ -103,7 +103,6 @@ check_config() {
   local scripts=()
 
   go tool golangci-lint config verify || return
-  bash ./.github/scripts/actioncheck.sh verify || return
   go tool actionlint || return
   bash ./.github/scripts/rustcheck.sh config || return
   script_list=$(find .github/scripts -type f -name '*.sh' -print | sort) ||
@@ -161,6 +160,10 @@ fuzz_smoke() {
 
 go_standard_tests() {
   go test -p=2 -count=1 -shuffle=on ./...
+}
+
+go_quick_tests() {
+  go test -p=2 ./...
 }
 
 go_race_tests() {
@@ -266,17 +269,17 @@ if [[ "$profile" == config ]]; then
   finish
   exit $?
 fi
-if [[ "${DEVCHECK_SELF_TEST:-true}" == true ]]; then
+if [[ "$profile" != quick && "${DEVCHECK_SELF_TEST:-false}" == true ]]; then
   run_check 'Verification Scripts' bash ./.github/scripts/verification_test.sh
 else
-  skip_check 'Verification Scripts' 'Disabled by the verification self-test'
+  skip_check 'Verification Scripts' 'Full profile'
 fi
 run_check 'Policy' bash ./.github/scripts/policycheck.sh
 run_check 'Modules' bash ./.github/scripts/modcheck.sh verify
 run_check 'Actions' bash ./.github/scripts/actioncheck.sh verify
 run_check 'Currency Exceptions' bash ./.github/scripts/currencycheck.sh verify
 run_check 'Licence Headers' bash ./.github/scripts/licencecheck.sh verify
-if [[ "${DEVCHECK_CURRENCY:-true}" == true ]]; then
+if [[ "$profile" != quick && "${DEVCHECK_CURRENCY:-true}" == true ]]; then
   run_check 'Module Currency' bash ./.github/scripts/modcheck.sh cached-diff
   run_check 'Action Currency' bash ./.github/scripts/actioncheck.sh cached-currency
   run_check 'Version Currency' bash ./.github/scripts/currencycheck.sh currency
@@ -293,17 +296,30 @@ fi
 
 if has_go_packages; then
   section 'Go'
-  run_check 'Go Build' go build -trimpath -buildvcs=true ./...
+  if [[ "$profile" == quick ]]; then
+    skip_check 'Go Build' 'Covered by cached tests'
+  else
+    run_check 'Go Build' go build -trimpath -buildvcs=true ./...
+  fi
   run_no_output 'Go Fix' go fix -diff ./...
   run_no_output 'Go Format' go tool golangci-lint fmt --diff
   run_check 'Go Vet' go vet ./...
   run_check 'Go Lint' go tool golangci-lint run
-  run_check 'Go Platform Lint' bash ./.github/scripts/platformlint.sh
-  run_check 'Go Test' go_standard_tests
-  run_check 'Go Race' go_race_tests
-  run_check 'Go Coverage' bash ./.github/scripts/coveragecheck.sh cached
-  run_check 'Go Fuzz' fuzz_smoke
-  run_check 'Go Vulnerabilities' go tool govulncheck ./...
+  if [[ "$profile" == quick ]]; then
+    run_check 'Go Test' go_quick_tests
+    skip_check 'Go Platform Lint' 'Full profile'
+    skip_check 'Go Race' 'Full profile'
+    skip_check 'Go Coverage' 'Full profile'
+    skip_check 'Go Fuzz' 'Full profile'
+    skip_check 'Go Vulnerabilities' 'Full profile'
+  else
+    run_check 'Go Platform Lint' bash ./.github/scripts/platformlint.sh
+    run_check 'Go Test' go_standard_tests
+    run_check 'Go Race' go_race_tests
+    run_check 'Go Coverage' bash ./.github/scripts/coveragecheck.sh cached
+    run_check 'Go Fuzz' fuzz_smoke
+    run_check 'Go Vulnerabilities' go tool govulncheck ./...
+  fi
 else
   package_discovery_status=$?
   if ((package_discovery_status == 2)); then
@@ -333,11 +349,18 @@ if [[ -f Cargo.toml ]]; then
     --all-targets --locked -- -D warnings
   run_check 'Qualification Fixtures' \
     cargo test --manifest-path worker/qualification-fixtures/Cargo.toml --bins --locked
-  run_check 'Qualification Fixture Docs' fixture_docs
-  run_check 'Rust Docs' rust_docs
-  run_check 'Rust Coverage' rust_coverage
-  run_check 'Rust Build Outputs' bash ./.github/scripts/rustcheck.sh artefacts
-  if [[ "${DEVCHECK_SUPPLY_CHAIN:-true}" == true ]]; then
+  if [[ "$profile" == quick ]]; then
+    skip_check 'Qualification Fixture Docs' 'Full profile'
+    skip_check 'Rust Docs' 'Full profile'
+    skip_check 'Rust Coverage' 'Full profile'
+    skip_check 'Rust Build Outputs' 'Full profile'
+  else
+    run_check 'Qualification Fixture Docs' fixture_docs
+    run_check 'Rust Docs' rust_docs
+    run_check 'Rust Coverage' rust_coverage
+    run_check 'Rust Build Outputs' bash ./.github/scripts/rustcheck.sh artefacts
+  fi
+  if [[ "$profile" != quick && "${DEVCHECK_SUPPLY_CHAIN:-true}" == true ]]; then
     run_check 'Rust Advisories' cargo audit --deny warnings
     run_check 'Rust Dependencies' cargo deny check
     run_check 'Fixture Advisories' \

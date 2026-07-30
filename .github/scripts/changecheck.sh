@@ -59,8 +59,7 @@ classify_path() {
     policy=true
     ;;
   .github/dependabot.yml)
-    ci=true
-    dependencies=true
+    mark_full
     ;;
   .github/scripts/windows-shellcheck.ps1)
     ci=true
@@ -80,20 +79,18 @@ classify_path() {
     mark_full
     ;;
   go.mod | go.sum)
-    go=true
-    dependencies=true
-    compatibility=true
+    mark_full
     ;;
   Cargo.toml | Cargo.lock | deny.toml | rust-toolchain.toml | */Cargo.toml)
-    rust=true
-    dependencies=true
-    compatibility=true
+    mark_full
     ;;
   *.go)
     go=true
     compatibility=true
     case "$path" in
-    internal/workerprotocolv1/* | internal/urladmission/*)
+    internal/attemptstore/* | internal/processsupervision/* | \
+      internal/urladmission/* | internal/urloperation/* | \
+      internal/urlreferencev1/* | internal/workerprotocolv1/*)
       mark_full
       ;;
     esac

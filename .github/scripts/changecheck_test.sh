@@ -99,18 +99,23 @@ main() {
   assert_value true go "$output"
   assert_value true dependencies "$output"
   assert_value true compatibility "$output"
+  assert_value true full "$output"
 
   output=$(classify_path_directly worker/url-reference/Cargo.toml)
   assert_value true rust "$output"
   assert_value true dependencies "$output"
+  assert_value true full "$output"
 
   output=$(classify_path_directly internal/urlreferencev1/urlreference.go)
   assert_value true go "$output"
-  assert_value false full "$output"
+  assert_value true full "$output"
 
   for path in \
+    internal/attemptstore/store.go \
+    internal/processsupervision/supervisor_windows.go \
     internal/workerprotocolv1/protocol.go \
     internal/urladmission/admission.go \
+    internal/urloperation/operation_windows.go \
     worker/url-reference/src/main.rs \
     .github/scripts/devcheck.sh \
     .github/generated/probe.yml \
@@ -140,7 +145,7 @@ main() {
   )
   assert_value true docs "$output"
   assert_value true go "$output"
-  assert_value false full "$output"
+  assert_value true full "$output"
 
   base=$(git -C "$fixture_repo" rev-parse HEAD)
   git -C "$fixture_repo" mv docs/mixed.md renamed.unknown
