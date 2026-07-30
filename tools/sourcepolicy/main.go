@@ -268,7 +268,8 @@ func skipRustTrivia(source []byte, index, line int) (int, int, bool) {
 			continue
 		}
 		if source[index+1] == '*' {
-			index, line, valid := skipRustBlockComment(source, index, line)
+			var valid bool
+			index, line, valid = skipRustBlockComment(source, index, line)
 			if !valid {
 				return index, line, false
 			}
@@ -402,6 +403,13 @@ func skipRustCharacter(source []byte, index, line int) (int, int) {
 func rustAttributeIdentifiers(source []byte) []string {
 	var identifiers []string
 	for index := 0; index < len(source); {
+		if next, valid, found := rustAttributeComment(source, index); found {
+			if !valid {
+				return append(identifiers, "invalid_comment")
+			}
+			index = next
+			continue
+		}
 		if source[index] == '"' || source[index] == '\'' ||
 			source[index] == 'r' || source[index] == 'b' {
 			next, _ := skipRustToken(source, index, 1)
@@ -421,6 +429,15 @@ func rustAttributeIdentifiers(source []byte) []string {
 		identifiers = append(identifiers, string(source[start:index]))
 	}
 	return identifiers
+}
+
+func rustAttributeComment(source []byte, index int) (int, bool, bool) {
+	if index+1 >= len(source) || source[index] != '/' ||
+		(source[index+1] != '/' && source[index+1] != '*') {
+		return index, true, false
+	}
+	next, _, valid := skipRustTrivia(source, index, 1)
+	return next, valid, true
 }
 
 func isRustIdentifierByte(value byte) bool {
