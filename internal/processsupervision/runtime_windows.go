@@ -105,8 +105,8 @@ func (writer *inputWriter) publish(
 	inputDone chan<- inputResult,
 ) {
 	result := writer.write(frame)
-	input <- result
 	inputDone <- result
+	input <- result
 	close(writer.done)
 }
 
@@ -134,6 +134,11 @@ func awaitInput(
 	case result := <-input:
 		return result
 	case <-timer.C:
+		select {
+		case result := <-input:
+			return result
+		default:
+		}
 		cleanupErr := errors.New("join worker input: cleanup deadline exceeded")
 		if writer == nil {
 			return inputResult{cleanupErr: cleanupErr}
@@ -188,15 +193,15 @@ func waitCleanupWith(
 		return false, fmt.Errorf("unexpected worker wait result: %d", event)
 	}
 	for {
+		if !now().Before(deadline) {
+			return false, errors.New("process tree cleanup deadline exceeded")
+		}
 		isEmpty, err := empty()
 		if err != nil {
 			return false, err
 		}
 		if isEmpty {
 			return true, nil
-		}
-		if !now().Before(deadline) {
-			return false, errors.New("process tree cleanup deadline exceeded")
 		}
 		sleep(time.Millisecond)
 	}

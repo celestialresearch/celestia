@@ -166,6 +166,11 @@ func awaitStream(
 	case value := <-result:
 		return value
 	case <-timer.C:
+		select {
+		case value := <-result:
+			return value
+		default:
+		}
 		cleanupErr := fmt.Errorf("join worker %s: cleanup deadline exceeded", reader.name)
 		if closeErr := reader.cancel(); closeErr != nil {
 			cleanupErr = errors.Join(

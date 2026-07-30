@@ -358,6 +358,22 @@ func TestAwaitInputStates(t *testing.T) {
 	}
 }
 
+func TestAwaitInputPrefersCompletedResultAtDeadline(t *testing.T) {
+	for range 1_000 {
+		input := make(chan inputResult, 1)
+		input <- inputResult{}
+		result := awaitInput(
+			nil,
+			input,
+			time.Now().Add(-time.Second),
+			time.Now().Add(-time.Second),
+		)
+		if result.cleanupErr != nil {
+			t.Fatalf("completed input reported cleanup failure: %v", result.cleanupErr)
+		}
+	}
+}
+
 func TestAwaitInputJoinDeadline(t *testing.T) {
 	writer := &inputWriter{done: make(chan struct{})}
 	result := awaitInput(
@@ -431,6 +447,44 @@ func TestAwaitStreamJoinDeadline(t *testing.T) {
 	)
 	if result.cleanupErr == nil {
 		t.Fatal("unjoined stream accepted")
+	}
+}
+
+func TestAwaitStreamPrefersCompletedResultAtDeadline(t *testing.T) {
+	for range 1_000 {
+		done := make(chan struct{})
+		close(done)
+		result := make(chan streamResult, 1)
+		result <- streamResult{data: []byte("complete")}
+		got := awaitStream(
+			&streamReader{name: "output", done: done},
+			result,
+			time.Now().Add(-time.Second),
+			time.Now().Add(-time.Second),
+		)
+		if got.cleanupErr != nil || string(got.data) != "complete" {
+			t.Fatalf("completed stream reported cleanup failure: %+v", got)
+		}
+	}
+}
+
+func TestConsumedInputResultIsNotAppliedTwice(t *testing.T) {
+	sentinel := errors.New("input")
+	input := make(chan inputResult, 1)
+	input <- inputResult{err: sentinel}
+	status, err, consumed := awaitProcessWithInput(
+		context.Background(),
+		make(chan time.Time),
+		make(chan time.Time),
+		func() (bool, error) { return false, nil },
+		make(chan Status),
+		input,
+	)
+	if status != ExitFailed || !errors.Is(err, sentinel) || !consumed {
+		t.Fatalf("boundary = %s, %v, %t", status, err, consumed)
+	}
+	if got := unappliedInputResult(inputResult{err: sentinel}, consumed); got.err != nil {
+		t.Fatalf("consumed input was retained: %v", got.err)
 	}
 }
 

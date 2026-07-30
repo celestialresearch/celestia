@@ -547,6 +547,36 @@ func TestWaitCleanupTreeStates(t *testing.T) {
 	})
 }
 
+func TestWaitCleanupRejectsRoundedOverrun(t *testing.T) {
+	started := time.Unix(0, 0)
+	times := []time.Time{started, started.Add(time.Millisecond)}
+	index := 0
+	complete, err := waitCleanupWith(
+		windows.Handle(7),
+		time.Nanosecond,
+		func(_ windows.Handle, timeout uint32) (uint32, error) {
+			if timeout != 1 {
+				t.Fatalf("timeout=%d", timeout)
+			}
+			return windows.WAIT_OBJECT_0, nil
+		},
+		func() (bool, error) {
+			t.Fatal("queried job after cleanup deadline")
+			return true, nil
+		},
+		func() time.Time {
+			value := times[min(index, len(times)-1)]
+			index++
+			return value
+		},
+		func(time.Duration) {},
+	)
+	if complete || err == nil ||
+		!strings.Contains(err.Error(), "process tree cleanup deadline") {
+		t.Fatalf("complete=%t error=%v", complete, err)
+	}
+}
+
 func runWaitCleanupCases(t *testing.T, tests []waitCleanupCase) {
 	t.Helper()
 	process := windows.Handle(7)
