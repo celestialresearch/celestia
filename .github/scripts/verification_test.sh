@@ -1146,13 +1146,8 @@ import (
 
 func TestFailure(t *testing.T) {
 	fmt.Fprintln(os.Stderr, strings.Repeat("x", 131072))
-	t.Fatal("failed")
-}
-
-func TestMain(m *testing.M) {
-	code := m.Run()
 	fmt.Fprintln(os.Stderr, "fixture failure")
-	os.Exit(code)
+	t.Fatal("failed")
 }
 EOF
   set +e
