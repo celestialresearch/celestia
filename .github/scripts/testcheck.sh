@@ -115,7 +115,18 @@ rust_command() {
     while IFS= read -r test_name; do
       test_name=${test_name%: test}
       [[ "$test_name" == *": benchmark" ]] && continue
-      "$executable" --exact "$test_name" --test-threads=1
+      if ! "$executable" --exact "$test_name" --test-threads=1 \
+        >"$temporary/rust-result" 2>&1; then
+        cat "$temporary/rust-result"
+        return 1
+      fi
+      cat "$temporary/rust-result"
+      if [[ $(grep -c '^test result: ok\.' \
+        "$temporary/rust-result" || true) -ne 1 ]]; then
+        printf 'Rust test executable lacked one terminal summary: %s\n' \
+          "$executable" >&2
+        return 1
+      fi
     done <"$temporary/rust-list"
   done <"$temporary/rust-executables"
 }

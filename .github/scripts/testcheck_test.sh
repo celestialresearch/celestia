@@ -54,6 +54,8 @@ if [[ "$*" == *"--list"* ]]; then
   printf 'must_run: test\n'
 elif [[ "${COMPLETE_TEST:-false}" != true ]]; then
   exit 1
+else
+  printf 'test result: ok. 1 passed; 0 failed; 0 ignored\n'
 fi
 EOF
 chmod +x "$work/bin/rust-test"
