@@ -116,12 +116,7 @@ func (reader *streamReader) readResult(
 
 func (reader *streamReader) cancel() error {
 	reader.close.Do(func() {
-		if reader.handle != 0 && reader.handle != windows.InvalidHandle {
-			if err := windows.CancelIoEx(reader.handle, nil); err != nil &&
-				!errors.Is(err, windows.ERROR_NOT_FOUND) {
-				reader.closeErr = fmt.Errorf("cancel worker %s I/O: %w", reader.name, err)
-			}
-		}
+		reader.closeErr = cancelIO(reader.handle, reader.name)
 		if reader.file != nil {
 			if err := reader.file.Close(); err != nil {
 				reader.closeErr = errors.Join(reader.closeErr, err)
@@ -129,6 +124,25 @@ func (reader *streamReader) cancel() error {
 		}
 	})
 	return reader.closeErr
+}
+
+func cancelIO(handle windows.Handle, name string) error {
+	return cancelIOWith(handle, name, windows.CancelIoEx)
+}
+
+func cancelIOWith(
+	handle windows.Handle,
+	name string,
+	cancel func(windows.Handle, *windows.Overlapped) error,
+) error {
+	if handle == 0 || handle == windows.InvalidHandle {
+		return nil
+	}
+	if err := cancel(handle, nil); err != nil &&
+		!errors.Is(err, windows.ERROR_NOT_FOUND) {
+		return fmt.Errorf("cancel worker %s I/O: %w", name, err)
+	}
+	return nil
 }
 
 func awaitStream(

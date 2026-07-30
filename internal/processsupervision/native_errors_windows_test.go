@@ -606,6 +606,54 @@ func TestStreamAndInputCancellationReportCloseFailures(t *testing.T) {
 	})
 }
 
+func TestCancelIO(t *testing.T) {
+	failure := windows.ERROR_INVALID_HANDLE
+	tests := []struct {
+		name      string
+		handle    windows.Handle
+		cancelErr error
+		wantCall  bool
+		wantErr   bool
+	}{
+		{name: "empty handle"},
+		{name: "invalid handle", handle: windows.InvalidHandle},
+		{name: "success", handle: 1, wantCall: true},
+		{
+			name: "completed operation", handle: 1,
+			cancelErr: windows.ERROR_NOT_FOUND, wantCall: true,
+		},
+		{
+			name: "cancellation failure", handle: 1,
+			cancelErr: failure, wantCall: true, wantErr: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			called := false
+			err := cancelIOWith(
+				test.handle,
+				"output",
+				func(handle windows.Handle, overlapped *windows.Overlapped) error {
+					called = true
+					if handle != test.handle || overlapped != nil {
+						t.Fatalf("handle=%d overlapped=%v", handle, overlapped)
+					}
+					return test.cancelErr
+				},
+			)
+			if called != test.wantCall {
+				t.Fatalf("called=%t, want %t", called, test.wantCall)
+			}
+			if (err != nil) != test.wantErr {
+				t.Fatalf("error=%v, want error=%t", err, test.wantErr)
+			}
+			if test.wantErr && !errors.Is(err, failure) {
+				t.Fatalf("error=%v, want %v", err, failure)
+			}
+		})
+	}
+}
+
 func TestStreamAndInputJoinPreserveCancellationFailure(t *testing.T) {
 	deadline := time.Now().Add(-time.Second)
 	t.Run("input", func(t *testing.T) {

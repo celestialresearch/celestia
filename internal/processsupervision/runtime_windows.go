@@ -112,12 +112,7 @@ func (writer *inputWriter) publish(
 
 func (writer *inputWriter) cancel() error {
 	writer.close.Do(func() {
-		if writer.handle != 0 && writer.handle != windows.InvalidHandle {
-			if err := windows.CancelIoEx(writer.handle, nil); err != nil &&
-				!errors.Is(err, windows.ERROR_NOT_FOUND) {
-				writer.closeErr = fmt.Errorf("cancel worker input: %w", err)
-			}
-		}
+		writer.closeErr = cancelIO(writer.handle, "input")
 		if writer.file != nil {
 			if err := writer.file.Close(); err != nil {
 				writer.closeErr = errors.Join(writer.closeErr, err)
