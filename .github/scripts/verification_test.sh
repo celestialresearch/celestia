@@ -18,6 +18,7 @@ cache_root=${CELESTIA_CACHE_DIR:-"$root/.cache"}
 terminate_child() {
   local pid=$1
 
+  kill -0 "$pid" 2>/dev/null || return 0
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 }
@@ -476,11 +477,16 @@ EOF
   bash "$root/.github/scripts/actioncheck_test.sh" &
   action_pid=$!
 
-  mkdir -p "$work_dir/.github/scripts" "$work_dir/a" "$work_dir/b"
+  mkdir -p \
+    "$work_dir/.github/scripts" \
+    "$work_dir/a" \
+    "$work_dir/b" \
+    "$work_dir/tools/sourcepolicy"
   cp "$root/.github/scripts/coveragecheck.sh" \
     "$root/.github/scripts/modcheck.sh" \
     "$root/.github/scripts/policycheck.sh" \
     "$work_dir/.github/scripts/"
+  cp "$root/tools/sourcepolicy/main.go" "$work_dir/tools/sourcepolicy/"
   printf 'default 90\ncache-max-age-minutes 0\n' \
     >"$work_dir/.github/.coverage"
   printf 'module celestia.research/coverage\n\ngo 1.26.5\n' >"$work_dir/go.mod"
