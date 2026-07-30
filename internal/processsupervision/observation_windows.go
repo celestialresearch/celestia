@@ -40,11 +40,10 @@ func (supervisor *Supervisor) observe(
 	go stdoutReader.read(supervisor.limits.OutputBytes, OutputOverflow, stdout, overflow)
 	go stderrReader.read(supervisor.limits.ErrorBytes, ErrorOverflow, stderr, overflow)
 	input := make(chan inputResult, 1)
-	inputDone := make(chan inputResult, 1)
 	stdinHandle := process.pipes.stdinWrite
 	process.pipes.stdinWrite = 0
 	inputWriter := newInputWriter(stdinHandle)
-	go inputWriter.publish(frame, input, inputDone)
+	go inputWriter.publish(frame, input)
 	remaining = executionAllowance(remaining)
 	timer := time.NewTimer(remaining)
 	defer timer.Stop()
@@ -64,7 +63,7 @@ func (supervisor *Supervisor) observe(
 	cleanupDeadline := time.Now().Add(supervisor.limits.CleanupTimeout)
 	joinDeadline := cleanupDeadline.Add(100 * time.Millisecond)
 	cleanupComplete, cause := cleanupProcess(process, status, cause, cleanupDeadline)
-	inputResult := awaitInput(inputWriter, inputDone, cleanupDeadline, joinDeadline)
+	inputResult := awaitInput(inputWriter, cleanupDeadline, joinDeadline)
 	inputResult = unappliedInputResult(inputResult, inputApplied)
 	status, cause, cleanupComplete = applyInputResult(
 		status,

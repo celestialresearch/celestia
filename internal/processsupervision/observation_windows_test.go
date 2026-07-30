@@ -346,25 +346,24 @@ func TestExecutionAllowanceIsPositive(t *testing.T) {
 }
 
 func TestAwaitInputStates(t *testing.T) {
-	input := make(chan inputResult, 1)
-	input <- inputResult{}
+	writer := &inputWriter{done: make(chan struct{})}
+	close(writer.done)
 	deadline := time.Now().Add(time.Second)
-	if result := awaitInput(nil, input, deadline, deadline); result != (inputResult{}) {
+	if result := awaitInput(writer, deadline, deadline); result != (inputResult{}) {
 		t.Fatalf("completed input: %+v", result)
 	}
 	deadline = time.Now().Add(time.Millisecond)
-	if result := awaitInput(nil, make(chan inputResult), deadline, deadline.Add(100*time.Millisecond)); result.cleanupErr == nil {
+	if result := awaitInput(nil, deadline, deadline.Add(100*time.Millisecond)); result.cleanupErr == nil {
 		t.Fatal("blocked input join did not time out")
 	}
 }
 
 func TestAwaitInputPrefersCompletedResultAtDeadline(t *testing.T) {
 	for range 1_000 {
-		input := make(chan inputResult, 1)
-		input <- inputResult{}
+		writer := &inputWriter{done: make(chan struct{})}
+		close(writer.done)
 		result := awaitInput(
-			nil,
-			input,
+			writer,
 			time.Now().Add(-time.Second),
 			time.Now().Add(-time.Second),
 		)
@@ -378,7 +377,6 @@ func TestAwaitInputJoinDeadline(t *testing.T) {
 	writer := &inputWriter{done: make(chan struct{})}
 	result := awaitInput(
 		writer,
-		make(chan inputResult),
 		time.Now().Add(-time.Second),
 		time.Now().Add(-time.Second),
 	)
@@ -392,10 +390,9 @@ func TestAwaitInputCancelsBlockedWrite(t *testing.T) {
 	defer closeNativeHandle(t, read)
 	writer := newInputWriter(write)
 	result := make(chan inputResult, 1)
-	inputDone := make(chan inputResult, 1)
-	go writer.publish(make([]byte, 1<<20), result, inputDone)
+	go writer.publish(make([]byte, 1<<20), result)
 	deadline := time.Now().Add(time.Millisecond)
-	observation := awaitInput(writer, result, deadline, deadline.Add(100*time.Millisecond))
+	observation := awaitInput(writer, deadline, deadline.Add(100*time.Millisecond))
 	if observation.cleanupErr == nil || !strings.Contains(observation.cleanupErr.Error(), "join worker input") {
 		t.Fatalf("input result=%v, want bounded join error", observation.cleanupErr)
 	}
@@ -403,11 +400,6 @@ func TestAwaitInputCancelsBlockedWrite(t *testing.T) {
 	case <-writer.done:
 	default:
 		t.Fatal("input writer remained active")
-	}
-	select {
-	case <-inputDone:
-	default:
-		t.Fatal("input writer completed before publishing its join result")
 	}
 }
 
@@ -545,35 +537,14 @@ func TestCompletionFollowsResultPublication(t *testing.T) {
 		t.Fatal("stream completed before publishing its result")
 	}
 
-	inputDone := make(chan inputResult, 1)
 	inputResult := make(chan inputResult, 1)
 	writer := &inputWriter{done: make(chan struct{})}
-	go writer.publish(nil, inputResult, inputDone)
+	go writer.publish(nil, inputResult)
 	<-writer.done
 	select {
 	case <-inputResult:
 	default:
 		t.Fatal("input completed before publishing its process result")
-	}
-	select {
-	case <-inputDone:
-	default:
-		t.Fatal("input completed before publishing its join result")
-	}
-}
-
-func TestInputJoinResultFollowsWriterCompletion(t *testing.T) {
-	t.Parallel()
-
-	inputDone := make(chan inputResult, 1)
-	inputResult := make(chan inputResult, 1)
-	writer := &inputWriter{done: make(chan struct{})}
-	go writer.publish(nil, inputResult, inputDone)
-	<-inputDone
-	select {
-	case <-writer.done:
-	default:
-		t.Fatal("join result preceded input writer completion")
 	}
 }
 

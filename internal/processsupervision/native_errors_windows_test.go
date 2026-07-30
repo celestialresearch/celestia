@@ -697,7 +697,6 @@ func TestStreamAndInputJoinPreserveCancellationFailure(t *testing.T) {
 		}
 		result := awaitInput(
 			writer,
-			make(chan inputResult),
 			deadline,
 			deadline,
 		)

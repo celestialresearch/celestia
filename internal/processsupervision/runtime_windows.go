@@ -33,6 +33,7 @@ type inputWriter struct {
 	done     chan struct{}
 	close    sync.Once
 	closeErr error
+	result   inputResult
 }
 
 func environmentBlock(folder string) ([]uint16, error) {
@@ -102,12 +103,10 @@ func (writer *inputWriter) write(frame []byte) inputResult {
 func (writer *inputWriter) publish(
 	frame []byte,
 	input chan<- inputResult,
-	inputDone chan<- inputResult,
 ) {
-	result := writer.write(frame)
-	input <- result
+	writer.result = writer.write(frame)
+	input <- writer.result
 	close(writer.done)
-	inputDone <- result
 }
 
 func (writer *inputWriter) cancel() error {
@@ -124,19 +123,22 @@ func (writer *inputWriter) cancel() error {
 
 func awaitInput(
 	writer *inputWriter,
-	input <-chan inputResult,
 	deadline time.Time,
 	joinDeadline time.Time,
 ) inputResult {
+	var done <-chan struct{}
+	if writer != nil {
+		done = writer.done
+	}
 	timer := time.NewTimer(cleanupRemaining(deadline))
 	defer timer.Stop()
 	select {
-	case result := <-input:
-		return result
+	case <-done:
+		return writer.result
 	case <-timer.C:
 		select {
-		case result := <-input:
-			return result
+		case <-done:
+			return writer.result
 		default:
 		}
 		cleanupErr := errors.New("join worker input: cleanup deadline exceeded")
@@ -150,7 +152,7 @@ func awaitInput(
 		defer joinTimer.Stop()
 		select {
 		case <-writer.done:
-			result := <-input
+			result := writer.result
 			result.cleanupErr = errors.Join(cleanupErr, result.cleanupErr)
 			return result
 		case <-joinTimer.C:
