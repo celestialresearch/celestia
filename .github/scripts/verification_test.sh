@@ -1407,12 +1407,16 @@ EOF
   cat >"$work_dir/Cargo.toml" <<'EOF'
 [workspace]
 
+[patch.crates-io]
+fixture = { path = "../fixture" }
+
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "allow"
 EOF
   mkdir -p "$work_dir/.cargo"
   cat >"$work_dir/.cargo/config.toml" <<'EOF'
 include = ["hostile.toml"]
+paths = ["../override"]
 
 [build]
 rustflags = ["@args.txt"]
@@ -1445,7 +1449,8 @@ EOF
     'invalid ShellCheck suppression' \
     'invalid Clippy suppression' \
     'Cargo lint allowances are prohibited' \
-    'Cargo rustflags must not allow diagnostics' \
+    'Cargo source override is prohibited' \
+    'Cargo rustflags are not approved' \
     'Cargo execution override is prohibited' \
     'source file exceeds 1048576 bytes'; do
     grep -Fq "$diagnostic" <<<"$output" || {

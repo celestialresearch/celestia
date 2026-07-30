@@ -82,6 +82,13 @@ func cargoLintFindings(path string, source []byte) []string {
 		return []string{fmt.Sprintf("%s: parse Cargo manifest: %v", path, err)}
 	}
 	var findings []string
+	for _, key := range []string{"patch", "replace"} {
+		if _, exists := document[key]; exists {
+			findings = append(findings, fmt.Sprintf(
+				"%s: Cargo source override is prohibited: %s", path, key,
+			))
+		}
+	}
 	for _, root := range []string{"lints", "workspace.lints"} {
 		table := nestedTable(document, strings.Split(root, ".")...)
 		for namespace, value := range table {
@@ -113,54 +120,66 @@ func cargoConfigFindings(path string, source []byte) []string {
 		return []string{fmt.Sprintf("%s: parse Cargo configuration: %v", path, err)}
 	}
 	var findings []string
-	inspectCargoConfig(path, document, &findings)
+	inspectCargoConfig(path, "", document, &findings)
 	slices.Sort(findings)
 	return findings
 }
 
-func inspectCargoConfig(path string, value any, findings *[]string) {
+func inspectCargoConfig(
+	path, parent string,
+	value any,
+	findings *[]string,
+) {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, child := range typed {
-			if cargoExecutionOverride(key) {
+			if cargoExecutionOverride(parent, key) {
 				*findings = append(*findings, fmt.Sprintf(
 					"%s: Cargo execution override is prohibited: %s", path, key,
 				))
 				continue
 			}
 			if key == "rustflags" || key == "rustdocflags" {
-				if cargoAllowsLint(child) {
+				if !cargoFlagsApproved(key, child) {
 					*findings = append(*findings, fmt.Sprintf(
-						"%s: Cargo %s must not allow diagnostics", path, key,
+						"%s: Cargo %s are not approved", path, key,
 					))
 				}
 				continue
 			}
-			inspectCargoConfig(path, child, findings)
+			inspectCargoConfig(path, key, child, findings)
 		}
 	case []map[string]any:
 		for _, child := range typed {
-			inspectCargoConfig(path, child, findings)
+			inspectCargoConfig(path, parent, child, findings)
 		}
 	}
 }
 
-func cargoExecutionOverride(key string) bool {
+func cargoExecutionOverride(parent, key string) bool {
 	switch key {
-	case "include", "runner", "rustc", "rustdoc", "rustc-wrapper",
-		"rustc-workspace-wrapper":
+	case "links", "runner", "rustc", "rustdoc", "rustc-wrapper",
+		"rustc-workspace-wrapper", "warnings":
 		return true
-	default:
-		return false
 	}
+	if parent == "" {
+		return key == "env" || key == "include" || key == "patch" ||
+			key == "paths" || key == "replace" || key == "source"
+	}
+	return parent == "build" &&
+		(key == "build-dir" || key == "target" || key == "target-dir")
 }
 
-func cargoAllowsLint(value any) bool {
+func cargoFlagsApproved(key string, value any) bool {
 	flags, valid := cargoFlags(value)
 	if !valid {
+		return false
+	}
+	if len(flags) == 0 {
 		return true
 	}
-	return slices.ContainsFunc(flags, cargoFlagAllowsLint)
+	return key == "rustflags" &&
+		slices.Equal(flags, []string{"-C", "link-arg=/Brepro"})
 }
 
 func cargoFlags(value any) ([]string, bool) {
@@ -180,16 +199,6 @@ func cargoFlags(value any) ([]string, bool) {
 	default:
 		return nil, false
 	}
-}
-
-func cargoFlagAllowsLint(flag string) bool {
-	return strings.HasPrefix(flag, "@") ||
-		flag == "-A" ||
-		flag == "--allow" ||
-		strings.HasPrefix(flag, "-A") && len(flag) > 2 ||
-		strings.HasPrefix(flag, "--allow=") ||
-		flag == "--cap-lints" ||
-		strings.HasPrefix(flag, "--cap-lints=")
 }
 
 func nestedTable(document map[string]any, keys ...string) map[string]any {

@@ -487,6 +487,8 @@ func TestCargoLintAllowances(t *testing.T) {
 		},
 		{"deny", "[workspace.lints.clippy]\nall = \"deny\"\n", 0},
 		{"workspace inheritance", "[lints]\nworkspace = true\n", 0},
+		{"patch", "[patch.crates-io]\nfixture = { path = \"../fixture\" }\n", 1},
+		{"replace", "[replace]\n\"fixture:1.0.0\" = { path = \"../fixture\" }\n", 1},
 		{"unrelated", "[package]\nname = \"fixture\"\n", 0},
 		{"malformed", "[lints.clippy\n", 1},
 	}
@@ -529,6 +531,16 @@ func TestCargoConfigurationAllowances(t *testing.T) {
 		},
 		{"response file", `[build]` + "\n" + `rustflags = ["@args.txt"]`, 1},
 		{"included config", `include = ["hostile.toml"]`, 1},
+		{"source paths", `paths = ["../override"]`, 1},
+		{"environment", `[env]` + "\n" + `RUSTFLAGS = "--cap-lints=allow"`, 1},
+		{"source table", `[source.crates-io]` + "\n" + `replace-with = "mirror"`, 1},
+		{"build warnings", `[build]` + "\n" + `warnings = "allow"`, 1},
+		{"build target", `[build]` + "\n" + `target = "wasm32-unknown-unknown"`, 1},
+		{
+			"cfg injection",
+			`[build]` + "\n" + `rustflags = ["--cfg", "skip_tests"]`,
+			1,
+		},
 		{"rustc wrapper", `[build]` + "\n" + `rustc-wrapper = "wrapper.exe"`, 1},
 		{
 			"workspace wrapper",
@@ -543,6 +555,8 @@ func TestCargoConfigurationAllowances(t *testing.T) {
 			1,
 		},
 		{"linker", `[build]` + "\n" + `rustflags = ["-C", "link-arg=/Brepro"]`, 0},
+		{"linker string", `[build]` + "\n" + `rustflags = "-C link-arg=/Brepro"`, 0},
+		{"empty rustdoc flags", `[build]` + "\n" + `rustdocflags = []`, 0},
 		{"malformed", `[build` + "\n", 1},
 	}
 	for _, test := range tests {
