@@ -33,6 +33,9 @@ func TestReplacementPathRejectsJunction(t *testing.T) {
 	if err := os.Mkdir(external, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(external, "child"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	junction := filepath.Join(root, "junction")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -44,11 +47,16 @@ func TestReplacementPathRejectsJunction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create junction: %v: %s", err, strings.TrimSpace(string(output)))
 	}
-	linked, err := replacementPathLinked(root, junction)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !linked {
-		t.Fatal("junction replacement was accepted")
+	for _, target := range []string{
+		junction,
+		filepath.Join(junction, "child"),
+	} {
+		linked, err := replacementPathLinked(root, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !linked {
+			t.Fatalf("junction path %q was accepted", target)
+		}
 	}
 }

@@ -74,8 +74,8 @@ PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
   ' _ "$root/.github/scripts/testcheck.sh" go quick --fixture >/dev/null 2>&1
 status=$?
 set -e
-if [[ "$status" -eq 0 ]]; then
-  printf 'Go completion check ignored termination\n' >&2
+if [[ "$status" -ne 130 ]]; then
+  printf 'Go completion check returned %d after termination\n' "$status" >&2
   exit 1
 fi
 

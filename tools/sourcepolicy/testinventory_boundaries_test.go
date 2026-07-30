@@ -138,25 +138,6 @@ func TestGoTestNamesRejectInvalidForms(t *testing.T) {
 	}
 }
 
-func TestWriteCargoExecutablesFiltersAndSorts(t *testing.T) {
-	t.Parallel()
-	input := strings.NewReader(
-		`{"reason":"build-finished","profile":{"test":true},"executable":"ignored"}` + "\n" +
-			`{"reason":"compiler-artifact","profile":{"test":false},"executable":"ignored"}` + "\n" +
-			`{"reason":"compiler-artifact","profile":{"test":true},"executable":""}` + "\n" +
-			`{"reason":"compiler-artifact","profile":{"test":true},"executable":"z"}` + "\n" +
-			`{"reason":"compiler-artifact","profile":{"test":true},"executable":"a"}` + "\n" +
-			`{"reason":"compiler-artifact","profile":{"test":true},"executable":"z"}` + "\n",
-	)
-	var output bytes.Buffer
-	if err := writeCargoExecutables(input, &output); err != nil {
-		t.Fatal(err)
-	}
-	if got, want := output.String(), "a\nz\n"; got != want {
-		t.Fatalf("output = %q, want %q", got, want)
-	}
-}
-
 func TestWriteCargoExecutablesEnforcesBounds(t *testing.T) {
 	t.Parallel()
 	oversized := strings.Repeat("x", maxCargoMessageBytes+1)

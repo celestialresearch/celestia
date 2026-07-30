@@ -49,16 +49,24 @@ func ExampleHidden() {}
 func TestWriteCargoExecutables(t *testing.T) {
 	t.Parallel()
 	input := bytes.NewBufferString(
-		`{"reason":"compiler-artifact","profile":{"test":true},` +
-			`"executable":"C:\\test.exe"}` + "\n" +
+		`{"reason":"build-finished","profile":{"test":true},` +
+			`"executable":"ignored"}` + "\n" +
 			`{"reason":"compiler-artifact","profile":{"test":false},` +
-			`"executable":"C:\\ignored.exe"}` + "\n",
+			`"executable":"ignored"}` + "\n" +
+			`{"reason":"compiler-artifact","profile":{"test":true},` +
+			`"executable":""}` + "\n" +
+			`{"reason":"compiler-artifact","profile":{"test":true},` +
+			`"executable":"z"}` + "\n" +
+			`{"reason":"compiler-artifact","profile":{"test":true},` +
+			`"executable":"a"}` + "\n" +
+			`{"reason":"compiler-artifact","profile":{"test":true},` +
+			`"executable":"z"}` + "\n",
 	)
 	var output bytes.Buffer
 	if err := writeCargoExecutables(input, &output); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := output.String(), "C:\\test.exe\n"; got != want {
+	if got, want := output.String(), "a\nz\n"; got != want {
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
