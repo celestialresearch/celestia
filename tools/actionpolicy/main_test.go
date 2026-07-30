@@ -846,6 +846,69 @@ func testInvalidDocuments(t *testing.T, tests []invalidDocument) {
 	}
 }
 
+func TestYAMLHelpersRejectConstructedInvalidNodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		node *yaml.Node
+	}{
+		{
+			name: "incomplete mapping",
+			node: &yaml.Node{
+				Kind:    yaml.MappingNode,
+				Content: []*yaml.Node{{Kind: yaml.ScalarNode, Value: "key"}},
+			},
+		},
+		{
+			name: "nil mapping key",
+			node: &yaml.Node{
+				Kind: yaml.MappingNode,
+				Content: []*yaml.Node{
+					nil,
+					{Kind: yaml.ScalarNode, Value: "value"},
+				},
+			},
+		},
+		{
+			name: "alias mapping key",
+			node: &yaml.Node{
+				Kind: yaml.MappingNode,
+				Content: []*yaml.Node{
+					{Kind: yaml.AliasNode},
+					{Kind: yaml.ScalarNode, Value: "value"},
+				},
+			},
+		},
+		{
+			name: "non-scalar mapping key",
+			node: &yaml.Node{
+				Kind: yaml.MappingNode,
+				Content: []*yaml.Node{
+					{Kind: yaml.SequenceNode},
+					{Kind: yaml.ScalarNode, Value: "value"},
+				},
+			},
+		},
+		{
+			name: "unsupported node kind",
+			node: &yaml.Node{Kind: 255},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			validator := yamlValidator{
+				active:    make(map[*yaml.Node]bool),
+				remaining: maxYAMLNodeVisits,
+			}
+			if err := validator.validate(test.node, 0); err == nil {
+				t.Fatal("constructed invalid node accepted")
+			}
+		})
+	}
+}
+
 func FuzzInspectWorkflow(f *testing.F) {
 	f.Add([]byte("name: test\njobs: {}\n"))
 	f.Add([]byte("name: test\npermissions: read-all\njobs: {}\n"))
