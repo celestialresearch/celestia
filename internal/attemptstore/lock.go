@@ -452,19 +452,36 @@ func syncAttemptLock(file *os.File, directory string) error {
 }
 
 func validateLockFile(file *os.File, pathInfo os.FileInfo) error {
-	info, err := file.Stat()
+	return validateLockFileWith(
+		file,
+		pathInfo,
+		(*os.File).Stat,
+		pathIsLinked,
+		os.SameFile,
+		secureLockFile,
+	)
+}
+
+func validateLockFileWith(
+	file *os.File,
+	pathInfo os.FileInfo,
+	stat func(*os.File) (os.FileInfo, error),
+	linked func(string, os.FileInfo) bool,
+	same func(os.FileInfo, os.FileInfo) bool,
+	secure func(*os.File, os.FileInfo) error,
+) error {
+	info, err := stat(file)
 	if err != nil {
 		return err
 	}
 	if !pathInfo.Mode().IsRegular() ||
-		pathInfo.Mode()&os.ModeSymlink != 0 ||
-		pathIsLinked(file.Name(), pathInfo) ||
-		!os.SameFile(pathInfo, info) ||
+		linked(file.Name(), pathInfo) ||
+		!same(pathInfo, info) ||
 		!info.Mode().IsRegular() ||
 		info.Size() != 0 {
 		return ErrCorrupt
 	}
-	return secureLockFile(file, info)
+	return secure(file, info)
 }
 
 func (lock *attemptLock) release() error {

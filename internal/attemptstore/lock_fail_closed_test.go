@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestAcquireAttemptLockRejectsInvalidState(t *testing.T) {
@@ -122,6 +123,99 @@ func TestLockMetadataRejectsInvalidIdentity(t *testing.T) {
 	if err := store.validateAttemptLock(invalid); err == nil {
 		t.Fatal("validateAttemptLock() accepted an embedded NUL")
 	}
+}
+
+func TestLockFileRejectsObjectMismatch(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "lock")
+	if err != nil {
+		t.Fatalf("create lock: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := file.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+			t.Errorf("close lock: %v", err)
+		}
+	})
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatalf("stat lock: %v", err)
+	}
+	directoryInfo, err := os.Stat(t.TempDir())
+	if err != nil {
+		t.Fatalf("stat directory: %v", err)
+	}
+	tests := map[string]struct {
+		pathInfo os.FileInfo
+		statInfo os.FileInfo
+		linked   bool
+		same     bool
+	}{
+		"non-regular path": {pathInfo: directoryInfo, statInfo: info, same: true},
+		"linked path":      {pathInfo: info, statInfo: info, linked: true, same: true},
+		"replaced object":  {pathInfo: info, statInfo: info},
+		"non-regular handle": {
+			pathInfo: info,
+			statInfo: directoryInfo,
+			same:     true,
+		},
+		"non-empty handle": {
+			pathInfo: info,
+			statInfo: overriddenFileInfo{FileInfo: info, size: 1},
+			same:     true,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := validateLockFileWith(
+				file,
+				test.pathInfo,
+				func(*os.File) (os.FileInfo, error) { return test.statInfo, nil },
+				func(string, os.FileInfo) bool { return test.linked },
+				func(os.FileInfo, os.FileInfo) bool { return test.same },
+				func(*os.File, os.FileInfo) error { return nil },
+			)
+			if !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("invalid lock object accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestLockReleaseCloseFailureRetainsReservation(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "lock")
+	if err != nil {
+		t.Fatalf("create lock: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close lock fixture: %v", err)
+	}
+	key := "release-close-failure-" + time.Now().UTC().Format(time.RFC3339Nano)
+	lock := &attemptLock{file: file, key: key}
+	activeAttemptLocks.Store(key, lock)
+	t.Cleanup(func() { activeAttemptLocks.Delete(key) })
+
+	first := lock.release()
+	second := lock.release()
+	if first == nil || second == nil || first.Error() != second.Error() {
+		t.Fatalf("release errors = (%v, %v)", first, second)
+	}
+	if _, loaded := activeAttemptLocks.Load(key); !loaded {
+		t.Fatal("failed close released active reservation")
+	}
+	if _, err := reserveAttemptLock(key); !errors.Is(err, ErrActive) {
+		t.Fatalf("second reservation error = %v, want %v", err, ErrActive)
+	}
+}
+
+type overriddenFileInfo struct {
+	os.FileInfo
+	size int64
+}
+
+func (info overriddenFileInfo) Size() int64 {
+	if info.size != 0 {
+		return info.size
+	}
+	return info.FileInfo.Size()
 }
 
 func TestAcquireAttemptLockReportsOwnedFailures(t *testing.T) {

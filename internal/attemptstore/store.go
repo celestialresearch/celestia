@@ -654,6 +654,8 @@ func loadTerminal(path string, records *Records) error {
 			return ErrCorrupt
 		}
 		records.Recovery = &recovery
+	default:
+		return ErrCorrupt
 	}
 	return nil
 }

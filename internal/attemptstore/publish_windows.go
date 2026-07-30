@@ -41,6 +41,13 @@ type evidenceFileOperations struct {
 	close   func(windows.Handle) error
 }
 
+type aclOperations struct {
+	current    func() (*windows.SID, error)
+	descriptor func(string) (*windows.SECURITY_DESCRIPTOR, error)
+	dacl       func(*windows.SECURITY_DESCRIPTOR) (*windows.ACL, error)
+	ace        func(*windows.ACL) (*windows.ACCESS_ALLOWED_ACE, error)
+}
+
 type evidenceDirectoryOperations struct {
 	descriptor func() (*windows.SECURITY_DESCRIPTOR, error)
 	encode     func(string) (*uint16, error)
@@ -216,31 +223,50 @@ func secureEvidenceFileWith(
 }
 
 func secureDirectoryACL(path string) error {
-	return secureDirectoryACLWith(path, currentUserSID)
+	return secureDirectoryACLWith(
+		path,
+		aclOperations{
+			current: currentUserSID,
+			descriptor: func(path string) (*windows.SECURITY_DESCRIPTOR, error) {
+				return windows.GetNamedSecurityInfo(
+					path,
+					windows.SE_FILE_OBJECT,
+					windows.DACL_SECURITY_INFORMATION,
+				)
+			},
+			dacl: func(
+				descriptor *windows.SECURITY_DESCRIPTOR,
+			) (*windows.ACL, error) {
+				dacl, _, err := descriptor.DACL()
+				return dacl, err
+			},
+			ace: func(dacl *windows.ACL) (*windows.ACCESS_ALLOWED_ACE, error) {
+				var ace *windows.ACCESS_ALLOWED_ACE
+				err := windows.GetAce(dacl, 0, &ace)
+				return ace, err
+			},
+		},
+	)
 }
 
 func secureDirectoryACLWith(
 	path string,
-	current func() (*windows.SID, error),
+	operations aclOperations,
 ) error {
-	userSID, err := current()
+	userSID, err := operations.current()
 	if err != nil {
 		return err
 	}
-	descriptor, err := windows.GetNamedSecurityInfo(
-		path,
-		windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION,
-	)
+	descriptor, err := operations.descriptor(path)
 	if err != nil {
 		return err
 	}
-	dacl, _, err := descriptor.DACL()
+	dacl, err := operations.dacl(descriptor)
 	if err != nil || dacl == nil || dacl.AceCount != 1 {
 		return ErrCorrupt
 	}
-	var ace *windows.ACCESS_ALLOWED_ACE
-	if err := windows.GetAce(dacl, 0, &ace); err != nil ||
+	ace, err := operations.ace(dacl)
+	if err != nil ||
 		ace == nil ||
 		ace.Header.AceType != windows.ACCESS_ALLOWED_ACE_TYPE ||
 		ace.Header.AceFlags != windows.OBJECT_INHERIT_ACE|windows.CONTAINER_INHERIT_ACE ||

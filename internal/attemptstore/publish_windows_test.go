@@ -50,6 +50,24 @@ func TestEvidenceACERejectsTruncatedSID(t *testing.T) {
 	if evidenceACEIdentifies(&ace, userSID) {
 		t.Fatal("truncated ACE accepted")
 	}
+	descriptor, err := windows.SecurityDescriptorFromString(
+		fmt.Sprintf("D:P(A;;FA;;;%s)", userSID),
+	)
+	if err != nil {
+		t.Fatalf("create descriptor: %v", err)
+	}
+	dacl, _, err := descriptor.DACL()
+	if err != nil {
+		t.Fatalf("read DACL: %v", err)
+	}
+	var mismatched *windows.ACCESS_ALLOWED_ACE
+	if err := windows.GetAce(dacl, 0, &mismatched); err != nil {
+		t.Fatalf("read ACE: %v", err)
+	}
+	mismatched.Header.AceSize++
+	if evidenceACEIdentifies(mismatched, userSID) {
+		t.Fatal("ACE size mismatch accepted")
+	}
 }
 
 func TestPublishFileRejectsDuplicate(t *testing.T) {

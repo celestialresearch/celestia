@@ -78,6 +78,42 @@ func TestCreateOwnershipMarkerReportsOwnedFailures(t *testing.T) {
 	}
 }
 
+func TestOwnershipMarkerStatFailureSkipsSecurity(t *testing.T) {
+	store := newTestStore(t)
+	accepted, _ := testAccepted(t)
+	directory := filepath.Join(store.root, locksDirectory)
+	root, err := store.openLockRoot(directory)
+	if err != nil {
+		t.Fatalf("open lock root: %v", err)
+	}
+	failure := errors.New("injected marker stat failure")
+	operations := testOwnershipCreationOperations()
+	operations.stat = func(*os.File) (os.FileInfo, error) {
+		return nil, failure
+	}
+	secured := false
+	operations.secure = func(*os.File, os.FileInfo) error {
+		secured = true
+		return nil
+	}
+	created, err := createOwnershipMarkerWith(
+		root,
+		directory,
+		accepted.Request.AttemptID,
+		operations,
+	)
+	closeErr := root.Close()
+	if !created || !errors.Is(err, failure) || secured || closeErr != nil {
+		t.Fatalf(
+			"created=%t error=%v secured=%t close=%v",
+			created,
+			err,
+			secured,
+			closeErr,
+		)
+	}
+}
+
 func testOwnershipCreationOperations() ownershipCreationOperations {
 	return ownershipCreationOperations{
 		lstat: func(root *os.Root, name string) (os.FileInfo, error) {

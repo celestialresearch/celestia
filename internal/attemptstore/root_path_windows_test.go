@@ -44,6 +44,7 @@ func TestEvidenceVolumePolicy(t *testing.T) {
 	tests := []struct {
 		name      string
 		driveType uint32
+		driveErr  error
 		target    string
 		targetErr error
 		want      bool
@@ -55,14 +56,17 @@ func TestEvidenceVolumePolicy(t *testing.T) {
 		{name: "RAM disk", driveType: windows.DRIVE_RAMDISK, target: `\Device\HarddiskVolume5`},
 		{name: "unknown drive", driveType: windows.DRIVE_UNKNOWN},
 		{name: "missing root", driveType: windows.DRIVE_NO_ROOT_DIR},
+		{name: "drive lookup failure", driveErr: errors.New("drive lookup failed")},
 		{name: "lookup failure", driveType: windows.DRIVE_FIXED, targetErr: errors.New("lookup failed")},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			driveType := func(string) (uint32, error) {
-				return test.driveType, nil
+				return test.driveType, test.driveErr
 			}
+			targetCalled := false
 			deviceTarget := func(string) (string, error) {
+				targetCalled = true
 				if test.targetErr != nil {
 					return "", test.targetErr
 				}
@@ -71,7 +75,27 @@ func TestEvidenceVolumePolicy(t *testing.T) {
 			if actual := validEvidenceVolume("C:", driveType, deviceTarget); actual != test.want {
 				t.Fatalf("validEvidenceVolume() = %t, want %t", actual, test.want)
 			}
+			if test.driveErr != nil && targetCalled {
+				t.Fatal("device lookup followed drive lookup failure")
+			}
 		})
+	}
+}
+
+func TestASCIILetterBoundaries(t *testing.T) {
+	for value, want := range map[byte]bool{
+		'@': false,
+		'A': true,
+		'Z': true,
+		'[': false,
+		'`': false,
+		'a': true,
+		'z': true,
+		'{': false,
+	} {
+		if actual := asciiLetter(value); actual != want {
+			t.Fatalf("asciiLetter(%q) = %t, want %t", value, actual, want)
+		}
 	}
 }
 

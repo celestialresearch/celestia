@@ -36,6 +36,89 @@ func TestSecureOwnedPathReportsNativeFailures(t *testing.T) {
 	}
 }
 
+func TestSecureOwnedPathRejectsInvalidOwner(t *testing.T) {
+	sid, err := currentUserSID()
+	if err != nil {
+		t.Fatalf("current SID: %v", err)
+	}
+	failure := errors.New("injected owner lookup failure")
+	err = secureOwnedPathWith("unused", ownedPathOperations{
+		current: func() (*windows.SID, error) { return sid, nil },
+		descriptor: func(string) (*windows.SECURITY_DESCRIPTOR, error) {
+			return &windows.SECURITY_DESCRIPTOR{}, nil
+		},
+		owner: func(*windows.SECURITY_DESCRIPTOR) (*windows.SID, error) {
+			return sid, failure
+		},
+		control: func(
+			*windows.SECURITY_DESCRIPTOR,
+		) (windows.SECURITY_DESCRIPTOR_CONTROL, error) {
+			return windows.SE_DACL_PROTECTED, nil
+		},
+	})
+	if !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("invalid owner accepted: %v", err)
+	}
+}
+
+func TestSecureDirectoryACLRejectsInvalidDescriptor(t *testing.T) {
+	sid, err := currentUserSID()
+	if err != nil {
+		t.Fatalf("current SID: %v", err)
+	}
+	failure := errors.New("injected ACL failure")
+	validACL := &windows.ACL{AceCount: 1}
+	validACE := &windows.ACCESS_ALLOWED_ACE{}
+	validACE.Header.AceType = windows.ACCESS_ALLOWED_ACE_TYPE
+	tests := map[string]func(*aclOperations){
+		"DACL error": func(operations *aclOperations) {
+			operations.dacl = func(*windows.SECURITY_DESCRIPTOR) (*windows.ACL, error) {
+				return nil, failure
+			}
+		},
+		"ACE count": func(operations *aclOperations) {
+			operations.dacl = func(*windows.SECURITY_DESCRIPTOR) (*windows.ACL, error) {
+				return &windows.ACL{AceCount: 2}, nil
+			}
+		},
+		"ACE error": func(operations *aclOperations) {
+			operations.ace = func(*windows.ACL) (*windows.ACCESS_ALLOWED_ACE, error) {
+				return nil, failure
+			}
+		},
+		"ACE type": func(operations *aclOperations) {
+			operations.ace = func(*windows.ACL) (*windows.ACCESS_ALLOWED_ACE, error) {
+				ace := *validACE
+				ace.Header.AceType = windows.ACCESS_DENIED_ACE_TYPE
+				return &ace, nil
+			}
+		},
+	}
+	for name, replace := range tests {
+		t.Run(name, func(t *testing.T) {
+			operations := aclOperations{
+				current: func() (*windows.SID, error) { return sid, nil },
+				descriptor: func(string) (*windows.SECURITY_DESCRIPTOR, error) {
+					return &windows.SECURITY_DESCRIPTOR{}, nil
+				},
+				dacl: func(*windows.SECURITY_DESCRIPTOR) (*windows.ACL, error) {
+					return validACL, nil
+				},
+				ace: func(*windows.ACL) (*windows.ACCESS_ALLOWED_ACE, error) {
+					return validACE, nil
+				},
+			}
+			replace(&operations)
+			if err := secureDirectoryACLWith(
+				"unused",
+				operations,
+			); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("invalid ACL accepted: %v", err)
+			}
+		})
+	}
+}
+
 func secureOwnedPathFixture(failure error, failCurrent bool) error {
 	sid, err := currentUserSID()
 	if err != nil {
@@ -133,7 +216,9 @@ func TestSecurityIdentityHelpersReportFailure(t *testing.T) {
 	failure := errors.New("injected identity failure")
 	if err := secureDirectoryACLWith(
 		"unused",
-		func() (*windows.SID, error) { return nil, failure },
+		aclOperations{
+			current: func() (*windows.SID, error) { return nil, failure },
+		},
 	); !errors.Is(err, failure) {
 		t.Fatalf("secureDirectoryACLWith() error = %v", err)
 	}
@@ -284,6 +369,46 @@ func TestRepairInterruptedRecordsReportsRemoveFailure(t *testing.T) {
 		operations,
 	); !errors.Is(err, failure) {
 		t.Fatalf("repairInterruptedRecordsWith() error = %v", err)
+	}
+}
+
+func TestRepairInterruptedRecordsHandlesEmptyAndUninspectableEntries(t *testing.T) {
+	path := protectedTestDirectory(t)
+	operations := testRecordRepairOperations()
+	removed := false
+	confirmed := false
+	operations.readDirectory = func(*os.File) ([]os.DirEntry, error) {
+		return []os.DirEntry{}, nil
+	}
+	operations.remove = func(*os.Root, string) error {
+		removed = true
+		return nil
+	}
+	operations.confirm = func(string) error {
+		confirmed = true
+		return nil
+	}
+	if err := repairInterruptedRecordsWith(path, operations); err != nil {
+		t.Fatalf("empty repair: %v", err)
+	}
+	if removed || confirmed {
+		t.Fatalf("empty repair removed=%t confirmed=%t", removed, confirmed)
+	}
+
+	file, err := createRecordTemp(path, admittedFile)
+	if err != nil {
+		t.Fatalf("create temporary: %v", err)
+	}
+	name := filepath.Base(file.Name())
+	if err := file.Close(); err != nil {
+		t.Fatalf("close temporary: %v", err)
+	}
+	operations = testRecordRepairOperations()
+	operations.lstat = func(*os.Root, string) (os.FileInfo, error) {
+		return nil, errors.New("injected temporary inspection failure")
+	}
+	if err := repairInterruptedRecordsWith(path, operations); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("uninspectable %s returned %v", name, err)
 	}
 }
 

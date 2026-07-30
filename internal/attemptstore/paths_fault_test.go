@@ -73,4 +73,26 @@ func TestPathExistsReportsInspectionAndLinkFailures(t *testing.T) {
 	); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("linked path error = %v", err)
 	}
+	if _, err := pathExistsWith(
+		"path",
+		func(string) error { return nil },
+		func(string) (os.FileInfo, error) {
+			return modeFileInfo{FileInfo: info, mode: os.ModeSymlink}, nil
+		},
+		func(string, os.FileInfo) bool {
+			t.Fatal("linked check reached after symlink mode")
+			return false
+		},
+	); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("symlink path error = %v", err)
+	}
+}
+
+type modeFileInfo struct {
+	os.FileInfo
+	mode os.FileMode
+}
+
+func (info modeFileInfo) Mode() os.FileMode {
+	return info.mode
 }
