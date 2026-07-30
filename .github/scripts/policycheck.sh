@@ -256,14 +256,36 @@ check_source_files() {
   done <"$source_inventory"
 }
 
-check_module
 if ! "$git_bin" ls-files -co --exclude-standard -z >"$source_inventory"; then
   printf 'Failed to inventory repository files\n' >&2
   exit 1
 fi
-check_markers
-check_private_keys
-check_test_skips
-check_suppressions
-check_source_files
+
+case "${1:-all}" in
+all)
+  check_module
+  check_markers
+  check_private_keys
+  check_test_skips
+  check_suppressions
+  check_source_files
+  ;;
+markers)
+  check_markers
+  ;;
+source-files)
+  check_source_files
+  ;;
+suppressions)
+  check_suppressions
+  ;;
+test-skips)
+  check_test_skips
+  ;;
+*)
+  printf 'Usage: %s [all|markers|source-files|suppressions|test-skips]\n' \
+    "${0##*/}" >&2
+  exit 2
+  ;;
+esac
 exit "$status"

@@ -1111,7 +1111,8 @@ EOF
     awk 'BEGIN { for (line = 0; line < 801; line++) print "// fixture" }'
   } >"$work_dir/-generated.go"
   set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh source-files 2>&1)
   status=$?
   set -e
   [[ "$status" -eq 0 ]] || {
@@ -1123,7 +1124,8 @@ EOF
 
   printf '%s\n' '// probe' >"$work_dir/coverage_test.go"
   set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh source-files 2>&1)
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
@@ -1147,7 +1149,8 @@ func TestSkipped(t *testing.T) {
 }
 EOF
   set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh test-skips 2>&1)
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
@@ -1167,7 +1170,8 @@ EOF
 fn ignored() {}
 EOF
   set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh test-skips 2>&1)
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
@@ -1182,106 +1186,16 @@ EOF
   rm -- "$work_dir/ignored_test.rs"
 
   printf '%s%s\n' '// #no' 'sec -- broad' >"$work_dir/broad_suppression.go"
-  set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a broad gosec suppression\n' >&2
-    return 1
-  }
-  grep -Fq 'invalid gosec suppression' <<<"$output" || {
-    printf 'policy output omitted the gosec suppression failure:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  rm -- "$work_dir/broad_suppression.go"
-
   printf '%s%s\n' '//no' 'lint -- broad' >"$work_dir/broad_nolint.go"
-  set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a broad golangci-lint suppression\n' >&2
-    return 1
-  }
-  grep -Fq 'invalid golangci-lint suppression' <<<"$output" || {
-    printf 'policy output omitted the golangci-lint suppression failure:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  rm -- "$work_dir/broad_nolint.go"
-
   printf '%s%s\n' '//no' 'lint:all -- reasoned blanket suppression' \
     >"$work_dir/reasoned_broad_nolint.go"
-  set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a reasoned blanket golangci-lint suppression\n' >&2
-    return 1
-  }
-  grep -Fq 'invalid golangci-lint suppression' <<<"$output" || {
-    printf 'policy output omitted the reasoned blanket golangci-lint failure:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  rm -- "$work_dir/reasoned_broad_nolint.go"
-
   printf '%s%s\n' '# shell' 'check disable=SC2329' \
     >"$work_dir/broad_shellcheck.sh"
-  set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted an unexplained ShellCheck suppression\n' >&2
-    return 1
-  }
-  grep -Fq 'invalid ShellCheck suppression' <<<"$output" || {
-    printf 'policy output omitted the ShellCheck suppression failure:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  rm -- "$work_dir/broad_shellcheck.sh"
-
   printf '%s%s\n' '#[al' 'low(clippy::needless_pass_by_value)]' \
     >"$work_dir/broad_clippy.rs"
-  set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted an unexplained Clippy suppression\n' >&2
-    return 1
-  }
-  grep -Fq 'invalid Clippy suppression' <<<"$output" || {
-    printf 'policy output omitted the Clippy suppression failure:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  rm -- "$work_dir/broad_clippy.rs"
-
   printf '%s%s\n' '#[al' \
     'low(clippy::all, reason = "reasoned blanket suppression")]' \
     >"$work_dir/reasoned_broad_clippy.rs"
-  set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a reasoned blanket Clippy suppression\n' >&2
-    return 1
-  }
-  grep -Fq 'invalid Clippy suppression' <<<"$output" || {
-    printf 'policy output omitted the reasoned blanket Clippy failure:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  rm -- "$work_dir/reasoned_broad_clippy.rs"
-
   {
     printf '%s%s\n' '#[al' 'low('
     printf '%s\n' '    clippy::all,'
@@ -1289,19 +1203,32 @@ EOF
     printf '%s\n' ')]'
   } >"$work_dir/reasoned_broad_multiline_clippy.rs"
   set +e
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh suppressions 2>&1)
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a multiline blanket Clippy suppression\n' >&2
+    printf 'policy check accepted hostile suppression fixtures\n' >&2
     return 1
   }
-  grep -Fq 'invalid Clippy suppression' <<<"$output" || {
-    printf 'policy output omitted the multiline blanket Clippy failure:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  rm -- "$work_dir/reasoned_broad_multiline_clippy.rs"
+  for diagnostic in \
+    'invalid gosec suppression' \
+    'invalid golangci-lint suppression' \
+    'invalid ShellCheck suppression' \
+    'invalid Clippy suppression'; do
+    grep -Fq "$diagnostic" <<<"$output" || {
+      printf 'policy output omitted %s:\n%s\n' "$diagnostic" "$output" >&2
+      return 1
+    }
+  done
+  rm -- \
+    "$work_dir/broad_suppression.go" \
+    "$work_dir/broad_nolint.go" \
+    "$work_dir/reasoned_broad_nolint.go" \
+    "$work_dir/broad_shellcheck.sh" \
+    "$work_dir/broad_clippy.rs" \
+    "$work_dir/reasoned_broad_clippy.rs" \
+    "$work_dir/reasoned_broad_multiline_clippy.rs"
 
   {
     printf '%s%s\n' '// #no' 'sec G103 -- narrow native boundary'
@@ -1313,7 +1240,8 @@ EOF
   printf '%s%s\n' \
     '#[al' 'low(clippy::needless_pass_by_value, reason = "FFI owns the value")]' \
     >"$work_dir/valid_suppressions.rs"
-  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1) || {
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh suppressions 2>&1) || {
     printf 'policy check rejected narrow suppressions:\n%s\n' "$output" >&2
     return 1
   }
@@ -1338,7 +1266,7 @@ EOF
     cd "$work_dir" &&
       CELESTIA_GIT_BIN="$fake_bin/git" FAIL_GIT_COMMAND=grep \
         REAL_GIT="$real_git" \
-        bash .github/scripts/policycheck.sh 2>&1
+        bash .github/scripts/policycheck.sh markers 2>&1
   )
   status=$?
   set -e
