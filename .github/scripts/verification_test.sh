@@ -528,7 +528,24 @@ require (
 	golang.org/x/sync v0.22.0 // indirect
 )
 EOF
-  cp "$root/go.sum" "$work_dir/go.sum"
+  awk '
+    $1 == "github.com/BurntSushi/toml" &&
+      ($2 == "v1.6.0" || $2 == "v1.6.0/go.mod") ||
+    $1 == "github.com/google/go-cmp" &&
+      ($2 == "v0.6.0" || $2 == "v0.6.0/go.mod") ||
+    $1 == "golang.org/x/mod" &&
+      ($2 == "v0.38.0" || $2 == "v0.38.0/go.mod") ||
+    $1 == "golang.org/x/sync" &&
+      ($2 == "v0.22.0" || $2 == "v0.22.0/go.mod") ||
+    $1 == "golang.org/x/tools" &&
+      ($2 == "v0.48.0" || $2 == "v0.48.0/go.mod")
+  ' "$root/go.sum" >"$work_dir/go.sum"
+  cat >>"$work_dir/go.sum" <<'EOF'
+github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
+github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+EOF
+  LC_ALL=C sort "$work_dir/go.sum" >"$work_dir/go.sum.sorted"
+  mv "$work_dir/go.sum.sorted" "$work_dir/go.sum"
   git -C "$work_dir" init -q
   cat >"$work_dir/.git/info/exclude" <<'EOF'
 /config-bin/
