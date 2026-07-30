@@ -15,6 +15,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"path/filepath"
@@ -143,8 +146,17 @@ func TestShellSuppressionFindings(t *testing.T) {
 	source := []byte(strings.Join([]string{
 		"#shellcheck disable=SC2086",
 		"# shellcheck disable=SC2329 # Invoked by a registered trap",
+		"cargo --config profile.test.debug-assertions=false test",
 	}, "\n"))
 	findings := shellSuppressionFindings("source.sh", source)
+	if len(findings) != 2 {
+		t.Fatalf("findings = %v", findings)
+	}
+}
+
+func TestWorkflowCargoConfigFindings(t *testing.T) {
+	source := []byte("run: cargo --config=profile.test.debug-assertions=false test\n")
+	findings := workflowCargoConfigFindings("workflow.yml", source)
 	if len(findings) != 1 {
 		t.Fatalf("findings = %v", findings)
 	}
@@ -344,6 +356,8 @@ func TestGoSkipMethods(t *testing.T) {
 			source := "package fixture\n\nimport \"testing\"\n\n" +
 				"type cursor struct{}\n" +
 				"func (cursor) Skip(int) {}\n\n" +
+				"type cursorContract interface { Skip(int) }\n" +
+				"func useCursor(value cursorContract) { value.Skip(1) }\n\n" +
 				"func TestFixture(" + parameter + " *testing.T) {\n" +
 				test.call + "\n}\n"
 			if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
@@ -456,6 +470,44 @@ func TestGoBuildSelectionRejectsInvalidConstraint(t *testing.T) {
 	}
 }
 
+func TestValidTestMain(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		body  string
+		valid bool
+	}{
+		{"exit run", "os.Exit(testingMain.Run())", true},
+		{"empty", "", false},
+		{"return", "return", false},
+		{"other exit", "fmt.Println(testingMain.Run())", false},
+		{"missing argument", "os.Exit()", false},
+		{"constant exit", "os.Exit(0)", false},
+		{"run argument", "os.Exit(testingMain.Run(1))", false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			files := token.NewFileSet()
+			source := "package fixture\n" +
+				"import (\"fmt\"; \"os\"; \"testing\")\n" +
+				"func TestMain(testingMain *testing.M) {" + test.body + "}\n"
+			file, err := parser.ParseFile(files, "fixture_test.go", source, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			info := goTypeInfo([]*ast.File{file}, files)
+			function, ok := file.Decls[1].(*ast.FuncDecl)
+			if !ok {
+				t.Fatal("TestMain declaration is not a function")
+			}
+			if valid := validTestMain(function, info); valid != test.valid {
+				t.Fatalf("valid = %t, want %t", valid, test.valid)
+			}
+		})
+	}
+}
+
 func TestCargoLintAllowances(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -487,6 +539,22 @@ func TestCargoLintAllowances(t *testing.T) {
 		},
 		{"deny", "[workspace.lints.clippy]\nall = \"deny\"\n", 0},
 		{"workspace inheritance", "[lints]\nworkspace = true\n", 0},
+		{
+			"automatic tests disabled",
+			"[package]\nname = \"fixture\"\nautotests = false\n",
+			1,
+		},
+		{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 0},
+		{"doctests disabled", "[lib]\ndoctest = false\n", 0},
+		{"custom harness", "[[test]]\nname = \"fixture\"\nharness = false\n", 1},
+		{
+			"feature-gated test",
+			"[[test]]\nname = \"fixture\"\nrequired-features = [\"hidden\"]\n",
+			1,
+		},
+		{"package features", "[features]\nhidden = []\n", 1},
+		{"test profile", "[profile.test]\ndebug-assertions = false\n", 1},
+		{"ordinary target", "[[test]]\nname = \"fixture\"\npath = \"tests/fixture.rs\"\n", 0},
 		{"patch", "[patch.crates-io]\nfixture = { path = \"../fixture\" }\n", 1},
 		{"replace", "[replace]\n\"fixture:1.0.0\" = { path = \"../fixture\" }\n", 1},
 		{"unrelated", "[package]\nname = \"fixture\"\n", 0},
@@ -508,7 +576,26 @@ func TestCargoLintAllowances(t *testing.T) {
 
 func TestCargoConfigurationAllowances(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
+	for _, test := range cargoConfigurationCases() {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			findings := cargoConfigFindings(
+				".cargo/config.toml",
+				[]byte(test.source),
+			)
+			if len(findings) != test.findings {
+				t.Fatalf("findings = %v, want %d", findings, test.findings)
+			}
+		})
+	}
+}
+
+func cargoConfigurationCases() []struct {
+	name     string
+	source   string
+	findings int
+} {
+	return []struct {
 		name     string
 		source   string
 		findings int
@@ -540,6 +627,11 @@ func TestCargoConfigurationAllowances(t *testing.T) {
 		{"source paths", `paths = ["../override"]`, 1},
 		{"environment", `[env]` + "\n" + `RUSTFLAGS = "--cap-lints=allow"`, 1},
 		{"source table", `[source.crates-io]` + "\n" + `replace-with = "mirror"`, 1},
+		{
+			"test profile",
+			`[profile.test]` + "\n" + `debug-assertions = false`,
+			1,
+		},
 		{"build warnings", `[build]` + "\n" + `warnings = "allow"`, 1},
 		{"build target", `[build]` + "\n" + `target = "wasm32-unknown-unknown"`, 1},
 		{
@@ -560,22 +652,16 @@ func TestCargoConfigurationAllowances(t *testing.T) {
 				`runner = "runner.exe"`,
 			1,
 		},
+		{
+			"target linker",
+			`[target.x86_64-pc-windows-msvc]` + "\n" +
+				`linker = "linker.exe"`,
+			1,
+		},
 		{"linker", `[build]` + "\n" + `rustflags = ["-C", "link-arg=/Brepro"]`, 0},
 		{"linker string", `[build]` + "\n" + `rustflags = "-C link-arg=/Brepro"`, 0},
 		{"empty rustdoc flags", `[build]` + "\n" + `rustdocflags = []`, 0},
 		{"malformed", `[build` + "\n", 1},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			findings := cargoConfigFindings(
-				".cargo/config.toml",
-				[]byte(test.source),
-			)
-			if len(findings) != test.findings {
-				t.Fatalf("findings = %v, want %d", findings, test.findings)
-			}
-		})
 	}
 }
 
@@ -591,6 +677,12 @@ func TestRustPolicyAttributes(t *testing.T) {
 		{"conditional ignore", "#[cfg_attr(all(), ignore)]\nfn test() {}", modeTestSkips, 1},
 		{"inner allow", "#![allow(clippy::all)]", modeSuppressions, 1},
 		{"inner expect", "#![expect(clippy::all)]", modeSuppressions, 1},
+		{
+			"dynamic suppression",
+			`macro_rules! lint { ($level:ident) => { #[$level(clippy::all)] fn f() {} } }`,
+			modeSuppressions,
+			1,
+		},
 		{
 			"reasoned allow",
 			`#[allow(clippy::needless_pass_by_value, reason = "FFI owns the value")]`,
@@ -625,6 +717,9 @@ func TestRustPolicyAttributes(t *testing.T) {
 		},
 		{"include comment", `// include!("skipped.inc");`, modeTestSkips, 0},
 		{"include string", `const VALUE: &str = "include!(ignored)";`, modeTestSkips, 0},
+		{"include function", `fn include(value: u8) -> u8 { value }`, modeTestSkips, 0},
+		{"ignore function", `fn ignore(value: bool) -> bool { value }`, modeTestSkips, 0},
+		{"cfg path predicate", `#[cfg(path)] fn selected() {}`, modeTestSkips, 0},
 		{"attribute string", `#[doc = "allow ignore"]`, modeSuppressions, 0},
 		{"raw attribute string", `#[doc = r##"" allow ignore"##]`, modeSuppressions, 0},
 		{"attribute comment", `#[cfg(/* allow ignore */ test)]`, modeSuppressions, 0},
@@ -638,6 +733,45 @@ func TestRustPolicyAttributes(t *testing.T) {
 				t.Fatalf("findings = %v, want %d", findings, test.findings)
 			}
 		})
+	}
+}
+
+func TestCargoWorkspaceInventory(t *testing.T) {
+	t.Parallel()
+	files := map[string]string{
+		"Cargo.toml": `[workspace]
+members = ["worker/url-reference"]
+exclude = ["worker/qualification-fixtures"]
+`,
+		"worker/url-reference/Cargo.toml":          "[package]\n",
+		"worker/qualification-fixtures/Cargo.toml": "[package]\n",
+	}
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	readFile := func(path string) ([]byte, error) {
+		return []byte(files[path]), nil
+	}
+	if findings := cargoWorkspaceInventoryFindings(paths, readFile); len(findings) != 0 {
+		t.Fatalf("valid inventory findings = %v", findings)
+	}
+	paths = append(paths, "hidden/Cargo.toml")
+	if findings := cargoWorkspaceInventoryFindings(paths, readFile); len(findings) != 1 {
+		t.Fatalf("hidden manifest findings = %v, want 1", findings)
+	}
+	files["Cargo.toml"] = "[workspace]\nmembers = []\nexclude = []\n"
+	if findings := cargoWorkspaceInventoryFindings(paths[:3], readFile); len(findings) != 2 {
+		t.Fatalf("workspace mismatch findings = %v, want 2", findings)
+	}
+	if findings := cargoWorkspaceInventoryFindings(
+		[]string{"Cargo.toml"},
+		func(string) ([]byte, error) { return nil, errors.New("read failure") },
+	); len(findings) != 1 {
+		t.Fatalf("read findings = %v, want 1", findings)
+	}
+	if cargoStringListEquals([]any{"one", 2}, []string{"one", "two"}) {
+		t.Fatal("mixed Cargo string list accepted")
 	}
 }
 

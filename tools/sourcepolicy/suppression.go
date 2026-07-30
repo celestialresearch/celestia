@@ -14,6 +14,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -34,7 +35,16 @@ var (
 	validShellcheck = regexp.MustCompile(
 		`^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable[[:space:]]*=[[:space:]]*SC[0-9]+(,SC[0-9]+)*[[:space:]]+#[[:space:]]+[^[:space:]].*$`,
 	)
+	cargoCLIConfig = regexp.MustCompile(
+		`cargo[ \t]+--config[= \t]`,
+	)
 )
+
+var expectedCargoManifests = []string{
+	"Cargo.toml",
+	"worker/qualification-fixtures/Cargo.toml",
+	"worker/url-reference/Cargo.toml",
+}
 
 func goSuppressionFindings(path string, source []byte) []string {
 	var findings []string
@@ -71,6 +81,23 @@ func shellSuppressionFindings(path string, source []byte) []string {
 				"%s:%d: invalid ShellCheck suppression", path, index+1,
 			))
 		}
+		if cargoCLIConfig.Match(line) {
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d: Cargo CLI configuration is prohibited", path, index+1,
+			))
+		}
+	}
+	return findings
+}
+
+func workflowCargoConfigFindings(path string, source []byte) []string {
+	var findings []string
+	for index, line := range bytes.Split(source, []byte{'\n'}) {
+		if cargoCLIConfig.Match(line) {
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d: Cargo CLI configuration is prohibited", path, index+1,
+			))
+		}
 	}
 	return findings
 }
@@ -89,6 +116,7 @@ func cargoLintFindings(path string, source []byte) []string {
 			))
 		}
 	}
+	findings = append(findings, cargoTestDiscoveryFindings(path, document)...)
 	for _, root := range []string{"lints", "workspace.lints"} {
 		table := nestedTable(document, strings.Split(root, ".")...)
 		for namespace, value := range table {
@@ -111,6 +139,121 @@ func cargoLintFindings(path string, source []byte) []string {
 	}
 	slices.Sort(findings)
 	return findings
+}
+
+func cargoWorkspaceInventoryFindings(
+	files []string,
+	readFile func(string) ([]byte, error),
+) []string {
+	if !slices.Contains(files, "Cargo.toml") {
+		return nil
+	}
+	source, err := readFile("Cargo.toml")
+	if err != nil {
+		return []string{fmt.Sprintf("Cargo.toml: %v", err)}
+	}
+	var document map[string]any
+	if _, err := toml.Decode(string(source), &document); err != nil {
+		return nil
+	}
+	workspace := nestedTable(document, "workspace")
+	if workspace == nil {
+		return nil
+	}
+	var findings []string
+	if !cargoStringListEquals(
+		workspace["members"],
+		[]string{"worker/url-reference"},
+	) {
+		findings = append(findings, "Cargo.toml: unexpected workspace members")
+	}
+	if !cargoStringListEquals(
+		workspace["exclude"],
+		[]string{"worker/qualification-fixtures"},
+	) {
+		findings = append(findings, "Cargo.toml: unexpected workspace exclusions")
+	}
+	var manifests []string
+	for _, path := range files {
+		if filepath.Base(path) == "Cargo.toml" {
+			manifests = append(manifests, filepath.ToSlash(path))
+		}
+	}
+	slices.Sort(manifests)
+	if !slices.Equal(manifests, expectedCargoManifests) {
+		findings = append(findings, "Cargo.toml: unexpected Cargo manifest inventory")
+	}
+	return findings
+}
+
+func cargoStringListEquals(value any, expected []string) bool {
+	values, ok := value.([]any)
+	if !ok || len(values) != len(expected) {
+		return false
+	}
+	actual := make([]string, 0, len(values))
+	for _, value := range values {
+		text, ok := value.(string)
+		if !ok {
+			return false
+		}
+		actual = append(actual, text)
+	}
+	return slices.Equal(actual, expected)
+}
+
+func cargoTestDiscoveryFindings(
+	path string,
+	document map[string]any,
+) []string {
+	var findings []string
+	if features := nestedTable(document, "features"); len(features) > 0 {
+		findings = append(findings, fmt.Sprintf(
+			"%s: Cargo package features require an explicit test matrix", path,
+		))
+	}
+	if profile := nestedTable(document, "profile"); len(profile) > 0 {
+		findings = append(findings, fmt.Sprintf(
+			"%s: Cargo profile overrides are prohibited", path,
+		))
+	}
+	if packageTable := nestedTable(document, "package"); packageTable != nil {
+		if autotests, exists := packageTable["autotests"]; exists &&
+			autotests != true {
+			findings = append(findings, fmt.Sprintf(
+				"%s: Cargo automatic test discovery must remain enabled", path,
+			))
+		}
+	}
+	for _, key := range []string{"lib", "bin", "example", "test", "bench"} {
+		for _, target := range cargoTargetTables(document[key]) {
+			if cargoTargetOmitsTests(target) {
+				findings = append(findings, fmt.Sprintf(
+					"%s: Cargo target %s may omit tests", path, key,
+				))
+			}
+		}
+	}
+	return findings
+}
+
+func cargoTargetTables(value any) []map[string]any {
+	switch typed := value.(type) {
+	case map[string]any:
+		return []map[string]any{typed}
+	case []map[string]any:
+		return typed
+	default:
+		return nil
+	}
+}
+
+func cargoTargetOmitsTests(target map[string]any) bool {
+	if harness, exists := target["harness"]; exists && harness != true {
+		return true
+	}
+	features, gated := target["required-features"].([]any)
+	return gated && len(features) > 0
 }
 
 func cargoConfigFindings(path string, source []byte) []string {
@@ -158,7 +301,7 @@ func inspectCargoConfig(
 
 func cargoExecutionOverride(parent, key string) bool {
 	switch key {
-	case "links", "runner", "rustc", "rustdoc", "rustc-wrapper",
+	case "linker", "links", "runner", "rustc", "rustdoc", "rustc-wrapper",
 		"rustc-workspace-wrapper", "warnings":
 		return true
 	}
@@ -172,7 +315,7 @@ func cargoExecutionOverride(parent, key string) bool {
 func cargoRootOverride(key string) bool {
 	switch key {
 	case "alias", "credential-alias", "env", "include", "patch", "paths",
-		"replace", "source":
+		"profile", "replace", "source":
 		return true
 	default:
 		return false

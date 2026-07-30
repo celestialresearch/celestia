@@ -93,6 +93,12 @@ func policyFindings(
 	readFile func(string) ([]byte, error),
 ) ([]string, error) {
 	var findings []string
+	if mode == modeSuppressions {
+		findings = append(
+			findings,
+			cargoWorkspaceInventoryFindings(files, readFile)...,
+		)
+	}
 	if mode == modeTestSkips {
 		goFindings, err := goPackageSkipFindings(files, readFile)
 		if err != nil {
@@ -127,6 +133,11 @@ func scanFile(
 			return nil
 		}
 		return readFindings(path, readFile, shellSuppressionFindings)
+	case ".yml", ".yaml":
+		if mode != modeSuppressions {
+			return nil
+		}
+		return readFindings(path, readFile, workflowCargoConfigFindings)
 	}
 	return nil
 }
@@ -371,14 +382,49 @@ func isTestingSkip(selector *ast.SelectorExpr, info *types.Info) bool {
 	}
 	if selection := info.Selections[selector]; selection != nil {
 		return testingMethod(selection.Obj()) ||
-			interfaceReceiver(selection.Recv())
+			interfaceTestingSkip(selection)
 	}
 	return testingMethod(info.Uses[selector.Sel])
 }
 
-func interfaceReceiver(receiver types.Type) bool {
-	_, ok := receiver.Underlying().(*types.Interface)
-	return ok
+func interfaceTestingSkip(selection *types.Selection) bool {
+	if _, ok := selection.Recv().Underlying().(*types.Interface); !ok {
+		return false
+	}
+	function, ok := selection.Obj().(*types.Func)
+	if !ok {
+		return false
+	}
+	signature, ok := function.Type().(*types.Signature)
+	if !ok || signature.Results().Len() != 0 {
+		return false
+	}
+	switch function.Name() {
+	case "Skip":
+		return anyVariadicSignature(signature, 0)
+	case "Skipf":
+		return signature.Params().Len() == 2 &&
+			types.Identical(
+				signature.Params().At(0).Type(),
+				types.Typ[types.String],
+			) &&
+			anyVariadicSignature(signature, 1)
+	case "SkipNow":
+		return !signature.Variadic() && signature.Params().Len() == 0
+	default:
+		return false
+	}
+}
+
+func anyVariadicSignature(signature *types.Signature, index int) bool {
+	if !signature.Variadic() || signature.Params().Len() != index+1 {
+		return false
+	}
+	slice, ok := signature.Params().At(index).Type().(*types.Slice)
+	return ok && types.Identical(
+		types.Unalias(slice.Elem()),
+		types.Unalias(types.Universe.Lookup("any").Type()),
+	)
 }
 
 func isSkipMethod(name string) bool {
@@ -414,17 +460,61 @@ func rustFindings(path string, source []byte, mode string) []string {
 }
 
 func rustExpansionFinding(path string, source []byte, mode string) string {
-	if line, found := rustIdentifierLine(source, "include"); found {
-		return fmt.Sprintf(
-			"%s:%d: Rust include! is prohibited", path, line,
-		)
+	tokens, valid := rustPolicyTokens(source)
+	if !valid {
+		return fmt.Sprintf("%s: parse Rust source: unterminated token", path)
 	}
-	if line, found := rustIdentifierLine(source, "ignore"); mode == modeTestSkips && found {
+	if line, found := rustIncludeLine(tokens); found {
+		return fmt.Sprintf("%s:%d: Rust include! is prohibited", path, line)
+	}
+	if line, found := rustMacroIgnoreLine(tokens); mode == modeTestSkips && found {
 		return fmt.Sprintf(
 			"%s:%d: Rust tests must not ignore cases", path, line,
 		)
 	}
 	return ""
+}
+
+func rustIncludeLine(tokens []rustPolicyToken) (int, bool) {
+	inUse := false
+	for index, token := range tokens {
+		switch token.text {
+		case "use":
+			inUse = true
+		case ";":
+			inUse = false
+		case "include":
+			if inUse ||
+				index+1 < len(tokens) && tokens[index+1].text == "!" {
+				return token.line, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func rustMacroIgnoreLine(tokens []rustPolicyToken) (int, bool) {
+	var macroDepth []bool
+	for index, token := range tokens {
+		switch token.text {
+		case "(", "[", "{":
+			inMacro := index > 0 && tokens[index-1].text == "!"
+			if len(macroDepth) > 0 && macroDepth[len(macroDepth)-1] {
+				inMacro = true
+			}
+			macroDepth = append(macroDepth, inMacro)
+		case ")", "]", "}":
+			if len(macroDepth) > 0 {
+				macroDepth = macroDepth[:len(macroDepth)-1]
+			}
+		default:
+			if token.text == "ignore" &&
+				len(macroDepth) > 0 && macroDepth[len(macroDepth)-1] {
+				return token.line, true
+			}
+		}
+	}
+	return 0, false
 }
 
 func rustAttributeFindings(
@@ -433,7 +523,7 @@ func rustAttributeFindings(
 	mode string,
 ) []string {
 	words := rustAttributeIdentifiers([]byte(attribute.text))
-	if contains(words, "path") {
+	if rustAttributeSetsPath([]byte(attribute.text)) {
 		return []string{fmt.Sprintf(
 			"%s:%d: Rust path attributes are prohibited", path, attribute.line,
 		)}
@@ -446,6 +536,13 @@ func rustAttributeFindings(
 			)}
 		}
 	case modeSuppressions:
+		if strings.Contains(attribute.text, "$") {
+			return []string{fmt.Sprintf(
+				"%s:%d: dynamic Rust attributes are prohibited",
+				path,
+				attribute.line,
+			)}
+		}
 		if (contains(words, "allow") || contains(words, "expect")) &&
 			!validClippySuppression(attribute.text) {
 			return []string{fmt.Sprintf(
@@ -456,12 +553,18 @@ func rustAttributeFindings(
 	return nil
 }
 
-func rustIdentifierLine(source []byte, wanted string) (int, bool) {
+type rustPolicyToken struct {
+	text string
+	line int
+}
+
+func rustPolicyTokens(source []byte) ([]rustPolicyToken, bool) {
+	var tokens []rustPolicyToken
 	for index, line := 0, 1; index < len(source); {
 		next, nextLine, valid := skipRustTrivia(source, index, line)
 		index, line = next, nextLine
 		if !valid || index >= len(source) {
-			return 0, false
+			return tokens, valid
 		}
 		if rustTokenStart(source[index]) {
 			index, line = skipRustToken(source, index, line)
@@ -472,19 +575,34 @@ func rustIdentifierLine(source []byte, wanted string) (int, bool) {
 			index++
 		}
 		if start == index {
+			tokens = append(tokens, rustPolicyToken{
+				text: string(source[index]),
+				line: line,
+			})
 			index++
 			continue
 		}
-		identifier := string(source[start:index])
-		if identifier == wanted {
-			return line, true
-		}
-		index, line, valid = skipRustTrivia(source, index, line)
-		if !valid {
-			return 0, false
-		}
+		tokens = append(tokens, rustPolicyToken{
+			text: string(source[start:index]),
+			line: line,
+		})
 	}
-	return 0, false
+	return tokens, true
+}
+
+func rustAttributeSetsPath(source []byte) bool {
+	tokens, valid := rustPolicyTokens(source)
+	if !valid {
+		return false
+	}
+	for index, token := range tokens {
+		if token.text != "path" || index+1 >= len(tokens) ||
+			tokens[index+1].text != "=" {
+			continue
+		}
+		return true
+	}
+	return false
 }
 
 func rustAttributes(source []byte) ([]rustAttribute, error) {

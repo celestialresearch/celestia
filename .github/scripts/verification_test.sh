@@ -632,6 +632,42 @@ EOF
     >"$rust_dir/rust-toolchain.toml"
   (cd "$rust_dir" && bash .github/scripts/rustcheck.sh config)
 
+  set +e
+  output=$(
+    cd "$rust_dir" &&
+      RUSTFLAGS='--cap-lints allow' \
+        bash .github/scripts/rustcheck.sh config 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted inherited compiler flags\n' >&2
+    return 1
+  }
+  grep -Fq 'Uncontrolled Rust build environment: RUSTFLAGS' <<<"$output" || {
+    printf 'Rust config check omitted the environment diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+
+  mkdir -p "$rust_dir/.cargo"
+  printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
+    >"$rust_dir/.cargo/config.toml"
+  set +e
+  output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+  status=$?
+  set -e
+  rm -rf -- "$rust_dir/.cargo"
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted untracked Cargo configuration\n' >&2
+    return 1
+  }
+  grep -Fq 'Untracked Cargo configuration is prohibited' <<<"$output" || {
+    printf 'Rust config check omitted the untracked-config diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+
   printf '%s\n' '[package]' 'rust-version = "1.94.0"' '' \
     '[lints.rust]' 'non_ascii_idents = "deny"' \
     >"$rust_dir/worker/qualification-fixtures/Cargo.toml"
@@ -1199,31 +1235,6 @@ EOF
   }
   rm -- "$work_dir/coverage_test.go"
 
-  cat >"$work_dir/skipped_test.go" <<'EOF'
-package fixture
-
-import "testing"
-
-func TestSkipped(t *testing.T) {
-	t.Skip("unverified")
-}
-EOF
-  set +e
-  output=$(cd "$work_dir" &&
-    bash .github/scripts/policycheck.sh test-skips 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a skipped Go test\n' >&2
-    return 1
-  }
-  grep -Fq 'Go tests must not skip cases' <<<"$output" || {
-    printf 'policy output omitted the skipped-test failure:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  rm -- "$work_dir/skipped_test.go"
-
   cat >"$work_dir/helper.go" <<'EOF'
 package fixture
 
@@ -1246,9 +1257,19 @@ package fixture
 
 import "testing"
 
-func TestSkipped(t *testing.T) {
+func TestMain(testingMain *testing.M) {}
+
+func TestDirectSkip(t *testing.T) {
+	t.Skip("unverified")
+}
+
+func TestCrossFileSkip(t *testing.T) {
 	testContext(t).Skip("unverified")
 	hideSkip(t)
+}
+
+func TestMethodExpressionSkip(t *testing.T) {
+	(*testing.T).Skip(t, "unverified")
 }
 EOF
   cat >"$work_dir/platform_linux.go" <<'EOF'
@@ -1271,7 +1292,17 @@ EOF
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a cross-file Go skip\n' >&2
+    printf 'policy check accepted Go skip variants\n' >&2
+    return 1
+  }
+  grep -Fq 'Go tests must not skip cases' <<<"$output" || {
+    printf 'policy output omitted the skipped-test failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  grep -Fq 'TestMain must terminate with testing.M.Run' <<<"$output" || {
+    printf 'policy output omitted the TestMain failure:\n%s\n' \
+      "$output" >&2
     return 1
   }
   rm -- \
@@ -1279,26 +1310,6 @@ EOF
     "$work_dir/skipped_test.go" \
     "$work_dir/platform_linux.go" \
     "$work_dir/platform_windows.go"
-
-  cat >"$work_dir/skipped_test.go" <<'EOF'
-package fixture
-
-import "testing"
-
-func TestSkipped(t *testing.T) {
-	(*testing.T).Skip(t, "unverified")
-}
-EOF
-  set +e
-  output=$(cd "$work_dir" &&
-    bash .github/scripts/policycheck.sh test-skips 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a method-expression Go skip\n' >&2
-    return 1
-  }
-  rm -- "$work_dir/skipped_test.go"
 
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]
@@ -1395,6 +1406,9 @@ EOF
     >"$work_dir/broad_shellcheck.sh"
   printf '%s%s\n' '#shell' 'check disable=SC2086' \
     >"$work_dir/compact_shellcheck.sh"
+  printf '%s%s\n' 'cargo --con' \
+    'fig profile.test.debug-assertions=false test' \
+    >"$work_dir/cargo_config.sh"
   printf '%s%s\n' '#[al' 'low(clippy::needless_pass_by_value)]' \
     >"$work_dir/broad_clippy.rs"
   printf '%s%s\n' '#[al' \
@@ -1404,13 +1418,23 @@ EOF
     >"$work_dir/inner_broad_clippy.rs"
   printf '%s%s\n' '#![ex' 'pect(clippy::all)]' \
     >"$work_dir/inner_broad_expect.rs"
+  printf '%s\n' \
+    "macro_rules! lint { (\$level:ident) => { #[\$level(clippy::all)] fn f() {} } }" \
+    >"$work_dir/dynamic_attribute.rs"
   cat >"$work_dir/Cargo.toml" <<'EOF'
-[workspace]
+[package]
+name = "fixture"
+version = "0.0.0"
+edition = "2024"
+autotests = false
+
+[profile.test]
+debug-assertions = false
 
 [patch.crates-io]
 fixture = { path = "../fixture" }
 
-[workspace.lints.rustdoc]
+[lints.rustdoc]
 broken_intra_doc_links = "allow"
 EOF
   mkdir -p "$work_dir/.cargo"
@@ -1424,6 +1448,12 @@ clippy = "bypass"
 [build]
 rustflags = ["@args.txt"]
 rustc-wrapper = "wrapper.exe"
+
+[target.x86_64-pc-windows-msvc]
+linker = "linker.exe"
+
+[profile.test]
+debug-assertions = false
 EOF
   cat >"$work_dir/.cargo/hostile.toml" <<'EOF'
 [build]
@@ -1451,6 +1481,10 @@ EOF
     'invalid golangci-lint suppression' \
     'invalid ShellCheck suppression' \
     'invalid Clippy suppression' \
+    'dynamic Rust attributes are prohibited' \
+    'Cargo CLI configuration is prohibited' \
+    'Cargo automatic test discovery must remain enabled' \
+    'Cargo profile overrides are prohibited' \
     'Cargo lint allowances are prohibited' \
     'Cargo source override is prohibited' \
     'Cargo rustflags are not approved' \
@@ -1467,10 +1501,12 @@ EOF
     "$work_dir/reasoned_broad_nolint.go" \
     "$work_dir/broad_shellcheck.sh" \
     "$work_dir/compact_shellcheck.sh" \
+    "$work_dir/cargo_config.sh" \
     "$work_dir/broad_clippy.rs" \
     "$work_dir/reasoned_broad_clippy.rs" \
     "$work_dir/inner_broad_clippy.rs" \
     "$work_dir/inner_broad_expect.rs" \
+    "$work_dir/dynamic_attribute.rs" \
     "$work_dir/reasoned_broad_multiline_clippy.rs" \
     "$work_dir/Cargo.toml" \
     "$work_dir/.cargo/config.toml" \

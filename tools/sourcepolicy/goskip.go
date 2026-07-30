@@ -17,6 +17,7 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"slices"
@@ -196,6 +197,11 @@ func hasGoSkipSelector(path string, source []byte) (bool, error) {
 	}
 	found := false
 	ast.Inspect(file, func(node ast.Node) bool {
+		function, ok := node.(*ast.FuncDecl)
+		if ok && function.Name.Name == "TestMain" {
+			found = true
+			return false
+		}
 		selector, ok := node.(*ast.SelectorExpr)
 		if ok && isSkipMethod(selector.Sel.Name) {
 			found = true
@@ -241,6 +247,19 @@ func goSkipFindingsForTarget(
 		}
 		for _, file := range loadedPackage.Syntax {
 			ast.Inspect(file, func(node ast.Node) bool {
+				function, ok := node.(*ast.FuncDecl)
+				if ok && function.Name.Name == "TestMain" {
+					if validTestMain(function, loadedPackage.TypesInfo) {
+						return false
+					}
+					position := loadedPackage.Fset.Position(function.Pos())
+					findings = append(findings, fmt.Sprintf(
+						"%s:%d: TestMain must terminate with testing.M.Run",
+						filepath.ToSlash(position.Filename),
+						position.Line,
+					))
+					return false
+				}
 				selector, ok := node.(*ast.SelectorExpr)
 				if !ok || !isTestingSkip(selector, loadedPackage.TypesInfo) {
 					return true
@@ -256,4 +275,40 @@ func goSkipFindingsForTarget(
 		}
 	}
 	return findings, nil
+}
+
+func validTestMain(function *ast.FuncDecl, info *types.Info) bool {
+	if function.Body == nil || len(function.Body.List) == 0 {
+		return false
+	}
+	expression, ok := function.Body.List[len(function.Body.List)-1].(*ast.ExprStmt)
+	if !ok {
+		return false
+	}
+	exitCall, ok := expression.X.(*ast.CallExpr)
+	if !ok || !isOSExit(exitCall, info) {
+		return false
+	}
+	return isTestingRun(exitCall.Args[0], info)
+}
+
+func isOSExit(call *ast.CallExpr, info *types.Info) bool {
+	if len(call.Args) != 1 {
+		return false
+	}
+	exit, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || exit.Sel.Name != "Exit" {
+		return false
+	}
+	exitObject, ok := info.Uses[exit.Sel].(*types.Func)
+	return ok && exitObject.Pkg() != nil && exitObject.Pkg().Path() == "os"
+}
+
+func isTestingRun(expression ast.Expr, info *types.Info) bool {
+	runCall, ok := expression.(*ast.CallExpr)
+	if !ok || len(runCall.Args) != 0 {
+		return false
+	}
+	run, ok := runCall.Fun.(*ast.SelectorExpr)
+	return ok && run.Sel.Name == "Run" && testingMethod(info.Uses[run.Sel])
 }

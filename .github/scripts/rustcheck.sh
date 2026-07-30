@@ -69,6 +69,58 @@ check_lint_policy() {
   fi
 }
 
+check_environment() {
+  local cargo_home
+  local config
+  local directory
+  local name
+  local parent
+
+  while IFS= read -r name; do
+    case "$name" in
+    CARGO_TARGET_DIR) ;;
+    RUSTFLAGS | RUSTDOCFLAGS | CARGO_ENCODED_RUSTFLAGS | \
+      CARGO_ENCODED_RUSTDOCFLAGS | CARGO_BUILD_* | CARGO_TARGET_* | \
+      CARGO_PROFILE_* | CARGO_ALIAS_*)
+      if [[ -n "${!name:-}" ]]; then
+        printf 'Uncontrolled Rust build environment: %s\n' "$name" >&2
+        return 1
+      fi
+      ;;
+    esac
+  done < <(compgen -e)
+
+  cargo_home=${CARGO_HOME:-"$HOME/.cargo"}
+  for config in "$cargo_home/config" "$cargo_home/config.toml"; do
+    if [[ -f "$config" ]]; then
+      printf 'External Cargo configuration is prohibited: %s\n' "$config" >&2
+      return 1
+    fi
+  done
+
+  for config in .cargo/config .cargo/config.toml; do
+    if [[ -f "$config" ]] &&
+      ! git ls-files --error-unmatch -- "$config" >/dev/null 2>&1; then
+      printf 'Untracked Cargo configuration is prohibited: %s\n' \
+        "$config" >&2
+      return 1
+    fi
+  done
+
+  directory=$(cd .. && pwd -P) || return
+  while [[ "$directory" != / && -n "$directory" ]]; do
+    for config in "$directory/.cargo/config" "$directory/.cargo/config.toml"; do
+      if [[ -f "$config" ]]; then
+        printf 'Parent Cargo configuration is prohibited: %s\n' "$config" >&2
+        return 1
+      fi
+    done
+    parent=$(dirname -- "$directory") || return
+    [[ "$parent" != "$directory" ]] || break
+    directory=$parent
+  done
+}
+
 workflow_tools() {
   awk '
     FNR == 1 {
@@ -140,6 +192,7 @@ check_config() {
     return 1
   fi
 
+  check_environment
   manifest=$(rust_version)
   fixture=$(fixture_rust_version)
   toolchain=$(toolchain_version)
