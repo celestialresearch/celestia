@@ -346,6 +346,11 @@ func TestGoSkipMethods(t *testing.T) {
 			`cursor{}.Skip(1)`,
 			0,
 		},
+		{
+			"custom function field",
+			`fields{}.Skip("ordinary")`,
+			0,
+		},
 		{"ordinary test", `t.Log("verified")`, 0},
 	}
 	for _, test := range tests {
@@ -359,6 +364,7 @@ func TestGoSkipMethods(t *testing.T) {
 			source := "package fixture\n\nimport \"testing\"\n\n" +
 				"type cursor struct{}\n" +
 				"func (cursor) Skip(int) {}\n\n" +
+				"type fields struct { Skip func(...any) }\n\n" +
 				"type cursorContract interface {\n" +
 				"\tSkip(int)\n" +
 				"\tSkipf(int, ...any)\n" +
@@ -512,6 +518,11 @@ func TestValidTestMainSyntax(t *testing.T) {
 			"os.Exit(2); os.Exit(testingMain.Run())",
 			true,
 		},
+		{
+			"custom exit field",
+			"customExit.Exit(2); os.Exit(testingMain.Run())",
+			true,
+		},
 		{"empty", "", false},
 		{"return", "return", false},
 		{
@@ -532,13 +543,15 @@ func TestValidTestMainSyntax(t *testing.T) {
 			files := token.NewFileSet()
 			source := "package fixture\n" +
 				"import (\"fmt\"; \"os\"; \"testing\")\n" +
+				"type exits struct { Exit func(int) }\n" +
+				"var customExit exits\n" +
 				"func TestMain(testingMain *testing.M) {" + test.body + "}\n"
 			file, err := parser.ParseFile(files, "fixture_test.go", source, 0)
 			if err != nil {
 				t.Fatal(err)
 			}
 			info := goTypeInfo([]*ast.File{file}, files)
-			function, ok := file.Decls[1].(*ast.FuncDecl)
+			function, ok := file.Decls[3].(*ast.FuncDecl)
 			if !ok {
 				t.Fatal("TestMain declaration is not a function")
 			}
