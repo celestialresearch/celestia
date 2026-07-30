@@ -42,6 +42,14 @@ const (
 )
 
 func main() {
+	if handled, status := runTestInventory(
+		os.Args[1:],
+		os.Stdin,
+		os.Stdout,
+		os.Stderr,
+	); handled {
+		os.Exit(status)
+	}
 	os.Exit(run(os.Args[1:], os.Stderr, sourceFiles, readSource))
 }
 

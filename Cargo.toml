@@ -16,3 +16,6 @@ sha2 = "=0.11.0"
 [workspace.lints.rust]
 non_ascii_idents = "deny"
 unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+exit = "deny"

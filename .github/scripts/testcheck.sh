@@ -26,20 +26,19 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 go_inventory() {
-  go test -json -run '^$' -list '^(Test|Example|Fuzz)' ./... |
-    awk '
-      /"Action":"output"/ &&
-      /"Output":"(Test|Example|Fuzz)[[:alnum:]_]*\\n"/ {
-        package_name = $0
-        sub(/^.*"Package":"/, "", package_name)
-        sub(/".*$/, "", package_name)
-        test_name = $0
-        sub(/^.*"Output":"/, "", test_name)
-        sub(/\\n".*$/, "", test_name)
-        print package_name "\t" test_name
-      }
-    ' |
-    sort -u >"$temporary/expected"
+  if [[ -n "${TESTINVENTORY_BIN:-}" ]]; then
+    "$TESTINVENTORY_BIN" go >"$temporary/expected"
+  else
+    go run ./tools/sourcepolicy go-test-inventory >"$temporary/expected"
+  fi
+}
+
+cargo_executables() {
+  if [[ -n "${TESTINVENTORY_BIN:-}" ]]; then
+    "$TESTINVENTORY_BIN" cargo
+  else
+    go run ./tools/sourcepolicy cargo-test-inventory
+  fi
 }
 
 go_tests() {
@@ -102,33 +101,31 @@ go_tests() {
 
 rust_command() {
   local all_targets=$1
-  local arguments=(test --workspace --locked)
+  local arguments=(test --workspace --locked --no-run --message-format=json)
+  local executable
+  local test_name
 
   if [[ "$all_targets" == true ]]; then
-    arguments=(test --workspace --all-targets --locked)
+    arguments=(test --workspace --all-targets --locked --no-run --message-format=json)
   fi
-  "${CARGO_BIN:-cargo}" "${arguments[@]}" 2>&1 |
-    awk '
-      {
-        print
-        if ($0 ~ /^running [0-9]+ tests?$/) {
-          harnesses++
-        } else if ($0 ~ /^test result:/) {
-          summaries++
-        }
-      }
-      END {
-        if (harnesses != summaries) {
-          print "Rust test harness lacked a terminal summary"
-          exit 1
-        }
-      }
-    '
+  "${CARGO_BIN:-cargo}" "${arguments[@]}" |
+    cargo_executables >"$temporary/rust-executables"
+  while IFS= read -r executable; do
+    "$executable" --list --format terse >"$temporary/rust-list"
+    while IFS= read -r test_name; do
+      test_name=${test_name%: test}
+      [[ "$test_name" == *": benchmark" ]] && continue
+      "$executable" --exact "$test_name" --test-threads=1
+    done <"$temporary/rust-list"
+  done <"$temporary/rust-executables"
 }
 
 rust_tests() {
+  "${CARGO_BIN:-cargo}" clippy --workspace --all-targets --locked -- \
+    -D warnings -D clippy::exit
   rust_command false
   rust_command true
+  "${CARGO_BIN:-cargo}" test --workspace --locked
 }
 
 case "$mode" in

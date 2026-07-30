@@ -375,8 +375,31 @@ func moduleReplacementEscapes(
 			err,
 		)
 	}
-	return relative == ".." ||
-		strings.HasPrefix(relative, ".."+string(filepath.Separator)), nil
+	if relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return true, nil
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return false, fmt.Errorf(
+			"%s: resolve physical Go module replacement: %w",
+			modulePath,
+			err,
+		)
+	}
+	physicalRelative, err := filepath.Rel(repositoryRoot, resolved)
+	if err != nil {
+		return false, fmt.Errorf(
+			"%s: compare physical Go module replacement: %w",
+			modulePath,
+			err,
+		)
+	}
+	return physicalRelative == ".." ||
+		strings.HasPrefix(
+			physicalRelative,
+			".."+string(filepath.Separator),
+		), nil
 }
 
 func isGoNativeSource(path string) bool {

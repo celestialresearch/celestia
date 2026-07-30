@@ -514,6 +514,7 @@ EOF
     "$root/tools/sourcepolicy/source_open_other.go" \
     "$root/tools/sourcepolicy/source_open_unix.go" \
     "$root/tools/sourcepolicy/suppression.go" \
+    "$root/tools/sourcepolicy/testinventory.go" \
     "$work_dir/tools/sourcepolicy/"
   printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
     >"$work_dir/.github/.coverage"

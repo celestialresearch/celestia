@@ -26,6 +26,7 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -356,6 +357,36 @@ func TestGoPolicyRejectsExternalReplacement(t *testing.T) {
 	)
 	if err == nil || !strings.Contains(err.Error(), "escapes the repository") {
 		t.Fatalf("replacement error = %v", err)
+	}
+}
+
+func TestGoPolicyRejectsLinkedReplacement(t *testing.T) {
+	root := t.TempDir()
+	external := t.TempDir()
+	link := filepath.Join(root, "linked")
+	if err := os.Symlink(external, link); err != nil {
+		t.Fatalf("create replacement link: %v", err)
+	}
+	modulePath := filepath.Join(root, "go.mod")
+	module, err := modfile.Parse(
+		modulePath,
+		[]byte("module fixture.invalid/root\n\ngo 1.26.5\n\n"+
+			"replace fixture.invalid/helper => ./linked\n"),
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	escapes, err := moduleReplacementEscapes(
+		modulePath,
+		module.Replace[0],
+		root,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !escapes {
+		t.Fatal("linked replacement outside repository was accepted")
 	}
 }
 

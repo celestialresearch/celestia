@@ -23,11 +23,6 @@ trap cleanup EXIT HUP INT TERM
 mkdir -p "$work/bin"
 cat >"$work/bin/go" <<'EOF'
 #!/usr/bin/env bash
-if [[ "$*" == *" -list "* ]]; then
-  printf '%s\n' \
-    '{"Action":"output","Package":"fixture.invalid/test","Output":"TestMustRun\n"}'
-  exit
-fi
 printf '%s\n' \
   '{"Action":"run","Package":"fixture.invalid/test","Test":"TestMustRun"}'
 if [[ "${COMPLETE_TEST:-false}" == true ]]; then
@@ -37,27 +32,46 @@ fi
 EOF
 chmod +x "$work/bin/go"
 
+cat >"$work/bin/testinventory" <<EOF
+#!/usr/bin/env bash
+if [[ "\$1" == go ]]; then
+  printf '%s\\n' 'fixture.invalid/test	TestMustRun'
+else
+  printf '%s\\n' '$work/bin/rust-test'
+fi
+EOF
+chmod +x "$work/bin/testinventory"
+
 cat >"$work/bin/cargo" <<'EOF'
 #!/usr/bin/env bash
-printf 'running 1 test\n'
-if [[ "${COMPLETE_TEST:-false}" == true ]]; then
-  printf 'test result: ok. 1 passed; 0 failed; 0 ignored\n'
-fi
+exit 0
 EOF
 chmod +x "$work/bin/cargo"
 
-if PATH="$work/bin:$PATH" \
+cat >"$work/bin/rust-test" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"--list"* ]]; then
+  printf 'must_run: test\n'
+elif [[ "${COMPLETE_TEST:-false}" != true ]]; then
+  exit 1
+fi
+EOF
+chmod +x "$work/bin/rust-test"
+
+if PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
   bash "$root/.github/scripts/testcheck.sh" go quick >/dev/null 2>&1; then
   printf 'Go completion check accepted a missing terminal outcome\n' >&2
   exit 1
 fi
-PATH="$work/bin:$PATH" COMPLETE_TEST=true \
+PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
+  COMPLETE_TEST=true \
   bash "$root/.github/scripts/testcheck.sh" go quick >/dev/null
 
-if CARGO_BIN="$work/bin/cargo" \
+if CARGO_BIN="$work/bin/cargo" TESTINVENTORY_BIN="$work/bin/testinventory" \
   bash "$root/.github/scripts/testcheck.sh" rust >/dev/null 2>&1; then
-  printf 'Rust completion check accepted a missing harness summary\n' >&2
+  printf 'Rust completion check accepted a failed executable\n' >&2
   exit 1
 fi
-CARGO_BIN="$work/bin/cargo" COMPLETE_TEST=true \
+CARGO_BIN="$work/bin/cargo" TESTINVENTORY_BIN="$work/bin/testinventory" \
+  COMPLETE_TEST=true \
   bash "$root/.github/scripts/testcheck.sh" rust >/dev/null

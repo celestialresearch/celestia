@@ -70,7 +70,7 @@ var cargoLintCases = []struct {
 		"[package]\nname = \"fixture\"\nautobenches = false\n",
 		1,
 	},
-	{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 0},
+	{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 1},
 	{"doctests disabled", "[lib]\ndoctest = false\n", 1},
 	{"custom harness", "[[test]]\nname = \"fixture\"\nharness = false\n", 1},
 	{

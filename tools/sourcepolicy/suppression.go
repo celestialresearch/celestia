@@ -270,6 +270,9 @@ func cargoTargetTables(value any) []map[string]any {
 }
 
 func cargoTargetOmitsTests(target map[string]any) bool {
+	if enabled, exists := target["test"]; exists && enabled != true {
+		return true
+	}
 	if harness, exists := target["harness"]; exists && harness != true {
 		return true
 	}
