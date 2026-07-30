@@ -33,16 +33,18 @@ import (
 const (
 	modeSuppressions = "suppressions"
 	modeTestSkips    = "test-skips"
+	maxSourceBytes   = 1 << 20
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stderr, sourceFiles))
+	os.Exit(run(os.Args[1:], os.Stderr, sourceFiles, readSource))
 }
 
 func run(
 	args []string,
 	stderr io.Writer,
 	inventory func() ([]string, error),
+	readFile func(string) ([]byte, error),
 ) int {
 	if len(args) != 1 ||
 		(args[0] != modeSuppressions && args[0] != modeTestSkips) {
@@ -62,7 +64,7 @@ func run(
 	}
 	var findings []string
 	for _, path := range files {
-		findings = append(findings, scanFile(path, args[0])...)
+		findings = append(findings, scanFile(path, args[0], readFile)...)
 	}
 	if len(findings) == 0 {
 		return 0
@@ -73,21 +75,63 @@ func run(
 	return 1
 }
 
-func scanFile(path, mode string) []string {
+func scanFile(
+	path, mode string,
+	readFile func(string) ([]byte, error),
+) []string {
 	switch filepath.Ext(path) {
 	case ".go":
 		if mode == modeTestSkips {
-			return goSkipFindings(path)
+			source, err := readFile(path)
+			if err != nil {
+				return []string{fmt.Sprintf("%s: %v", path, err)}
+			}
+			return goSkipFindings(path, source)
 		}
 	case ".rs":
-		// #nosec G304 -- Git supplies paths from the repository inventory.
-		source, err := os.ReadFile(path)
+		source, err := readFile(path)
 		if err != nil {
 			return []string{fmt.Sprintf("%s: %v", path, err)}
 		}
 		return rustFindings(path, source, mode)
 	}
 	return nil
+}
+
+func readSource(path string) (source []byte, err error) {
+	root, err := os.OpenRoot(".")
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := root.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+	file, err := root.Open(filepath.FromSlash(path))
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := file.Close(); err == nil {
+			err = closeErr
+		}
+	}()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > maxSourceBytes {
+		return nil, errors.New("source file is not a bounded regular file")
+	}
+	source, err = io.ReadAll(io.LimitReader(file, maxSourceBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(source) > maxSourceBytes {
+		return nil, errors.New("source file exceeds the size limit")
+	}
+	return source, nil
 }
 
 func sourceFiles() ([]string, error) {
@@ -132,12 +176,12 @@ func commandOutput(
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 
-func goSkipFindings(path string) []string {
+func goSkipFindings(path string, source []byte) []string {
 	if !strings.HasSuffix(path, "_test.go") {
 		return nil
 	}
 	files := token.NewFileSet()
-	file, err := parser.ParseFile(files, path, nil, 0)
+	file, err := parser.ParseFile(files, path, source, 0)
 	if err != nil {
 		return []string{fmt.Sprintf("%s: parse Go test: %v", path, err)}
 	}

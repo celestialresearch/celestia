@@ -91,7 +91,7 @@ func TestRun(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var stderr bytes.Buffer
-			code := run(test.args, &stderr, test.inventory)
+			code := run(test.args, &stderr, test.inventory, os.ReadFile)
 			if code != test.code {
 				t.Fatalf("code = %d, want %d", code, test.code)
 			}
@@ -99,6 +99,44 @@ func TestRun(t *testing.T) {
 				t.Fatalf("stderr = %q, want %q", stderr.String(), test.output)
 			}
 		})
+	}
+}
+
+func TestReadSourceBoundsRepository(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "repository")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(parent, "outside.rs"), []byte("outside"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "source.rs"), []byte("inside"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	oversized := bytes.Repeat([]byte{'x'}, maxSourceBytes+1)
+	if err := os.WriteFile(
+		filepath.Join(root, "oversized.rs"), oversized, 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	source, err := readSource("source.rs")
+	if err != nil || string(source) != "inside" {
+		t.Fatalf("readSource(source.rs) = %q, %v", source, err)
+	}
+	for _, path := range []string{
+		"../outside.rs",
+		".",
+		"oversized.rs",
+	} {
+		if _, err := readSource(path); err == nil {
+			t.Fatalf("readSource(%q) succeeded", path)
+		}
 	}
 }
 
@@ -149,7 +187,7 @@ func TestGoSkipMethods(t *testing.T) {
 			if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			findings := goSkipFindings(path)
+			findings := goSkipFindings(path, []byte(source))
 			if len(findings) != test.findings {
 				t.Fatalf("findings = %v, want %d", findings, test.findings)
 			}
