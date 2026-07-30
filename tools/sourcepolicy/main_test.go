@@ -12,10 +12,107 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestRun(t *testing.T) {
+	root := t.TempDir()
+	goPath := filepath.Join(root, "skipped_test.go")
+	rustPath := filepath.Join(root, "suppressed.rs")
+	missingRustPath := filepath.Join(root, "missing.rs")
+	if err := os.WriteFile(goPath, []byte(
+		"package fixture\nimport \"testing\"\n"+
+			"func TestFixture(t *testing.T) { t.SkipNow() }\n",
+	), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		rustPath, []byte("#![allow(clippy::all)]"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name      string
+		args      []string
+		inventory func() ([]string, error)
+		code      int
+		output    string
+	}{
+		{
+			"usage",
+			nil,
+			func() ([]string, error) { return nil, nil },
+			2,
+			"usage:",
+		},
+		{
+			"inventory failure",
+			[]string{modeTestSkips},
+			func() ([]string, error) { return nil, errors.New("inventory failed") },
+			1,
+			"inventory failed",
+		},
+		{
+			"Go skip",
+			[]string{modeTestSkips},
+			func() ([]string, error) { return []string{goPath}, nil },
+			1,
+			"Go tests must not skip",
+		},
+		{
+			"Rust suppression",
+			[]string{modeSuppressions},
+			func() ([]string, error) { return []string{rustPath}, nil },
+			1,
+			"invalid Clippy suppression",
+		},
+		{
+			"missing Rust source",
+			[]string{modeTestSkips},
+			func() ([]string, error) { return []string{missingRustPath}, nil },
+			1,
+			"missing.rs",
+		},
+		{
+			"irrelevant file",
+			[]string{modeSuppressions},
+			func() ([]string, error) { return []string{"README.md"}, nil },
+			0,
+			"",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			code := run(test.args, &stderr, test.inventory)
+			if code != test.code {
+				t.Fatalf("code = %d, want %d", code, test.code)
+			}
+			if !strings.Contains(stderr.String(), test.output) {
+				t.Fatalf("stderr = %q, want %q", stderr.String(), test.output)
+			}
+		})
+	}
+}
+
+func TestSourceFiles(t *testing.T) {
+	files, err := sourceFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("source inventory is empty")
+	}
+	t.Setenv("CELESTIA_GIT_BIN", filepath.Join(t.TempDir(), "missing-git"))
+	if _, err := sourceFiles(); err == nil {
+		t.Fatal("sourceFiles accepted a missing Git command")
+	}
+}
 
 func TestGoSkipMethods(t *testing.T) {
 	t.Parallel()
@@ -79,5 +176,78 @@ func TestRustPolicyAttributes(t *testing.T) {
 				t.Fatalf("findings = %v, want %d", findings, test.findings)
 			}
 		})
+	}
+}
+
+func TestRustLexicalBoundaries(t *testing.T) {
+	t.Parallel()
+	errorCases := []string{
+		"/*",
+		"#[",
+		"#[/*",
+		"#[\"unterminated",
+	}
+	for _, source := range errorCases {
+		if _, err := rustAttributes([]byte(source)); err == nil {
+			t.Errorf("rustAttributes(%q) accepted malformed source", source)
+		}
+	}
+	validCases := []string{
+		"#",
+		"// comment\n#[test]",
+		"/* outer /* nested */ comment */ #[test]",
+		"#[cfg([nested])]",
+	}
+	for _, source := range validCases {
+		if _, err := rustAttributes([]byte(source)); err != nil {
+			t.Errorf("rustAttributes(%q) error = %v", source, err)
+		}
+	}
+	characterCases := []string{
+		"'",
+		"'a",
+		"'a'",
+		"'🦀'",
+		"'\\n'",
+		"'\\",
+	}
+	for _, source := range characterCases {
+		end, _ := skipRustCharacter([]byte(source), 0, 1)
+		if end <= 0 || end > len(source) {
+			t.Errorf("skipRustCharacter(%q) = %d", source, end)
+		}
+	}
+	stringCases := []string{
+		`"ordinary"`,
+		"\"escaped\\\"quote\"",
+		"\"line\nbreak\"",
+		`"unterminated`,
+	}
+	for _, source := range stringCases {
+		end, _ := skipRustString([]byte(source), 0, 1)
+		if end != len(source) {
+			t.Errorf("skipRustString(%q) = %d, want %d", source, end, len(source))
+		}
+	}
+}
+
+func TestClippySuppressionShape(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		value string
+		valid bool
+	}{
+		{`#[expect(clippy::unwrap_used, reason = "checked invariant")]`, true},
+		{`#![allow(clippy::unwrap_used, reason = "crate scope")]`, false},
+		{`#[allow(clippy::all, reason = "blanket")]`, false},
+		{`#[allow(clippy::UPPER, reason = "invalid rule")]`, false},
+		{`#[allow(clippy::unwrap_used)]`, false},
+		{`#[allow(clippy::unwrap_used, reason = "")]`, false},
+		{`#[cfg_attr(all(), allow(clippy::unwrap_used))]`, false},
+	}
+	for _, test := range tests {
+		if validClippySuppression(test.value) != test.valid {
+			t.Errorf("validClippySuppression(%q) != %t", test.value, test.valid)
+		}
 	}
 }

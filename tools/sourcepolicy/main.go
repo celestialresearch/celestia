@@ -19,6 +19,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,38 +36,58 @@ const (
 )
 
 func main() {
-	if len(os.Args) != 2 ||
-		(os.Args[1] != modeSuppressions && os.Args[1] != modeTestSkips) {
-		fmt.Fprintln(os.Stderr, "usage: sourcepolicy [suppressions|test-skips]")
-		os.Exit(2)
+	os.Exit(run(os.Args[1:], os.Stderr, sourceFiles))
+}
+
+func run(
+	args []string,
+	stderr io.Writer,
+	inventory func() ([]string, error),
+) int {
+	if len(args) != 1 ||
+		(args[0] != modeSuppressions && args[0] != modeTestSkips) {
+		if _, err := fmt.Fprintln(
+			stderr, "usage: sourcepolicy [suppressions|test-skips]",
+		); err != nil {
+			return 1
+		}
+		return 2
 	}
-	files, err := sourceFiles()
+	files, err := inventory()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		if _, writeErr := fmt.Fprintln(stderr, err); writeErr != nil {
+			return 1
+		}
+		return 1
 	}
 	var findings []string
 	for _, path := range files {
-		switch filepath.Ext(path) {
-		case ".go":
-			if os.Args[1] == modeTestSkips {
-				findings = append(findings, goSkipFindings(path)...)
-			}
-		case ".rs":
-			// #nosec G304 -- Git supplies paths from the repository inventory.
-			source, readErr := os.ReadFile(path)
-			if readErr != nil {
-				findings = append(findings, fmt.Sprintf("%s: %v", path, readErr))
-				continue
-			}
-			findings = append(findings, rustFindings(path, source, os.Args[1])...)
-		}
+		findings = append(findings, scanFile(path, args[0])...)
 	}
 	if len(findings) == 0 {
-		return
+		return 0
 	}
-	fmt.Fprintln(os.Stderr, strings.Join(findings, "\n"))
-	os.Exit(1)
+	if _, err := fmt.Fprintln(stderr, strings.Join(findings, "\n")); err != nil {
+		return 1
+	}
+	return 1
+}
+
+func scanFile(path, mode string) []string {
+	switch filepath.Ext(path) {
+	case ".go":
+		if mode == modeTestSkips {
+			return goSkipFindings(path)
+		}
+	case ".rs":
+		// #nosec G304 -- Git supplies paths from the repository inventory.
+		source, err := os.ReadFile(path)
+		if err != nil {
+			return []string{fmt.Sprintf("%s: %v", path, err)}
+		}
+		return rustFindings(path, source, mode)
+	}
+	return nil
 }
 
 func sourceFiles() ([]string, error) {
