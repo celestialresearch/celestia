@@ -113,14 +113,14 @@ main() (
     printf 'OpenBSD Go bootstrap is missing\n' >&2
     return 1
   }
-  grep -Fq "https://avalon.dragonflybsd.org/dports/\${ABI}/LATEST" \
+  grep -Fq "https://pkg.dragonflybsd.org/pkg/\${ABI}/LATEST" \
     "$root/.github/scripts/dragonfly-bootstrap.sh" || {
-    printf 'DragonFly direct repository is missing\n' >&2
+    printf 'DragonFly package repository is missing\n' >&2
     return 1
   }
-  grep -Fq 'mirror_type: "NONE"' \
+  grep -Fq 'mirror_type: "HTTP"' \
     "$root/.github/scripts/dragonfly-bootstrap.sh" || {
-    printf 'DragonFly direct repository mode is missing\n' >&2
+    printf 'DragonFly mirror mode is missing\n' >&2
     return 1
   }
   grep -Fq "if [[ \"\$attempts\" -ge 5 ]]" \
