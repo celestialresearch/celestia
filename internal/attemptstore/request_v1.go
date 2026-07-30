@@ -9,6 +9,8 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+//go:build windows
+
 package attemptstore
 
 import (

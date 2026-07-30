@@ -34,14 +34,14 @@ publication marker. A bundle without a valid publication marker is not a
 durable terminal outcome.
 
 ## Atomicity and Recovery
-- The evidence root may be created only beneath an existing secure directory.
-  On Unix the parent must be owned by the current user and not group or world
-  writable. On Windows the parent must have the protected single-user ACL used
-  by evidence directories. `New` does not create missing ancestor directories.
+- The evidence root may be created only beneath an existing secure directory
+  with the protected single-user Windows ACL used by evidence directories.
+  `New` does not create missing ancestor directories.
 - Windows evidence roots require a fixed local drive whose DOS device target is
   a hard-disk volume. UNC, device, mapped, substituted, removable and RAM-disk
-  roots are rejected before evidence access. Network-mounted Unix filesystems
-  are not qualified by v1.
+  roots are rejected before evidence access.
+- Attempt persistence is supported only on Windows. Other operating systems
+  fail before evidence access with `ErrUnsupported`.
 - Each attempt has a permanent lock file. Its operating-system exclusive lock
   is held from staging through terminal publication.
 - Writers publish `admitted.json` before creating the permanent ownership
@@ -56,18 +56,14 @@ durable terminal outcome.
 - Lock files are never replaced or removed, preventing ownership from splitting
   across different filesystem objects.
 - Pending and published directory creation refuses duplicate identities.
-- Every record is flushed then published to its final name without replacement.
-  Windows uses a write-through move. Unix-like systems link, sync, unlink the
-  temporary name then sync again.
-- Under exclusive recovery ownership, Windows and Unix-like systems remove only
-  recognised writer temporary names left by an interrupted record publication.
-  Unix linked targets must identify the same owner-only regular file before
-  repair.
+- Every record is flushed then published to its final name without replacement
+  using a write-through Windows move.
+- Under exclusive recovery ownership, Windows removes only recognised writer
+  temporary names left by an interrupted record publication.
 - A receipt is published only after both referenced records are readable and
   hashed.
-- The complete bundle is moved into the published namespace before
-  `publication.json` is created. Unix-like systems sync the target parent before
-  the source parent after this cross-directory move.
+- The complete bundle is moved without replacement into the published namespace
+  before `publication.json` is created.
 - Inspection accepts only fixed record names, regular files, matching attempt
   identities, matching schema versions, matching terminal states and matching
   hashes. It validates the retained protocol relationship without replaying

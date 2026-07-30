@@ -9,6 +9,8 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+//go:build windows
+
 package attemptstore
 
 import (
@@ -30,11 +32,6 @@ import (
 
 	"celestia.research/governed-operation/internal/urlreferencev1"
 	"celestia.research/governed-operation/internal/workerprotocolv1"
-)
-
-const (
-	URLVerifierID      = "go-url-reference"
-	URLVerifierVersion = "1"
 )
 
 func invalidRecordFile(path string, info os.FileInfo) bool {

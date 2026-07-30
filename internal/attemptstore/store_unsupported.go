@@ -9,10 +9,16 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build !aix && !darwin && !dragonfly && !freebsd && !linux && !netbsd && !openbsd && !solaris && !windows
+//go:build !windows
 
 package attemptstore
 
-func secureEvidenceParent(string) error {
-	return ErrUnsupported
+import "errors"
+
+var ErrUnsupported = errors.New("attempt evidence is unsupported")
+
+type Store struct{}
+
+func New(string) (*Store, error) {
+	return nil, ErrUnsupported
 }

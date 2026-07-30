@@ -9,12 +9,9 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build js || plan9 || wasip1
-
 package attemptstore
 
-import "os"
-
-func createRecordTemp(_, _ string) (*os.File, error) {
-	return nil, ErrUnsupported
-}
+const (
+	URLVerifierID      = "go-url-reference"
+	URLVerifierVersion = "1"
+)
