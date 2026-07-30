@@ -525,7 +525,7 @@ func TestCompletedProcessRetainsUnappliedInputFailure(t *testing.T) {
 		cleanupErr: errors.New("applied cleanup"),
 		joinErr:    sentinel,
 	}, true)
-	if got.err != nil || got.cleanupErr != nil ||
+	if got.err != nil || got.cleanupErr == nil ||
 		!errors.Is(got.joinErr, sentinel) {
 		t.Fatalf("applied input result = %+v", got)
 	}

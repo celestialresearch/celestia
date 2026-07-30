@@ -81,7 +81,6 @@ func (supervisor *Supervisor) observe(
 func unappliedInputResult(result inputResult, applied bool) inputResult {
 	if applied {
 		result.err = nil
-		result.cleanupErr = nil
 	}
 	return result
 }
