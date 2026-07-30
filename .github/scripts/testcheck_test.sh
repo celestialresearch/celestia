@@ -61,19 +61,23 @@ EOF
 chmod +x "$work/bin/rust-test"
 
 if PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
-  bash "$root/.github/scripts/testcheck.sh" go quick >/dev/null 2>&1; then
+  bash "$root/.github/scripts/testcheck.sh" go quick --fixture \
+  >/dev/null 2>&1; then
   printf 'Go completion check accepted a missing terminal outcome\n' >&2
   exit 1
 fi
 PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
   COMPLETE_TEST=true \
-  bash "$root/.github/scripts/testcheck.sh" go quick >/dev/null
+  bash "$root/.github/scripts/testcheck.sh" go quick --fixture >/dev/null
 
-if CARGO_BIN="$work/bin/cargo" TESTINVENTORY_BIN="$work/bin/testinventory" \
-  bash "$root/.github/scripts/testcheck.sh" rust >/dev/null 2>&1; then
+if PATH="$work/bin:$PATH" CARGO_BIN=true \
+  TESTINVENTORY_BIN="$work/bin/testinventory" \
+  bash "$root/.github/scripts/testcheck.sh" rust unused --fixture \
+  >/dev/null 2>&1; then
   printf 'Rust completion check accepted a failed executable\n' >&2
   exit 1
 fi
-CARGO_BIN="$work/bin/cargo" TESTINVENTORY_BIN="$work/bin/testinventory" \
+PATH="$work/bin:$PATH" CARGO_BIN=true \
+  TESTINVENTORY_BIN="$work/bin/testinventory" \
   COMPLETE_TEST=true \
-  bash "$root/.github/scripts/testcheck.sh" rust >/dev/null
+  bash "$root/.github/scripts/testcheck.sh" rust unused --fixture >/dev/null

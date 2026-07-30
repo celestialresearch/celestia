@@ -74,6 +74,9 @@ Local action references fail closed until a reviewed resolver is implemented.
 `.github/.coverage` sets the default and optional package-specific
 statement-coverage floors. The default is 90 per cent.
 
+Rust completion checks detect omitted or failed execution under reviewed test
+code; they do not authenticate a deliberately hostile test executable.
+
 Package overrides use:
 ```text
 package celestia.research/governed-operation/example 95

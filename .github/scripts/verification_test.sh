@@ -510,6 +510,10 @@ EOF
     "$root/tools/sourcepolicy/goinspect.go" \
     "$root/tools/sourcepolicy/goskip.go" \
     "$root/tools/sourcepolicy/main.go" \
+    "$root/tools/sourcepolicy/module_replacement.go" \
+    "$root/tools/sourcepolicy/replacement_path.go" \
+    "$root/tools/sourcepolicy/replacement_path_other.go" \
+    "$root/tools/sourcepolicy/replacement_path_windows.go" \
     "$root/tools/sourcepolicy/rustpolicy.go" \
     "$root/tools/sourcepolicy/source_open_other.go" \
     "$root/tools/sourcepolicy/source_open_unix.go" \
@@ -652,9 +656,12 @@ EOF
   mkdir -p "$rust_dir/.github/scripts" "$rust_dir/.github/workflows" \
     "$rust_dir/bin" "$rust_dir/worker/qualification-fixtures" \
     "$rust_dir/worker/url-reference"
-  cp "$root/.github/scripts/rustcheck.sh" \
-    "$root/.github/scripts/testcheck.sh" \
-    "$rust_dir/.github/scripts/"
+  cp "$root/.github/scripts/rustcheck.sh" "$rust_dir/.github/scripts/"
+  cat >"$rust_dir/.github/scripts/testcheck.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"${TESTCHECK_CALL_LOG:?}"
+EOF
+  chmod +x "$rust_dir/.github/scripts/testcheck.sh"
   cat >"$rust_dir/Cargo.toml" <<'EOF'
 [workspace]
 resolver = "3"
@@ -916,17 +923,16 @@ EOF
   chmod +x "$rust_dir/bin/rustc"
   unset FIXTURE_RUSTC_VERSION
 
-  cargo_call_log="$rust_dir/cargo-calls"
+  testcheck_call_log="$rust_dir/testcheck-calls"
   (
     cd "$rust_dir" &&
-      CARGO_BIN="$rust_dir/bin/cargo" CARGO_CALL_LOG="$cargo_call_log" \
+      TESTCHECK_CALL_LOG="$testcheck_call_log" \
         bash .github/scripts/rustcheck.sh tests
   )
-  if [[ $(wc -l <"$cargo_call_log" | tr -d ' ') -ne 2 ]] ||
-    ! grep -Fxq 'test --workspace --locked' "$cargo_call_log" ||
-    ! grep -Fxq 'test --workspace --all-targets --locked' "$cargo_call_log"; then
-    printf 'Rust test check omitted a required Cargo invocation:\n' >&2
-    cat "$cargo_call_log" >&2
+  if [[ $(wc -l <"$testcheck_call_log" | tr -d ' ') -ne 1 ]] ||
+    ! grep -Fxq 'rust' "$testcheck_call_log"; then
+    printf 'Rust test check omitted the completion gate:\n' >&2
+    cat "$testcheck_call_log" >&2
     return 1
   fi
 

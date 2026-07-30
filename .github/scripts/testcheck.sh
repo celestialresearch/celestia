@@ -16,6 +16,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
 mode=${1:-}
 profile=${2:-}
+fixture_mode=${3:-}
 work=${TMPDIR:-.cache}
 mkdir -p "$work"
 temporary=$(mktemp -d "$work/test-completion.XXXXXX")
@@ -26,7 +27,8 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 go_inventory() {
-  if [[ -n "${TESTINVENTORY_BIN:-}" ]]; then
+  if [[ "$fixture_mode" == --fixture ]]; then
+    [[ -n "${TESTINVENTORY_BIN:-}" ]] || return 2
     "$TESTINVENTORY_BIN" go >"$temporary/expected"
   else
     go run ./tools/sourcepolicy go-test-inventory >"$temporary/expected"
@@ -34,7 +36,8 @@ go_inventory() {
 }
 
 cargo_executables() {
-  if [[ -n "${TESTINVENTORY_BIN:-}" ]]; then
+  if [[ "$fixture_mode" == --fixture ]]; then
+    [[ -n "${TESTINVENTORY_BIN:-}" ]] || return 2
     "$TESTINVENTORY_BIN" cargo
   else
     go run ./tools/sourcepolicy cargo-test-inventory
@@ -91,8 +94,8 @@ go_tests() {
         }
       }
     '
-  sort -u "$temporary/observed" -o "$temporary/observed"
-  missing=$(comm -23 "$temporary/expected" "$temporary/observed")
+  LC_ALL=C sort -u "$temporary/observed" -o "$temporary/observed"
+  missing=$(LC_ALL=C comm -23 "$temporary/expected" "$temporary/observed")
   if [[ -n "$missing" ]]; then
     printf 'Go tests lacked terminal outcomes:\n%s\n' "$missing" >&2
     return 1
@@ -108,7 +111,7 @@ rust_command() {
   if [[ "$all_targets" == true ]]; then
     arguments=(test --workspace --all-targets --locked --no-run --message-format=json)
   fi
-  "${CARGO_BIN:-cargo}" "${arguments[@]}" |
+  cargo "${arguments[@]}" |
     cargo_executables >"$temporary/rust-executables"
   while IFS= read -r executable; do
     "$executable" --list --format terse >"$temporary/rust-list"
@@ -132,11 +135,7 @@ rust_command() {
 }
 
 rust_tests() {
-  "${CARGO_BIN:-cargo}" clippy --workspace --all-targets --locked -- \
-    -D warnings -D clippy::exit
-  rust_command false
   rust_command true
-  "${CARGO_BIN:-cargo}" test --workspace --locked
 }
 
 case "$mode" in

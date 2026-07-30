@@ -18,7 +18,8 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 source "$root/.github/scripts/actioncheck.sh"
 
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/celestia-actioncheck.XXXXXX")
-trap 'rm -rf -- "$work_dir"' EXIT HUP INT TERM
+trap 'rm -rf -- "$work_dir"' EXIT
+trap 'exit 130' HUP INT TERM
 calls_file="$work_dir/calls"
 output_file="$work_dir/output"
 error_file="$work_dir/error"
