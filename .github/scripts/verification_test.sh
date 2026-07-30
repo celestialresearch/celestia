@@ -530,6 +530,7 @@ go 1.26.5
 require (
 	github.com/BurntSushi/toml v1.6.0
 	golang.org/x/mod v0.38.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/tools v0.48.0
 )
 
@@ -544,6 +545,8 @@ EOF
       ($2 == "v0.38.0" || $2 == "v0.38.0/go.mod") ||
     $1 == "golang.org/x/sync" &&
       ($2 == "v0.22.0" || $2 == "v0.22.0/go.mod") ||
+    $1 == "golang.org/x/sys" &&
+      ($2 == "v0.47.0" || $2 == "v0.47.0/go.mod") ||
     $1 == "golang.org/x/tools" &&
       ($2 == "v0.48.0" || $2 == "v0.48.0/go.mod")
   ' "$root/go.sum" >"$work_dir/go.sum"
