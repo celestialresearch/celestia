@@ -124,6 +124,11 @@ check_environment() {
 }
 
 workflow_tools() {
+  local workflows
+  shopt -s nullglob
+  workflows=(.github/workflows/*.yml .github/workflows/*.yaml)
+  shopt -u nullglob
+  ((${#workflows[@]} > 0)) || return 0
   awk '
     FNR == 1 {
       in_action = 0
@@ -159,7 +164,7 @@ workflow_tools() {
       sub(/[[:space:]]+#.*$/, "", line)
       print line
     }
-  ' .github/workflows/*.yml
+  ' "${workflows[@]}"
 }
 
 workflow_tool_version() {

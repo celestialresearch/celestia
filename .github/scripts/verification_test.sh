@@ -597,7 +597,7 @@ EOF
   cp "$rust_dir/.github/workflows/main.yml" \
     "$rust_dir/.github/workflows/main.yml.base"
   cp "$rust_dir/.github/workflows/main.yml" \
-    "$rust_dir/.github/workflows/nightly.yml"
+    "$rust_dir/.github/workflows/nightly.yaml"
 
   set +e
   output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
@@ -740,7 +740,7 @@ EOF
 
   sed 's/rust@1.94.1 +/rust@1.94.0 +/' \
     "$rust_dir/.github/workflows/main.yml.base" \
-    >"$rust_dir/.github/workflows/nightly.yml"
+    >"$rust_dir/.github/workflows/nightly.yaml"
   set +e
   output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
   status=$?
@@ -756,7 +756,7 @@ EOF
     return 1
   }
   cp "$rust_dir/.github/workflows/main.yml.base" \
-    "$rust_dir/.github/workflows/nightly.yml"
+    "$rust_dir/.github/workflows/nightly.yaml"
 
   cat >"$rust_dir/bin/cargo" <<'EOF'
 #!/usr/bin/env bash
