@@ -264,6 +264,9 @@ func cargoTargetOmitsTests(target map[string]any) bool {
 	if harness, exists := target["harness"]; exists && harness != true {
 		return true
 	}
+	if doctest, exists := target["doctest"]; exists && doctest != true {
+		return true
+	}
 	features, gated := target["required-features"].([]any)
 	return gated && len(features) > 0
 }

@@ -69,7 +69,7 @@ func TestRun(t *testing.T) {
 			[]string{modeTestSkips},
 			func() ([]string, error) { return []string{rustSkipPath}, nil },
 			1,
-			"Rust tests must not skip",
+			"Rust tests must not ignore",
 		},
 		{
 			"Rust suppression",

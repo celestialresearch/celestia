@@ -51,7 +51,7 @@ var cargoLintCases = []struct {
 		1,
 	},
 	{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 0},
-	{"doctests disabled", "[lib]\ndoctest = false\n", 0},
+	{"doctests disabled", "[lib]\ndoctest = false\n", 1},
 	{"custom harness", "[[test]]\nname = \"fixture\"\nharness = false\n", 1},
 	{
 		"feature-gated test",

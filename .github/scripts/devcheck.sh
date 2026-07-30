@@ -352,8 +352,7 @@ if [[ -f Cargo.toml ]]; then
     cargo check --workspace --all-targets --no-default-features --locked
   run_check 'Rust Clippy' \
     cargo clippy --workspace --all-targets --locked -- -D warnings
-  run_check 'Rust Test' \
-    cargo test --workspace --all-targets --locked
+  run_check 'Rust Test' bash ./.github/scripts/rustcheck.sh tests
   run_no_output 'Qualification Fixture Format' \
     cargo fmt --manifest-path worker/qualification-fixtures/Cargo.toml -- --check
   run_check 'Qualification Fixture Clippy' \

@@ -840,6 +840,10 @@ build)
     : >"$release_dir/nested/${RUSTCHECK_NESTED_RELEASE_ARTEFACT}"
   fi
   ;;
+test)
+  shift
+  printf '%s\n' "$*" >>"${CARGO_CALL_LOG:?}"
+  ;;
 llvm-cov) printf 'cargo-llvm-cov %s\n' "${LLVM_COV_VERSION:-0.8.7}" ;;
 audit)
   [[ "${FAIL_SUPPLY_COMMANDS:-false}" == false ]] || exit 9
@@ -859,6 +863,20 @@ printf 'rustc %s\n' "${FIXTURE_RUSTC_VERSION:-1.94.1}"
 EOF
   chmod +x "$rust_dir/bin/rustc"
   unset FIXTURE_RUSTC_VERSION
+
+  cargo_call_log="$rust_dir/cargo-calls"
+  (
+    cd "$rust_dir" &&
+      CARGO_BIN="$rust_dir/bin/cargo" CARGO_CALL_LOG="$cargo_call_log" \
+        bash .github/scripts/rustcheck.sh tests
+  )
+  if [[ $(wc -l <"$cargo_call_log" | tr -d ' ') -ne 2 ]] ||
+    ! grep -Fxq 'test --workspace --locked' "$cargo_call_log" ||
+    ! grep -Fxq 'test --workspace --all-targets --locked' "$cargo_call_log"; then
+    printf 'Rust test check omitted a required Cargo invocation:\n' >&2
+    cat "$cargo_call_log" >&2
+    return 1
+  fi
 
   (
     cd "$rust_dir" &&
@@ -1474,6 +1492,9 @@ version = "0.0.0"
 edition = "2024"
 autotests = false
 
+[lib]
+doctest = false
+
 [profile.test]
 debug-assertions = false
 
@@ -1532,6 +1553,7 @@ EOF
     'invalid Clippy suppression' \
     'dynamic Rust attributes are prohibited' \
     'Cargo automatic test discovery must remain enabled' \
+    'Cargo target lib may omit tests' \
     'optional Cargo dependencies require an explicit test matrix' \
     'Cargo profile overrides are prohibited' \
     'Cargo lint allowances are prohibited' \

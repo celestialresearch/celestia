@@ -359,6 +359,12 @@ check_release_outputs() (
   fi
 )
 
+check_tests() {
+  local cargo_bin=${CARGO_BIN:-cargo}
+  "$cargo_bin" test --workspace --locked
+  "$cargo_bin" test --workspace --all-targets --locked
+}
+
 case "$mode" in
 config)
   check_config
@@ -367,11 +373,14 @@ tools)
   check_config
   check_tools
   ;;
+tests)
+  check_tests
+  ;;
 artefacts)
   check_release_outputs
   ;;
 *)
-  printf 'Usage: rustcheck.sh artefacts|config|tools\n' >&2
+  printf 'Usage: rustcheck.sh artefacts|config|tests|tools\n' >&2
   exit 2
   ;;
 esac
