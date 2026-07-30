@@ -76,6 +76,7 @@ func TestRustFindingsMalformedBoundaries(t *testing.T) {
 		{"#[", 1},
 		{`r##"unterminated`, 0},
 		{"macro!([ignore", 1},
+		{")", 0},
 	}
 	for _, test := range tests {
 		findings := rustFindings(
