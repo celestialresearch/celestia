@@ -366,11 +366,15 @@ func TestGoSkipAcrossFiles(t *testing.T) {
 	sources := map[string][]byte{
 		helper: []byte(
 			"package fixture\n\nimport \"testing\"\n\n" +
-				"func testContext(t *testing.T) *testing.T { return t }\n",
+				"func testContext(t *testing.T) *testing.T { return t }\n" +
+				"type skipper interface { Skip(...any) }\n" +
+				"func hideSkip(value skipper) { value.Skip(\"disabled\") }\n",
 		),
 		caller: []byte(
 			"package fixture\n\nimport \"testing\"\n\n" +
-				"func TestFixture(t *testing.T) { testContext(t).Skip(\"disabled\") }\n",
+				"func TestFixture(t *testing.T) {\n" +
+				"\ttestContext(t).Skip(\"disabled\")\n" +
+				"\thideSkip(t)\n}\n",
 		),
 		linux: []byte(
 			"//go:build linux\n\npackage fixture\n\nconst platform = \"linux\"\n",
@@ -404,8 +408,8 @@ func TestGoSkipAcrossFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(findings) != 1 {
-		t.Fatalf("findings = %v, want one", findings)
+	if len(findings) != 2 {
+		t.Fatalf("findings = %v, want two", findings)
 	}
 }
 
@@ -521,6 +525,7 @@ func TestCargoConfigurationAllowances(t *testing.T) {
 			`[build]` + "\n" + `rustdocflags = ["--allow=warnings"]`,
 			1,
 		},
+		{"response file", `[build]` + "\n" + `rustflags = ["@args.txt"]`, 1},
 		{"linker", `[build]` + "\n" + `rustflags = ["-C", "link-arg=/Brepro"]`, 0},
 		{"malformed", `[build` + "\n", 1},
 	}

@@ -172,7 +172,8 @@ func cargoFlags(value any) ([]string, bool) {
 }
 
 func cargoFlagAllowsLint(flags []string, index int, flag string) bool {
-	return flag == "-A" ||
+	return strings.HasPrefix(flag, "@") ||
+		flag == "-A" ||
 		flag == "--allow" ||
 		strings.HasPrefix(flag, "-A") && len(flag) > 2 ||
 		strings.HasPrefix(flag, "--allow=") ||

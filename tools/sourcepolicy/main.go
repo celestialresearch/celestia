@@ -370,9 +370,15 @@ func isTestingSkip(selector *ast.SelectorExpr, info *types.Info) bool {
 		return false
 	}
 	if selection := info.Selections[selector]; selection != nil {
-		return testingMethod(selection.Obj())
+		return testingMethod(selection.Obj()) ||
+			interfaceReceiver(selection.Recv())
 	}
 	return testingMethod(info.Uses[selector.Sel])
+}
+
+func interfaceReceiver(receiver types.Type) bool {
+	_, ok := receiver.Underlying().(*types.Interface)
+	return ok
 }
 
 func isSkipMethod(name string) bool {

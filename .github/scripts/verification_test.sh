@@ -1232,6 +1232,14 @@ import "testing"
 func testContext(t *testing.T) *testing.T {
 	return t
 }
+
+type skipper interface {
+	Skip(...any)
+}
+
+func hideSkip(value skipper) {
+	value.Skip("unverified")
+}
 EOF
   cat >"$work_dir/skipped_test.go" <<'EOF'
 package fixture
@@ -1240,6 +1248,7 @@ import "testing"
 
 func TestSkipped(t *testing.T) {
 	testContext(t).Skip("unverified")
+	hideSkip(t)
 }
 EOF
   cat >"$work_dir/platform_linux.go" <<'EOF'
@@ -1380,8 +1389,9 @@ EOF
   mkdir -p "$work_dir/.cargo"
   cat >"$work_dir/.cargo/config.toml" <<'EOF'
 [build]
-rustflags = ["-A", "clippy::all"]
+rustflags = ["@args.txt"]
 EOF
+  printf '%s\n' '--cap-lints' 'allow' >"$work_dir/args.txt"
   head -c 1048577 /dev/zero | tr '\0' x >"$work_dir/oversized.sh"
   {
     printf '%s%s\n' '#[al' 'low('
@@ -1424,6 +1434,7 @@ EOF
     "$work_dir/reasoned_broad_multiline_clippy.rs" \
     "$work_dir/Cargo.toml" \
     "$work_dir/.cargo/config.toml" \
+    "$work_dir/args.txt" \
     "$work_dir/oversized.sh"
   rmdir -- "$work_dir/.cargo"
 
