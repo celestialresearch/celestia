@@ -338,6 +338,7 @@ func TestGoSkipMethods(t *testing.T) {
 		findings int
 	}{
 		{"receiver", `t.Skip("unverified")`, 1},
+		{"formatted receiver", `t.Skipf("%s", "unverified")`, 1},
 		{"renamed receiver", `testCase.SkipNow()`, 1},
 		{"method expression", `(*testing.T).Skip(t, "unverified")`, 1},
 		{
@@ -358,8 +359,16 @@ func TestGoSkipMethods(t *testing.T) {
 			source := "package fixture\n\nimport \"testing\"\n\n" +
 				"type cursor struct{}\n" +
 				"func (cursor) Skip(int) {}\n\n" +
-				"type cursorContract interface { Skip(int) }\n" +
-				"func useCursor(value cursorContract) { value.Skip(1) }\n\n" +
+				"type cursorContract interface {\n" +
+				"\tSkip(int)\n" +
+				"\tSkipf(int, ...any)\n" +
+				"\tSkipNow() int\n" +
+				"}\n" +
+				"func useCursor(value cursorContract) {\n" +
+				"\tvalue.Skip(1)\n" +
+				"\tvalue.Skipf(1)\n" +
+				"\t_ = value.SkipNow()\n" +
+				"}\n\n" +
 				"func TestFixture(" + parameter + " *testing.T) {\n" +
 				test.call + "\n}\n"
 			if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
@@ -383,8 +392,16 @@ func TestGoSkipAcrossFiles(t *testing.T) {
 		helper: []byte(
 			"package fixture\n\nimport \"testing\"\n\n" +
 				"func testContext(t *testing.T) *testing.T { return t }\n" +
-				"type skipper interface { Skip(...any) }\n" +
-				"func hideSkip(value skipper) { value.Skip(\"disabled\") }\n",
+				"type skipper interface {\n" +
+				"\tSkip(...any)\n" +
+				"\tSkipf(string, ...any)\n" +
+				"\tSkipNow()\n" +
+				"}\n" +
+				"func hideSkip(value skipper) {\n" +
+				"\tvalue.Skip(\"disabled\")\n" +
+				"\tvalue.Skipf(\"%s\", \"disabled\")\n" +
+				"\tvalue.SkipNow()\n" +
+				"}\n",
 		),
 		caller: []byte(
 			"package fixture\n\nimport \"testing\"\n\n" +
@@ -424,8 +441,8 @@ func TestGoSkipAcrossFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(findings) != 2 {
-		t.Fatalf("findings = %v, want two", findings)
+	if len(findings) != 4 {
+		t.Fatalf("findings = %v, want four", findings)
 	}
 }
 
