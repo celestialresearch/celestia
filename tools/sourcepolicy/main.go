@@ -12,13 +12,16 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/importer"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"io"
 	"os"
 	"os/exec"
@@ -31,9 +34,12 @@ import (
 )
 
 const (
-	modeSuppressions = "suppressions"
-	modeTestSkips    = "test-skips"
-	maxSourceBytes   = 1 << 20
+	modeSuppressions      = "suppressions"
+	modeTestSkips         = "test-skips"
+	maxSourceBytes        = 1 << 20
+	maxInventoryBytes     = 16 << 20
+	maxInventoryPaths     = 100_000
+	maxInventoryPathBytes = 32 << 10
 )
 
 func main() {
@@ -139,41 +145,79 @@ func sourceFiles() ([]string, error) {
 	if git == "" {
 		git = "git"
 	}
-	return inventorySourceFiles(git, commandOutput)
-}
-
-type commandRunner func(
-	context.Context,
-	string,
-	...string,
-) ([]byte, error)
-
-func inventorySourceFiles(git string, run commandRunner) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	output, err := run(
+	// #nosec G204,G702 -- The Git binary is an explicit repository control.
+	command := exec.CommandContext(
 		ctx, git, "ls-files", "-co", "--exclude-standard", "-z",
 	)
+	output, err := command.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("inventory source files: %w", err)
 	}
-	parts := bytes.Split(output, []byte{0})
-	files := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if len(part) != 0 {
-			files = append(files, string(part))
-		}
+	if err := command.Start(); err != nil {
+		return nil, fmt.Errorf("inventory source files: %w", err)
+	}
+	files, readErr := readInventory(output)
+	if readErr != nil {
+		cancel()
+	}
+	waitErr := command.Wait()
+	if readErr != nil {
+		return nil, fmt.Errorf("inventory source files: %w", readErr)
+	}
+	if waitErr != nil {
+		return nil, fmt.Errorf("inventory source files: %w", waitErr)
 	}
 	return files, nil
 }
 
-func commandOutput(
-	ctx context.Context,
-	name string,
-	args ...string,
-) ([]byte, error) {
-	// #nosec G204,G702 -- The testable Git command is an explicit repository control.
-	return exec.CommandContext(ctx, name, args...).Output()
+func readInventory(source io.Reader) ([]string, error) {
+	return readInventoryWithLimits(
+		source,
+		maxInventoryBytes,
+		maxInventoryPaths,
+		maxInventoryPathBytes,
+	)
+}
+
+func readInventoryWithLimits(
+	source io.Reader,
+	maxBytes, maxPaths, maxPathBytes int,
+) ([]string, error) {
+	reader := bufio.NewReaderSize(source, maxPathBytes+1)
+	files := make([]string, 0, 256)
+	total := 0
+	for {
+		path, err := reader.ReadSlice(0)
+		total += len(path)
+		if total > maxBytes {
+			return nil, errors.New("source inventory exceeds the byte limit")
+		}
+		if errors.Is(err, bufio.ErrBufferFull) {
+			return nil, errors.New("source inventory path exceeds the size limit")
+		}
+		if err == nil && len(path)-1 > maxPathBytes {
+			return nil, errors.New("source inventory path exceeds the size limit")
+		}
+		if errors.Is(err, io.EOF) {
+			if len(path) != 0 {
+				return nil, errors.New("source inventory is not NUL terminated")
+			}
+			return files, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		path = path[:len(path)-1]
+		if len(path) == 0 {
+			return nil, errors.New("source inventory contains an empty path")
+		}
+		if len(files) == maxPaths {
+			return nil, errors.New("source inventory exceeds the path limit")
+		}
+		files = append(files, string(path))
+	}
 }
 
 func goSkipFindings(path string, source []byte) []string {
@@ -185,10 +229,11 @@ func goSkipFindings(path string, source []byte) []string {
 	if err != nil {
 		return []string{fmt.Sprintf("%s: parse Go test: %v", path, err)}
 	}
+	info := goTypeInfo(file, files)
 	var findings []string
 	ast.Inspect(file, func(node ast.Node) bool {
 		selector, ok := node.(*ast.SelectorExpr)
-		if !ok || !isSkipMethod(selector.Sel.Name) {
+		if !ok || !isTestingSkip(selector, info) {
 			return true
 		}
 		position := files.Position(selector.Pos())
@@ -199,8 +244,37 @@ func goSkipFindings(path string, source []byte) []string {
 	return findings
 }
 
+func goTypeInfo(file *ast.File, files *token.FileSet) *types.Info {
+	info := &types.Info{
+		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+		Uses:       make(map[*ast.Ident]types.Object),
+	}
+	config := types.Config{Importer: importer.Default()}
+	if _, checkErr := config.Check(
+		file.Name.Name, files, []*ast.File{file}, info,
+	); checkErr != nil {
+		return info
+	}
+	return info
+}
+
+func isTestingSkip(selector *ast.SelectorExpr, info *types.Info) bool {
+	if !isSkipMethod(selector.Sel.Name) {
+		return false
+	}
+	if selection := info.Selections[selector]; selection != nil {
+		return testingMethod(selection.Obj())
+	}
+	return testingMethod(info.Uses[selector.Sel])
+}
+
 func isSkipMethod(name string) bool {
 	return name == "Skip" || name == "Skipf" || name == "SkipNow"
+}
+
+func testingMethod(object types.Object) bool {
+	function, ok := object.(*types.Func)
+	return ok && function.Pkg() != nil && function.Pkg().Path() == "testing"
 }
 
 type rustAttribute struct {

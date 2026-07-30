@@ -13,9 +13,10 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -142,28 +143,74 @@ func TestReadSourceBoundsRepository(t *testing.T) {
 
 func TestSourceFiles(t *testing.T) {
 	t.Parallel()
-	files, err := inventorySourceFiles("git", func(
-		context.Context,
-		string,
-		...string,
-	) ([]byte, error) {
-		return []byte("first.go\x00second.rs\x00"), nil
-	})
+	files, err := readInventory(strings.NewReader("first.go\x00second.rs\x00"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(files, []string{"first.go", "second.rs"}) {
 		t.Fatalf("files = %v", files)
 	}
-	if _, err := inventorySourceFiles("git", func(
-		context.Context,
-		string,
-		...string,
-	) ([]byte, error) {
-		return nil, errors.New("command failed")
-	}); err == nil {
-		t.Fatal("inventorySourceFiles accepted a command failure")
+	tests := []struct {
+		name   string
+		source io.Reader
+	}{
+		{"unterminated", strings.NewReader("first.go")},
+		{"empty", strings.NewReader("\x00")},
+		{
+			"long path",
+			strings.NewReader("aaaaaaaaa\x00"),
+		},
+		{
+			"too many paths",
+			strings.NewReader("a\x00b\x00"),
+		},
+		{
+			"too many bytes",
+			strings.NewReader("aa\x00bb\x00"),
+		},
+		{"read failure", failingReader{}},
 	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			maxBytes, maxPaths, maxPathBytes := 64, 8, 8
+			switch test.name {
+			case "too many paths":
+				maxPaths = 1
+			case "too many bytes":
+				maxBytes = 5
+			}
+			if _, err := readInventoryWithLimits(
+				test.source, maxBytes, maxPaths, maxPathBytes,
+			); err == nil {
+				t.Fatal("readInventory accepted invalid input")
+			}
+		})
+	}
+}
+
+func TestSourceFilesCommand(t *testing.T) {
+	files, err := sourceFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(files, "main.go") {
+		t.Fatalf("source inventory does not contain sourcepolicy: %v", files)
+	}
+	executable, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CELESTIA_GIT_BIN", executable)
+	if _, err := sourceFiles(); err == nil {
+		t.Fatal("sourceFiles accepted a failed inventory command")
+	}
+}
+
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) {
+	return 0, errors.New("read failed")
 }
 
 func TestGoSkipMethods(t *testing.T) {
@@ -176,14 +223,26 @@ func TestGoSkipMethods(t *testing.T) {
 		{"receiver", `t.Skip("unverified")`, 1},
 		{"renamed receiver", `testCase.SkipNow()`, 1},
 		{"method expression", `(*testing.T).Skip(t, "unverified")`, 1},
+		{
+			"custom method",
+			`cursor{}.Skip(1)`,
+			0,
+		},
 		{"ordinary test", `t.Log("verified")`, 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(t.TempDir(), "fixture_test.go")
+			parameter := "t"
+			if test.name == "renamed receiver" {
+				parameter = "testCase"
+			}
 			source := "package fixture\n\nimport \"testing\"\n\n" +
-				"func TestFixture(t *testing.T) {\n" + test.call + "\n}\n"
+				"type cursor struct{}\n" +
+				"func (cursor) Skip(int) {}\n\n" +
+				"func TestFixture(" + parameter + " *testing.T) {\n" +
+				test.call + "\n}\n"
 			if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
 				t.Fatal(err)
 			}
