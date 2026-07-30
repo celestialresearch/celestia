@@ -1329,7 +1329,9 @@ EOF
   rm -- "$work_dir/ignored_test.rs"
 
   cat >"$work_dir/included_test.rs" <<'EOF'
-include!("skipped.inc");
+use std::include as load;
+
+load!("skipped.inc");
 EOF
   cat >"$work_dir/skipped.inc" <<'EOF'
 #[test]

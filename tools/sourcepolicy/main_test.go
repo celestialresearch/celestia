@@ -559,6 +559,13 @@ func TestRustPolicyAttributes(t *testing.T) {
 		{"comment", "// #[ignore]\nfn test() {}", modeTestSkips, 0},
 		{"string", `const VALUE: &str = "#[ignore]";`, modeTestSkips, 0},
 		{"include", `include!("skipped.inc");`, modeTestSkips, 1},
+		{"include alias", `use std::include as load;`, modeTestSkips, 1},
+		{
+			"include forwarding",
+			`macro_rules! load { ($path:expr) => { include!($path) } }`,
+			modeTestSkips,
+			1,
+		},
 		{"include comment", `// include!("skipped.inc");`, modeTestSkips, 0},
 		{"include string", `const VALUE: &str = "include!(ignored)";`, modeTestSkips, 0},
 		{"attribute string", `#[doc = "allow ignore"]`, modeSuppressions, 0},

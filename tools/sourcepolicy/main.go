@@ -440,12 +440,12 @@ func rustIncludeLine(source []byte) (int, bool) {
 			continue
 		}
 		identifier := string(source[start:index])
+		if identifier == "include" {
+			return line, true
+		}
 		index, line, valid = skipRustTrivia(source, index, line)
 		if !valid {
 			return 0, false
-		}
-		if identifier == "include" && index < len(source) && source[index] == '!' {
-			return line, true
 		}
 	}
 	return 0, false
