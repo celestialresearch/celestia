@@ -105,7 +105,10 @@ func TestRejectExternalModuleReplacements(t *testing.T) {
 }
 
 func TestModuleReplacementContainment(t *testing.T) {
-	root := t.TempDir()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	inside := filepath.Join(root, "inside")
 	if err := os.Mkdir(inside, 0o700); err != nil {
 		t.Fatal(err)
