@@ -126,10 +126,6 @@ func (reader *streamReader) cancel() error {
 			if err := reader.file.Close(); err != nil {
 				reader.closeErr = errors.Join(reader.closeErr, err)
 			}
-		} else if reader.handle != 0 && reader.handle != windows.InvalidHandle {
-			if err := windows.CloseHandle(reader.handle); err != nil {
-				reader.closeErr = errors.Join(reader.closeErr, err)
-			}
 		}
 	})
 	return reader.closeErr

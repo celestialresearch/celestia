@@ -783,4 +783,43 @@ func TestReadPipeStates(t *testing.T) {
 			t.Fatal("pipe overflow was not reported")
 		}
 	})
+	t.Run("full overflow signal", testFullOverflowSignal)
+}
+
+func testFullOverflowSignal(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "overflow")
+	if err != nil {
+		t.Fatalf("create stream: %v", err)
+	}
+	defer closeFile(t, file)
+	if _, err := file.Write(bytes.Repeat([]byte("x"), 16)); err != nil {
+		t.Fatalf("write stream: %v", err)
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		t.Fatalf("rewind stream: %v", err)
+	}
+	overflow := make(chan Status, 1)
+	overflow <- ErrorOverflow
+	result := make(chan streamResult, 1)
+	reader := &streamReader{name: "output", file: file}
+	go func() {
+		result <- reader.readResult(8, OutputOverflow, overflow)
+	}()
+	select {
+	case observation := <-result:
+		if !errors.Is(observation.err, errStreamLimit) ||
+			len(observation.data) != 8 {
+			t.Fatalf(
+				"stream length=%d error=%v",
+				len(observation.data),
+				observation.err,
+			)
+		}
+	case <-time.After(time.Second):
+		<-overflow
+		t.Fatal("full overflow signal blocked stream completion")
+	}
+	if status := <-overflow; status != ErrorOverflow {
+		t.Fatalf("existing overflow signal changed to %s", status)
+	}
 }

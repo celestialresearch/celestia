@@ -587,37 +587,12 @@ func runWaitCleanupCases(t *testing.T, tests []waitCleanupCase) {
 	}
 }
 
-func TestStreamCancelClosesUnwrappedHandle(t *testing.T) {
-	handle, err := windows.CreateEvent(nil, 0, 0, nil)
-	if err != nil {
-		t.Fatalf("create event: %v", err)
-	}
-	reader := &streamReader{
-		name:   "unwrapped",
-		handle: handle,
-		done:   make(chan struct{}),
-	}
-	if err := reader.cancel(); err == nil {
-		t.Fatal("non-I/O handle cancellation succeeded")
-	}
-	if err := windows.CloseHandle(handle); !errors.Is(err, windows.ERROR_INVALID_HANDLE) {
-		t.Fatalf("handle remains open: %v", err)
-	}
-}
-
 func TestStreamAndInputCancellationReportCloseFailures(t *testing.T) {
 	t.Run("wrapped input", func(t *testing.T) {
 		file := closedTemporaryFile(t)
 		writer := &inputWriter{file: file, done: make(chan struct{})}
 		if err := writer.cancel(); err == nil {
 			t.Fatal("closed input file was reported closed")
-		}
-	})
-	t.Run("unwrapped input", func(t *testing.T) {
-		handle := closedEvent(t)
-		writer := &inputWriter{handle: handle, done: make(chan struct{})}
-		if err := writer.cancel(); err == nil {
-			t.Fatal("closed input handle was reported closed")
 		}
 	})
 	t.Run("wrapped stream", func(t *testing.T) {
@@ -627,15 +602,6 @@ func TestStreamAndInputCancellationReportCloseFailures(t *testing.T) {
 		}
 		if err := reader.cancel(); err == nil {
 			t.Fatal("closed stream file was reported closed")
-		}
-	})
-	t.Run("unwrapped stream", func(t *testing.T) {
-		handle := closedEvent(t)
-		reader := &streamReader{
-			name: "output", handle: handle, done: make(chan struct{}),
-		}
-		if err := reader.cancel(); err == nil {
-			t.Fatal("closed stream handle was reported closed")
 		}
 	})
 }
@@ -685,16 +651,6 @@ func closedTemporaryFile(t *testing.T) *os.File {
 		t.Fatalf("close temporary file: %v", err)
 	}
 	return file
-}
-
-func closedEvent(t *testing.T) windows.Handle {
-	t.Helper()
-	handle, err := windows.CreateEvent(nil, 0, 0, nil)
-	if err != nil {
-		t.Fatalf("create event: %v", err)
-	}
-	closeNativeHandle(t, handle)
-	return handle
 }
 
 func TestStartupCleanupJoinsWorker(t *testing.T) {

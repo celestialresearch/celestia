@@ -315,7 +315,7 @@ func (supervisor *Supervisor) launch(
 		closeErr := resources.close()
 		return nil,
 			resources.imageHash,
-			cleanupComplete && closeErr == nil,
+			cleanupSucceeded(cleanupComplete, closeErr),
 			errors.Join(err, closeErr)
 	}
 	return process, resources.imageHash, true, nil

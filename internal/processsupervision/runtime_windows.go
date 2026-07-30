@@ -122,10 +122,6 @@ func (writer *inputWriter) cancel() error {
 			if err := writer.file.Close(); err != nil {
 				writer.closeErr = errors.Join(writer.closeErr, err)
 			}
-		} else if writer.handle != 0 && writer.handle != windows.InvalidHandle {
-			if err := windows.CloseHandle(writer.handle); err != nil {
-				writer.closeErr = errors.Join(writer.closeErr, err)
-			}
 		}
 	})
 	return writer.closeErr

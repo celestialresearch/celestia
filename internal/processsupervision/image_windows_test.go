@@ -425,7 +425,19 @@ func TestValidateLocalImageStates(t *testing.T) {
 	}); err == nil {
 		t.Fatal("resolved path failure accepted")
 	}
+	resolvedDriveErr := errors.New("resolved drive")
 	calls := 0
+	err := validateLocalImageWith(`C:\worker.exe`, 1, func(string) (uint32, error) {
+		calls++
+		if calls == 1 {
+			return windows.DRIVE_FIXED, nil
+		}
+		return windows.DRIVE_FIXED, resolvedDriveErr
+	}, resolve)
+	if !errors.Is(err, resolvedDriveErr) {
+		t.Fatalf("resolved drive error lost: %v", err)
+	}
+	calls = 0
 	if err := validateLocalImageWith(`C:\worker.exe`, 1, func(string) (uint32, error) {
 		calls++
 		if calls == 1 {
