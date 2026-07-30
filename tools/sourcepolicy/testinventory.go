@@ -199,8 +199,16 @@ func writeCargoExecutables(input io.Reader, output io.Writer) error {
 }
 
 type boundedInventoryBuffer struct {
-	bytes.Buffer
-	err error
+	data bytes.Buffer
+	err  error
+}
+
+func (buffer *boundedInventoryBuffer) Bytes() []byte {
+	return buffer.data.Bytes()
+}
+
+func (buffer *boundedInventoryBuffer) Len() int {
+	return buffer.data.Len()
 }
 
 func (buffer *boundedInventoryBuffer) Write(data []byte) (int, error) {
@@ -214,5 +222,5 @@ func (buffer *boundedInventoryBuffer) Write(data []byte) (int, error) {
 		)
 		return 0, buffer.err
 	}
-	return buffer.Buffer.Write(data)
+	return buffer.data.Write(data)
 }

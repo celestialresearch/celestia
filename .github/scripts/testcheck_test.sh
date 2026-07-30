@@ -25,7 +25,7 @@ mkdir -p "$work/bin"
 cat >"$work/bin/go" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${SIGNAL_PARENT:-false}" == true ]]; then
-  kill -TERM "$PPID"
+  kill -TERM "${SIGNAL_TARGET_PID:?}"
   exit 0
 fi
 printf '%s\n' \
@@ -68,8 +68,10 @@ chmod +x "$work/bin/rust-test"
 set +e
 PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
   SIGNAL_PARENT=true \
-  bash "$root/.github/scripts/testcheck.sh" go quick --fixture \
-  >/dev/null 2>&1
+  bash -c '
+    export SIGNAL_TARGET_PID=$$
+    exec bash "$@"
+  ' _ "$root/.github/scripts/testcheck.sh" go quick --fixture >/dev/null 2>&1
 status=$?
 set -e
 if [[ "$status" -eq 0 ]]; then
