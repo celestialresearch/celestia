@@ -369,7 +369,7 @@ if [[ -f Cargo.toml ]]; then
       --file worker/qualification-fixtures/Cargo.lock
     run_check 'Fixture Dependencies' \
       cargo deny --manifest-path worker/qualification-fixtures/Cargo.toml \
-      --config deny.toml check
+      check
   else
     skip_check 'Rust Advisories' 'Disabled for this platform job'
     skip_check 'Rust Dependencies' 'Disabled for this platform job'

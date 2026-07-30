@@ -228,6 +228,8 @@ main() (
     return 1
   }
   mkdir -p "$work_dir/type-assertion"
+  cp "$root/.golangci.yml" "$work_dir/.golangci.yml"
+  cp "$root/.golangci.yml" "$work_dir/type-assertion/.golangci.yml"
   fake_bin="$work_dir/platform-bin"
   platform_log="$work_dir/platform-targets"
   mkdir -p "$fake_bin"
@@ -275,7 +277,7 @@ EOF
     cd "$work_dir/type-assertion" &&
       env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
         GOLANGCI_LINT_CACHE="$work_dir/lint-type-bad" \
-        "$golangci_lint" run --config "$root/.golangci.yml" ./... 2>&1
+        "$golangci_lint" run ./... 2>&1
   )
   status=$?
   set -e
@@ -303,7 +305,7 @@ EOF
     cd "$work_dir/type-assertion"
     env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
       GOLANGCI_LINT_CACHE="$work_dir/lint-type-good" \
-      "$golangci_lint" run --config "$root/.golangci.yml" ./...
+      "$golangci_lint" run ./...
   ) || {
     printf 'errcheck rejected a checked type assertion\n' >&2
     return 1
@@ -375,7 +377,7 @@ EOF
   output=$(
     cd "$work_dir/linter-policy" &&
       GOLANGCI_LINT_CACHE="$work_dir/lint-policy-bad" \
-        "$golangci_lint" run --config "$root/.golangci.yml" ./... 2>&1
+        "$golangci_lint" run ./... 2>&1
   )
   status=$?
   set -e
@@ -395,7 +397,7 @@ EOF
   output=$(
     cd "$work_dir/linter-policy" &&
       GOLANGCI_LINT_CACHE="$work_dir/lint-errchkjson" \
-        "$golangci_lint" run --config "$root/.golangci.yml" \
+        "$golangci_lint" run \
         --enable-only=errchkjson ./... 2>&1
   )
   status=$?
@@ -471,7 +473,7 @@ EOF
   (
     cd "$work_dir/linter-policy"
     GOLANGCI_LINT_CACHE="$work_dir/lint-policy-good" \
-      "$golangci_lint" run --config "$root/.golangci.yml" ./...
+      "$golangci_lint" run ./...
   ) || {
     printf 'admitted linters rejected correct fixtures\n' >&2
     return 1
@@ -632,23 +634,25 @@ EOF
     >"$rust_dir/rust-toolchain.toml"
   (cd "$rust_dir" && bash .github/scripts/rustcheck.sh config)
 
-  set +e
-  output=$(
-    cd "$rust_dir" &&
-      RUSTFLAGS='--cap-lints allow' \
-        bash .github/scripts/rustcheck.sh config 2>&1
-  )
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'Rust config check accepted inherited compiler flags\n' >&2
-    return 1
-  }
-  grep -Fq 'Uncontrolled Rust build environment: RUSTFLAGS' <<<"$output" || {
-    printf 'Rust config check omitted the environment diagnostic:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
+  for variable in RUSTFLAGS RUSTC RUSTDOC RUSTC_BOOTSTRAP \
+    RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER; do
+    set +e
+    output=$(
+      cd "$rust_dir" &&
+        env "$variable=hostile" bash .github/scripts/rustcheck.sh config 2>&1
+    )
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'Rust config check accepted inherited %s\n' "$variable" >&2
+      return 1
+    }
+    grep -Fq "Uncontrolled Rust build environment: $variable" <<<"$output" || {
+      printf 'Rust config check omitted the %s diagnostic:\n%s\n' \
+        "$variable" "$output" >&2
+      return 1
+    }
+  done
 
   mkdir -p "$rust_dir/.cargo"
   printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
@@ -1431,6 +1435,9 @@ autotests = false
 [profile.test]
 debug-assertions = false
 
+[dependencies]
+fixture = { version = "1", optional = true }
+
 [patch.crates-io]
 fixture = { path = "../fixture" }
 
@@ -1484,6 +1491,7 @@ EOF
     'dynamic Rust attributes are prohibited' \
     'Cargo CLI configuration is prohibited' \
     'Cargo automatic test discovery must remain enabled' \
+    'optional Cargo dependencies require an explicit test matrix' \
     'Cargo profile overrides are prohibited' \
     'Cargo lint allowances are prohibited' \
     'Cargo source override is prohibited' \

@@ -106,6 +106,17 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestOrdinaryTestMainIsNotCandidate(t *testing.T) {
+	t.Parallel()
+	candidate, err := hasGoSkipSelector(
+		"fixture.go",
+		[]byte("package fixture\nfunc TestMain() {}\n"),
+	)
+	if err != nil || candidate {
+		t.Fatalf("ordinary TestMain candidate = %t, error = %v", candidate, err)
+	}
+}
+
 func TestRunRejectsCargoSuppression(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "Cargo.toml")
 	if err := os.WriteFile(
@@ -147,9 +158,12 @@ func TestShellSuppressionFindings(t *testing.T) {
 		"#shellcheck disable=SC2086",
 		"# shellcheck disable=SC2329 # Invoked by a registered trap",
 		"cargo --config profile.test.debug-assertions=false test",
+		`"$cargo_bin" --config=profile.test.debug-assertions=false test`,
+		`C:\tools\cargo.exe --config profile.test.debug-assertions=false test`,
+		"golangci-lint run --config .golangci.yml ./...",
 	}, "\n"))
 	findings := shellSuppressionFindings("source.sh", source)
-	if len(findings) != 2 {
+	if len(findings) != 5 {
 		t.Fatalf("findings = %v", findings)
 	}
 }
@@ -504,6 +518,9 @@ func TestValidTestMain(t *testing.T) {
 			if valid := validTestMain(function, info); valid != test.valid {
 				t.Fatalf("valid = %t, want %t", valid, test.valid)
 			}
+			if !isTestingMain(function, info) {
+				t.Fatal("testing TestMain signature rejected")
+			}
 		})
 	}
 }
@@ -553,6 +570,28 @@ func TestCargoLintAllowances(t *testing.T) {
 			1,
 		},
 		{"package features", "[features]\nhidden = []\n", 1},
+		{
+			"optional dependency",
+			"[dependencies]\nfixture = { version = \"1\", optional = true }\n",
+			1,
+		},
+		{
+			"target optional dependency",
+			"[target.'cfg(windows)'.dev-dependencies]\n" +
+				"fixture = { version = \"1\", optional = true }\n",
+			1,
+		},
+		{
+			"workspace optional dependency",
+			"[workspace.dependencies]\n" +
+				"fixture = { version = \"1\", optional = true }\n",
+			1,
+		},
+		{
+			"required dependency",
+			"[dependencies]\nfixture = { version = \"1\" }\n",
+			0,
+		},
 		{"test profile", "[profile.test]\ndebug-assertions = false\n", 1},
 		{"ordinary target", "[[test]]\nname = \"fixture\"\npath = \"tests/fixture.rs\"\n", 0},
 		{"patch", "[patch.crates-io]\nfixture = { path = \"../fixture\" }\n", 1},
@@ -718,7 +757,19 @@ func TestRustPolicyAttributes(t *testing.T) {
 		{"include comment", `// include!("skipped.inc");`, modeTestSkips, 0},
 		{"include string", `const VALUE: &str = "include!(ignored)";`, modeTestSkips, 0},
 		{"include function", `fn include(value: u8) -> u8 { value }`, modeTestSkips, 0},
+		{
+			"ordinary include alias",
+			`use helper::call as include; fn invoke() { include(); }`,
+			modeTestSkips,
+			0,
+		},
 		{"ignore function", `fn ignore(value: bool) -> bool { value }`, modeTestSkips, 0},
+		{
+			"ignore macro expression",
+			`fn ignore() {} fn invoke() { evaluate!(ignore()); }`,
+			modeTestSkips,
+			0,
+		},
 		{"cfg path predicate", `#[cfg(path)] fn selected() {}`, modeTestSkips, 0},
 		{"attribute string", `#[doc = "allow ignore"]`, modeSuppressions, 0},
 		{"raw attribute string", `#[doc = r##"" allow ignore"##]`, modeSuppressions, 0},

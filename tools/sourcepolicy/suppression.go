@@ -36,7 +36,7 @@ var (
 		`^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable[[:space:]]*=[[:space:]]*SC[0-9]+(,SC[0-9]+)*[[:space:]]+#[[:space:]]+[^[:space:]].*$`,
 	)
 	cargoCLIConfig = regexp.MustCompile(
-		`cargo[ \t]+--config[= \t]`,
+		`(^|[ \t])--config(=|[ \t])`,
 	)
 )
 
@@ -117,6 +117,12 @@ func cargoLintFindings(path string, source []byte) []string {
 		}
 	}
 	findings = append(findings, cargoTestDiscoveryFindings(path, document)...)
+	if cargoOptionalDependency(document) {
+		findings = append(findings, fmt.Sprintf(
+			"%s: optional Cargo dependencies require an explicit test matrix",
+			path,
+		))
+	}
 	for _, root := range []string{"lints", "workspace.lints"} {
 		table := nestedTable(document, strings.Split(root, ".")...)
 		for namespace, value := range table {
@@ -139,6 +145,32 @@ func cargoLintFindings(path string, source []byte) []string {
 	}
 	slices.Sort(findings)
 	return findings
+}
+
+func cargoOptionalDependency(document map[string]any) bool {
+	for key := range document {
+		if strings.HasSuffix(key, "dependencies") {
+			for _, dependency := range nestedTable(document, key) {
+				table, ok := dependency.(map[string]any)
+				if ok && table["optional"] == true {
+					return true
+				}
+			}
+		}
+		if key == "workspace" &&
+			cargoOptionalDependency(nestedTable(document, key)) {
+			return true
+		}
+		if key == "target" {
+			for _, target := range nestedTable(document, key) {
+				table, ok := target.(map[string]any)
+				if ok && cargoOptionalDependency(table) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func cargoWorkspaceInventoryFindings(

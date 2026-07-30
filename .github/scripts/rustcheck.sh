@@ -79,7 +79,9 @@ check_environment() {
   while IFS= read -r name; do
     case "$name" in
     CARGO_TARGET_DIR) ;;
-    RUSTFLAGS | RUSTDOCFLAGS | CARGO_ENCODED_RUSTFLAGS | \
+    RUSTC | RUSTDOC | RUSTC_BOOTSTRAP | RUSTC_WRAPPER | \
+      RUSTC_WORKSPACE_WRAPPER | RUSTFLAGS | RUSTDOCFLAGS | \
+      CARGO_ENCODED_RUSTFLAGS | \
       CARGO_ENCODED_RUSTDOCFLAGS | CARGO_BUILD_* | CARGO_TARGET_* | \
       CARGO_PROFILE_* | CARGO_ALIAS_*)
       if [[ -n "${!name:-}" ]]; then
