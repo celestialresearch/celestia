@@ -564,13 +564,13 @@ EOF
       cd "$work_dir"
       go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
     )
-    printf '%s\n' 'package fixture' \
-      'import "testing"' \
-      'func TestFixture(t *testing.T) {}' >"$work_dir/fifo_test.go"
+    printf '%s\n' 'package fixture' >"$work_dir/fifo.go"
+    git -C "$work_dir" add -- fifo.go
+    rm -- "$work_dir/fifo.go"
     mkfifo "$work_dir/fifo.go"
     (
       cd "$work_dir"
-      "$work_dir/config-bin/sourcepolicy" test-skips \
+      "$work_dir/config-bin/sourcepolicy" suppressions \
         >"$work_dir/fifo-output" 2>&1
     ) &
     change_pid=$!
@@ -597,8 +597,8 @@ EOF
       printf 'source policy omitted the FIFO diagnostic\n' >&2
       return 1
     }
-    rm -- "$work_dir/fifo.go" "$work_dir/fifo_test.go" \
-      "$work_dir/fifo-output"
+    rm -- "$work_dir/fifo.go" "$work_dir/fifo-output"
+    git -C "$work_dir" reset -q -- fifo.go
   fi
   grep -Fq "while [[ -n \"\$directory\" ]]" \
     "$root/.github/scripts/rustcheck.sh" || {
