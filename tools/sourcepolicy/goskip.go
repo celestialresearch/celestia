@@ -386,11 +386,11 @@ func goSkipFindingsForTarget(
 				if strings.HasSuffix(position.Filename, "_test.go") &&
 					function.Name.Name == "TestMain" &&
 					isTestingMain(function, loadedPackage.TypesInfo) {
-					if validTestMain(function, loadedPackage.TypesInfo) {
+					if validTestMainSyntax(function, loadedPackage.TypesInfo) {
 						return false
 					}
 					findings = append(findings, fmt.Sprintf(
-						"%s:%d: TestMain must terminate with testing.M.Run",
+						"%s:%d: TestMain violates the local execution syntax",
 						filepath.ToSlash(position.Filename),
 						position.Line,
 					))
@@ -403,9 +403,9 @@ func goSkipFindingsForTarget(
 	return findings, nil
 }
 
-func validTestMain(function *ast.FuncDecl, info *types.Info) bool {
+func validTestMainSyntax(function *ast.FuncDecl, info *types.Info) bool {
 	if function.Body == nil || len(function.Body.List) == 0 ||
-		testMainBypassesRun(function.Body.List[:len(function.Body.List)-1], info) {
+		testMainSyntaxBypass(function.Body.List[:len(function.Body.List)-1], info) {
 		return false
 	}
 	expression, ok := function.Body.List[len(function.Body.List)-1].(*ast.ExprStmt)
@@ -419,7 +419,7 @@ func validTestMain(function *ast.FuncDecl, info *types.Info) bool {
 	return isTestingRun(exitCall.Args[0], info)
 }
 
-func testMainBypassesRun(statements []ast.Stmt, info *types.Info) bool {
+func testMainSyntaxBypass(statements []ast.Stmt, info *types.Info) bool {
 	bypass := false
 	for _, statement := range statements {
 		ast.Inspect(statement, func(node ast.Node) bool {

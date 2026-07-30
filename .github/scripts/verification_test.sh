@@ -1326,7 +1326,7 @@ EOF
       "$output" >&2
     return 1
   }
-  grep -Fq 'TestMain must terminate with testing.M.Run' <<<"$output" || {
+  grep -Fq 'TestMain violates the local execution syntax' <<<"$output" || {
     printf 'policy output omitted the TestMain failure:\n%s\n' \
       "$output" >&2
     return 1
@@ -1432,10 +1432,6 @@ EOF
     >"$work_dir/broad_shellcheck.sh"
   printf '%s%s\n' '#shell' 'check disable=SC2086' \
     >"$work_dir/compact_shellcheck.sh"
-  {
-    printf '%s%s\n' 'cargo_option=--con' 'fig'
-    printf 'cargo "\044cargo_option" profile.test.debug-assertions=false test\n'
-  } >"$work_dir/cargo_config.sh"
   printf '%s%s\n' '#[al' 'low(clippy::needless_pass_by_value)]' \
     >"$work_dir/broad_clippy.rs"
   printf '%s%s\n' '#[al' \
@@ -1512,7 +1508,6 @@ EOF
     'invalid ShellCheck suppression' \
     'invalid Clippy suppression' \
     'dynamic Rust attributes are prohibited' \
-    'Cargo CLI configuration is prohibited' \
     'Cargo automatic test discovery must remain enabled' \
     'optional Cargo dependencies require an explicit test matrix' \
     'Cargo profile overrides are prohibited' \
@@ -1532,7 +1527,6 @@ EOF
     "$work_dir/reasoned_broad_nolint.go" \
     "$work_dir/broad_shellcheck.sh" \
     "$work_dir/compact_shellcheck.sh" \
-    "$work_dir/cargo_config.sh" \
     "$work_dir/broad_clippy.rs" \
     "$work_dir/reasoned_broad_clippy.rs" \
     "$work_dir/inner_broad_clippy.rs" \

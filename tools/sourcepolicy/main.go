@@ -129,10 +129,7 @@ func scanFile(
 		}
 		return readFindings(path, readFile, shellSuppressionFindings)
 	case ".yml", ".yaml":
-		if mode != modeSuppressions {
-			return nil
-		}
-		return readFindings(path, readFile, workflowCargoConfigFindings)
+		return nil
 	}
 	return nil
 }

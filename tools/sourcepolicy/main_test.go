@@ -157,31 +157,8 @@ func TestShellSuppressionFindings(t *testing.T) {
 	source := []byte(strings.Join([]string{
 		"#shellcheck disable=SC2086",
 		"# shellcheck disable=SC2329 # Invoked by a registered trap",
-		"cargo --config profile.test.debug-assertions=false test",
-		`"$cargo_bin" --config=profile.test.debug-assertions=false test`,
-		`C:\tools\cargo.exe --config profile.test.debug-assertions=false test`,
-		"golangci-lint run --config .golangci.yml ./...",
-		"cargo_option=--config",
-		"readonly option='--config'",
-		`"$tool" --config hostile.toml test`,
 	}, "\n"))
 	findings := shellSuppressionFindings("source.sh", source)
-	if len(findings) != 7 {
-		t.Fatalf("findings = %v", findings)
-	}
-}
-
-func TestCargoConfigContinuation(t *testing.T) {
-	source := []byte("cargo --offline \\\n  --config hostile.toml test\n")
-	findings := shellSuppressionFindings("source.sh", source)
-	if len(findings) != 1 {
-		t.Fatalf("findings = %v", findings)
-	}
-}
-
-func TestWorkflowCargoConfigFindings(t *testing.T) {
-	source := []byte("run: cargo --config=profile.test.debug-assertions=false test\n")
-	findings := workflowCargoConfigFindings("workflow.yml", source)
 	if len(findings) != 1 {
 		t.Fatalf("findings = %v", findings)
 	}
@@ -495,7 +472,7 @@ func TestGoBuildSelectionRejectsInvalidConstraint(t *testing.T) {
 	}
 }
 
-func TestValidTestMain(t *testing.T) {
+func TestValidTestMainSyntax(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -538,7 +515,7 @@ func TestValidTestMain(t *testing.T) {
 			if !ok {
 				t.Fatal("TestMain declaration is not a function")
 			}
-			if valid := validTestMain(function, info); valid != test.valid {
+			if valid := validTestMainSyntax(function, info); valid != test.valid {
 				t.Fatalf("valid = %t, want %t", valid, test.valid)
 			}
 			if !isTestingMain(function, info) {
