@@ -30,7 +30,11 @@ type Operation struct {
 	supervisor *processsupervision.Supervisor
 	store      *attemptstore.Store
 	admit      func(string, urlreference.Mode, time.Time) (urladmission.Accepted, error)
-	publish    func(*attemptstore.Attempt, attemptstore.Observation) error
+	stage      func(
+		urladmission.Accepted,
+		time.Time,
+	) (*attemptstore.Attempt, error)
+	publish func(*attemptstore.Attempt, attemptstore.Observation) error
 }
 
 const (
@@ -56,6 +60,7 @@ func New(
 		supervisor: supervisor,
 		store:      store,
 		admit:      urladmission.Admit,
+		stage:      store.Stage,
 		publish: func(
 			attempt *attemptstore.Attempt,
 			observation attemptstore.Observation,
@@ -87,8 +92,16 @@ func (operation *Operation) Execute(
 		}
 		return Result{Status: Failed, Err: errors.Join(ErrAdmission, err)}
 	}
-	attempt, err := operation.store.Stage(accepted, admittedAt)
+	attempt, err := operation.stage(accepted, admittedAt)
 	if err != nil {
+		if committed, ok := errors.AsType[*attemptstore.CommittedStageError](err); ok &&
+			committed.AttemptID == accepted.Request.AttemptID {
+			return Result{
+				AttemptID: committed.AttemptID,
+				Status:    Indeterminate,
+				Err:       errors.Join(ErrPersistence, err),
+			}
+		}
 		return Result{
 			Status: Indeterminate,
 			Err:    errors.Join(ErrPersistence, err),

@@ -87,7 +87,6 @@ check_suppressions() {
   local nolint_marker='//no''lint'
   local nosec_marker='#no''sec'
   local rules
-  local shellcheck_marker='# shell''check disable='
   local suffix
 
   while IFS= read -r -d '' file; do
@@ -114,9 +113,8 @@ check_suppressions() {
           fail "$file:$line_number: invalid golangci-lint suppression"
         fi
       fi
-      if [[ "$line" == *"$shellcheck_marker"* ]]; then
-        suffix=${line#*"$shellcheck_marker"}
-        [[ "$suffix" =~ ^SC[0-9]+(,SC[0-9]+)*[[:space:]]+#[[:space:]]+[^[:space:]].*$ ]] ||
+      if [[ "$line" =~ \#[[:space:]]*shellcheck[[:space:]]+disable ]]; then
+        [[ "$line" =~ ^[[:space:]]*\#[[:space:]]*shellcheck[[:space:]]+disable[[:space:]]*=[[:space:]]*SC[0-9]+(,SC[0-9]+)*[[:space:]]+\#[[:space:]]+[^[:space:]].*$ ]] ||
           fail "$file:$line_number: invalid ShellCheck suppression"
       fi
     done <"$file"

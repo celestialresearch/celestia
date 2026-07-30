@@ -80,7 +80,7 @@ func TestStagePreservesCommittedStateAfterMarkerError(t *testing.T) {
 		t.Fatalf("acquire attempt lock: %v", err)
 	}
 	injected := errors.New("injected post-creation marker failure")
-	_, stageErr := store.stageOwned(
+	attempt, stageErr := store.stageOwned(
 		accepted, request, admittedAt, owner, writeRecord,
 		func(attemptID string) (bool, error) {
 			created, markerErr := store.createOwnershipMarkerState(attemptID)
@@ -92,6 +92,14 @@ func TestStagePreservesCommittedStateAfterMarkerError(t *testing.T) {
 	)
 	if !errors.Is(stageErr, injected) {
 		t.Fatalf("stageOwned() error = %v", stageErr)
+	}
+	if attempt != nil {
+		t.Fatalf("stageOwned() attempt = %#v", attempt)
+	}
+	var committed *CommittedStageError
+	if !errors.As(stageErr, &committed) ||
+		committed.AttemptID != request.AttemptID {
+		t.Fatalf("stageOwned() committed error = %#v", committed)
 	}
 	if err := owner.release(); err != nil {
 		t.Fatalf("release attempt lock: %v", err)

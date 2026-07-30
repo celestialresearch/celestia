@@ -176,6 +176,23 @@ type Attempt struct {
 	closed      bool
 }
 
+type CommittedStageError struct {
+	AttemptID string
+	Err       error
+}
+
+func (failure *CommittedStageError) Error() string {
+	return fmt.Sprintf(
+		"attempt %s committed before staging failed: %v",
+		failure.AttemptID,
+		failure.Err,
+	)
+}
+
+func (failure *CommittedStageError) Unwrap() error {
+	return failure.Err
+}
+
 func New(root string) (*Store, error) {
 	return newStoreWith(root, storeCreationOperations{
 		prepareRoot:         prepareEvidenceRoot,
@@ -261,6 +278,12 @@ func (store *Store) stageOwned(
 	committed := false
 	defer func() {
 		if committed {
+			if err != nil {
+				err = &CommittedStageError{
+					AttemptID: request.AttemptID,
+					Err:       err,
+				}
+			}
 			return
 		}
 		err = errors.Join(

@@ -185,6 +185,34 @@ func TestOperationReportsStagingFailure(t *testing.T) {
 	}
 }
 
+func TestOperationRetainsCommittedStagingIdentity(t *testing.T) {
+	operation, err := New(testWorker(t), testEvidenceRoot(t))
+	if err != nil {
+		t.Fatalf("new operation: %v", err)
+	}
+	injected := errors.New("marker finalisation failed")
+	operation.stage = func(
+		accepted urladmission.Accepted,
+		_ time.Time,
+	) (*attemptstore.Attempt, error) {
+		return nil, &attemptstore.CommittedStageError{
+			AttemptID: accepted.Request.AttemptID,
+			Err:       injected,
+		}
+	}
+	result := operation.Execute(
+		context.Background(),
+		"https://example.test",
+		urlreference.Defang,
+	)
+	if result.Status != Indeterminate ||
+		result.AttemptID == "" ||
+		!errors.Is(result.Err, ErrPersistence) ||
+		!errors.Is(result.Err, injected) {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
 func TestOperationDoesNotRejectAdmissionFailure(t *testing.T) {
 	operation, err := New(testWorker(t), testEvidenceRoot(t))
 	if err != nil {

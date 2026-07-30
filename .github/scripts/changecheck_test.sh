@@ -118,7 +118,9 @@ main() {
     internal/urloperation/operation_windows.go \
     worker/url-reference/src/main.rs \
     .github/scripts/devcheck.sh \
+    .github/scripts/windows-shellcheck.ps1 \
     .github/generated/probe.yml \
+    tools/sourcepolicy/main.go \
     .editorconfig \
     unknown.file; do
     output=$(classify_path_directly "$path")

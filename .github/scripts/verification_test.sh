@@ -1253,6 +1253,8 @@ EOF
     >"$work_dir/reasoned_broad_nolint.go"
   printf '%s%s\n' '# shell' 'check disable=SC2329' \
     >"$work_dir/broad_shellcheck.sh"
+  printf '%s%s\n' '#shell' 'check disable=SC2086' \
+    >"$work_dir/compact_shellcheck.sh"
   printf '%s%s\n' '#[al' 'low(clippy::needless_pass_by_value)]' \
     >"$work_dir/broad_clippy.rs"
   printf '%s%s\n' '#[al' \
@@ -1292,6 +1294,7 @@ EOF
     "$work_dir/broad_nolint.go" \
     "$work_dir/reasoned_broad_nolint.go" \
     "$work_dir/broad_shellcheck.sh" \
+    "$work_dir/compact_shellcheck.sh" \
     "$work_dir/broad_clippy.rs" \
     "$work_dir/reasoned_broad_clippy.rs" \
     "$work_dir/inner_broad_clippy.rs" \
