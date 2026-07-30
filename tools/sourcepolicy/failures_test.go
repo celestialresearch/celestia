@@ -17,6 +17,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -128,5 +129,25 @@ func TestGoSkipLoadFailures(t *testing.T) {
 	)
 	if err == nil || !strings.Contains(err.Error(), "package failed") {
 		t.Fatalf("package error = %v", err)
+	}
+
+	_, err = goSkipFindingsForTargetWith(
+		buildTarget{goos: "linux", goarch: "amd64", cgo: true},
+		[]string{"./..."},
+		func(config *packages.Config, _ ...string) ([]*packages.Package, error) {
+			for _, value := range []string{
+				"GOOS=linux",
+				"GOARCH=amd64",
+				"CGO_ENABLED=1",
+			} {
+				if !slices.Contains(config.Env, value) {
+					t.Errorf("environment omits %q", value)
+				}
+			}
+			return nil, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("CGO load error = %v", err)
 	}
 }

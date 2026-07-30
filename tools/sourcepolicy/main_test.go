@@ -16,11 +16,13 @@ import (
 	"context"
 	"errors"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -108,7 +110,7 @@ func TestRun(t *testing.T) {
 
 func TestOrdinaryTestMainIsNotCandidate(t *testing.T) {
 	t.Parallel()
-	candidate, err := hasGoSkipSelector(
+	candidate, err := hasGoPolicySelector(
 		"fixture.go",
 		[]byte("package fixture\nfunc TestMain() {}\n"),
 	)
@@ -449,6 +451,147 @@ func TestGoSkipAcrossFiles(t *testing.T) {
 	}
 	if len(findings) != 4 {
 		t.Fatalf("findings = %v, want four", findings)
+	}
+}
+
+func TestGoCGOSkip(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "cgo_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		path: "//go:build cgo\n\npackage fixture\n\n" +
+			"import \"testing\"\n\n" +
+			"func TestFixture(t *testing.T) { t.Skip(\"disabled\") }\n",
+	})
+	t.Chdir(root)
+	findings, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(path)},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH, cgo: true}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 ||
+		!strings.Contains(findings[0], "Go tests must not skip cases") {
+		t.Fatalf("findings = %v, want one CGO skip", findings)
+	}
+}
+
+func TestPolicyTargetsMatchHostCGO(t *testing.T) {
+	found := slices.ContainsFunc(policyTargets(), func(target buildTarget) bool {
+		return target.cgo &&
+			target.goos == runtime.GOOS &&
+			target.goarch == runtime.GOARCH
+	})
+	if found != build.Default.CgoEnabled {
+		t.Fatalf(
+			"host CGO target = %t, CGO enabled = %t",
+			found,
+			build.Default.CgoEnabled,
+		)
+	}
+}
+
+func TestGoSuccessfulExit(t *testing.T) {
+	tests := []struct {
+		name    string
+		source  string
+		message string
+	}{
+		{
+			"qualified",
+			"import (\"os\"; \"testing\")\n" +
+				"func init() { os.Exit(0) }\n" +
+				"func fail() { os.Exit(2) }\n",
+			"Go tests must not exit successfully",
+		},
+		{
+			"dot imported",
+			"import (. \"os\"; \"testing\")\n" +
+				"func init() { Exit(0) }\n",
+			"Go tests must not exit successfully",
+		},
+		{
+			"syscall",
+			"import (\"syscall\"; \"testing\")\n" +
+				"func init() { syscall.Exit(0) }\n",
+			"Go tests must not exit successfully",
+		},
+		{
+			"aliased function",
+			"import (\"os\"; \"testing\")\n" +
+				"var exit = os.Exit\n" +
+				"func init() { exit(0) }\n",
+			"Go tests must not alias process exit",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "exit_test.go")
+			writeGoPolicyFixture(t, root, map[string]string{
+				path: "package fixture\n\n" + test.source +
+					"func TestFailure(t *testing.T) { t.Fatal(\"must run\") }\n",
+			})
+			t.Chdir(root)
+			findings, err := goPackageSkipFindingsWithTargets(
+				[]string{filepath.Base(path)},
+				os.ReadFile,
+				[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(findings) != 1 ||
+				!strings.Contains(findings[0], test.message) {
+				t.Fatalf("findings = %v, want one %s", findings, test.message)
+			}
+		})
+	}
+}
+
+func TestGoTestCannotInvokeMain(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.go")
+	testPath := filepath.Join(root, "main_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		mainPath: "package main\n\nimport \"os\"\n\n" +
+			"func main() { os.Exit(0) }\n",
+		testPath: "package main\n\nimport \"testing\"\n\n" +
+			"func TestMainEntry(t *testing.T) { main() }\n",
+	})
+	t.Chdir(root)
+	findings, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(mainPath), filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 ||
+		!strings.Contains(findings[0], "Go tests must not invoke executable main") {
+		t.Fatalf("findings = %v, want one executable main call", findings)
+	}
+}
+
+func writeGoPolicyFixture(
+	t *testing.T,
+	root string,
+	sources map[string]string,
+) {
+	t.Helper()
+	for path, source := range sources {
+		if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module fixture.invalid/sourcepolicy\n\ngo 1.26.5\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
 	}
 }
 
