@@ -13,10 +13,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -190,21 +190,77 @@ func TestSourceFiles(t *testing.T) {
 }
 
 func TestSourceFilesCommand(t *testing.T) {
-	files, err := sourceFiles()
+	t.Parallel()
+	files, err := inventorySourceFiles("git", func(
+		context.Context,
+		string,
+		...string,
+	) inventoryCommand {
+		return &fakeInventoryCommand{
+			output: strings.NewReader("main.go\x00"),
+		}
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(files, "main.go") {
 		t.Fatalf("source inventory does not contain sourcepolicy: %v", files)
 	}
-	executable, err := exec.LookPath("go")
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name    string
+		command *fakeInventoryCommand
+	}{
+		{"pipe failure", &fakeInventoryCommand{pipeErr: errors.New("pipe failed")}},
+		{"start failure", &fakeInventoryCommand{startErr: errors.New("start failed")}},
+		{
+			"read failure",
+			&fakeInventoryCommand{output: failingReader{}},
+		},
+		{
+			"wait failure",
+			&fakeInventoryCommand{
+				output:  strings.NewReader("main.go\x00"),
+				waitErr: errors.New("wait failed"),
+			},
+		},
 	}
-	t.Setenv("CELESTIA_GIT_BIN", executable)
-	if _, err := sourceFiles(); err == nil {
-		t.Fatal("sourceFiles accepted a failed inventory command")
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := inventorySourceFiles("git", func(
+				context.Context,
+				string,
+				...string,
+			) inventoryCommand {
+				return test.command
+			})
+			if err == nil {
+				t.Fatal("inventorySourceFiles accepted a command failure")
+			}
+		})
 	}
+}
+
+type fakeInventoryCommand struct {
+	output   io.Reader
+	pipeErr  error
+	startErr error
+	waitErr  error
+}
+
+func (command *fakeInventoryCommand) Start() error {
+	return command.startErr
+}
+
+func (command *fakeInventoryCommand) StdoutPipe() (io.ReadCloser, error) {
+	if command.pipeErr != nil {
+		return nil, command.pipeErr
+	}
+	return io.NopCloser(command.output), nil
+}
+
+func (command *fakeInventoryCommand) Wait() error {
+	return command.waitErr
 }
 
 type failingReader struct{}

@@ -145,10 +145,37 @@ func sourceFiles() ([]string, error) {
 	if git == "" {
 		git = "git"
 	}
+	return inventorySourceFiles(git, inventoryCommandContext)
+}
+
+type inventoryCommand interface {
+	Start() error
+	StdoutPipe() (io.ReadCloser, error)
+	Wait() error
+}
+
+type inventoryCommandFactory func(
+	context.Context,
+	string,
+	...string,
+) inventoryCommand
+
+func inventoryCommandContext(
+	ctx context.Context,
+	name string,
+	args ...string,
+) inventoryCommand {
+	// #nosec G204,G702 -- The Git binary is an explicit repository control.
+	return exec.CommandContext(ctx, name, args...)
+}
+
+func inventorySourceFiles(
+	git string,
+	commandFactory inventoryCommandFactory,
+) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	// #nosec G204,G702 -- The Git binary is an explicit repository control.
-	command := exec.CommandContext(
+	command := commandFactory(
 		ctx, git, "ls-files", "-co", "--exclude-standard", "-z",
 	)
 	output, err := command.StdoutPipe()
