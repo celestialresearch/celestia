@@ -50,7 +50,7 @@ func (supervisor *Supervisor) observe(
 	defer timer.Stop()
 	poll := time.NewTicker(time.Millisecond)
 	defer poll.Stop()
-	status, cause, inputConsumed := awaitProcessWithInput(
+	status, cause, inputApplied := awaitProcessWithInput(
 		ctx,
 		timer.C,
 		poll.C,
@@ -65,7 +65,7 @@ func (supervisor *Supervisor) observe(
 	joinDeadline := cleanupDeadline.Add(100 * time.Millisecond)
 	cleanupComplete, cause := cleanupProcess(process, status, cause, cleanupDeadline)
 	inputResult := awaitInput(inputWriter, inputDone, cleanupDeadline, joinDeadline)
-	inputResult = unappliedInputResult(inputResult, inputConsumed)
+	inputResult = unappliedInputResult(inputResult, inputApplied)
 	status, cause, cleanupComplete = applyInputResult(
 		status,
 		cause,
@@ -79,8 +79,8 @@ func (supervisor *Supervisor) observe(
 	return applyFinalCleanup(outcome, closeComplete, closeErr)
 }
 
-func unappliedInputResult(result inputResult, consumed bool) inputResult {
-	if consumed {
+func unappliedInputResult(result inputResult, applied bool) inputResult {
+	if applied {
 		result.err = nil
 		result.cleanupErr = nil
 	}
@@ -200,39 +200,39 @@ func awaitProcessWithInput(
 	overflow <-chan Status,
 	input <-chan inputResult,
 ) (Status, error, bool) {
-	inputConsumed := false
+	inputApplied := false
 	for {
 		if status, cause, ready := readProcessBoundary(ctx, timeout, complete); ready {
-			return status, cause, inputConsumed
+			return status, cause, inputApplied
 		}
 		select {
 		case <-poll:
 			continue
 		case <-ctx.Done():
 			status, cause := resolveProcessBoundary(complete, Cancelled, ctx.Err())
-			return status, cause, inputConsumed
+			return status, cause, inputApplied
 		case <-timeout:
 			status, cause := resolveProcessBoundary(
 				complete, TimedOut, context.DeadlineExceeded,
 			)
-			return status, cause, inputConsumed
+			return status, cause, inputApplied
 		case status := <-overflow:
 			if boundaryStatus, cause, ready := readProcessBoundary(ctx, timeout, complete); ready {
-				return boundaryStatus, cause, inputConsumed
+				return boundaryStatus, cause, inputApplied
 			}
-			return status, errStreamLimit, inputConsumed
+			return status, errStreamLimit, inputApplied
 		case result := <-input:
-			inputConsumed = true
 			if status, cause, ready := readProcessBoundary(ctx, timeout, complete); ready {
-				return status, cause, inputConsumed
+				return status, cause, inputApplied
 			}
+			inputApplied = true
 			if result.cleanupErr != nil {
 				return CleanupFailed,
 					errors.Join(result.err, result.cleanupErr),
-					inputConsumed
+					inputApplied
 			}
 			if result.err != nil {
-				return ExitFailed, result.err, inputConsumed
+				return ExitFailed, result.err, inputApplied
 			}
 			input = nil
 		}

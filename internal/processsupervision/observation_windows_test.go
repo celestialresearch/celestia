@@ -483,11 +483,11 @@ func TestResolveStreamDeadlinePrefersCompletedResult(t *testing.T) {
 	}
 }
 
-func TestConsumedInputResultIsNotAppliedTwice(t *testing.T) {
+func TestAppliedInputResultIsNotAppliedTwice(t *testing.T) {
 	sentinel := errors.New("input")
 	input := make(chan inputResult, 1)
 	input <- inputResult{err: sentinel}
-	status, err, consumed := awaitProcessWithInput(
+	status, err, applied := awaitProcessWithInput(
 		context.Background(),
 		make(chan time.Time),
 		make(chan time.Time),
@@ -495,11 +495,38 @@ func TestConsumedInputResultIsNotAppliedTwice(t *testing.T) {
 		make(chan Status),
 		input,
 	)
-	if status != ExitFailed || !errors.Is(err, sentinel) || !consumed {
-		t.Fatalf("boundary = %s, %v, %t", status, err, consumed)
+	if status != ExitFailed || !errors.Is(err, sentinel) || !applied {
+		t.Fatalf("boundary = %s, %v, %t", status, err, applied)
 	}
-	if got := unappliedInputResult(inputResult{err: sentinel}, consumed); got.err != nil {
-		t.Fatalf("consumed input was retained: %v", got.err)
+	if got := unappliedInputResult(inputResult{err: sentinel}, applied); got.err != nil {
+		t.Fatalf("applied input was retained: %v", got.err)
+	}
+}
+
+func TestCompletedProcessRetainsUnappliedInputFailure(t *testing.T) {
+	t.Parallel()
+
+	sentinel := errors.New("input")
+	input := make(chan inputResult, 1)
+	input <- inputResult{err: sentinel}
+	probes := 0
+	status, err, applied := awaitProcessWithInput(
+		context.Background(),
+		make(chan time.Time),
+		make(chan time.Time),
+		func() (bool, error) {
+			probes++
+			return probes > 1, nil
+		},
+		make(chan Status),
+		input,
+	)
+	if status != Completed || err != nil || applied {
+		t.Fatalf("boundary = %s, %v, %t", status, err, applied)
+	}
+	got := unappliedInputResult(inputResult{err: sentinel}, applied)
+	if !errors.Is(got.err, sentinel) {
+		t.Fatalf("unapplied input error = %v", got.err)
 	}
 }
 
@@ -532,6 +559,21 @@ func TestCompletionFollowsResultPublication(t *testing.T) {
 	case <-inputDone:
 	default:
 		t.Fatal("input completed before publishing its join result")
+	}
+}
+
+func TestInputJoinResultFollowsWriterCompletion(t *testing.T) {
+	t.Parallel()
+
+	inputDone := make(chan inputResult, 1)
+	inputResult := make(chan inputResult, 1)
+	writer := &inputWriter{done: make(chan struct{})}
+	go writer.publish(nil, inputResult, inputDone)
+	<-inputDone
+	select {
+	case <-writer.done:
+	default:
+		t.Fatal("join result preceded input writer completion")
 	}
 }
 

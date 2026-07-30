@@ -105,9 +105,9 @@ func (writer *inputWriter) publish(
 	inputDone chan<- inputResult,
 ) {
 	result := writer.write(frame)
-	inputDone <- result
 	input <- result
 	close(writer.done)
+	inputDone <- result
 }
 
 func (writer *inputWriter) cancel() error {
