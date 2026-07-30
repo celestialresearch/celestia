@@ -603,6 +603,16 @@ func TestObservationAcceptsAndRejectsCleanupFailureTransitions(t *testing.T) {
 	if err := validateObservation(invalidCleanupFailure); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("cleanup failure with complete cleanup accepted: %v", err)
 	}
+	protocolCleanupFailure := invalidCleanupFailure
+	protocolCleanupFailure.ProtocolStatus = "valid"
+	if err := validateObservation(protocolCleanupFailure); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("cleanup failure with protocol result accepted: %v", err)
+	}
+	missingProcessError := invalidCleanupFailure
+	missingProcessError.ProcessError = ""
+	if err := validateObservation(missingProcessError); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("cleanup failure without process error accepted: %v", err)
+	}
 	validProcessFailure := base
 	validProcessFailure.ProcessStatus = "output_overflow"
 	validProcessFailure.ProcessError = "output limit"

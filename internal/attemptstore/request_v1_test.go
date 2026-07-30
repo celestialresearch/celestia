@@ -372,6 +372,9 @@ func TestRequestV1ValueBindings(t *testing.T) {
 	if validRequestV1Deadline("not-a-deadline", admittedAt) {
 		t.Fatal("invalid deadline accepted")
 	}
+	if validRequestV1Deadline("not-a-timeZ", admittedAt) {
+		t.Fatal("invalid Z-suffixed deadline accepted")
+	}
 }
 
 func TestDecodeRequestV1RejectsTypedIntegerOverflow(t *testing.T) {
