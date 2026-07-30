@@ -531,6 +531,12 @@ func TestCargoConfigurationAllowances(t *testing.T) {
 		},
 		{"response file", `[build]` + "\n" + `rustflags = ["@args.txt"]`, 1},
 		{"included config", `include = ["hostile.toml"]`, 1},
+		{"command alias", `[alias]` + "\n" + `clippy = "bypass"`, 1},
+		{
+			"credential alias",
+			`[credential-alias]` + "\n" + `private = ["credential.exe"]`,
+			1,
+		},
 		{"source paths", `paths = ["../override"]`, 1},
 		{"environment", `[env]` + "\n" + `RUSTFLAGS = "--cap-lints=allow"`, 1},
 		{"source table", `[source.crates-io]` + "\n" + `replace-with = "mirror"`, 1},

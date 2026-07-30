@@ -1418,6 +1418,9 @@ EOF
 include = ["hostile.toml"]
 paths = ["../override"]
 
+[alias]
+clippy = "bypass"
+
 [build]
 rustflags = ["@args.txt"]
 rustc-wrapper = "wrapper.exe"

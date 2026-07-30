@@ -163,11 +163,20 @@ func cargoExecutionOverride(parent, key string) bool {
 		return true
 	}
 	if parent == "" {
-		return key == "env" || key == "include" || key == "patch" ||
-			key == "paths" || key == "replace" || key == "source"
+		return cargoRootOverride(key)
 	}
 	return parent == "build" &&
 		(key == "build-dir" || key == "target" || key == "target-dir")
+}
+
+func cargoRootOverride(key string) bool {
+	switch key {
+	case "alias", "credential-alias", "env", "include", "patch", "paths",
+		"replace", "source":
+		return true
+	default:
+		return false
+	}
 }
 
 func cargoFlagsApproved(key string, value any) bool {
