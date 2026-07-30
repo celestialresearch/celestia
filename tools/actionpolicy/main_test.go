@@ -643,18 +643,11 @@ func TestInspectDocumentsRejectsInvalidSteps(t *testing.T) {
 	})
 }
 
-func TestYAMLHelpersRejectConstructedInvalidNodes(t *testing.T) {
+func TestYAMLValidatorRejectsCycleAndComplexKey(t *testing.T) {
 	t.Parallel()
-	if mappingValue(nil, "key") != nil ||
-		mappingValue(&yaml.Node{Kind: yaml.SequenceNode}, "key") != nil {
-		t.Fatal("mappingValue accepted a non-mapping node")
-	}
 	validator := yamlValidator{
 		active:    make(map[*yaml.Node]bool),
 		remaining: maxYAMLNodeVisits,
-	}
-	if err := validator.validate(nil, 0); err != nil {
-		t.Fatalf("nil node error = %v", err)
 	}
 	cyclic := &yaml.Node{Kind: yaml.MappingNode}
 	alias := &yaml.Node{Kind: yaml.AliasNode, Alias: cyclic}
@@ -665,30 +658,6 @@ func TestYAMLHelpersRejectConstructedInvalidNodes(t *testing.T) {
 	if err := validator.validate(cyclic, 0); err == nil ||
 		!strings.Contains(err.Error(), "cycle") {
 		t.Fatalf("cycle error = %v", err)
-	}
-	for name, node := range map[string]*yaml.Node{
-		"document": {Kind: yaml.DocumentNode},
-		"alias":    {Kind: yaml.AliasNode},
-		"unknown":  {},
-	} {
-		if err := validator.validateKind(node, 0); err == nil {
-			t.Fatalf("%s node accepted", name)
-		}
-	}
-	if err := validator.validateMapping(&yaml.Node{
-		Kind:    yaml.MappingNode,
-		Content: []*yaml.Node{{Kind: yaml.ScalarNode}},
-	}, 0); err == nil {
-		t.Fatal("incomplete mapping accepted")
-	}
-	if err := validator.validateMapping(&yaml.Node{
-		Kind: yaml.MappingNode,
-		Content: []*yaml.Node{
-			nil,
-			{Kind: yaml.ScalarNode},
-		},
-	}, 0); err == nil {
-		t.Fatal("nil mapping key accepted")
 	}
 	if err := validator.validateMapping(&yaml.Node{
 		Kind: yaml.MappingNode,

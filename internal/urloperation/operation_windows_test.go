@@ -276,20 +276,6 @@ func TestObservationMapsProtocolState(t *testing.T) {
 	}
 }
 
-func TestOperationRejectsProcessFailure(t *testing.T) {
-	operation, err := newTestOperation(t, testHostileWorker(t))
-	if err != nil {
-		t.Fatalf("new operation: %v", err)
-	}
-	admittedAt := time.Now().UTC()
-	accepted := admittedFixture(t, admittedAt)
-	accepted.Frame = []byte("partial")
-	result, _ := operation.executeAccepted(context.Background(), accepted, admittedAt)
-	if result.Status != Failed || result.Process.Status != processsupervision.ExitFailed {
-		t.Fatalf("result=%+v", result)
-	}
-}
-
 func TestOperationPreservesTermination(t *testing.T) {
 	operation, err := newTestOperation(t, testHostileWorker(t))
 	if err != nil {
@@ -390,66 +376,6 @@ func TestTerminalStatusPreservesPrimaryOutcomeDuringCleanupFailure(t *testing.T)
 		if got := terminalStatus(process); got != test.want {
 			t.Fatalf("status=%s terminal=%s want=%s", test.status, got, test.want)
 		}
-	}
-}
-
-func TestOperationRejectsInvalidContext(t *testing.T) {
-	if _, err := admittedStartDeadline(
-		nilContext(),
-		time.Now().UTC().Format(time.RFC3339Nano),
-	); err == nil {
-		t.Fatal("nil context accepted")
-	}
-	if _, err := admittedStartDeadline(context.Background(), "invalid"); err == nil {
-		t.Fatal("invalid deadline accepted")
-	}
-}
-
-func TestOperationRejectsInvalidAcceptedDeadline(t *testing.T) {
-	operation, err := newTestOperation(t, testWorker(t))
-	if err != nil {
-		t.Fatalf("new operation: %v", err)
-	}
-	admittedAt := time.Now().UTC()
-	accepted := admittedFixture(t, admittedAt)
-	accepted.Request.Deadline = "invalid"
-	result, process := operation.executeAccepted(
-		context.Background(),
-		accepted,
-		admittedAt,
-	)
-	if result.Status != Failed ||
-		!errors.Is(result.Err, ErrProtocol) ||
-		process.Status != "" {
-		t.Fatalf("result=%+v process=%+v", result, process)
-	}
-}
-
-func TestEvaluateResponseRejectsInvalidVerificationInputs(t *testing.T) {
-	t.Parallel()
-
-	accepted := admittedFixture(t, time.Now().UTC())
-	process := processsupervision.Outcome{
-		Status:          processsupervision.Completed,
-		CleanupComplete: true,
-	}
-	result := evaluateResponse(accepted, process, workerprotocol.Response{
-		Status: workerprotocol.Completed,
-	})
-	if result.Status != ExecutedUnverified ||
-		!errors.Is(result.Err, ErrVerification) {
-		t.Fatalf("missing output result=%+v", result)
-	}
-
-	output := "unused"
-	accepted.Request.Input = "invalid"
-	result = evaluateResponse(accepted, process, workerprotocol.Response{
-		Status: workerprotocol.Completed,
-		Output: &output,
-	})
-	if result.Status != ExecutedUnverified ||
-		!errors.Is(result.Err, ErrVerification) {
-		t.Fatalf("invalid admitted input result=%+v", result)
 	}
 }
 

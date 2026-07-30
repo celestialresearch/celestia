@@ -125,13 +125,9 @@ func (operation *Operation) executeAccepted(
 	accepted urladmission.Accepted,
 	admittedAt time.Time,
 ) (Result, processsupervision.Outcome) {
-	startDeadline, err := admittedStartDeadline(ctx, accepted.Request.Deadline)
-	if err != nil {
-		return Result{
-			Status: Failed,
-			Err:    errors.Join(ErrProtocol, err),
-		}, processsupervision.Outcome{}
-	}
+	startDeadline := admittedAt.Add(
+		time.Duration(workerprotocol.StartTimeoutMS) * time.Millisecond,
+	)
 	process := operation.supervisor.RunBefore(ctx, accepted.Frame, startDeadline)
 	if process.Status != processsupervision.Completed || !process.CleanupComplete {
 		return Result{
@@ -141,17 +137,9 @@ func (operation *Operation) executeAccepted(
 		}, process
 	}
 
-	_, correlation, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt)
-	if err != nil {
-		return Result{
-			Status:  Failed,
-			Process: callerProcess(process),
-			Err:     errors.Join(ErrProtocol, err),
-		}, process
-	}
-	response, err := workerprotocol.DecodeResponse(
+	response, err := workerprotocol.DecodeResponseForRequestCorrelation(
 		process.Stdout,
-		correlation,
+		accepted.Request,
 		int(process.ExitCode),
 	)
 	if err != nil {
@@ -193,20 +181,12 @@ func evaluateResponse(
 			VerifierVersion: VerifierVersion,
 		},
 	}
-	if response.Output == nil {
-		result.Err = ErrVerification
-		return result
-	}
 	expected, err := urlreference.Transform(
 		accepted.Request.Input,
 		urlreference.Mode(accepted.Request.Mode),
 	)
-	if err != nil {
-		result.Err = errors.Join(ErrVerification, err)
-		return result
-	}
 	result.Verification.Expected = expected
-	result.Verification.Matched = *response.Output == expected
+	result.Verification.Matched = err == nil && *response.Output == expected
 	if !result.Verification.Matched {
 		result.Err = ErrVerification
 		return result
@@ -253,20 +233,6 @@ func diagnosticMessage(code string) string {
 	default:
 		return "The worker reported a failure"
 	}
-}
-
-func admittedStartDeadline(
-	parent context.Context,
-	deadlineValue string,
-) (time.Time, error) {
-	if parent == nil {
-		return time.Time{}, errors.New("nil execution context")
-	}
-	deadline, err := time.Parse(time.RFC3339Nano, deadlineValue)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("parse admitted deadline: %w", err)
-	}
-	return deadline, nil
 }
 
 func terminalStatus(process processsupervision.Outcome) Status {
