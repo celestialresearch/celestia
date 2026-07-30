@@ -66,6 +66,9 @@ func TestRustPolicyAttributes(t *testing.T) {
 		},
 		{"comment", "// #[ignore]\nfn test() {}", modeTestSkips, 0},
 		{"string", `const VALUE: &str = "#[ignore]";`, modeTestSkips, 0},
+		{"attribute string", `#[doc = "allow ignore"]`, modeSuppressions, 0},
+		{"raw attribute string", `#[doc = r##"" allow ignore"##]`, modeSuppressions, 0},
+		{"lifetime before attribute", "'a\n#[ignore]", modeTestSkips, 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

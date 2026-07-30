@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -132,7 +133,7 @@ func rustFindings(path string, source []byte, mode string) []string {
 	}
 	var findings []string
 	for _, attribute := range attributes {
-		words := identifiers(attribute.text)
+		words := rustAttributeIdentifiers([]byte(attribute.text))
 		switch mode {
 		case modeTestSkips:
 			if contains(words, "ignore") {
@@ -219,7 +220,7 @@ func advanceRustAttribute(
 	if source[index] == '\n' {
 		return index + 1, line + 1, depth, nil
 	}
-	if source[index] == '"' || source[index] == '\'' {
+	if rustTokenStart(source[index]) {
 		index, line = skipRustToken(source, index, line)
 		return index, line, depth, nil
 	}
@@ -239,6 +240,15 @@ func advanceRustAttribute(
 		depth--
 	}
 	return index + 1, line, depth, nil
+}
+
+func rustTokenStart(value byte) bool {
+	switch value {
+	case '"', '\'', 'r', 'b':
+		return true
+	default:
+		return false
+	}
 }
 
 func skipRustTrivia(source []byte, index, line int) (int, int, bool) {
@@ -302,10 +312,23 @@ func skipRustBlockComment(source []byte, index, line int) (int, int, bool) {
 }
 
 func skipRustToken(source []byte, index, line int) (int, int) {
-	if source[index] != '"' && source[index] != '\'' {
+	if end, ok := skipRustRawString(source, index); ok {
+		return end, line + bytes.Count(source[index:end], []byte{'\n'})
+	}
+	if source[index] == 'b' && index+1 < len(source) &&
+		(source[index+1] == '"' || source[index+1] == '\'') {
+		index++
+	}
+	if source[index] == '\'' {
+		return skipRustCharacter(source, index, line)
+	}
+	if source[index] != '"' {
 		return index + 1, line
 	}
-	quote := source[index]
+	return skipRustString(source, index, line)
+}
+
+func skipRustString(source []byte, index, line int) (int, int) {
 	index++
 	escaped := false
 	for index < len(source) {
@@ -320,18 +343,89 @@ func skipRustToken(source []byte, index, line int) (int, int) {
 		}
 		if current == '\\' {
 			escaped = true
-		} else if current == quote {
+		} else if current == '"' {
 			break
 		}
 	}
 	return index, line
 }
 
-func identifiers(value string) []string {
-	return strings.FieldsFunc(value, func(character rune) bool {
-		return !unicode.IsLetter(character) && !unicode.IsDigit(character) &&
-			character != '_'
-	})
+func skipRustRawString(source []byte, index int) (int, bool) {
+	start := index
+	if source[index] == 'b' {
+		index++
+	}
+	if index >= len(source) || source[index] != 'r' {
+		return start, false
+	}
+	index++
+	hashes := 0
+	for index < len(source) && source[index] == '#' {
+		hashes++
+		index++
+	}
+	if index >= len(source) || source[index] != '"' {
+		return start, false
+	}
+	index++
+	terminator := `"` + strings.Repeat("#", hashes)
+	offset := bytes.Index(source[index:], []byte(terminator))
+	if offset < 0 {
+		return len(source), true
+	}
+	return index + offset + len(terminator), true
+}
+
+func skipRustCharacter(source []byte, index, line int) (int, int) {
+	next := index + 1
+	if next >= len(source) {
+		return next, line
+	}
+	if source[next] == '\\' {
+		next++
+		for next < len(source) && source[next] != '\'' &&
+			source[next] != '\n' {
+			next++
+		}
+		if next < len(source) && source[next] == '\'' {
+			return next + 1, line
+		}
+		return index + 1, line
+	}
+	_, size := utf8.DecodeRune(source[next:])
+	if size > 0 && next+size < len(source) && source[next+size] == '\'' {
+		return next + size + 1, line
+	}
+	return index + 1, line
+}
+
+func rustAttributeIdentifiers(source []byte) []string {
+	var identifiers []string
+	for index := 0; index < len(source); {
+		if source[index] == '"' || source[index] == '\'' ||
+			source[index] == 'r' || source[index] == 'b' {
+			next, _ := skipRustToken(source, index, 1)
+			if next > index+1 {
+				index = next
+				continue
+			}
+		}
+		if !isRustIdentifierByte(source[index]) {
+			index++
+			continue
+		}
+		start := index
+		for index < len(source) && isRustIdentifierByte(source[index]) {
+			index++
+		}
+		identifiers = append(identifiers, string(source[start:index]))
+	}
+	return identifiers
+}
+
+func isRustIdentifierByte(value byte) bool {
+	return value == '_' || value >= 'a' && value <= 'z' ||
+		value >= 'A' && value <= 'Z' || value >= '0' && value <= '9'
 }
 
 func contains(values []string, wanted string) bool {
