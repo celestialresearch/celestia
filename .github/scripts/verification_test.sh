@@ -1083,6 +1083,10 @@ EOF
     printf 'coverage cleanup masked a failing test:\n%s\n' "$output" >&2
     return 1
   fi
+  grep -Fq 'fixture failure' <<<"$output" || {
+    printf 'coverage check discarded failing test output:\n%s\n' "$output" >&2
+    return 1
+  }
 
   set +e
   output=$(cd "$work_dir" && bash .github/scripts/coveragecheck.sh verify 2>&1)

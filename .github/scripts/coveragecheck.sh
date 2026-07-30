@@ -109,6 +109,7 @@ cache_key() (
 )
 
 create_report() {
+  local output
   local profile=$1
   local report=$2
   local packages=$3
@@ -121,8 +122,11 @@ create_report() {
   : >"$report"
   while IFS= read -r package; do
     [[ -n "$package" ]] || continue
-    go test -count=1 -covermode=atomic -coverprofile="$go_profile" \
-      "$package" >/dev/null
+    if ! output=$(go test -count=1 -covermode=atomic \
+      -coverprofile="$go_profile" "$package" 2>&1); then
+      printf 'coverage test failed for %s:\n%s\n' "$package" "$output" >&2
+      return 1
+    fi
     awk -v package="$package" '
       NR == 1 { next }
       {
