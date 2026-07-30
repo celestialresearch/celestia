@@ -65,6 +65,7 @@ main() (
   local action_pid=
   local change_pid=
   local currency_pid=
+  local fifo_pid=
   local go_version
   local golangci_lint
   local platform_log
@@ -79,7 +80,7 @@ main() (
     return 1
     ;;
   esac
-  trap 'cleanup_verification "$work_dir" "$change_pid" "$currency_pid" "$action_pid"' EXIT
+  trap 'cleanup_verification "$work_dir" "$change_pid" "$currency_pid" "$action_pid" "$fifo_pid"' EXIT
   trap '[[ $- != *e* ]] || printf "verification self-test failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
   trap 'exit 1' HUP INT TERM
   real_go=$(command -v go)
@@ -582,21 +583,21 @@ EOF
       "$work_dir/config-bin/sourcepolicy" suppressions \
         >"$work_dir/fifo-output" 2>&1
     ) &
-    change_pid=$!
+    fifo_pid=$!
     for _ in 1 2 3 4 5 6 7 8 9 10; do
-      kill -0 "$change_pid" 2>/dev/null || break
+      kill -0 "$fifo_pid" 2>/dev/null || break
       sleep 0.1
     done
-    if kill -0 "$change_pid" 2>/dev/null; then
-      terminate_child "$change_pid"
+    if kill -0 "$fifo_pid" 2>/dev/null; then
+      terminate_child "$fifo_pid"
       printf 'source policy blocked while opening a FIFO\n' >&2
       return 1
     fi
     set +e
-    wait "$change_pid"
+    wait "$fifo_pid"
     status=$?
     set -e
-    change_pid=
+    fifo_pid=
     [[ "$status" -ne 0 ]] || {
       printf 'source policy accepted a FIFO\n' >&2
       return 1
