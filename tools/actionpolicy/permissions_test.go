@@ -43,6 +43,29 @@ jobs:
 	}
 }
 
+func TestPermissionsRetainSecurityWriteAcrossEntries(t *testing.T) {
+	t.Parallel()
+
+	input := `permissions: read-all
+jobs:
+  classify:
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - run: echo classify
+`
+	err := inspectDocuments(
+		strings.NewReader("main.yml\x00"+input+"\x00"),
+		&bytes.Buffer{},
+		permissionsMode,
+		streamLimits{documents: 1, pathBytes: 64, dataBytes: 512, totalBytes: 576},
+	)
+	if err == nil || !strings.Contains(err.Error(), "only the reviewed CodeQL analysis job") {
+		t.Fatalf("inspectDocuments() error = %v, want permission rejection", err)
+	}
+}
+
 func TestPermissionsAcceptCodeQLAnalysis(t *testing.T) {
 	t.Parallel()
 
@@ -146,6 +169,47 @@ jobs:
 			)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("inspectDocuments() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestPermissionsRejectMalformedCheckoutConfiguration(t *testing.T) {
+	t.Parallel()
+
+	for name, configuration := range map[string]string{
+		"empty":      "{}",
+		"non-scalar": "{persist-credentials: []}",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			input := `permissions:
+  contents: read
+jobs:
+  analyze:
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+        with: ` + configuration + `
+      - uses: github/codeql-action/init@0000000000000000000000000000000000000000
+      - uses: github/codeql-action/analyze@0000000000000000000000000000000000000000
+`
+			err := inspectDocuments(
+				strings.NewReader(".github/workflows/codeql.yml\x00"+input+"\x00"),
+				&bytes.Buffer{},
+				permissionsMode,
+				streamLimits{
+					documents:  1,
+					pathBytes:  64,
+					dataBytes:  1024,
+					totalBytes: 1088,
+				},
+			)
+			if err == nil ||
+				!strings.Contains(err.Error(), "checkout must disable credential persistence") {
+				t.Fatalf("inspectDocuments() error = %v, want credential rejection", err)
 			}
 		})
 	}

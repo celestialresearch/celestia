@@ -241,6 +241,89 @@ func TestInspectDocumentsInventoriesDockerAction(t *testing.T) {
 	}
 }
 
+func TestInspectDocumentsAcceptsOrdinaryEmptyInventory(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		path  string
+		input string
+	}{
+		{
+			name: "composite action without image",
+			path: "action.yml",
+			input: `runs:
+  using: composite
+  steps:
+    - run: "true"
+      shell: bash
+`,
+		},
+		{
+			name: "JavaScript action image",
+			path: "action.yml",
+			input: `runs:
+  using: node20
+  main: index.js
+`,
+		},
+		{
+			name: "empty steps",
+			path: "main.yml",
+			input: `jobs:
+  inspect:
+    steps: []
+`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			var output bytes.Buffer
+			err := inspectDocuments(
+				strings.NewReader(test.path+"\x00"+test.input+"\x00"),
+				&output,
+				actionsMode,
+				streamLimits{
+					documents:  1,
+					pathBytes:  64,
+					dataBytes:  512,
+					totalBytes: 576,
+				},
+			)
+			if err != nil {
+				t.Fatalf("inspectDocuments() error = %v", err)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("inspectDocuments() output = %q, want empty", output.String())
+			}
+		})
+	}
+}
+
+func TestInspectDocumentsPreservesDockerImagePrefix(t *testing.T) {
+	t.Parallel()
+
+	input := `jobs:
+  inspect:
+    container: docker://alpine:latest
+`
+	var output bytes.Buffer
+	err := inspectDocuments(
+		strings.NewReader("main.yml\x00"+input+"\x00"),
+		&output,
+		actionsMode,
+		streamLimits{documents: 1, pathBytes: 64, dataBytes: 256, totalBytes: 320},
+	)
+	if err != nil {
+		t.Fatalf("inspectDocuments() error = %v", err)
+	}
+	if output.String() != "main.yml:3:docker://alpine:latest\n" {
+		t.Fatalf("inspectDocuments() output = %q", output.String())
+	}
+}
+
 func TestInspectDocumentsResolvesReferenceAliases(t *testing.T) {
 	t.Parallel()
 
@@ -703,6 +786,13 @@ func TestPermissionWorkflowRejectsInvalidCodeQL(t *testing.T) {
 `,
 			mode: permissionsMode,
 			want: "exactly one CodeQL",
+		},
+		{
+			name:  "CodeQL steps empty",
+			path:  ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + "    steps: []\n",
+			mode:  permissionsMode,
+			want:  "exactly one CodeQL",
 		},
 		{
 			name: "CodeQL scalar step",
