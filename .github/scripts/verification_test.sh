@@ -1412,9 +1412,15 @@ broken_intra_doc_links = "allow"
 EOF
   mkdir -p "$work_dir/.cargo"
   cat >"$work_dir/.cargo/config.toml" <<'EOF'
+include = ["hostile.toml"]
+
 [build]
 rustflags = ["@args.txt"]
 rustc-wrapper = "wrapper.exe"
+EOF
+  cat >"$work_dir/.cargo/hostile.toml" <<'EOF'
+[build]
+rustflags = ["--cap-lints=allow"]
 EOF
   printf '%s\n' '--cap-lints' 'allow' >"$work_dir/args.txt"
   head -c 1048577 /dev/zero | tr '\0' x >"$work_dir/oversized.sh"
@@ -1460,6 +1466,7 @@ EOF
     "$work_dir/reasoned_broad_multiline_clippy.rs" \
     "$work_dir/Cargo.toml" \
     "$work_dir/.cargo/config.toml" \
+    "$work_dir/.cargo/hostile.toml" \
     "$work_dir/args.txt" \
     "$work_dir/oversized.sh"
   rmdir -- "$work_dir/.cargo"

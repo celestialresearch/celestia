@@ -528,6 +528,7 @@ func TestCargoConfigurationAllowances(t *testing.T) {
 			1,
 		},
 		{"response file", `[build]` + "\n" + `rustflags = ["@args.txt"]`, 1},
+		{"included config", `include = ["hostile.toml"]`, 1},
 		{"rustc wrapper", `[build]` + "\n" + `rustc-wrapper = "wrapper.exe"`, 1},
 		{
 			"workspace wrapper",

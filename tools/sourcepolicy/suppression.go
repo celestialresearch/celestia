@@ -147,7 +147,7 @@ func inspectCargoConfig(path string, value any, findings *[]string) {
 
 func cargoExecutionOverride(key string) bool {
 	switch key {
-	case "runner", "rustc", "rustdoc", "rustc-wrapper",
+	case "include", "runner", "rustc", "rustdoc", "rustc-wrapper",
 		"rustc-workspace-wrapper":
 		return true
 	default:
