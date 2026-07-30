@@ -12,6 +12,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -54,13 +55,41 @@ func TestRunFailureReporting(t *testing.T) {
 			}
 		})
 	}
+
+	var stderr bytes.Buffer
+	if code := run(
+		[]string{modeTestSkips},
+		&stderr,
+		validInventory,
+		readBrokenGo,
+	); code != 1 || !strings.Contains(stderr.String(), "parse Go test") {
+		t.Fatalf("policy failure = %d, %q", code, stderr.String())
+	}
 }
 
-func TestRustFindingsRejectMalformedSource(t *testing.T) {
-	for _, source := range []string{"/*", "#["} {
-		findings := rustFindings("fixture.rs", []byte(source), modeTestSkips)
-		if len(findings) != 1 || !strings.Contains(findings[0], "parse Rust") {
-			t.Fatalf("rustFindings(%q) = %v", source, findings)
+func TestRustFindingsMalformedBoundaries(t *testing.T) {
+	tests := []struct {
+		source   string
+		findings int
+	}{
+		{"/*", 1},
+		{"#[", 1},
+		{`r##"unterminated`, 0},
+		{"macro!([ignore", 1},
+	}
+	for _, test := range tests {
+		findings := rustFindings(
+			"fixture.rs",
+			[]byte(test.source),
+			modeTestSkips,
+		)
+		if len(findings) != test.findings {
+			t.Fatalf(
+				"rustFindings(%q) = %v, want %d",
+				test.source,
+				findings,
+				test.findings,
+			)
 		}
 	}
 }

@@ -502,6 +502,16 @@ func TestValidTestMainSyntax(t *testing.T) {
 			"fmt.Println(\"setup\"); os.Exit(testingMain.Run())",
 			true,
 		},
+		{
+			"closure return",
+			"func() { return }(); os.Exit(testingMain.Run())",
+			true,
+		},
+		{
+			"non-zero early exit",
+			"os.Exit(2); os.Exit(testingMain.Run())",
+			true,
+		},
 		{"empty", "", false},
 		{"return", "return", false},
 		{
