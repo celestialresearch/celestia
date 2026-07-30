@@ -22,7 +22,6 @@ import (
 	"go/types"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -89,11 +88,11 @@ func goPackageSkipFindingsWithTargets(
 }
 
 func policyTargets() []buildTarget {
-	targets := slices.Clone(policyBuildTargets)
-	if build.Default.CgoEnabled {
-		targets = append(targets, buildTarget{
-			goos: runtime.GOOS, goarch: runtime.GOARCH, cgo: true,
-		})
+	targets := make([]buildTarget, 0, len(policyBuildTargets)*2)
+	for _, target := range policyBuildTargets {
+		targets = append(targets, target)
+		target.cgo = true
+		targets = append(targets, target)
 	}
 	return targets
 }
@@ -226,7 +225,10 @@ func goCandidateDirectories(
 			testDirectories[filepath.Dir(path)] = true
 		}
 	}
-	directories := make(map[string]bool)
+	directories := make(map[string]bool, len(testDirectories))
+	for directory := range testDirectories {
+		directories[directory] = true
+	}
 	for _, path := range paths {
 		if filepath.Ext(path) != ".go" ||
 			!testDirectories[filepath.Dir(path)] {
@@ -236,12 +238,9 @@ func goCandidateDirectories(
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
-		candidate, err := hasGoPolicySelector(path, source)
+		_, err = hasGoPolicySelector(path, source)
 		if err != nil {
 			return nil, err
-		}
-		if candidate {
-			directories[filepath.Dir(path)] = true
 		}
 	}
 	return directories, nil
@@ -408,7 +407,9 @@ func goSkipFindingsForTargetWith(
 		Context: ctx,
 		Mode: packages.NeedName | packages.NeedFiles |
 			packages.NeedCompiledGoFiles | packages.NeedSyntax |
-			packages.NeedTypes | packages.NeedTypesInfo,
+			packages.NeedTypes | packages.NeedTypesInfo |
+			packages.NeedImports | packages.NeedDeps |
+			packages.NeedModule,
 		Tests: true,
 		Env:   environment,
 	}, patterns...)
@@ -418,7 +419,7 @@ func goSkipFindingsForTargetWith(
 		)
 	}
 	var findings []string
-	for _, loadedPackage := range loaded {
+	for _, loadedPackage := range policyPackages(loaded) {
 		if len(loadedPackage.Errors) > 0 {
 			return nil, fmt.Errorf(
 				"load Go tests for %s/%s: %w",
@@ -435,6 +436,27 @@ func goSkipFindingsForTargetWith(
 		findings = append(findings, inspector.findings()...)
 	}
 	return findings, nil
+}
+
+func policyPackages(roots []*packages.Package) []*packages.Package {
+	queue := slices.Clone(roots)
+	seen := make(map[string]bool)
+	var result []*packages.Package
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		if current == nil || seen[current.ID] {
+			continue
+		}
+		seen[current.ID] = true
+		result = append(result, current)
+		for _, imported := range current.Imports {
+			if imported.Module != nil && imported.Module.Main {
+				queue = append(queue, imported)
+			}
+		}
+	}
+	return result
 }
 
 type goPolicyInspector struct {
@@ -495,11 +517,26 @@ func (inspector *goPolicyInspector) inspectSelector(selector *ast.SelectorExpr) 
 }
 
 func (inspector *goPolicyInspector) inspectIdentifier(identifier *ast.Ident) bool {
+	if inspector.isExecutableMainReference(identifier) {
+		inspector.add(identifier, "Go tests must not reference executable main")
+		return false
+	}
 	if !isProcessExitFunction(identifier, inspector.loaded.TypesInfo) {
 		return true
 	}
 	inspector.add(identifier, "Go tests must not alias process exit")
 	return false
+}
+
+func (inspector *goPolicyInspector) isExecutableMainReference(
+	identifier *ast.Ident,
+) bool {
+	if inspector.loaded.Name != "main" || identifier.Name != "main" {
+		return false
+	}
+	function, ok := inspector.loaded.TypesInfo.Uses[identifier].(*types.Func)
+	return ok && inspector.loaded.Types != nil &&
+		function.Pkg() == inspector.loaded.Types
 }
 
 func (inspector *goPolicyInspector) inspectCall(call *ast.CallExpr) bool {

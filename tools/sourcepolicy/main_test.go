@@ -16,7 +16,6 @@ import (
 	"context"
 	"errors"
 	"go/ast"
-	"go/build"
 	"go/parser"
 	"go/token"
 	"io"
@@ -480,18 +479,27 @@ func TestGoCGOSkip(t *testing.T) {
 	}
 }
 
-func TestPolicyTargetsMatchHostCGO(t *testing.T) {
-	found := slices.ContainsFunc(policyTargets(), func(target buildTarget) bool {
-		return target.cgo &&
-			target.goos == runtime.GOOS &&
-			target.goarch == runtime.GOARCH
-	})
-	if found != build.Default.CgoEnabled {
-		t.Fatalf(
-			"host CGO target = %t, CGO enabled = %t",
-			found,
-			build.Default.CgoEnabled,
-		)
+func TestPolicyTargetsCoverCGOModes(t *testing.T) {
+	targets := policyTargets()
+	if len(targets) != len(policyBuildTargets)*2 {
+		t.Fatalf("targets = %d, want %d", len(targets), len(policyBuildTargets)*2)
+	}
+	for _, policyTarget := range policyBuildTargets {
+		for _, cgo := range []bool{false, true} {
+			found := slices.ContainsFunc(targets, func(target buildTarget) bool {
+				return target.goos == policyTarget.goos &&
+					target.goarch == policyTarget.goarch &&
+					target.cgo == cgo
+			})
+			if !found {
+				t.Fatalf(
+					"missing target %s/%s with CGO=%t",
+					policyTarget.goos,
+					policyTarget.goarch,
+					cgo,
+				)
+			}
+		}
 	}
 }
 
@@ -554,18 +562,76 @@ func TestGoSuccessfulExit(t *testing.T) {
 }
 
 func TestGoTestCannotInvokeMain(t *testing.T) {
+	tests := []struct {
+		name string
+		main string
+		test string
+	}{
+		{
+			"direct",
+			"func main() {}\n",
+			"func TestEntry(t *testing.T) { main() }\n",
+		},
+		{
+			"aliased",
+			"func main() {}\n",
+			"func TestEntry(t *testing.T) { entry := main; entry() }\n",
+		},
+		{
+			"wrapped",
+			"func main() {}\nfunc invokeMain() { main() }\n",
+			"func TestEntry(t *testing.T) { invokeMain() }\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.go")
+			testPath := filepath.Join(root, "main_test.go")
+			writeGoPolicyFixture(t, root, map[string]string{
+				mainPath: "package main\n\n" + test.main,
+				testPath: "package main\n\nimport \"testing\"\n\n" + test.test,
+			})
+			t.Chdir(root)
+			findings, err := goPackageSkipFindingsWithTargets(
+				[]string{filepath.Base(mainPath), filepath.Base(testPath)},
+				os.ReadFile,
+				[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(findings) == 0 ||
+				!strings.Contains(findings[0], "executable main") {
+				t.Fatalf("findings = %v, want executable main finding", findings)
+			}
+		})
+	}
+}
+
+func TestGoPolicyInspectsImportedHelpers(t *testing.T) {
 	root := t.TempDir()
-	mainPath := filepath.Join(root, "main.go")
-	testPath := filepath.Join(root, "main_test.go")
+	helperDirectory := filepath.Join(root, "helper")
+	if err := os.Mkdir(helperDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	helperPath := filepath.Join(helperDirectory, "helper.go")
+	testPath := filepath.Join(root, "root_test.go")
 	writeGoPolicyFixture(t, root, map[string]string{
-		mainPath: "package main\n\nimport \"os\"\n\n" +
-			"func main() { os.Exit(0) }\n",
-		testPath: "package main\n\nimport \"testing\"\n\n" +
-			"func TestMainEntry(t *testing.T) { main() }\n",
+		helperPath: "package helper\n\nimport \"testing\"\n\n" +
+			"func Skip(t *testing.T) { t.Skip(\"hidden\") }\n",
+		testPath: "package fixture\n\nimport (\n" +
+			"\t\"testing\"\n" +
+			"\t\"fixture.invalid/sourcepolicy/helper\"\n" +
+			")\n\n" +
+			"func TestEntry(t *testing.T) { helper.Skip(t) }\n",
 	})
 	t.Chdir(root)
 	findings, err := goPackageSkipFindingsWithTargets(
-		[]string{filepath.Base(mainPath), filepath.Base(testPath)},
+		[]string{
+			filepath.Base(testPath),
+			filepath.Join("helper", filepath.Base(helperPath)),
+		},
 		os.ReadFile,
 		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
 	)
@@ -573,8 +639,8 @@ func TestGoTestCannotInvokeMain(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(findings) != 1 ||
-		!strings.Contains(findings[0], "Go tests must not invoke executable main") {
-		t.Fatalf("findings = %v, want one executable main call", findings)
+		!strings.Contains(findings[0], "Go tests must not skip cases") {
+		t.Fatalf("findings = %v, want imported helper skip", findings)
 	}
 }
 
