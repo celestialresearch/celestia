@@ -18,11 +18,16 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/testcheck-test.XXXXXX")
 cleanup() {
   rm -rf -- "$work"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 130' HUP INT TERM
 
 mkdir -p "$work/bin"
 cat >"$work/bin/go" <<'EOF'
 #!/usr/bin/env bash
+if [[ "${SIGNAL_PARENT:-false}" == true ]]; then
+  kill -TERM "$PPID"
+  exit 0
+fi
 printf '%s\n' \
   '{"Action":"run","Package":"fixture.invalid/test","Test":"TestMustRun"}'
 if [[ "${COMPLETE_TEST:-false}" == true ]]; then
@@ -59,6 +64,18 @@ else
 fi
 EOF
 chmod +x "$work/bin/rust-test"
+
+set +e
+PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
+  SIGNAL_PARENT=true \
+  bash "$root/.github/scripts/testcheck.sh" go quick --fixture \
+  >/dev/null 2>&1
+status=$?
+set -e
+if [[ "$status" -eq 0 ]]; then
+  printf 'Go completion check ignored termination\n' >&2
+  exit 1
+fi
 
 if PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
   bash "$root/.github/scripts/testcheck.sh" go quick --fixture \

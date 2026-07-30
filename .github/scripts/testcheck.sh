@@ -24,7 +24,8 @@ temporary=$(mktemp -d "$work/test-completion.XXXXXX")
 cleanup() {
   rm -rf -- "$temporary"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 130' HUP INT TERM
 
 go_inventory() {
   if [[ "$fixture_mode" == --fixture ]]; then
