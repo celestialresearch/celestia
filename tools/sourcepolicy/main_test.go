@@ -528,6 +528,19 @@ func TestCargoConfigurationAllowances(t *testing.T) {
 			1,
 		},
 		{"response file", `[build]` + "\n" + `rustflags = ["@args.txt"]`, 1},
+		{"rustc wrapper", `[build]` + "\n" + `rustc-wrapper = "wrapper.exe"`, 1},
+		{
+			"workspace wrapper",
+			`[build]` + "\n" + `rustc-workspace-wrapper = "wrapper.exe"`,
+			1,
+		},
+		{"rustc override", `[build]` + "\n" + `rustc = "rustc-proxy.exe"`, 1},
+		{
+			"target runner",
+			`[target.x86_64-pc-windows-msvc]` + "\n" +
+				`runner = "runner.exe"`,
+			1,
+		},
 		{"linker", `[build]` + "\n" + `rustflags = ["-C", "link-arg=/Brepro"]`, 0},
 		{"malformed", `[build` + "\n", 1},
 	}

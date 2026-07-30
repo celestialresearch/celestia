@@ -122,6 +122,12 @@ func inspectCargoConfig(path string, value any, findings *[]string) {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, child := range typed {
+			if cargoExecutionOverride(key) {
+				*findings = append(*findings, fmt.Sprintf(
+					"%s: Cargo execution override is prohibited: %s", path, key,
+				))
+				continue
+			}
 			if key == "rustflags" || key == "rustdocflags" {
 				if cargoAllowsLint(child) {
 					*findings = append(*findings, fmt.Sprintf(
@@ -136,6 +142,16 @@ func inspectCargoConfig(path string, value any, findings *[]string) {
 		for _, child := range typed {
 			inspectCargoConfig(path, child, findings)
 		}
+	}
+}
+
+func cargoExecutionOverride(key string) bool {
+	switch key {
+	case "runner", "rustc", "rustdoc", "rustc-wrapper",
+		"rustc-workspace-wrapper":
+		return true
+	default:
+		return false
 	}
 }
 

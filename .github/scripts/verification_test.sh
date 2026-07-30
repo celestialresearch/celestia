@@ -1414,6 +1414,7 @@ EOF
   cat >"$work_dir/.cargo/config.toml" <<'EOF'
 [build]
 rustflags = ["@args.txt"]
+rustc-wrapper = "wrapper.exe"
 EOF
   printf '%s\n' '--cap-lints' 'allow' >"$work_dir/args.txt"
   head -c 1048577 /dev/zero | tr '\0' x >"$work_dir/oversized.sh"
@@ -1439,6 +1440,7 @@ EOF
     'invalid Clippy suppression' \
     'Cargo lint allowances are prohibited' \
     'Cargo rustflags must not allow diagnostics' \
+    'Cargo execution override is prohibited' \
     'source file exceeds 1048576 bytes'; do
     grep -Fq "$diagnostic" <<<"$output" || {
       printf 'policy output omitted %s:\n%s\n' "$diagnostic" "$output" >&2
