@@ -841,7 +841,6 @@ build)
   fi
   ;;
 test)
-  shift
   printf '%s\n' "$*" >>"${CARGO_CALL_LOG:?}"
   ;;
 llvm-cov) printf 'cargo-llvm-cov %s\n' "${LLVM_COV_VERSION:-0.8.7}" ;;
