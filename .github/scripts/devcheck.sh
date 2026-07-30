@@ -270,7 +270,7 @@ if [[ "$profile" == config ]]; then
   finish
   exit $?
 fi
-if [[ "$profile" != quick && "${DEVCHECK_SELF_TEST:-false}" == true ]]; then
+if [[ "$profile" != quick && "${DEVCHECK_SELF_TEST:-true}" == true ]]; then
   run_check 'Verification Scripts' bash ./.github/scripts/verification_test.sh
 else
   skip_check 'Verification Scripts' 'Full profile'

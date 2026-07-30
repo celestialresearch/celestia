@@ -1164,6 +1164,26 @@ EOF
   }
   rm -- "$work_dir/skipped_test.go"
 
+  cat >"$work_dir/skipped_test.go" <<'EOF'
+package fixture
+
+import "testing"
+
+func TestSkipped(t *testing.T) {
+	(*testing.T).Skip(t, "unverified")
+}
+EOF
+  set +e
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh test-skips 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a method-expression Go skip\n' >&2
+    return 1
+  }
+  rm -- "$work_dir/skipped_test.go"
+
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]
 #[ignore]
@@ -1185,6 +1205,22 @@ EOF
   }
   rm -- "$work_dir/ignored_test.rs"
 
+  cat >"$work_dir/ignored_test.rs" <<'EOF'
+#[test]
+#[cfg_attr(all(), ignore)]
+fn ignored() {}
+EOF
+  set +e
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh test-skips 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a conditionally ignored Rust test\n' >&2
+    return 1
+  }
+  rm -- "$work_dir/ignored_test.rs"
+
   printf '%s%s\n' '// #no' 'sec -- broad' >"$work_dir/broad_suppression.go"
   printf '%s%s\n' '//no' 'lint -- broad' >"$work_dir/broad_nolint.go"
   printf '%s%s\n' '//no' 'lint:all -- reasoned blanket suppression' \
@@ -1196,6 +1232,10 @@ EOF
   printf '%s%s\n' '#[al' \
     'low(clippy::all, reason = "reasoned blanket suppression")]' \
     >"$work_dir/reasoned_broad_clippy.rs"
+  printf '%s%s\n' '#![al' 'low(clippy::all)]' \
+    >"$work_dir/inner_broad_clippy.rs"
+  printf '%s%s\n' '#![ex' 'pect(clippy::all)]' \
+    >"$work_dir/inner_broad_expect.rs"
   {
     printf '%s%s\n' '#[al' 'low('
     printf '%s\n' '    clippy::all,'
@@ -1228,6 +1268,8 @@ EOF
     "$work_dir/broad_shellcheck.sh" \
     "$work_dir/broad_clippy.rs" \
     "$work_dir/reasoned_broad_clippy.rs" \
+    "$work_dir/inner_broad_clippy.rs" \
+    "$work_dir/inner_broad_expect.rs" \
     "$work_dir/reasoned_broad_multiline_clippy.rs"
 
   {
