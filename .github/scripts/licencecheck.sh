@@ -72,15 +72,25 @@ style_for() {
 }
 
 current_header() {
+  local count=0
   local file=$1
   local first
+  local line
 
   IFS= read -r first <"$file" || true
-  if [[ "$first" == '#!'* ]]; then
-    tail -n +2 "$file"
-  else
-    cat "$file"
-  fi | head -n 10
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if ((count == 0)) && [[ "$first" == '#!'* ]]; then
+      count=$((count + 1))
+      continue
+    fi
+    printf '%s\n' "$line"
+    count=$((count + 1))
+    if [[ "$first" == '#!'* ]]; then
+      ((count <= 10)) || break
+    else
+      ((count < 10)) || break
+    fi
+  done <"$file"
 }
 
 render_header() {

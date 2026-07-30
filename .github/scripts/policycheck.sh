@@ -65,19 +65,15 @@ check_markers() {
 }
 
 check_private_keys() {
-  local kind
   local matches
-  local marker
 
-  for kind in '' 'RSA ' 'EC ' 'DSA ' 'OPENSSH '; do
-    marker="BEGIN ${kind}PRIVATE KEY"
-    matches=$(git_grep --untracked -n -I -F "$marker" -- . \
-      ':(exclude).cache/**')
-    [[ -z "$matches" ]] || {
-      printf '%s\n' "$matches" >&2
-      fail 'private-key material found in repository files'
-    }
-  done
+  matches=$(git_grep --untracked -n -I \
+    -E 'BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY' -- . \
+    ':(exclude).cache/**')
+  [[ -z "$matches" ]] || {
+    printf '%s\n' "$matches" >&2
+    fail 'private-key material found in repository files'
+  }
 }
 
 check_test_skips() {
