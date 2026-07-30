@@ -87,13 +87,7 @@ classify_path() {
   *.go)
     go=true
     compatibility=true
-    case "$path" in
-    internal/attemptstore/* | internal/processsupervision/* | \
-      internal/urladmission/* | internal/urloperation/* | \
-      internal/urlreferencev1/* | internal/workerprotocolv1/*)
-      mark_full
-      ;;
-    esac
+    mark_full
     ;;
   *.rs)
     rust=true

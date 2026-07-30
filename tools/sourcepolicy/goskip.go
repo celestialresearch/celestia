@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
+	"go/build/constraint"
 	"go/importer"
 	"go/parser"
 	"go/token"
@@ -28,6 +29,7 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -236,6 +238,9 @@ func goCandidateDirectories(
 	paths []string,
 	readFile func(string) ([]byte, error),
 ) (map[string]bool, map[string][]byte, error) {
+	if err := rejectExternalModuleReplacements(paths, readFile); err != nil {
+		return nil, nil, err
+	}
 	testDirectories := make(map[string]bool)
 	for _, path := range paths {
 		if strings.HasSuffix(path, "_test.go") {
@@ -248,19 +253,25 @@ func goCandidateDirectories(
 		directories[directory] = true
 	}
 	for _, path := range paths {
-		if filepath.Ext(path) != ".go" {
+		directory := filepath.Dir(path)
+		if isGoNativeSource(path) {
+			if testDirectories[directory] {
+				return nil, nil, fmt.Errorf(
+					"%s: Go native source is outside the test policy analyser",
+					path,
+				)
+			}
 			continue
 		}
-		source, err := readFile(path)
+		absolute, source, selected, err := snapshotGoSource(path, readFile)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", path, err)
+			return nil, nil, err
 		}
-		absolute, err := filepath.Abs(path)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%s: resolve Go source: %w", path, err)
+		if !selected {
+			continue
 		}
 		overlay[absolute] = slices.Clone(source)
-		if !testDirectories[filepath.Dir(path)] {
+		if !testDirectories[directory] {
 			continue
 		}
 		_, err = hasGoPolicySelector(path, source)
@@ -269,6 +280,172 @@ func goCandidateDirectories(
 		}
 	}
 	return directories, overlay, nil
+}
+
+func snapshotGoSource(
+	path string,
+	readFile func(string) ([]byte, error),
+) (string, []byte, bool, error) {
+	if filepath.Ext(path) != ".go" {
+		return "", nil, false, nil
+	}
+	source, err := readFile(path)
+	if err != nil {
+		return "", nil, false, fmt.Errorf("%s: %w", path, err)
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", nil, false, fmt.Errorf(
+			"%s: resolve Go source: %w",
+			path,
+			err,
+		)
+	}
+	if err := rejectArchitectureFeatureTags(path, source); err != nil {
+		return "", nil, false, err
+	}
+	return absolute, source, true, nil
+}
+
+func rejectExternalModuleReplacements(
+	paths []string,
+	readFile func(string) ([]byte, error),
+) error {
+	repositoryRoot, err := filepath.Abs(".")
+	if err != nil {
+		return fmt.Errorf("resolve repository root: %w", err)
+	}
+	for _, path := range paths {
+		if filepath.Base(path) != "go.mod" {
+			continue
+		}
+		source, err := readFile(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		module, err := modfile.Parse(path, source, nil)
+		if err != nil {
+			return fmt.Errorf("%s: parse Go module: %w", path, err)
+		}
+		for _, replacement := range module.Replace {
+			escapes, err := moduleReplacementEscapes(
+				path,
+				replacement,
+				repositoryRoot,
+			)
+			if err != nil {
+				return err
+			}
+			if escapes {
+				return fmt.Errorf(
+					"%s: Go module replacement escapes the repository",
+					path,
+				)
+			}
+		}
+	}
+	return nil
+}
+
+func moduleReplacementEscapes(
+	modulePath string,
+	replacement *modfile.Replace,
+	repositoryRoot string,
+) (bool, error) {
+	if replacement.New.Version != "" || replacement.New.Path == "" {
+		return false, nil
+	}
+	target := replacement.New.Path
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(modulePath), target)
+	}
+	absolute, err := filepath.Abs(target)
+	if err != nil {
+		return false, fmt.Errorf(
+			"%s: resolve Go module replacement: %w",
+			modulePath,
+			err,
+		)
+	}
+	relative, err := filepath.Rel(repositoryRoot, absolute)
+	if err != nil {
+		return false, fmt.Errorf(
+			"%s: compare Go module replacement: %w",
+			modulePath,
+			err,
+		)
+	}
+	return relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)), nil
+}
+
+func isGoNativeSource(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".s", ".c", ".cc", ".cpp", ".cxx", ".m", ".mm",
+		".f", ".for", ".f90", ".h", ".hh", ".hpp", ".hxx",
+		".swig", ".swigcxx", ".syso":
+		return true
+	default:
+		return false
+	}
+}
+
+func rejectArchitectureFeatureTags(path string, source []byte) error {
+	file, err := parser.ParseFile(
+		token.NewFileSet(),
+		path,
+		source,
+		parser.ParseComments,
+	)
+	if err != nil {
+		kind := "source"
+		if strings.HasSuffix(path, "_test.go") {
+			kind = "test"
+		}
+		return fmt.Errorf("%s: parse Go %s: %w", path, kind, err)
+	}
+	for _, group := range file.Comments {
+		for _, comment := range group.List {
+			text := strings.TrimSpace(comment.Text)
+			if !strings.HasPrefix(text, "//go:build ") &&
+				!strings.HasPrefix(text, "// +build ") {
+				continue
+			}
+			expression, err := constraint.Parse(text)
+			if err != nil {
+				return fmt.Errorf(
+					"%s: parse Go build constraint: %w",
+					path,
+					err,
+				)
+			}
+			if architectureFeatureTag(expression) {
+				return fmt.Errorf(
+					"%s: architecture feature build constraints are unsupported",
+					path,
+				)
+			}
+		}
+	}
+	return nil
+}
+
+func architectureFeatureTag(expression constraint.Expr) bool {
+	switch value := expression.(type) {
+	case *constraint.TagExpr:
+		return strings.HasPrefix(value.Tag, "amd64.v") ||
+			strings.HasPrefix(value.Tag, "arm64.v")
+	case *constraint.NotExpr:
+		return architectureFeatureTag(value.X)
+	case *constraint.AndExpr:
+		return architectureFeatureTag(value.X) ||
+			architectureFeatureTag(value.Y)
+	case *constraint.OrExpr:
+		return architectureFeatureTag(value.X) ||
+			architectureFeatureTag(value.Y)
+	default:
+		return false
+	}
 }
 
 func runGoBuildUnits(units []goBuildUnit) ([]string, error) {
@@ -456,7 +633,7 @@ func goSkipFindingsForTargetWithOverlay(
 	overlay map[string][]byte,
 	load packageLoader,
 ) ([]string, error) {
-	environment := append([]string{}, os.Environ()...)
+	environment := goPolicyEnvironment(target)
 	cgo := "0"
 	if target.cgo {
 		cgo = "1"
@@ -466,6 +643,7 @@ func goSkipFindingsForTargetWithOverlay(
 		"GOOS="+target.goos,
 		"GOARCH="+target.goarch,
 		"CGO_ENABLED="+cgo,
+		"GOPACKAGESDRIVER=off",
 	)
 	buildFlags := []string(nil)
 	if target.race {
@@ -510,6 +688,49 @@ func goSkipFindingsForTargetWithOverlay(
 		findings = append(findings, inspector.findings()...)
 	}
 	return findings, nil
+}
+
+func goPolicyEnvironment(target buildTarget) []string {
+	blocked := map[string]bool{
+		"CGO_ENABLED":      true,
+		"GOARCH":           true,
+		"GOARM64":          true,
+		"GOAMD64":          true,
+		"GOENV":            true,
+		"GOFLAGS":          true,
+		"GOOS":             true,
+		"GOTOOLCHAIN":      true,
+		"GOWORK":           true,
+		"GOPACKAGESDRIVER": true,
+	}
+	environment := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		name, _, _ := strings.Cut(entry, "=")
+		reject := false
+		for variable := range blocked {
+			if strings.EqualFold(name, variable) {
+				reject = true
+				break
+			}
+		}
+		if !reject {
+			environment = append(environment, entry)
+		}
+	}
+	switch target.goarch {
+	case "amd64":
+		environment = append(environment, "GOAMD64=v1")
+	case "arm64":
+		environment = append(environment, "GOARM64=v8.0")
+	}
+	environment = append(
+		environment,
+		"GOENV=off",
+		"GOFLAGS=",
+		"GOTOOLCHAIN=local",
+		"GOWORK=off",
+	)
+	return environment
 }
 
 func policyPackages(

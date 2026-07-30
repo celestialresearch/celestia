@@ -15,9 +15,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"go/ast"
+	"go/token"
+	"go/types"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -173,6 +177,12 @@ func TestGoSkipLoadFailures(t *testing.T) {
 				"GOOS=linux",
 				"GOARCH=amd64",
 				"CGO_ENABLED=1",
+				"GOAMD64=v1",
+				"GOENV=off",
+				"GOFLAGS=",
+				"GOPACKAGESDRIVER=off",
+				"GOTOOLCHAIN=local",
+				"GOWORK=off",
 			} {
 				if !slices.Contains(config.Env, value) {
 					t.Errorf("environment omits %q", value)
@@ -202,6 +212,201 @@ func TestGoRaceLoadFlags(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("race load error = %v", err)
+	}
+}
+
+func TestGoLoadDisablesPackageDriver(t *testing.T) {
+	t.Setenv("GOPACKAGESDRIVER", "untrusted-driver")
+	root := t.TempDir()
+	testPath := filepath.Join(root, "driver_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "package fixture\n\nimport \"testing\"\n\n" +
+			"func TestDriver(t *testing.T) { t.Skip(\"hidden\") }\n",
+	})
+	t.Chdir(root)
+	findings, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 ||
+		!strings.Contains(findings[0], "Go tests must not skip cases") {
+		t.Fatalf("findings = %v, want one skip", findings)
+	}
+}
+
+func TestGoPolicyUsesPhysicalPositions(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.go")
+	testPath := filepath.Join(root, "main_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		mainPath: "package main\n\nfunc main() {}\n",
+		testPath: "package main\n\nimport \"testing\"\n\n" +
+			"//line ordinary.go:1\n" +
+			"func TestMain(m *testing.M) { return }\n",
+	})
+	t.Chdir(root)
+	findings, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(mainPath), filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 ||
+		!strings.Contains(findings[0], "TestMain violates") ||
+		!strings.Contains(findings[0], "main_test.go") {
+		t.Fatalf("findings = %v, want physical TestMain finding", findings)
+	}
+}
+
+func TestGoPolicyRejectsNativeSource(t *testing.T) {
+	root := t.TempDir()
+	testPath := filepath.Join(root, "native_test.go")
+	nativePath := filepath.Join(root, "call_amd64.s")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "package fixture\n\nimport \"testing\"\n\n" +
+			"func TestNative(t *testing.T) {}\n",
+		nativePath: "TEXT ·entry(SB),$0-0\n\tRET\n",
+	})
+	t.Chdir(root)
+	_, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(testPath), filepath.Base(nativePath)},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "native source") {
+		t.Fatalf("native-source error = %v", err)
+	}
+}
+
+func TestGoPolicyIgnoresUnrelatedNativeSource(t *testing.T) {
+	root := t.TempDir()
+	testPath := filepath.Join(root, "fixture", "ordinary_test.go")
+	nativePath := filepath.Join(root, "other", "ordinary.h")
+	if err := os.MkdirAll(filepath.Dir(testPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(nativePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "package fixture\n\nimport \"testing\"\n\n" +
+			"func TestOrdinary(t *testing.T) {}\n",
+		nativePath: "#define ORDINARY 1\n",
+	})
+	t.Chdir(root)
+	_, err := goPackageSkipFindingsWithTargets(
+		[]string{
+			filepath.Join("fixture", "ordinary_test.go"),
+			filepath.Join("other", "ordinary.h"),
+		},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGoPolicyRejectsArchitectureFeatures(t *testing.T) {
+	root := t.TempDir()
+	testPath := filepath.Join(root, "feature_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "//go:build amd64.v2\n\npackage fixture\n\n" +
+			"import \"testing\"\n\nfunc TestFeature(t *testing.T) {}\n",
+	})
+	t.Chdir(root)
+	_, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: "linux", goarch: "amd64"}},
+	)
+	if err == nil ||
+		!strings.Contains(err.Error(), "architecture feature build constraints") {
+		t.Fatalf("architecture-feature error = %v", err)
+	}
+}
+
+func TestGoPolicyRejectsExternalReplacement(t *testing.T) {
+	root := t.TempDir()
+	modulePath := filepath.Join(root, "go.mod")
+	testPath := filepath.Join(root, "replace_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "package fixture\n\nimport \"testing\"\n\n" +
+			"func TestReplacement(t *testing.T) {}\n",
+	})
+	if err := os.WriteFile(
+		modulePath,
+		[]byte("module fixture.invalid/root\n\ngo 1.26.5\n\n"+
+			"replace fixture.invalid/helper => ../helper\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	_, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(modulePath), filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "escapes the repository") {
+		t.Fatalf("replacement error = %v", err)
+	}
+}
+
+func TestGoPolicyRejectsTestMainBypasses(t *testing.T) {
+	tests := map[string]string{
+		"function literal": "go func() { os.Exit(0) }()\n",
+		"repeated run":     "_ = m.Run()\n",
+	}
+	for name, statement := range tests {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			mainPath := filepath.Join(root, "main.go")
+			testPath := filepath.Join(root, "main_test.go")
+			writeGoPolicyFixture(t, root, map[string]string{
+				mainPath: "package main\n\nfunc main() {}\n",
+				testPath: "package main\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\n" +
+					"func TestMain(m *testing.M) {\n" + statement +
+					"\tos.Exit(m.Run())\n}\n",
+			})
+			t.Chdir(root)
+			findings, err := goPackageSkipFindingsWithTargets(
+				[]string{filepath.Base(mainPath), filepath.Base(testPath)},
+				os.ReadFile,
+				[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(findings) != 1 ||
+				!strings.Contains(findings[0], "TestMain violates") {
+				t.Fatalf("findings = %v, want TestMain finding", findings)
+			}
+		})
+	}
+}
+
+func TestGoPolicyRecognisesWindowsExit(t *testing.T) {
+	pkg := types.NewPackage("golang.org/x/sys/windows", "windows")
+	signature := types.NewSignatureType(
+		nil,
+		nil,
+		nil,
+		types.NewTuple(types.NewParam(token.NoPos, pkg, "code", types.Typ[types.Int])),
+		nil,
+		false,
+	)
+	function := types.NewFunc(token.NoPos, pkg, "Exit", signature)
+	identifier := &ast.Ident{Name: "Exit"}
+	info := &types.Info{Uses: map[*ast.Ident]types.Object{identifier: function}}
+	if !isProcessExitFunction(identifier, info) {
+		t.Fatal("Windows Exit was not recognised")
 	}
 }
 

@@ -198,13 +198,13 @@ main() (
     printf 'coverage check omits Cygwin Go-path conversion\n' >&2
     return 1
   }
-  grep -Fq 'go test -p=2 -count=1 -shuffle=on ./...' \
-    "$root/.github/scripts/devcheck.sh" || {
+  grep -Fq 'arguments=(-p=2 -count=1 -shuffle=on)' \
+    "$root/.github/scripts/testcheck.sh" || {
     printf 'standard tests omit the package parallelism bound\n' >&2
     return 1
   }
-  grep -Fq 'go test -p=2 -race -count=1 -shuffle=on ./...' \
-    "$root/.github/scripts/devcheck.sh" || {
+  grep -Fq 'arguments=(-p=2 -race -count=1 -shuffle=on)' \
+    "$root/.github/scripts/testcheck.sh" || {
     printf 'race tests omit the package parallelism bound\n' >&2
     return 1
   }
@@ -495,6 +495,7 @@ EOF
   currency_pid=$!
   bash "$root/.github/scripts/actioncheck_test.sh" &
   action_pid=$!
+  bash "$root/.github/scripts/testcheck_test.sh"
 
   mkdir -p \
     "$work_dir/.github/scripts" \
@@ -506,6 +507,7 @@ EOF
     "$root/.github/scripts/policycheck.sh" \
     "$work_dir/.github/scripts/"
   cp \
+    "$root/tools/sourcepolicy/goinspect.go" \
     "$root/tools/sourcepolicy/goskip.go" \
     "$root/tools/sourcepolicy/main.go" \
     "$root/tools/sourcepolicy/rustpolicy.go" \
@@ -558,7 +560,8 @@ EOF
 /rust/
 /type-assertion/
 EOF
-  if command -v mkfifo >/dev/null 2>&1; then
+  if [[ "$(go env GOOS)" != windows ]] &&
+    command -v mkfifo >/dev/null 2>&1; then
     mkdir -p "$work_dir/config-bin"
     (
       cd "$work_dir"
@@ -650,7 +653,9 @@ EOF
   mkdir -p "$rust_dir/.github/scripts" "$rust_dir/.github/workflows" \
     "$rust_dir/bin" "$rust_dir/worker/qualification-fixtures" \
     "$rust_dir/worker/url-reference"
-  cp "$root/.github/scripts/rustcheck.sh" "$rust_dir/.github/scripts/"
+  cp "$root/.github/scripts/rustcheck.sh" \
+    "$root/.github/scripts/testcheck.sh" \
+    "$rust_dir/.github/scripts/"
   cat >"$rust_dir/Cargo.toml" <<'EOF'
 [workspace]
 resolver = "3"
@@ -1248,11 +1253,11 @@ EOF
     printf 'coverage check accepted a failing test\n' >&2
     return 1
   }
-  if grep -Fq 'unbound variable' <<<"$output"; then
+  if [[ "$output" == *'unbound variable'* ]]; then
     printf 'coverage cleanup masked a failing test:\n%s\n' "$output" >&2
     return 1
   fi
-  grep -Fq 'fixture failure' <<<"$output" || {
+  [[ "$output" == *'fixture failure'* ]] || {
     printf 'coverage check discarded failing test output:\n%s\n' "$output" >&2
     return 1
   }

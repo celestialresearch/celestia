@@ -360,9 +360,7 @@ check_release_outputs() (
 )
 
 check_tests() {
-  local cargo_bin=${CARGO_BIN:-cargo}
-  "$cargo_bin" test --workspace --locked
-  "$cargo_bin" test --workspace --all-targets --locked
+  bash ./.github/scripts/testcheck.sh rust
 }
 
 case "$mode" in

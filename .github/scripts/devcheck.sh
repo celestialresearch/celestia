@@ -171,15 +171,15 @@ fuzz_smoke() {
 }
 
 go_standard_tests() {
-  go test -p=2 -count=1 -shuffle=on ./...
+  bash ./.github/scripts/testcheck.sh go standard
 }
 
 go_quick_tests() {
-  go test -p=2 ./...
+  bash ./.github/scripts/testcheck.sh go quick
 }
 
 go_race_tests() {
-  go test -p=2 -race -count=1 -shuffle=on ./...
+  bash ./.github/scripts/testcheck.sh go race
 }
 
 rust_docs() {

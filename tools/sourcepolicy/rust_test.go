@@ -50,6 +50,26 @@ var cargoLintCases = []struct {
 		"[package]\nname = \"fixture\"\nautotests = false\n",
 		1,
 	},
+	{
+		"automatic library disabled",
+		"[package]\nname = \"fixture\"\nautolib = false\n",
+		1,
+	},
+	{
+		"automatic binaries disabled",
+		"[package]\nname = \"fixture\"\nautobins = false\n",
+		1,
+	},
+	{
+		"automatic examples disabled",
+		"[package]\nname = \"fixture\"\nautoexamples = false\n",
+		1,
+	},
+	{
+		"automatic benches disabled",
+		"[package]\nname = \"fixture\"\nautobenches = false\n",
+		1,
+	},
 	{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 0},
 	{"doctests disabled", "[lib]\ndoctest = false\n", 1},
 	{"custom harness", "[[test]]\nname = \"fixture\"\nharness = false\n", 1},

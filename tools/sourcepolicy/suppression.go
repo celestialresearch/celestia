@@ -230,11 +230,20 @@ func cargoTestDiscoveryFindings(
 		))
 	}
 	if packageTable := nestedTable(document, "package"); packageTable != nil {
-		if autotests, exists := packageTable["autotests"]; exists &&
-			autotests != true {
-			findings = append(findings, fmt.Sprintf(
-				"%s: Cargo automatic test discovery must remain enabled", path,
-			))
+		for _, setting := range []string{
+			"autolib",
+			"autobins",
+			"autoexamples",
+			"autotests",
+			"autobenches",
+		} {
+			if enabled, exists := packageTable[setting]; exists &&
+				enabled != true {
+				findings = append(findings, fmt.Sprintf(
+					"%s: Cargo automatic target discovery must remain enabled",
+					path,
+				))
+			}
 		}
 	}
 	for _, key := range []string{"lib", "bin", "example", "test", "bench"} {

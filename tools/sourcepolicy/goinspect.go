@@ -60,7 +60,7 @@ func (inspector *goPolicyInspector) inspectComment(comment *ast.Comment) bool {
 }
 
 func (inspector *goPolicyInspector) inspectFunction(function *ast.FuncDecl) bool {
-	position := inspector.loaded.Fset.Position(function.Pos())
+	position := inspector.loaded.Fset.PositionFor(function.Pos(), false)
 	if inspector.loaded.Name == "main" &&
 		function.Name.Name == "main" &&
 		!strings.HasSuffix(position.Filename, "_test.go") {
@@ -127,7 +127,7 @@ func (inspector *goPolicyInspector) inspectCall(call *ast.CallExpr) bool {
 }
 
 func (inspector *goPolicyInspector) isExecutableMainCall(call *ast.CallExpr) bool {
-	position := inspector.loaded.Fset.Position(call.Pos())
+	position := inspector.loaded.Fset.PositionFor(call.Pos(), false)
 	if inspector.loaded.Name != "main" ||
 		!strings.HasSuffix(position.Filename, "_test.go") {
 		return false
@@ -141,7 +141,7 @@ func (inspector *goPolicyInspector) isExecutableMainCall(call *ast.CallExpr) boo
 }
 
 func (inspector *goPolicyInspector) add(node ast.Node, message string) {
-	position := inspector.loaded.Fset.Position(node.Pos())
+	position := inspector.loaded.Fset.PositionFor(node.Pos(), false)
 	inspector.found = append(inspector.found, fmt.Sprintf(
 		"%s:%d: %s",
 		filepath.ToSlash(position.Filename),
@@ -173,7 +173,10 @@ func testMainSyntaxBypass(statements []ast.Stmt, info *types.Info) bool {
 			if bypass {
 				return false
 			}
-			if _, ok := node.(*ast.FuncLit); ok {
+			if function, ok := node.(*ast.FuncLit); ok {
+				if containsSuccessfulExit(function.Body, info) {
+					bypass = true
+				}
 				return false
 			}
 			if _, ok := node.(*ast.ReturnStmt); ok {
@@ -182,6 +185,11 @@ func testMainSyntaxBypass(statements []ast.Stmt, info *types.Info) bool {
 			}
 			call, ok := node.(*ast.CallExpr)
 			if !ok || !isOSExit(call, info) {
+				selector, ok := node.(*ast.SelectorExpr)
+				if ok && isTestingMRun(info.Uses[selector.Sel]) {
+					bypass = true
+					return false
+				}
 				return true
 			}
 			if !nonzeroExitCode(call.Args[0]) {
@@ -191,6 +199,21 @@ func testMainSyntaxBypass(statements []ast.Stmt, info *types.Info) bool {
 		})
 	}
 	return bypass
+}
+
+func containsSuccessfulExit(node ast.Node, info *types.Info) bool {
+	found := false
+	ast.Inspect(node, func(node ast.Node) bool {
+		if found {
+			return false
+		}
+		call, ok := node.(*ast.CallExpr)
+		if ok && isOSExit(call, info) && !nonzeroExitCode(call.Args[0]) {
+			found = true
+		}
+		return true
+	})
+	return found
 }
 
 func nonzeroExitCode(expression ast.Expr) bool {
@@ -234,8 +257,11 @@ func isProcessExitFunction(expression ast.Expr, info *types.Info) bool {
 		return true
 	}
 	object := functionObject(expression, "Exit", info)
-	return object != nil && object.Pkg() != nil &&
-		object.Pkg().Path() == "syscall"
+	if object == nil || object.Pkg() == nil {
+		return false
+	}
+	return object.Pkg().Path() == "syscall" ||
+		object.Pkg().Path() == "golang.org/x/sys/windows"
 }
 
 func isOSExitFunction(expression ast.Expr, info *types.Info) bool {
@@ -276,5 +302,26 @@ func isTestingRun(expression ast.Expr, info *types.Info) bool {
 		return false
 	}
 	run, ok := runCall.Fun.(*ast.SelectorExpr)
-	return ok && run.Sel.Name == "Run" && testingMethod(info.Uses[run.Sel])
+	return ok && isTestingMRun(info.Uses[run.Sel])
+}
+
+func isTestingMRun(object types.Object) bool {
+	function, ok := object.(*types.Func)
+	if !ok || function.Pkg() == nil ||
+		function.Pkg().Path() != "testing" ||
+		function.Name() != "Run" {
+		return false
+	}
+	signature, ok := function.Type().(*types.Signature)
+	if !ok || signature.Recv() == nil {
+		return false
+	}
+	pointer, ok := signature.Recv().Type().(*types.Pointer)
+	if !ok {
+		return false
+	}
+	named, ok := pointer.Elem().(*types.Named)
+	return ok && named.Obj().Pkg() != nil &&
+		named.Obj().Pkg().Path() == "testing" &&
+		named.Obj().Name() == "M"
 }

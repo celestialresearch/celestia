@@ -110,6 +110,12 @@ main() {
   assert_value true go "$output"
   assert_value true full "$output"
 
+  for path in cmd/newtool/main.go internal/newpackage/new.go; do
+    output=$(classify_path_directly "$path")
+    assert_value true go "$output"
+    assert_value true full "$output"
+  done
+
   for path in \
     internal/attemptstore/store.go \
     internal/processsupervision/supervisor_windows.go \
