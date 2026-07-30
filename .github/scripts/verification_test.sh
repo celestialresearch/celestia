@@ -79,6 +79,7 @@ main() (
     ;;
   esac
   trap 'cleanup_verification "$work_dir" "$change_pid" "$currency_pid" "$action_pid"' EXIT
+  trap '[[ $- != *e* ]] || printf "verification self-test failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
   trap 'exit 1' HUP INT TERM
   real_go=$(command -v go)
   go_version=$(awk '$1 == "go" { print $2; exit }' "$root/go.mod")
@@ -502,7 +503,7 @@ EOF
     "$root/.github/scripts/policycheck.sh" \
     "$work_dir/.github/scripts/"
   cp "$root/tools/sourcepolicy/main.go" "$work_dir/tools/sourcepolicy/"
-  printf 'default 90\ncache-max-age-minutes 0\n' \
+  printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
     >"$work_dir/.github/.coverage"
   printf 'module celestia.research/coverage\n\ngo 1.26.5\n' >"$work_dir/go.mod"
   git -C "$work_dir" init -q
@@ -1112,7 +1113,11 @@ func TestSecond(t *testing.T) {
 	}
 }
 EOF
-  (cd "$work_dir" && bash .github/scripts/coveragecheck.sh verify >/dev/null)
+  output=$(cd "$work_dir" && bash .github/scripts/coveragecheck.sh verify 2>&1) || {
+    printf 'coverage check rejected the fully covered fixture:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
   (
     cd "$work_dir" &&
       bash .github/scripts/coveragecheck.sh cached >/dev/null
