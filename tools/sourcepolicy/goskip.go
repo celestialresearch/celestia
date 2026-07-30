@@ -63,14 +63,6 @@ func goPackageSkipFindings(
 	if err != nil || len(directories) == 0 {
 		return nil, err
 	}
-	for _, path := range paths {
-		if filepath.Ext(path) != ".go" || !directories[filepath.Dir(path)] {
-			continue
-		}
-		if _, err := readFile(path); err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-	}
 	units, err := goBuildUnits(paths, directories)
 	if err != nil {
 		return nil, err
@@ -82,9 +74,16 @@ func goCandidateDirectories(
 	paths []string,
 	readFile func(string) ([]byte, error),
 ) (map[string]bool, error) {
+	testDirectories := make(map[string]bool)
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			testDirectories[filepath.Dir(path)] = true
+		}
+	}
 	directories := make(map[string]bool)
 	for _, path := range paths {
-		if !strings.HasSuffix(path, "_test.go") {
+		if filepath.Ext(path) != ".go" ||
+			!testDirectories[filepath.Dir(path)] {
 			continue
 		}
 		source, err := readFile(path)
@@ -241,10 +240,6 @@ func goSkipFindingsForTarget(
 			)
 		}
 		for _, file := range loadedPackage.Syntax {
-			position := loadedPackage.Fset.Position(file.Pos())
-			if !strings.HasSuffix(position.Filename, "_test.go") {
-				continue
-			}
 			ast.Inspect(file, func(node ast.Node) bool {
 				selector, ok := node.(*ast.SelectorExpr)
 				if !ok || !isTestingSkip(selector, loadedPackage.TypesInfo) {

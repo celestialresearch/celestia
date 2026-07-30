@@ -359,7 +359,7 @@ func TestGoSkipMethods(t *testing.T) {
 
 func TestGoSkipAcrossFiles(t *testing.T) {
 	root := t.TempDir()
-	helper := filepath.Join(root, "helper_test.go")
+	helper := filepath.Join(root, "helper.go")
 	caller := filepath.Join(root, "caller_test.go")
 	linux := filepath.Join(root, "platform_linux.go")
 	windows := filepath.Join(root, "platform_windows.go")
@@ -520,6 +520,8 @@ func TestCargoConfigurationAllowances(t *testing.T) {
 				`rustflags = ["--cap-lints=allow"]`,
 			1,
 		},
+		{"warn cap", `[build]` + "\n" + `rustflags = ["--cap-lints=warn"]`, 1},
+		{"deny cap", `[build]` + "\n" + `rustflags = ["--cap-lints", "deny"]`, 1},
 		{
 			"rustdoc allow",
 			`[build]` + "\n" + `rustdocflags = ["--allow=warnings"]`,
@@ -568,6 +570,22 @@ func TestRustPolicyAttributes(t *testing.T) {
 		{
 			"include forwarding",
 			`macro_rules! load { ($path:expr) => { include!($path) } }`,
+			modeTestSkips,
+			1,
+		},
+		{"path module", `#[path = "skipped.inc"] mod skipped;`, modeTestSkips, 1},
+		{
+			"conditional path",
+			`#[cfg_attr(all(), path = "skipped.inc")] mod skipped;`,
+			modeTestSkips,
+			1,
+		},
+		{
+			"forwarded ignore",
+			`macro_rules! make_test {
+				($attribute:meta) => { #[test] #[$attribute] fn generated() {} };
+			}
+			make_test!(ignore);`,
 			modeTestSkips,
 			1,
 		},

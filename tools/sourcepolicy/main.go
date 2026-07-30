@@ -396,10 +396,8 @@ type rustAttribute struct {
 }
 
 func rustFindings(path string, source []byte, mode string) []string {
-	if line, found := rustIncludeLine(source); found {
-		return []string{fmt.Sprintf(
-			"%s:%d: Rust include! is prohibited", path, line,
-		)}
+	if finding := rustExpansionFinding(path, source, mode); finding != "" {
+		return []string{finding}
 	}
 	attributes, err := rustAttributes(source)
 	if err != nil {
@@ -407,26 +405,58 @@ func rustFindings(path string, source []byte, mode string) []string {
 	}
 	var findings []string
 	for _, attribute := range attributes {
-		words := rustAttributeIdentifiers([]byte(attribute.text))
-		switch mode {
-		case modeTestSkips:
-			if contains(words, "ignore") {
-				findings = append(findings, fmt.Sprintf(
-					"%s:%d: Rust tests must not ignore cases", path, attribute.line))
-			}
-		case modeSuppressions:
-			if contains(words, "allow") || contains(words, "expect") {
-				if !validClippySuppression(attribute.text) {
-					findings = append(findings, fmt.Sprintf(
-						"%s:%d: invalid Clippy suppression", path, attribute.line))
-				}
-			}
-		}
+		findings = append(
+			findings,
+			rustAttributeFindings(path, attribute, mode)...,
+		)
 	}
 	return findings
 }
 
-func rustIncludeLine(source []byte) (int, bool) {
+func rustExpansionFinding(path string, source []byte, mode string) string {
+	if line, found := rustIdentifierLine(source, "include"); found {
+		return fmt.Sprintf(
+			"%s:%d: Rust include! is prohibited", path, line,
+		)
+	}
+	if line, found := rustIdentifierLine(source, "ignore"); mode == modeTestSkips && found {
+		return fmt.Sprintf(
+			"%s:%d: Rust tests must not ignore cases", path, line,
+		)
+	}
+	return ""
+}
+
+func rustAttributeFindings(
+	path string,
+	attribute rustAttribute,
+	mode string,
+) []string {
+	words := rustAttributeIdentifiers([]byte(attribute.text))
+	if contains(words, "path") {
+		return []string{fmt.Sprintf(
+			"%s:%d: Rust path attributes are prohibited", path, attribute.line,
+		)}
+	}
+	switch mode {
+	case modeTestSkips:
+		if contains(words, "ignore") {
+			return []string{fmt.Sprintf(
+				"%s:%d: Rust tests must not ignore cases", path, attribute.line,
+			)}
+		}
+	case modeSuppressions:
+		if (contains(words, "allow") || contains(words, "expect")) &&
+			!validClippySuppression(attribute.text) {
+			return []string{fmt.Sprintf(
+				"%s:%d: invalid Clippy suppression", path, attribute.line,
+			)}
+		}
+	}
+	return nil
+}
+
+func rustIdentifierLine(source []byte, wanted string) (int, bool) {
 	for index, line := 0, 1; index < len(source); {
 		next, nextLine, valid := skipRustTrivia(source, index, line)
 		index, line = next, nextLine
@@ -446,7 +476,7 @@ func rustIncludeLine(source []byte) (int, bool) {
 			continue
 		}
 		identifier := string(source[start:index])
-		if identifier == "include" {
+		if identifier == wanted {
 			return line, true
 		}
 		index, line, valid = skipRustTrivia(source, index, line)

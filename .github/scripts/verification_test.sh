@@ -1224,7 +1224,7 @@ EOF
   }
   rm -- "$work_dir/skipped_test.go"
 
-  cat >"$work_dir/helper_test.go" <<'EOF'
+  cat >"$work_dir/helper.go" <<'EOF'
 package fixture
 
 import "testing"
@@ -1275,7 +1275,7 @@ EOF
     return 1
   }
   rm -- \
-    "$work_dir/helper_test.go" \
+    "$work_dir/helper.go" \
     "$work_dir/skipped_test.go" \
     "$work_dir/platform_linux.go" \
     "$work_dir/platform_windows.go"
@@ -1342,6 +1342,21 @@ use std::include as load;
 
 load!("skipped.inc");
 EOF
+  cat >"$work_dir/path_test.rs" <<'EOF'
+#[path = "skipped.inc"]
+mod skipped;
+EOF
+  cat >"$work_dir/forwarded_test.rs" <<'EOF'
+macro_rules! make_test {
+	($attribute:meta) => {
+		#[test]
+		#[$attribute]
+		fn generated() {}
+	};
+}
+
+make_test!(ignore);
+EOF
   cat >"$work_dir/skipped.inc" <<'EOF'
 #[test]
 #[ignore]
@@ -1353,7 +1368,7 @@ EOF
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted Rust include expansion\n' >&2
+    printf 'policy check accepted Rust source expansion\n' >&2
     return 1
   }
   grep -Fq 'Rust include! is prohibited' <<<"$output" || {
@@ -1361,7 +1376,16 @@ EOF
       "$output" >&2
     return 1
   }
-  rm -- "$work_dir/included_test.rs" "$work_dir/skipped.inc"
+  grep -Fq 'Rust path attributes are prohibited' <<<"$output" || {
+    printf 'policy output omitted the Rust path failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- \
+    "$work_dir/included_test.rs" \
+    "$work_dir/path_test.rs" \
+    "$work_dir/forwarded_test.rs" \
+    "$work_dir/skipped.inc"
 
   printf '%s%s\n' '// #no' 'sec -- broad' >"$work_dir/broad_suppression.go"
   printf '%s%s\n' '//no' 'lint -- broad' >"$work_dir/broad_nolint.go"

@@ -144,12 +144,7 @@ func cargoAllowsLint(value any) bool {
 	if !valid {
 		return true
 	}
-	for index, flag := range flags {
-		if cargoFlagAllowsLint(flags, index, flag) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(flags, cargoFlagAllowsLint)
 }
 
 func cargoFlags(value any) ([]string, bool) {
@@ -171,15 +166,14 @@ func cargoFlags(value any) ([]string, bool) {
 	}
 }
 
-func cargoFlagAllowsLint(flags []string, index int, flag string) bool {
+func cargoFlagAllowsLint(flag string) bool {
 	return strings.HasPrefix(flag, "@") ||
 		flag == "-A" ||
 		flag == "--allow" ||
 		strings.HasPrefix(flag, "-A") && len(flag) > 2 ||
 		strings.HasPrefix(flag, "--allow=") ||
-		flag == "--cap-lints=allow" ||
-		flag == "--cap-lints" &&
-			index+1 < len(flags) && flags[index+1] == "allow"
+		flag == "--cap-lints" ||
+		strings.HasPrefix(flag, "--cap-lints=")
 }
 
 func nestedTable(document map[string]any, keys ...string) map[string]any {
