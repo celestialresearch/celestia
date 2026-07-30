@@ -1326,8 +1326,8 @@ EOF
   cat >"$work_dir/Cargo.toml" <<'EOF'
 [workspace]
 
-[workspace.lints.clippy]
-all = "allow"
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "allow"
 EOF
   head -c 1048577 /dev/zero | tr '\0' x >"$work_dir/oversized.sh"
   {

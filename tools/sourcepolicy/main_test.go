@@ -400,7 +400,23 @@ func TestCargoLintAllowances(t *testing.T) {
 			1,
 		},
 		{"Rust allow", "[lints.rust]\nunsafe_code = \"allow\"\n", 1},
+		{
+			"Rustdoc allow",
+			"[lints.rustdoc]\nbroken_intra_doc_links = \"allow\"\n",
+			1,
+		},
+		{
+			"Cargo allow",
+			"[workspace.lints.cargo]\nunknown_lints = \"allow\"\n",
+			1,
+		},
+		{
+			"custom tool allow",
+			"[lints.custom]\nrule = \"allow\"\n",
+			1,
+		},
 		{"deny", "[workspace.lints.clippy]\nall = \"deny\"\n", 0},
+		{"workspace inheritance", "[lints]\nworkspace = true\n", 0},
 		{"unrelated", "[package]\nname = \"fixture\"\n", 0},
 		{"malformed", "[lints.clippy\n", 1},
 	}

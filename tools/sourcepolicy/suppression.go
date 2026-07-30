@@ -84,8 +84,11 @@ func cargoLintFindings(path string, source []byte) []string {
 	var findings []string
 	for _, root := range []string{"lints", "workspace.lints"} {
 		table := nestedTable(document, strings.Split(root, ".")...)
-		for _, namespace := range []string{"clippy", "rust"} {
-			lints := nestedTable(table, namespace)
+		for namespace, value := range table {
+			lints, ok := value.(map[string]any)
+			if !ok {
+				continue
+			}
 			for rule, value := range lints {
 				if lintLevel(value) != "allow" {
 					continue
