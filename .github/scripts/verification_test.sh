@@ -195,7 +195,7 @@ main() (
     printf 'devcheck omits the quick profile\n' >&2
     return 1
   }
-  grep -Fq "\${DEVCHECK_SELF_TEST:-false}" \
+  grep -Fq "\${DEVCHECK_SELF_TEST:-true}" \
     "$root/.github/scripts/devcheck.sh" || {
     printf 'verification self-tests are not explicitly owned\n' >&2
     return 1
