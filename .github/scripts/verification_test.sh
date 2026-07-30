@@ -1605,7 +1605,7 @@ EOF
     'invalid ShellCheck suppression' \
     'invalid Clippy suppression' \
     'dynamic Rust attributes are prohibited' \
-    'Cargo automatic test discovery must remain enabled' \
+    'Cargo automatic target discovery must remain enabled' \
     'Cargo target lib may omit tests' \
     'optional Cargo dependencies require an explicit test matrix' \
     'Cargo profile overrides are prohibited' \
