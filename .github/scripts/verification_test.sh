@@ -13,7 +13,7 @@
 set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-cache_root=${CELESTIA_CACHE_DIR:-"$root/.cache"}
+temp_root=${CELESTIA_VERIFICATION_TMPDIR:-${TMPDIR:-/tmp}}
 
 terminate_child() {
   local pid=$1
@@ -69,10 +69,11 @@ main() (
   local golangci_lint
   local platform_log
 
-  mkdir -p "$cache_root"
-  work_dir=$(mktemp -d "$cache_root/verification-test.XXXXXX")
+  mkdir -p "$temp_root"
+  temp_root=$(cd "$temp_root" && pwd -P)
+  work_dir=$(mktemp -d "$temp_root/verification-test.XXXXXX")
   case "$work_dir" in
-  "$cache_root"/verification-test.*) ;;
+  "$temp_root"/verification-test.*) ;;
   *)
     printf 'refusing unexpected temporary path %s\n' "$work_dir" >&2
     return 1
@@ -551,6 +552,24 @@ EOF
   }
   grep -Fq 'Unknown verification profile: invalid' <<<"$output" || {
     printf 'devcheck omitted the unknown-profile diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+
+  set +e
+  output=$(
+    cd "$root" &&
+      GOFLAGS='-run=^$' DEVCHECK_PROFILE=config \
+        bash .github/scripts/devcheck.sh 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'devcheck accepted an inherited Go test filter\n' >&2
+    return 1
+  }
+  grep -Fq 'Uncontrolled Go test environment: GOFLAGS' <<<"$output" || {
+    printf 'Go test filter rejection omitted the diagnostic:\n%s\n' \
       "$output" >&2
     return 1
   }
@@ -1259,9 +1278,17 @@ EOF
   cat >"$work_dir/skipped_test.go" <<'EOF'
 package fixture
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
-func TestMain(testingMain *testing.M) {}
+func TestMain(testingMain *testing.M) {
+	if true {
+		return
+	}
+	os.Exit(testingMain.Run())
+}
 
 func TestDirectSkip(t *testing.T) {
 	t.Skip("unverified")
@@ -1410,9 +1437,10 @@ EOF
     >"$work_dir/broad_shellcheck.sh"
   printf '%s%s\n' '#shell' 'check disable=SC2086' \
     >"$work_dir/compact_shellcheck.sh"
-  printf '%s%s\n' 'cargo --con' \
-    'fig profile.test.debug-assertions=false test' \
-    >"$work_dir/cargo_config.sh"
+  {
+    printf '%s%s\n' 'cargo_option=--con' 'fig'
+    printf 'cargo "\044cargo_option" profile.test.debug-assertions=false test\n'
+  } >"$work_dir/cargo_config.sh"
   printf '%s%s\n' '#[al' 'low(clippy::needless_pass_by_value)]' \
     >"$work_dir/broad_clippy.rs"
   printf '%s%s\n' '#[al' \

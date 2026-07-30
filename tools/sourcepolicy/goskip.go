@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -403,7 +404,8 @@ func goSkipFindingsForTarget(
 }
 
 func validTestMain(function *ast.FuncDecl, info *types.Info) bool {
-	if function.Body == nil || len(function.Body.List) == 0 {
+	if function.Body == nil || len(function.Body.List) == 0 ||
+		testMainBypassesRun(function.Body.List[:len(function.Body.List)-1], info) {
 		return false
 	}
 	expression, ok := function.Body.List[len(function.Body.List)-1].(*ast.ExprStmt)
@@ -415,6 +417,42 @@ func validTestMain(function *ast.FuncDecl, info *types.Info) bool {
 		return false
 	}
 	return isTestingRun(exitCall.Args[0], info)
+}
+
+func testMainBypassesRun(statements []ast.Stmt, info *types.Info) bool {
+	bypass := false
+	for _, statement := range statements {
+		ast.Inspect(statement, func(node ast.Node) bool {
+			if bypass {
+				return false
+			}
+			if _, ok := node.(*ast.FuncLit); ok {
+				return false
+			}
+			if _, ok := node.(*ast.ReturnStmt); ok {
+				bypass = true
+				return false
+			}
+			call, ok := node.(*ast.CallExpr)
+			if !ok || !isOSExit(call, info) {
+				return true
+			}
+			if !nonzeroExitCode(call.Args[0]) {
+				bypass = true
+			}
+			return true
+		})
+	}
+	return bypass
+}
+
+func nonzeroExitCode(expression ast.Expr) bool {
+	literal, ok := expression.(*ast.BasicLit)
+	if !ok || literal.Kind != token.INT {
+		return false
+	}
+	value, err := strconv.ParseInt(literal.Value, 0, 64)
+	return err == nil && value != 0
 }
 
 func isTestingMain(function *ast.FuncDecl, info *types.Info) bool {

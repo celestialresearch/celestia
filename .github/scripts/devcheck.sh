@@ -14,6 +14,17 @@ set -euo pipefail
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
+if [[ -n "${GOFLAGS:-}" ]]; then
+  printf 'Uncontrolled Go test environment: GOFLAGS\n' >&2
+  exit 1
+fi
+if [[ -n "${GOENV:-}" && "$GOENV" != off ]]; then
+  printf 'Uncontrolled Go test environment: GOENV\n' >&2
+  exit 1
+fi
+export GOENV=off
+unset GOFLAGS
+
 profile=${DEVCHECK_PROFILE:-full}
 case "$profile" in
   config | full | quick | shell) ;;

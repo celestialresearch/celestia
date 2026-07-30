@@ -36,7 +36,11 @@ var (
 		`^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable[[:space:]]*=[[:space:]]*SC[0-9]+(,SC[0-9]+)*[[:space:]]+#[[:space:]]+[^[:space:]].*$`,
 	)
 	cargoCLIConfig = regexp.MustCompile(
-		`(^|[ \t])--config(=|[ \t])`,
+		`--config([^A-Za-z0-9_-]|$)`,
+	)
+	shellAssignment = regexp.MustCompile(
+		`^[ \t]*((export|local|readonly|declare|typeset)([ \t]+-[A-Za-z]+)*` +
+			`[ \t]+)?[A-Za-z_][A-Za-z0-9_]*=`,
 	)
 )
 
@@ -75,13 +79,13 @@ func goSuppressionFindings(path string, source []byte) []string {
 
 func shellSuppressionFindings(path string, source []byte) []string {
 	var findings []string
-	for index, line := range bytes.Split(source, []byte{'\n'}) {
+	for index, line := range policyLines(source) {
 		if shellcheckDirective.Match(line) && !validShellcheck.Match(line) {
 			findings = append(findings, fmt.Sprintf(
 				"%s:%d: invalid ShellCheck suppression", path, index+1,
 			))
 		}
-		if cargoCLIConfig.Match(line) {
+		if cargoConfigLine(line) {
 			findings = append(findings, fmt.Sprintf(
 				"%s:%d: Cargo CLI configuration is prohibited", path, index+1,
 			))
@@ -92,14 +96,32 @@ func shellSuppressionFindings(path string, source []byte) []string {
 
 func workflowCargoConfigFindings(path string, source []byte) []string {
 	var findings []string
-	for index, line := range bytes.Split(source, []byte{'\n'}) {
-		if cargoCLIConfig.Match(line) {
+	for index, line := range policyLines(source) {
+		if cargoConfigLine(line) {
 			findings = append(findings, fmt.Sprintf(
 				"%s:%d: Cargo CLI configuration is prohibited", path, index+1,
 			))
 		}
 	}
 	return findings
+}
+
+func policyLines(source []byte) [][]byte {
+	source = bytes.ReplaceAll(source, []byte("\\\r\n"), []byte(" "))
+	source = bytes.ReplaceAll(source, []byte("\\\n"), []byte(" "))
+	return bytes.Split(source, []byte{'\n'})
+}
+
+func cargoConfigLine(line []byte) bool {
+	location := cargoCLIConfig.FindIndex(line)
+	if location == nil {
+		return false
+	}
+	text := strings.ToLower(string(line))
+	return strings.Contains(text, "cargo") ||
+		strings.Contains(text[:location[0]], "$") ||
+		shellAssignment.MatchString(text) ||
+		strings.HasPrefix(strings.TrimSpace(text), "--config")
 }
 
 func cargoLintFindings(path string, source []byte) []string {

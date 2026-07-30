@@ -161,9 +161,20 @@ func TestShellSuppressionFindings(t *testing.T) {
 		`"$cargo_bin" --config=profile.test.debug-assertions=false test`,
 		`C:\tools\cargo.exe --config profile.test.debug-assertions=false test`,
 		"golangci-lint run --config .golangci.yml ./...",
+		"cargo_option=--config",
+		"readonly option='--config'",
+		`"$tool" --config hostile.toml test`,
 	}, "\n"))
 	findings := shellSuppressionFindings("source.sh", source)
-	if len(findings) != 5 {
+	if len(findings) != 7 {
+		t.Fatalf("findings = %v", findings)
+	}
+}
+
+func TestCargoConfigContinuation(t *testing.T) {
+	source := []byte("cargo --offline \\\n  --config hostile.toml test\n")
+	findings := shellSuppressionFindings("source.sh", source)
+	if len(findings) != 1 {
 		t.Fatalf("findings = %v", findings)
 	}
 }
@@ -492,8 +503,20 @@ func TestValidTestMain(t *testing.T) {
 		valid bool
 	}{
 		{"exit run", "os.Exit(testingMain.Run())", true},
+		{
+			"setup then exit",
+			"fmt.Println(\"setup\"); os.Exit(testingMain.Run())",
+			true,
+		},
 		{"empty", "", false},
 		{"return", "return", false},
+		{
+			"early return",
+			"if true { return }; os.Exit(testingMain.Run())",
+			false,
+		},
+		{"successful early exit", "os.Exit(0); os.Exit(testingMain.Run())", false},
+		{"bare run", "testingMain.Run()", false},
 		{"other exit", "fmt.Println(testingMain.Run())", false},
 		{"missing argument", "os.Exit()", false},
 		{"constant exit", "os.Exit(0)", false},
@@ -525,81 +548,82 @@ func TestValidTestMain(t *testing.T) {
 	}
 }
 
+var cargoLintCases = []struct {
+	name     string
+	source   string
+	findings int
+}{
+	{"Clippy string", "[lints.clippy]\nall = \"allow\"\n", 1},
+	{
+		"Clippy table",
+		"[workspace.lints.clippy]\nneedless_return = { level = \"allow\" }\n",
+		1,
+	},
+	{"Rust allow", "[lints.rust]\nunsafe_code = \"allow\"\n", 1},
+	{
+		"Rustdoc allow",
+		"[lints.rustdoc]\nbroken_intra_doc_links = \"allow\"\n",
+		1,
+	},
+	{
+		"Cargo allow",
+		"[workspace.lints.cargo]\nunknown_lints = \"allow\"\n",
+		1,
+	},
+	{
+		"custom tool allow",
+		"[lints.custom]\nrule = \"allow\"\n",
+		1,
+	},
+	{"deny", "[workspace.lints.clippy]\nall = \"deny\"\n", 0},
+	{"workspace inheritance", "[lints]\nworkspace = true\n", 0},
+	{
+		"automatic tests disabled",
+		"[package]\nname = \"fixture\"\nautotests = false\n",
+		1,
+	},
+	{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 0},
+	{"doctests disabled", "[lib]\ndoctest = false\n", 0},
+	{"custom harness", "[[test]]\nname = \"fixture\"\nharness = false\n", 1},
+	{
+		"feature-gated test",
+		"[[test]]\nname = \"fixture\"\nrequired-features = [\"hidden\"]\n",
+		1,
+	},
+	{"package features", "[features]\nhidden = []\n", 1},
+	{
+		"optional dependency",
+		"[dependencies]\nfixture = { version = \"1\", optional = true }\n",
+		1,
+	},
+	{
+		"target optional dependency",
+		"[target.'cfg(windows)'.dev-dependencies]\n" +
+			"fixture = { version = \"1\", optional = true }\n",
+		1,
+	},
+	{
+		"workspace optional dependency",
+		"[workspace.dependencies]\n" +
+			"fixture = { version = \"1\", optional = true }\n",
+		1,
+	},
+	{
+		"required dependency",
+		"[dependencies]\nfixture = { version = \"1\" }\n",
+		0,
+	},
+	{"test profile", "[profile.test]\ndebug-assertions = false\n", 1},
+	{"ordinary target", "[[test]]\nname = \"fixture\"\npath = \"tests/fixture.rs\"\n", 0},
+	{"patch", "[patch.crates-io]\nfixture = { path = \"../fixture\" }\n", 1},
+	{"replace", "[replace]\n\"fixture:1.0.0\" = { path = \"../fixture\" }\n", 1},
+	{"unrelated", "[package]\nname = \"fixture\"\n", 0},
+	{"malformed", "[lints.clippy\n", 1},
+}
+
 func TestCargoLintAllowances(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name     string
-		source   string
-		findings int
-	}{
-		{"Clippy string", "[lints.clippy]\nall = \"allow\"\n", 1},
-		{
-			"Clippy table",
-			"[workspace.lints.clippy]\nneedless_return = { level = \"allow\" }\n",
-			1,
-		},
-		{"Rust allow", "[lints.rust]\nunsafe_code = \"allow\"\n", 1},
-		{
-			"Rustdoc allow",
-			"[lints.rustdoc]\nbroken_intra_doc_links = \"allow\"\n",
-			1,
-		},
-		{
-			"Cargo allow",
-			"[workspace.lints.cargo]\nunknown_lints = \"allow\"\n",
-			1,
-		},
-		{
-			"custom tool allow",
-			"[lints.custom]\nrule = \"allow\"\n",
-			1,
-		},
-		{"deny", "[workspace.lints.clippy]\nall = \"deny\"\n", 0},
-		{"workspace inheritance", "[lints]\nworkspace = true\n", 0},
-		{
-			"automatic tests disabled",
-			"[package]\nname = \"fixture\"\nautotests = false\n",
-			1,
-		},
-		{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 0},
-		{"doctests disabled", "[lib]\ndoctest = false\n", 0},
-		{"custom harness", "[[test]]\nname = \"fixture\"\nharness = false\n", 1},
-		{
-			"feature-gated test",
-			"[[test]]\nname = \"fixture\"\nrequired-features = [\"hidden\"]\n",
-			1,
-		},
-		{"package features", "[features]\nhidden = []\n", 1},
-		{
-			"optional dependency",
-			"[dependencies]\nfixture = { version = \"1\", optional = true }\n",
-			1,
-		},
-		{
-			"target optional dependency",
-			"[target.'cfg(windows)'.dev-dependencies]\n" +
-				"fixture = { version = \"1\", optional = true }\n",
-			1,
-		},
-		{
-			"workspace optional dependency",
-			"[workspace.dependencies]\n" +
-				"fixture = { version = \"1\", optional = true }\n",
-			1,
-		},
-		{
-			"required dependency",
-			"[dependencies]\nfixture = { version = \"1\" }\n",
-			0,
-		},
-		{"test profile", "[profile.test]\ndebug-assertions = false\n", 1},
-		{"ordinary target", "[[test]]\nname = \"fixture\"\npath = \"tests/fixture.rs\"\n", 0},
-		{"patch", "[patch.crates-io]\nfixture = { path = \"../fixture\" }\n", 1},
-		{"replace", "[replace]\n\"fixture:1.0.0\" = { path = \"../fixture\" }\n", 1},
-		{"unrelated", "[package]\nname = \"fixture\"\n", 0},
-		{"malformed", "[lints.clippy\n", 1},
-	}
-	for _, test := range tests {
+	for _, test := range cargoLintCases {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			findings := cargoLintFindings(
