@@ -509,6 +509,8 @@ EOF
     "$root/tools/sourcepolicy/goskip.go" \
     "$root/tools/sourcepolicy/main.go" \
     "$root/tools/sourcepolicy/rustpolicy.go" \
+    "$root/tools/sourcepolicy/source_open_other.go" \
+    "$root/tools/sourcepolicy/source_open_unix.go" \
     "$root/tools/sourcepolicy/suppression.go" \
     "$work_dir/tools/sourcepolicy/"
   printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
@@ -556,6 +558,53 @@ EOF
 /rust/
 /type-assertion/
 EOF
+  if command -v mkfifo >/dev/null 2>&1; then
+    mkdir -p "$work_dir/config-bin"
+    (
+      cd "$work_dir"
+      go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
+    )
+    printf '%s\n' 'package fixture' \
+      'import "testing"' \
+      'func TestFixture(t *testing.T) {}' >"$work_dir/fifo_test.go"
+    mkfifo "$work_dir/fifo.go"
+    (
+      cd "$work_dir"
+      "$work_dir/config-bin/sourcepolicy" test-skips \
+        >"$work_dir/fifo-output" 2>&1
+    ) &
+    change_pid=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      kill -0 "$change_pid" 2>/dev/null || break
+      sleep 0.1
+    done
+    if kill -0 "$change_pid" 2>/dev/null; then
+      terminate_child "$change_pid"
+      printf 'source policy blocked while opening a FIFO\n' >&2
+      return 1
+    fi
+    set +e
+    wait "$change_pid"
+    status=$?
+    set -e
+    change_pid=
+    [[ "$status" -ne 0 ]] || {
+      printf 'source policy accepted a FIFO\n' >&2
+      return 1
+    }
+    grep -Fq 'source file is not a bounded regular file' \
+      "$work_dir/fifo-output" || {
+      printf 'source policy omitted the FIFO diagnostic\n' >&2
+      return 1
+    }
+    rm -- "$work_dir/fifo.go" "$work_dir/fifo_test.go" \
+      "$work_dir/fifo-output"
+  fi
+  grep -Fq "while [[ -n \"\$directory\" ]]" \
+    "$root/.github/scripts/rustcheck.sh" || {
+    printf 'Rust config check omits the filesystem root\n' >&2
+    return 1
+  }
   if git -C "$work_dir" ls-files -co --exclude-standard |
     grep -Eq '^((lint-|linter-policy|platform-bin|repo|rust|type-assertion)/)'; then
     printf 'coverage fixture inventory includes generated verifier state\n' >&2

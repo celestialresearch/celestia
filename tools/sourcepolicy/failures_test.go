@@ -37,6 +37,9 @@ func TestReadSourceFailures(t *testing.T) {
 	openFile := func(root *os.Root, name string) (*os.File, error) {
 		return root.Open(name)
 	}
+	statPath := func(root *os.Root, name string) (os.FileInfo, error) {
+		return root.Stat(name)
+	}
 	realStat := func(file *os.File) (os.FileInfo, error) {
 		return file.Stat()
 	}
@@ -55,7 +58,17 @@ func TestReadSourceFailures(t *testing.T) {
 			name: "open file",
 			reader: sourceReader{
 				openRoot: openRoot,
+				statPath: statPath,
 				openFile: func(*os.Root, string) (*os.File, error) {
+					return nil, failure
+				},
+			},
+		},
+		{
+			name: "stat path",
+			reader: sourceReader{
+				openRoot: openRoot,
+				statPath: func(*os.Root, string) (os.FileInfo, error) {
 					return nil, failure
 				},
 			},
@@ -64,6 +77,7 @@ func TestReadSourceFailures(t *testing.T) {
 			name: "stat",
 			reader: sourceReader{
 				openRoot: openRoot,
+				statPath: statPath,
 				openFile: openFile,
 				stat: func(*os.File) (os.FileInfo, error) {
 					return nil, failure
@@ -74,6 +88,7 @@ func TestReadSourceFailures(t *testing.T) {
 			name: "read",
 			reader: sourceReader{
 				openRoot: openRoot,
+				statPath: statPath,
 				openFile: openFile,
 				stat:     realStat,
 				read: func(io.Reader) ([]byte, error) {
@@ -90,11 +105,26 @@ func TestReadSourceFailures(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestReadSourceGrowth(t *testing.T) {
+	rootPath := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(rootPath, "source.go"),
+		[]byte("package source"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
 	source, err := readSourceWith("source.go", sourceReader{
-		openRoot: openRoot,
-		openFile: openFile,
-		stat:     realStat,
+		openRoot: func(string) (*os.Root, error) {
+			return os.OpenRoot(rootPath)
+		},
+		statPath: (*os.Root).Stat,
+		openFile: func(root *os.Root, name string) (*os.File, error) {
+			return root.Open(name)
+		},
+		stat: (*os.File).Stat,
 		read: func(io.Reader) ([]byte, error) {
 			return bytes.Repeat([]byte{'x'}, maxSourceBytes+1), nil
 		},

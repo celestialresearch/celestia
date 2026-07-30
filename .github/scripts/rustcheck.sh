@@ -110,7 +110,7 @@ check_environment() {
   done
 
   directory=$(cd .. && pwd -P) || return
-  while [[ "$directory" != / && -n "$directory" ]]; do
+  while [[ -n "$directory" ]]; do
     for config in "$directory/.cargo/config" "$directory/.cargo/config.toml"; do
       if [[ -f "$config" ]]; then
         printf 'Parent Cargo configuration is prohibited: %s\n' "$config" >&2
