@@ -35,6 +35,21 @@ cleanup_verification() {
   rm -rf -- "$work_dir"
 }
 
+await_child() {
+  local name=$1
+  local pid=$2
+  local result
+
+  set +e
+  wait "$pid"
+  result=$?
+  set -e
+  if ((result != 0)); then
+    printf '%s self-test failed with status %d\n' "$name" "$result" >&2
+    return 1
+  fi
+}
+
 main() (
   local output
   local repo_dir
@@ -1455,11 +1470,11 @@ EOF
   }
 
   status=0
-  wait "$change_pid" || status=1
+  await_child Change "$change_pid" || status=1
   change_pid=
-  wait "$currency_pid" || status=1
+  await_child Currency "$currency_pid" || status=1
   currency_pid=
-  wait "$action_pid" || status=1
+  await_child Action "$action_pid" || status=1
   action_pid=
   return "$status"
 )
