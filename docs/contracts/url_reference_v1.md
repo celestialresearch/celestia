@@ -25,20 +25,20 @@ typed request -> admission -> attempt and nonce -> evidence staging
     -> terminal publication -> receipt
 ```
 
-Any future CLI owns parsing and presentation. Admission owns permission to
-execute. The Rust worker owns only transformation. Go owns process
-supervision, protocol validation, verification, evidence publication and
-terminal outcome. No worker field grants authority or trust.
+No CLI exists in v1. CLI parsing, presentation, output and exit behaviour are
+outside this contract. Admission owns permission to execute. The Rust worker
+owns only transformation. Go owns process supervision, protocol validation,
+verification, evidence publication and terminal outcome. No worker field
+grants authority or trust.
 
 One application-owned evidence root contains immutable attempt directories.
 Only accepted attempts reach it. One supervisor call owns one worker process
 and joins its complete process tree before returning. Protocol and evidence
 formats are compatible only within their declared versions.
 
-The selected options are a future standard-library CLI, strict byte-preserving
-grammar, one-shot JSON protocol and per-attempt filesystem bundles. Cobra,
-permissive normalisation, SQLite and a persistent worker add no demonstrated
-correctness benefit in this slice.
+The selected options are strict byte-preserving grammar, a one-shot JSON
+protocol and per-attempt filesystem bundles. Permissive normalisation, SQLite
+and a persistent worker add no demonstrated correctness benefit in this slice.
 
 Windows containment and attempt evidence are defined in
 `windows_containment_v1.md` and `attempt_evidence_v1.md`. Other platforms fail
@@ -426,27 +426,6 @@ evidence root has not been rewritten by a hostile writer. It provides no
 cryptographic provenance or external tamper resistance. It does not prove that
 a URL is safe, reachable, authentic or externally true.
 
-## Planned CLI Contract
-
-A future standard-library CLI will accept one mode and exactly one
-URL-reference argument. It will reject missing or extra arguments before
-application execution. Standard output will contain only the transformed
-reference after a `verified` outcome. Diagnostics and non-verified summaries
-will use standard error.
-
-Planned exit statuses are:
-```text
-0 verified
-2 rejected
-3 failed
-4 executed_unverified
-5 cancelled
-6 timed_out
-7 indeterminate
-```
-
-No machine-readable CLI format is defined in v1.
-
 ## Non-Goals
 
 This strict contract does not define URL safety, reputation, reachability, DNS,
@@ -454,4 +433,4 @@ HTTP, general URL parsing, prose extraction, permissive indicator
 normalisation, canonicalisation, credential handling, network use, a reusable
 worker framework, a database or any learned component. Wrapped words, HTML
 entities, escaped separators, Unicode punctuation and zero-width evasion
-characters belong to a separate future ingestion-normalisation contract.
+characters are unsupported.
