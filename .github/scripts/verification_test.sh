@@ -508,6 +508,7 @@ EOF
   cp \
     "$root/tools/sourcepolicy/goskip.go" \
     "$root/tools/sourcepolicy/main.go" \
+    "$root/tools/sourcepolicy/rustpolicy.go" \
     "$root/tools/sourcepolicy/suppression.go" \
     "$work_dir/tools/sourcepolicy/"
   printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
@@ -520,6 +521,11 @@ go 1.26.5
 require (
 	github.com/BurntSushi/toml v1.6.0
 	golang.org/x/tools v0.48.0
+)
+
+require (
+	golang.org/x/mod v0.38.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 )
 EOF
   cp "$root/go.sum" "$work_dir/go.sum"

@@ -194,7 +194,10 @@ run_check() {
   local use_cache=$1
 
   packages=$(go list -f '{{if or .GoFiles .CgoFiles}}{{.ImportPath}}{{end}}' \
-    ./... 2>/dev/null | sed '/^[[:space:]]*$/d') || return 1
+    ./... | sed '/^[[:space:]]*$/d') || {
+    printf 'coverage package inventory failed\n' >&2
+    return 1
+  }
   if [[ -z "$packages" ]]; then
     printf 'No Go packages exist\n'
     return
