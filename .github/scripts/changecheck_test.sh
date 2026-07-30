@@ -120,6 +120,7 @@ main() {
     .github/scripts/devcheck.sh \
     .github/scripts/windows-shellcheck.ps1 \
     .github/generated/probe.yml \
+    tools/actionpolicy/main.go \
     tools/sourcepolicy/main.go \
     .editorconfig \
     unknown.file; do

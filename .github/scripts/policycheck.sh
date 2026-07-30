@@ -81,44 +81,6 @@ check_test_skips() {
 }
 
 check_suppressions() {
-  local file
-  local line
-  local line_number
-  local nolint_marker='//no''lint'
-  local nosec_marker='#no''sec'
-  local rules
-  local suffix
-
-  while IFS= read -r -d '' file; do
-    [[ -f "$file" ]] || continue
-    case "$file" in
-    *.go | *.rs | *.sh | *.bash | *.ps1) ;;
-    *) continue ;;
-    esac
-    line_number=0
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      line_number=$((line_number + 1))
-      if [[ "$line" == *"$nosec_marker"* ]]; then
-        suffix=${line#*"$nosec_marker"}
-        [[ "$suffix" =~ ^[[:space:]]+G[0-9]+(,G[0-9]+)*[[:space:]]+--[[:space:]]+[^[:space:]].*$ ]] ||
-          fail "$file:$line_number: invalid gosec suppression"
-      fi
-      if [[ "$line" == *"$nolint_marker"* ]]; then
-        suffix=${line#*"$nolint_marker"}
-        if [[ "$suffix" =~ ^:([a-z0-9][a-z0-9,-]*)[[:space:]]+--[[:space:]]+[^[:space:]].*$ ]]; then
-          rules=${BASH_REMATCH[1]}
-          [[ ",$rules," != *,all,* ]] ||
-            fail "$file:$line_number: invalid golangci-lint suppression"
-        else
-          fail "$file:$line_number: invalid golangci-lint suppression"
-        fi
-      fi
-      if [[ "$line" =~ \#[[:space:]]*shellcheck[[:space:]]+disable ]]; then
-        [[ "$line" =~ ^[[:space:]]*\#[[:space:]]*shellcheck[[:space:]]+disable[[:space:]]*=[[:space:]]*SC[0-9]+(,SC[0-9]+)*[[:space:]]+\#[[:space:]]+[^[:space:]].*$ ]] ||
-          fail "$file:$line_number: invalid ShellCheck suppression"
-      fi
-    done <"$file"
-  done <"$source_inventory"
   go run ./tools/sourcepolicy suppressions || status=1
 }
 

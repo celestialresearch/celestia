@@ -389,8 +389,11 @@ func applyInputResult(
 ) (Status, error, bool) {
 	if result.cleanupErr != nil {
 		return status,
-			errors.Join(cause, result.err, result.cleanupErr),
+			errors.Join(cause, result.err, result.cleanupErr, result.joinErr),
 			false
+	}
+	if result.joinErr != nil {
+		return status, errors.Join(cause, result.err, result.joinErr), false
 	}
 	if result.err != nil {
 		if status == Completed {

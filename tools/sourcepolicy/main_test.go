@@ -103,6 +103,53 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestRunRejectsCargoSuppression(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Cargo.toml")
+	if err := os.WriteFile(
+		path,
+		[]byte("[lints.clippy]\nall = \"allow\"\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	code := run(
+		[]string{modeSuppressions},
+		&stderr,
+		func() ([]string, error) { return []string{path}, nil },
+		os.ReadFile,
+	)
+	if code != 1 ||
+		!strings.Contains(stderr.String(), "Cargo lint allowances are prohibited") {
+		t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+	}
+}
+
+func TestGoSuppressionFindings(t *testing.T) {
+	source := []byte(strings.Join([]string{
+		"// #no" + "sec",
+		"// #no" + "sec G304 -- bounded repository source",
+		"//no" + "lint",
+		"//no" + "lint:errcheck -- checked by the owner",
+		"//no" + "lint:all -- broad suppression",
+	}, "\n"))
+	findings := goSuppressionFindings("source.go", source)
+	if len(findings) != 3 {
+		t.Fatalf("findings = %v", findings)
+	}
+}
+
+func TestShellSuppressionFindings(t *testing.T) {
+	source := []byte(strings.Join([]string{
+		"#shellcheck disable=SC2086",
+		"# shellcheck disable=SC2329 # Invoked by a registered trap",
+	}, "\n"))
+	findings := shellSuppressionFindings("source.sh", source)
+	if len(findings) != 1 {
+		t.Fatalf("findings = %v", findings)
+	}
+}
+
 func TestReadSourceBoundsRepository(t *testing.T) {
 	parent := t.TempDir()
 	root := filepath.Join(parent, "repository")
@@ -303,6 +350,67 @@ func TestGoSkipMethods(t *testing.T) {
 				t.Fatal(err)
 			}
 			findings := goSkipFindings(path, []byte(source))
+			if len(findings) != test.findings {
+				t.Fatalf("findings = %v, want %d", findings, test.findings)
+			}
+		})
+	}
+}
+
+func TestGoSkipAcrossFiles(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	helper := filepath.Join(root, "helper_test.go")
+	caller := filepath.Join(root, "caller_test.go")
+	sources := map[string][]byte{
+		helper: []byte(
+			"package fixture\n\nimport \"testing\"\n\n" +
+				"func testContext(t *testing.T) *testing.T { return t }\n",
+		),
+		caller: []byte(
+			"package fixture\n\nimport \"testing\"\n\n" +
+				"func TestFixture(t *testing.T) { testContext(t).Skip(\"disabled\") }\n",
+		),
+	}
+	findings, err := goPackageSkipFindings(
+		[]string{helper, caller},
+		func(path string) ([]byte, error) {
+			return sources[path], nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 {
+		t.Fatalf("findings = %v, want one", findings)
+	}
+}
+
+func TestCargoLintAllowances(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		source   string
+		findings int
+	}{
+		{"Clippy string", "[lints.clippy]\nall = \"allow\"\n", 1},
+		{
+			"Clippy table",
+			"[workspace.lints.clippy]\nneedless_return = { level = \"allow\" }\n",
+			1,
+		},
+		{"Rust allow", "[lints.rust]\nunsafe_code = \"allow\"\n", 1},
+		{"deny", "[workspace.lints.clippy]\nall = \"deny\"\n", 0},
+		{"unrelated", "[package]\nname = \"fixture\"\n", 0},
+		{"malformed", "[lints.clippy\n", 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			findings := cargoLintFindings(
+				"Cargo.toml",
+				[]byte(test.source),
+			)
 			if len(findings) != test.findings {
 				t.Fatalf("findings = %v, want %d", findings, test.findings)
 			}

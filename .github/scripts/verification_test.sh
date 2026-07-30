@@ -502,10 +502,20 @@ EOF
     "$root/.github/scripts/modcheck.sh" \
     "$root/.github/scripts/policycheck.sh" \
     "$work_dir/.github/scripts/"
-  cp "$root/tools/sourcepolicy/main.go" "$work_dir/tools/sourcepolicy/"
+  cp \
+    "$root/tools/sourcepolicy/main.go" \
+    "$root/tools/sourcepolicy/suppression.go" \
+    "$work_dir/tools/sourcepolicy/"
   printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
     >"$work_dir/.github/.coverage"
-  printf 'module celestia.research/coverage\n\ngo 1.26.5\n' >"$work_dir/go.mod"
+  cat >"$work_dir/go.mod" <<'EOF'
+module celestia.research/coverage
+
+go 1.26.5
+
+require github.com/BurntSushi/toml v1.6.0
+EOF
+  cp "$root/go.sum" "$work_dir/go.sum"
   git -C "$work_dir" init -q
   cat >"$work_dir/.git/info/exclude" <<'EOF'
 /config-bin/
@@ -1064,10 +1074,22 @@ EOF
   cat >"$work_dir/b/failure_test.go" <<'EOF'
 package b
 
-import "testing"
+import (
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+)
 
 func TestFailure(t *testing.T) {
-	t.Fatal("fixture failure")
+	fmt.Fprintln(os.Stderr, strings.Repeat("x", 131072))
+	t.Fatal("failed")
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	fmt.Fprintln(os.Stderr, "fixture failure")
+	os.Exit(code)
 }
 EOF
   set +e
@@ -1085,6 +1107,10 @@ EOF
   fi
   grep -Fq 'fixture failure' <<<"$output" || {
     printf 'coverage check discarded failing test output:\n%s\n' "$output" >&2
+    return 1
+  }
+  ((${#output} <= 70000)) || {
+    printf 'coverage check retained unbounded failing output\n' >&2
     return 1
   }
 
@@ -1194,6 +1220,35 @@ EOF
   }
   rm -- "$work_dir/skipped_test.go"
 
+  cat >"$work_dir/helper_test.go" <<'EOF'
+package fixture
+
+import "testing"
+
+func testContext(t *testing.T) *testing.T {
+	return t
+}
+EOF
+  cat >"$work_dir/skipped_test.go" <<'EOF'
+package fixture
+
+import "testing"
+
+func TestSkipped(t *testing.T) {
+	testContext(t).Skip("unverified")
+}
+EOF
+  set +e
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh test-skips 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a cross-file Go skip\n' >&2
+    return 1
+  }
+  rm -- "$work_dir/helper_test.go" "$work_dir/skipped_test.go"
+
   cat >"$work_dir/skipped_test.go" <<'EOF'
 package fixture
 
@@ -1268,6 +1323,13 @@ EOF
     >"$work_dir/inner_broad_clippy.rs"
   printf '%s%s\n' '#![ex' 'pect(clippy::all)]' \
     >"$work_dir/inner_broad_expect.rs"
+  cat >"$work_dir/Cargo.toml" <<'EOF'
+[workspace]
+
+[workspace.lints.clippy]
+all = "allow"
+EOF
+  head -c 1048577 /dev/zero | tr '\0' x >"$work_dir/oversized.sh"
   {
     printf '%s%s\n' '#[al' 'low('
     printf '%s\n' '    clippy::all,'
@@ -1287,7 +1349,9 @@ EOF
     'invalid gosec suppression' \
     'invalid golangci-lint suppression' \
     'invalid ShellCheck suppression' \
-    'invalid Clippy suppression'; do
+    'invalid Clippy suppression' \
+    'Cargo lint allowances are prohibited' \
+    'source file exceeds 1048576 bytes'; do
     grep -Fq "$diagnostic" <<<"$output" || {
       printf 'policy output omitted %s:\n%s\n' "$diagnostic" "$output" >&2
       return 1
@@ -1303,7 +1367,9 @@ EOF
     "$work_dir/reasoned_broad_clippy.rs" \
     "$work_dir/inner_broad_clippy.rs" \
     "$work_dir/inner_broad_expect.rs" \
-    "$work_dir/reasoned_broad_multiline_clippy.rs"
+    "$work_dir/reasoned_broad_multiline_clippy.rs" \
+    "$work_dir/Cargo.toml" \
+    "$work_dir/oversized.sh"
 
   {
     printf '%s%s\n' '// #no' 'sec G103 -- narrow native boundary'

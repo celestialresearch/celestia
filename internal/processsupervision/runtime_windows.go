@@ -153,10 +153,10 @@ func awaitInput(
 		select {
 		case <-writer.done:
 			result := writer.result
-			result.cleanupErr = errors.Join(cleanupErr, result.cleanupErr)
+			result.joinErr = errors.Join(cleanupErr, result.joinErr)
 			return result
 		case <-joinTimer.C:
-			return inputResult{cleanupErr: cleanupErr}
+			return inputResult{joinErr: cleanupErr}
 		}
 	}
 }

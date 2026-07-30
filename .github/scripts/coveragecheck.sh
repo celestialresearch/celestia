@@ -18,6 +18,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
 policy=.github/.coverage
+max_failure_output_bytes=65536
 
 usage() {
   printf 'Usage: %s verify|cached\n' "${0##*/}" >&2
@@ -109,10 +110,10 @@ cache_key() (
 )
 
 create_report() {
-  local output
   local profile=$1
   local report=$2
   local packages=$3
+  local failure_output=$4
   local go_profile=$profile
   local package
 
@@ -122,9 +123,12 @@ create_report() {
   : >"$report"
   while IFS= read -r package; do
     [[ -n "$package" ]] || continue
-    if ! output=$(go test -count=1 -covermode=atomic \
-      -coverprofile="$go_profile" "$package" 2>&1); then
-      printf 'coverage test failed for %s:\n%s\n' "$package" "$output" >&2
+    if ! go test -count=1 -covermode=atomic \
+      -coverprofile="$go_profile" "$package" 2>&1 |
+      tail -c "$max_failure_output_bytes" >"$failure_output"; then
+      printf 'coverage test failed for %s (last %s bytes):\n' \
+        "$package" "$max_failure_output_bytes" >&2
+      cat "$failure_output" >&2
       return 1
     fi
     awk -v package="$package" '
@@ -184,7 +188,7 @@ enforce_report() {
 }
 
 run_check() {
-  local cache_file key profile report temporary_cache
+  local cache_file failure_output key profile report temporary_cache
   local packages
   local status=0
   local use_cache=$1
@@ -207,22 +211,23 @@ run_check() {
   mkdir -p "$cache_root"
   profile=$(mktemp "$cache_root/coverage.XXXXXX")
   report=$(mktemp "$cache_root/coverage-report.XXXXXX")
-  trap 'rm -f -- "${profile:-}" "${report:-}"' EXIT
-  create_report "$profile" "$report" "$packages"
+  failure_output=$(mktemp "$cache_root/coverage-failure.XXXXXX")
+  trap 'rm -f -- "${profile:-}" "${report:-}" "${failure_output:-}"' EXIT
+  create_report "$profile" "$report" "$packages" "$failure_output"
   enforce_report "$report" || status=1
   mkdir -p -- "$(dirname -- "$cache_file")"
   temporary_cache=$(mktemp "$(dirname -- "$cache_file")/.coverage.XXXXXX")
   if ! cp -- "$report" "$temporary_cache"; then
-    rm -f -- "$temporary_cache" "$profile" "$report"
+    rm -f -- "$temporary_cache" "$profile" "$report" "$failure_output"
     trap - EXIT
     return 1
   fi
   if ! mv -f -- "$temporary_cache" "$cache_file"; then
-    rm -f -- "$temporary_cache" "$profile" "$report"
+    rm -f -- "$temporary_cache" "$profile" "$report" "$failure_output"
     trap - EXIT
     return 1
   fi
-  rm -f -- "$profile" "$report"
+  rm -f -- "$profile" "$report" "$failure_output"
   trap - EXIT
   return "$status"
 }

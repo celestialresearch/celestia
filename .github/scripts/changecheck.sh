@@ -61,7 +61,8 @@ classify_path() {
   .github/dependabot.yml)
     mark_full
     ;;
-  .github/scripts/windows-shellcheck.ps1 | tools/sourcepolicy/*)
+  .github/scripts/windows-shellcheck.ps1 | tools/actionpolicy/* | \
+    tools/sourcepolicy/*)
     mark_full
     ;;
   .github/workflows/* | .github/codeql/*)

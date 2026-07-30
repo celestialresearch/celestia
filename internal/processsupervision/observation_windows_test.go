@@ -380,7 +380,7 @@ func TestAwaitInputJoinDeadline(t *testing.T) {
 		time.Now().Add(-time.Second),
 		time.Now().Add(-time.Second),
 	)
-	if result.cleanupErr == nil {
+	if result.joinErr == nil {
 		t.Fatal("unjoined input accepted")
 	}
 }
@@ -393,8 +393,8 @@ func TestAwaitInputCancelsBlockedWrite(t *testing.T) {
 	go writer.publish(make([]byte, 1<<20), result)
 	deadline := time.Now().Add(time.Millisecond)
 	observation := awaitInput(writer, deadline, deadline.Add(100*time.Millisecond))
-	if observation.cleanupErr == nil || !strings.Contains(observation.cleanupErr.Error(), "join worker input") {
-		t.Fatalf("input result=%v, want bounded join error", observation.cleanupErr)
+	if observation.joinErr == nil || !strings.Contains(observation.joinErr.Error(), "join worker input") {
+		t.Fatalf("input result=%v, want bounded join error", observation.joinErr)
 	}
 	select {
 	case <-writer.done:
@@ -520,6 +520,15 @@ func TestCompletedProcessRetainsUnappliedInputFailure(t *testing.T) {
 	if !errors.Is(got.err, sentinel) {
 		t.Fatalf("unapplied input error = %v", got.err)
 	}
+	got = unappliedInputResult(inputResult{
+		err:        errors.New("applied"),
+		cleanupErr: errors.New("applied cleanup"),
+		joinErr:    sentinel,
+	}, true)
+	if got.err != nil || got.cleanupErr != nil ||
+		!errors.Is(got.joinErr, sentinel) {
+		t.Fatalf("applied input result = %+v", got)
+	}
 }
 
 func TestCompletionFollowsResultPublication(t *testing.T) {
@@ -613,6 +622,10 @@ func TestInputResultStates(t *testing.T) {
 	status, err, complete = applyInputResult(Completed, nil, true, inputResult{cleanupErr: errors.New("close")})
 	if status != Completed || err == nil || complete {
 		t.Fatalf("input cleanup: status=%s complete=%t error=%v", status, complete, err)
+	}
+	status, err, complete = applyInputResult(Completed, nil, true, inputResult{joinErr: errors.New("join")})
+	if status != Completed || err == nil || complete {
+		t.Fatalf("input join: status=%s complete=%t error=%v", status, complete, err)
 	}
 }
 

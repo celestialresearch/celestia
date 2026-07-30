@@ -40,6 +40,8 @@ const (
 	maxInventoryBytes     = 16 << 20
 	maxInventoryPaths     = 100_000
 	maxInventoryPathBytes = 32 << 10
+	nolintMarker          = "//no" + "lint"
+	nosecMarker           = "#no" + "sec"
 )
 
 func main() {
@@ -68,9 +70,12 @@ func run(
 		}
 		return 1
 	}
-	var findings []string
-	for _, path := range files {
-		findings = append(findings, scanFile(path, args[0], readFile)...)
+	findings, err := policyFindings(files, args[0], readFile)
+	if err != nil {
+		if _, writeErr := fmt.Fprintln(stderr, err); writeErr != nil {
+			return 1
+		}
+		return 1
 	}
 	if len(findings) == 0 {
 		return 0
@@ -81,27 +86,63 @@ func run(
 	return 1
 }
 
+func policyFindings(
+	files []string,
+	mode string,
+	readFile func(string) ([]byte, error),
+) ([]string, error) {
+	var findings []string
+	if mode == modeTestSkips {
+		goFindings, err := goPackageSkipFindings(files, readFile)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, goFindings...)
+	}
+	for _, path := range files {
+		findings = append(findings, scanFile(path, mode, readFile)...)
+	}
+	return findings, nil
+}
+
 func scanFile(
 	path, mode string,
 	readFile func(string) ([]byte, error),
 ) []string {
 	switch filepath.Ext(path) {
 	case ".go":
-		if mode == modeTestSkips {
-			source, err := readFile(path)
-			if err != nil {
-				return []string{fmt.Sprintf("%s: %v", path, err)}
-			}
-			return goSkipFindings(path, source)
+		if mode != modeSuppressions {
+			return nil
 		}
+		return readFindings(path, readFile, goSuppressionFindings)
 	case ".rs":
-		source, err := readFile(path)
-		if err != nil {
-			return []string{fmt.Sprintf("%s: %v", path, err)}
+		return readFindings(path, readFile, func(path string, source []byte) []string {
+			return rustFindings(path, source, mode)
+		})
+	case ".toml":
+		if mode != modeSuppressions || filepath.Base(path) != "Cargo.toml" {
+			return nil
 		}
-		return rustFindings(path, source, mode)
+		return readFindings(path, readFile, cargoLintFindings)
+	case ".sh", ".bash", ".ps1":
+		if mode != modeSuppressions {
+			return nil
+		}
+		return readFindings(path, readFile, shellSuppressionFindings)
 	}
 	return nil
+}
+
+func readFindings(
+	path string,
+	readFile func(string) ([]byte, error),
+	scan func(string, []byte) []string,
+) []string {
+	source, err := readFile(path)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: %v", path, err)}
+	}
+	return scan(path, source)
 }
 
 func readSource(path string) (source []byte, err error) {
@@ -256,29 +297,92 @@ func goSkipFindings(path string, source []byte) []string {
 	if err != nil {
 		return []string{fmt.Sprintf("%s: parse Go test: %v", path, err)}
 	}
-	info := goTypeInfo(file, files)
-	var findings []string
-	ast.Inspect(file, func(node ast.Node) bool {
-		selector, ok := node.(*ast.SelectorExpr)
-		if !ok || !isTestingSkip(selector, info) {
-			return true
-		}
-		position := files.Position(selector.Pos())
-		findings = append(findings,
-			fmt.Sprintf("%s:%d: Go tests must not skip cases", path, position.Line))
-		return true
+	return goSkipFindingsInPackage(files, []*ast.File{file}, map[*ast.File]string{
+		file: path,
 	})
+}
+
+func goPackageSkipFindings(
+	paths []string,
+	readFile func(string) ([]byte, error),
+) ([]string, error) {
+	directories := make(map[string]bool)
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			directories[filepath.Dir(path)] = true
+		}
+	}
+	files := token.NewFileSet()
+	groups := make(map[string][]*ast.File)
+	names := make(map[*ast.File]string)
+	for _, path := range paths {
+		if filepath.Ext(path) != ".go" || !directories[filepath.Dir(path)] {
+			continue
+		}
+		source, err := readFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		file, err := parser.ParseFile(files, path, source, 0)
+		if err != nil {
+			return nil, fmt.Errorf("%s: parse Go source: %w", path, err)
+		}
+		key := filepath.Dir(path) + "\x00" + file.Name.Name
+		groups[key] = append(groups[key], file)
+		names[file] = path
+	}
+	keys := make([]string, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	var findings []string
+	for _, key := range keys {
+		findings = append(
+			findings,
+			goSkipFindingsInPackage(files, groups[key], names)...,
+		)
+	}
+	return findings, nil
+}
+
+func goSkipFindingsInPackage(
+	files *token.FileSet,
+	packageFiles []*ast.File,
+	names map[*ast.File]string,
+) []string {
+	info := goTypeInfo(packageFiles, files)
+	var findings []string
+	for _, file := range packageFiles {
+		path := names[file]
+		if !strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || !isTestingSkip(selector, info) {
+				return true
+			}
+			position := files.Position(selector.Pos())
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d: Go tests must not skip cases",
+				path,
+				position.Line,
+			))
+			return true
+		})
+	}
 	return findings
 }
 
-func goTypeInfo(file *ast.File, files *token.FileSet) *types.Info {
+func goTypeInfo(packageFiles []*ast.File, files *token.FileSet) *types.Info {
 	info := &types.Info{
 		Selections: make(map[*ast.SelectorExpr]*types.Selection),
 		Uses:       make(map[*ast.Ident]types.Object),
 	}
 	config := types.Config{Importer: importer.Default()}
 	if _, checkErr := config.Check(
-		file.Name.Name, files, []*ast.File{file}, info,
+		packageFiles[0].Name.Name, files, packageFiles, info,
 	); checkErr != nil {
 		return info
 	}

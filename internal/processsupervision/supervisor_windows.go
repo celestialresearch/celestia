@@ -75,6 +75,7 @@ type streamResult struct {
 type inputResult struct {
 	err        error
 	cleanupErr error
+	joinErr    error
 }
 
 type jobAccounting struct {

@@ -700,9 +700,9 @@ func TestStreamAndInputJoinPreserveCancellationFailure(t *testing.T) {
 			deadline,
 			deadline,
 		)
-		if result.cleanupErr == nil ||
-			!strings.Contains(result.cleanupErr.Error(), "cleanup deadline exceeded") {
-			t.Fatalf("cleanup failure lost: %v", result.cleanupErr)
+		if result.joinErr == nil ||
+			!strings.Contains(result.joinErr.Error(), "cleanup deadline exceeded") {
+			t.Fatalf("join failure lost: %v", result.joinErr)
 		}
 	})
 	t.Run("stream", func(t *testing.T) {
