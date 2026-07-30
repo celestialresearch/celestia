@@ -259,6 +259,68 @@ func TestDecodeResponseStatuses(t *testing.T) {
 	}
 }
 
+func TestDecodeResponseRejectsDiagnosticFields(t *testing.T) {
+	t.Parallel()
+
+	request := testRequest()
+	correlation := testCorrelation(t, request)
+	response := Response{
+		ProtocolVersion:  ProtocolVersion,
+		OperationID:      OperationID,
+		OperationVersion: OperationVersion,
+		AttemptID:        request.AttemptID,
+		RequestNonce:     request.RequestNonce,
+		WorkerID:         WorkerID,
+		WorkerVersion:    WorkerVersion,
+		Status:           Failed,
+		Diagnostics: []Diagnostic{{
+			Code:    "worker_failed",
+			Message: "worker failed",
+		}},
+		DurationNS: 1,
+	}
+	data, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := string(data)
+	tests := []struct {
+		name string
+		data string
+	}{
+		{
+			name: "missing code",
+			data: strings.Replace(
+				valid,
+				`{"code":"worker_failed","message":"worker failed"}`,
+				`{"message":"worker failed"}`,
+				1,
+			),
+		},
+		{
+			name: "extra field",
+			data: strings.Replace(
+				valid,
+				`{"code":"worker_failed","message":"worker failed"}`,
+				`{"code":"worker_failed","message":"worker failed","unknown":true}`,
+				1,
+			),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := DecodeResponse(
+				[]byte(test.data),
+				correlation,
+				3,
+			); !errors.Is(err, ErrProtocol) {
+				t.Fatalf("DecodeResponse() error = %v, want ErrProtocol", err)
+			}
+		})
+	}
+}
+
 func TestValidateRequestRejects(t *testing.T) {
 	t.Parallel()
 

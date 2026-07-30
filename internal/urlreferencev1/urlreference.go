@@ -251,11 +251,6 @@ func validatePort(port string) error {
 	if len(port) == 0 || len(port) > 5 {
 		return invalid("port")
 	}
-	for index := range len(port) {
-		if port[index] < '0' || port[index] > '9' {
-			return invalid("port")
-		}
-	}
 	value, err := strconv.ParseUint(port, 10, 16)
 	if err != nil || value == 0 {
 		return invalid("port")
@@ -265,7 +260,7 @@ func validatePort(port string) error {
 
 func validateIPv6(host string) error {
 	value := host[1 : len(host)-1]
-	if value == "" || strings.ContainsAny(value, ".%") {
+	if strings.ContainsAny(value, ".%") {
 		return invalid("IPv6")
 	}
 	for index := range len(value) {

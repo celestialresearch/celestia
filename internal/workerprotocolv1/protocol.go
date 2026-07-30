@@ -237,8 +237,7 @@ func validateRequestConstants(request Request) error {
 }
 
 func validateRequestInput(request Request) error {
-	if !utf8.ValidString(request.Input) ||
-		len(request.Input) < 1 ||
+	if len(request.Input) < 1 ||
 		len(request.Input) > InputBytes ||
 		request.InputLength != len(request.Input) {
 		return protocolError("request input")
@@ -379,7 +378,7 @@ func validateFields(data []byte, status Status) error {
 	if err := requireFields(fields, required); err != nil {
 		return err
 	}
-	if diagnostics := fields["diagnostics"]; len(diagnostics) == 0 || diagnostics[0] != '[' {
+	if diagnostics := fields["diagnostics"]; diagnostics[0] != '[' {
 		return protocolError("diagnostics type")
 	}
 	return validateRawFields(fields, status)
@@ -422,8 +421,7 @@ func validateRawDiagnostics(data json.RawMessage) error {
 		return protocolError("diagnostics decode")
 	}
 	for _, diagnostic := range diagnostics {
-		if len(diagnostic) != 2 ||
-			!rawString(diagnostic["code"]) ||
+		if !rawString(diagnostic["code"]) ||
 			!rawString(diagnostic["message"]) {
 			return protocolError("diagnostic fields")
 		}
