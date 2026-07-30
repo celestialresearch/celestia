@@ -241,6 +241,25 @@ func TestInspectDocumentsInventoriesDockerAction(t *testing.T) {
 	}
 }
 
+func TestInspectDocumentsIgnoresLocalDockerfile(t *testing.T) {
+	t.Parallel()
+
+	stream := "action.yml\x00runs:\n  using: docker\n  image: Dockerfile\n\x00"
+	var output bytes.Buffer
+	err := inspectDocuments(
+		strings.NewReader(stream),
+		&output,
+		actionsMode,
+		streamLimits{documents: 1, pathBytes: 64, dataBytes: 256, totalBytes: 320},
+	)
+	if err != nil {
+		t.Fatalf("inspectDocuments() error = %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("local Dockerfile was inventoried: %q", output.String())
+	}
+}
+
 func TestInspectDocumentsAcceptsOrdinaryEmptyInventory(t *testing.T) {
 	t.Parallel()
 
