@@ -12,6 +12,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"go/ast"
@@ -20,6 +21,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -34,11 +36,13 @@ type buildTarget struct {
 	goos   string
 	goarch string
 	cgo    bool
+	race   bool
 }
 
 type goBuildUnit struct {
 	target   buildTarget
 	patterns []string
+	overlay  map[string][]byte
 }
 
 var policyBuildTargets = []buildTarget{
@@ -60,6 +64,16 @@ var policyBuildTargets = []buildTarget{
 	{goos: "windows", goarch: "arm64"},
 }
 
+var policyRaceTargets = map[string]bool{
+	"darwin/amd64":  true,
+	"darwin/arm64":  true,
+	"freebsd/amd64": true,
+	"linux/amd64":   true,
+	"linux/arm64":   true,
+	"netbsd/amd64":  true,
+	"windows/amd64": true,
+}
+
 func goPackageSkipFindings(
 	paths []string,
 	readFile func(string) ([]byte, error),
@@ -76,11 +90,11 @@ func goPackageSkipFindingsWithTargets(
 	readFile func(string) ([]byte, error),
 	targets []buildTarget,
 ) ([]string, error) {
-	directories, err := goCandidateDirectories(paths, readFile)
+	directories, overlay, err := goCandidateDirectories(paths, readFile)
 	if err != nil || len(directories) == 0 {
 		return nil, err
 	}
-	units, err := goBuildUnits(paths, directories, targets)
+	units, err := goBuildUnits(paths, directories, targets, overlay)
 	if err != nil {
 		return nil, err
 	}
@@ -88,11 +102,15 @@ func goPackageSkipFindingsWithTargets(
 }
 
 func policyTargets() []buildTarget {
-	targets := make([]buildTarget, 0, len(policyBuildTargets)*2)
+	targets := make([]buildTarget, 0, len(policyBuildTargets)*3)
 	for _, target := range policyBuildTargets {
 		targets = append(targets, target)
 		target.cgo = true
 		targets = append(targets, target)
+		if policyRaceTargets[target.goos+"/"+target.goarch] {
+			target.race = true
+			targets = append(targets, target)
+		}
 	}
 	return targets
 }
@@ -218,7 +236,7 @@ func testingMethod(object types.Object) bool {
 func goCandidateDirectories(
 	paths []string,
 	readFile func(string) ([]byte, error),
-) (map[string]bool, error) {
+) (map[string]bool, map[string][]byte, error) {
 	testDirectories := make(map[string]bool)
 	for _, path := range paths {
 		if strings.HasSuffix(path, "_test.go") {
@@ -226,24 +244,32 @@ func goCandidateDirectories(
 		}
 	}
 	directories := make(map[string]bool, len(testDirectories))
+	overlay := make(map[string][]byte)
 	for directory := range testDirectories {
 		directories[directory] = true
 	}
 	for _, path := range paths {
-		if filepath.Ext(path) != ".go" ||
-			!testDirectories[filepath.Dir(path)] {
+		if filepath.Ext(path) != ".go" {
 			continue
 		}
 		source, err := readFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
+			return nil, nil, fmt.Errorf("%s: %w", path, err)
+		}
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%s: resolve Go source: %w", path, err)
+		}
+		overlay[absolute] = slices.Clone(source)
+		if !testDirectories[filepath.Dir(path)] {
+			continue
 		}
 		_, err = hasGoPolicySelector(path, source)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return directories, nil
+	return directories, overlay, nil
 }
 
 func runGoBuildUnits(units []goBuildUnit) ([]string, error) {
@@ -272,10 +298,11 @@ func runGoBuildUnitsWith(
 			limit <- struct{}{}
 			defer func() { <-limit }()
 			results[index].findings, results[index].err =
-				goSkipFindingsForTargetWith(
+				goSkipFindingsForTargetWithOverlay(
 					ctx,
 					unit.target,
 					unit.patterns,
+					unit.overlay,
 					load,
 				)
 		})
@@ -296,17 +323,20 @@ func goBuildUnits(
 	paths []string,
 	directories map[string]bool,
 	targets []buildTarget,
+	overlay map[string][]byte,
 ) ([]goBuildUnit, error) {
 	var units []goBuildUnit
 	for _, target := range targets {
-		patterns, err := goBuildSelection(paths, directories, target)
+		patterns, err := goBuildSelection(paths, directories, target, overlay)
 		if err != nil {
 			return nil, err
 		}
 		if len(patterns) == 0 {
 			continue
 		}
-		units = append(units, goBuildUnit{target: target, patterns: patterns})
+		units = append(units, goBuildUnit{
+			target: target, patterns: patterns, overlay: overlay,
+		})
 	}
 	return units, nil
 }
@@ -315,11 +345,9 @@ func goBuildSelection(
 	paths []string,
 	directories map[string]bool,
 	target buildTarget,
+	overlay map[string][]byte,
 ) ([]string, error) {
-	context := build.Default
-	context.GOOS = target.goos
-	context.GOARCH = target.goarch
-	context.CgoEnabled = target.cgo
+	context := policyBuildContext(target, overlay)
 	selectedDirectories := make(map[string]string)
 	for _, path := range paths {
 		if filepath.Ext(path) != ".go" || !directories[filepath.Dir(path)] {
@@ -351,6 +379,31 @@ func goBuildSelection(
 	}
 	slices.Sort(patterns)
 	return patterns, nil
+}
+
+func policyBuildContext(
+	target buildTarget,
+	overlay map[string][]byte,
+) build.Context {
+	context := build.Default
+	context.GOOS = target.goos
+	context.GOARCH = target.goarch
+	context.CgoEnabled = target.cgo
+	if target.race {
+		context.BuildTags = append(context.BuildTags, "race")
+	}
+	context.OpenFile = func(path string) (io.ReadCloser, error) {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return nil, err
+		}
+		source, found := overlay[absolute]
+		if !found {
+			return nil, os.ErrNotExist
+		}
+		return io.NopCloser(bytes.NewReader(source)), nil
+	}
+	return context
 }
 
 func hasGoPolicySelector(path string, source []byte) (bool, error) {
@@ -392,6 +445,18 @@ func goSkipFindingsForTargetWith(
 	patterns []string,
 	load packageLoader,
 ) ([]string, error) {
+	return goSkipFindingsForTargetWithOverlay(
+		ctx, target, patterns, nil, load,
+	)
+}
+
+func goSkipFindingsForTargetWithOverlay(
+	ctx context.Context,
+	target buildTarget,
+	patterns []string,
+	overlay map[string][]byte,
+	load packageLoader,
+) ([]string, error) {
 	environment := append([]string{}, os.Environ()...)
 	cgo := "0"
 	if target.cgo {
@@ -403,6 +468,14 @@ func goSkipFindingsForTargetWith(
 		"GOARCH="+target.goarch,
 		"CGO_ENABLED="+cgo,
 	)
+	buildFlags := []string(nil)
+	if target.race {
+		buildFlags = []string{"-tags=race"}
+	}
+	repositoryRoot, err := filepath.Abs(".")
+	if err != nil {
+		return nil, fmt.Errorf("resolve repository root: %w", err)
+	}
 	loaded, err := load(&packages.Config{
 		Context: ctx,
 		Mode: packages.NeedName | packages.NeedFiles |
@@ -410,8 +483,10 @@ func goSkipFindingsForTargetWith(
 			packages.NeedTypes | packages.NeedTypesInfo |
 			packages.NeedImports | packages.NeedDeps |
 			packages.NeedModule,
-		Tests: true,
-		Env:   environment,
+		Tests:      true,
+		Env:        environment,
+		BuildFlags: buildFlags,
+		Overlay:    overlay,
 	}, patterns...)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -419,7 +494,7 @@ func goSkipFindingsForTargetWith(
 		)
 	}
 	var findings []string
-	for _, loadedPackage := range policyPackages(loaded) {
+	for _, loadedPackage := range policyPackages(loaded, repositoryRoot) {
 		if len(loadedPackage.Errors) > 0 {
 			return nil, fmt.Errorf(
 				"load Go tests for %s/%s: %w",
@@ -438,7 +513,10 @@ func goSkipFindingsForTargetWith(
 	return findings, nil
 }
 
-func policyPackages(roots []*packages.Package) []*packages.Package {
+func policyPackages(
+	roots []*packages.Package,
+	repositoryRoot string,
+) []*packages.Package {
 	queue := slices.Clone(roots)
 	seen := make(map[string]bool)
 	var result []*packages.Package
@@ -451,12 +529,29 @@ func policyPackages(roots []*packages.Package) []*packages.Package {
 		seen[current.ID] = true
 		result = append(result, current)
 		for _, imported := range current.Imports {
-			if imported.Module != nil && imported.Module.Main {
+			if packageInsideRepository(imported, repositoryRoot) {
 				queue = append(queue, imported)
 			}
 		}
 	}
 	return result
+}
+
+func packageInsideRepository(
+	loaded *packages.Package,
+	repositoryRoot string,
+) bool {
+	if loaded == nil {
+		return false
+	}
+	for _, path := range loaded.CompiledGoFiles {
+		relative, err := filepath.Rel(repositoryRoot, path)
+		if err == nil && relative != ".." &&
+			!strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 type goPolicyInspector struct {
@@ -481,9 +576,18 @@ func (inspector *goPolicyInspector) inspect(node ast.Node) bool {
 		return inspector.inspectIdentifier(value)
 	case *ast.CallExpr:
 		return inspector.inspectCall(value)
+	case *ast.Comment:
+		return inspector.inspectComment(value)
 	default:
 		return true
 	}
+}
+
+func (inspector *goPolicyInspector) inspectComment(comment *ast.Comment) bool {
+	if strings.HasPrefix(strings.TrimSpace(comment.Text), "//go:linkname") {
+		inspector.add(comment, "Go tests must not use go:linkname")
+	}
+	return false
 }
 
 func (inspector *goPolicyInspector) inspectFunction(function *ast.FuncDecl) bool {

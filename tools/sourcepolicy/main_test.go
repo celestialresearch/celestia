@@ -481,8 +481,9 @@ func TestGoCGOSkip(t *testing.T) {
 
 func TestPolicyTargetsCoverCGOModes(t *testing.T) {
 	targets := policyTargets()
-	if len(targets) != len(policyBuildTargets)*2 {
-		t.Fatalf("targets = %d, want %d", len(targets), len(policyBuildTargets)*2)
+	expected := len(policyBuildTargets)*2 + len(policyRaceTargets)
+	if len(targets) != expected {
+		t.Fatalf("targets = %d, want %d", len(targets), expected)
 	}
 	for _, policyTarget := range policyBuildTargets {
 		for _, cgo := range []bool{false, true} {
@@ -499,6 +500,15 @@ func TestPolicyTargetsCoverCGOModes(t *testing.T) {
 					cgo,
 				)
 			}
+		}
+		key := policyTarget.goos + "/" + policyTarget.goarch
+		foundRace := slices.ContainsFunc(targets, func(target buildTarget) bool {
+			return target.goos == policyTarget.goos &&
+				target.goarch == policyTarget.goarch &&
+				target.cgo && target.race
+		})
+		if foundRace != policyRaceTargets[key] {
+			t.Fatalf("race target %s = %t, want %t", key, foundRace, policyRaceTargets[key])
 		}
 	}
 }
@@ -644,6 +654,110 @@ func TestGoPolicyInspectsImportedHelpers(t *testing.T) {
 	}
 }
 
+func TestGoPolicyInspectsNestedModules(t *testing.T) {
+	root := t.TempDir()
+	nested := filepath.Join(root, "nested")
+	if err := os.Mkdir(nested, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	testPath := filepath.Join(root, "root_test.go")
+	helperPath := filepath.Join(nested, "helper.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "package fixture\n\nimport (\n" +
+			"\t\"testing\"\n\t\"fixture.invalid/nested\"\n)\n\n" +
+			"func TestEntry(t *testing.T) { nested.Skip(t) }\n",
+		helperPath: "package nested\n\nimport \"testing\"\n\n" +
+			"func Skip(t *testing.T) { t.Skip(\"hidden\") }\n",
+		filepath.Join(nested, "go.mod"): "module fixture.invalid/nested\n\ngo 1.26.5\n",
+	})
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module fixture.invalid/sourcepolicy\n\ngo 1.26.5\n\n"+
+			"require fixture.invalid/nested v0.0.0\n\n"+
+			"replace fixture.invalid/nested => ./nested\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	findings, err := goPackageSkipFindingsWithTargets(
+		[]string{"root_test.go", "nested/go.mod", "nested/helper.go"},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 ||
+		!strings.Contains(findings[0], "Go tests must not skip cases") {
+		t.Fatalf("findings = %v, want nested helper skip", findings)
+	}
+}
+
+func TestGoPolicyPrevalidatesHelpers(t *testing.T) {
+	failure := errors.New("invalid helper source")
+	_, err := goPackageSkipFindingsWithTargets(
+		[]string{"root_test.go", "helper/helper.go"},
+		func(path string) ([]byte, error) {
+			if path == "helper/helper.go" {
+				return nil, failure
+			}
+			return []byte("package fixture\n"), nil
+		},
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if !errors.Is(err, failure) {
+		t.Fatalf("error = %v, want helper validation failure", err)
+	}
+}
+
+func TestGoRaceSkip(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "race_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		path: "//go:build race\n\npackage fixture\n\nimport \"testing\"\n\n" +
+			"func TestRace(t *testing.T) { t.Skip(\"hidden\") }\n",
+	})
+	t.Chdir(root)
+	findings, err := goPackageSkipFindingsWithTargets(
+		[]string{"race_test.go"},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH, cgo: true, race: true}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 ||
+		!strings.Contains(findings[0], "Go tests must not skip cases") {
+		t.Fatalf("findings = %v, want race skip", findings)
+	}
+}
+
+func TestGoLinknameIsRejected(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		filepath.Join(root, "main.go"): "package main\n\nfunc main() {}\n",
+		path: "package main\n\nimport (\n\t_ \"unsafe\"\n\t\"testing\"\n)\n\n" +
+			"//go:linkname linkedMain main.main\n" +
+			"func linkedMain()\n\n" +
+			"func TestEntry(t *testing.T) { linkedMain() }\n",
+	})
+	t.Chdir(root)
+	findings, err := goPackageSkipFindingsWithTargets(
+		[]string{"main.go", "main_test.go"},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 ||
+		!strings.Contains(findings[0], "Go tests must not use go:linkname") {
+		t.Fatalf("findings = %v, want go:linkname rejection", findings)
+	}
+}
+
 func writeGoPolicyFixture(
 	t *testing.T,
 	root string,
@@ -666,7 +780,7 @@ func writeGoPolicyFixture(
 
 func TestGoSkipCandidateFailures(t *testing.T) {
 	t.Parallel()
-	_, err := goCandidateDirectories(
+	_, _, err := goCandidateDirectories(
 		[]string{"broken_test.go"},
 		func(string) ([]byte, error) {
 			return []byte("package fixture\nfunc TestBroken("), nil
@@ -677,7 +791,7 @@ func TestGoSkipCandidateFailures(t *testing.T) {
 	}
 
 	readErr := errors.New("read failure")
-	_, err = goCandidateDirectories(
+	_, _, err = goCandidateDirectories(
 		[]string{"unreadable_test.go"},
 		func(string) ([]byte, error) { return nil, readErr },
 	)
@@ -701,9 +815,39 @@ func TestGoBuildSelectionRejectsInvalidConstraint(t *testing.T) {
 		[]string{path},
 		map[string]bool{root: true},
 		buildTarget{goos: "linux", goarch: "amd64"},
+		map[string][]byte{
+			path: []byte("//go:build linux &&\n\npackage fixture\n"),
+		},
 	)
 	if err == nil || !strings.Contains(err.Error(), "match Go build constraints") {
 		t.Fatalf("constraint error = %v", err)
+	}
+}
+
+func TestGoBuildSelectionUsesOverlay(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	path := filepath.Join(root, "selected_test.go")
+	if err := os.WriteFile(
+		path,
+		[]byte("//go:build windows\n\npackage fixture\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	patterns, err := goBuildSelection(
+		[]string{path},
+		map[string]bool{root: true},
+		buildTarget{goos: "linux", goarch: "amd64"},
+		map[string][]byte{
+			path: []byte("//go:build linux\n\npackage fixture\n"),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(patterns, []string{"file=" + filepath.ToSlash(path)}) {
+		t.Fatalf("patterns = %v, want overlay-selected file", patterns)
 	}
 }
 

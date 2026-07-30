@@ -186,6 +186,46 @@ func TestGoSkipLoadFailures(t *testing.T) {
 	}
 }
 
+func TestGoRaceLoadFlags(t *testing.T) {
+	_, err := goSkipFindingsForTargetWith(
+		context.Background(),
+		buildTarget{
+			goos: "linux", goarch: "amd64", cgo: true, race: true,
+		},
+		[]string{"./..."},
+		func(config *packages.Config, _ ...string) ([]*packages.Package, error) {
+			if !slices.Equal(config.BuildFlags, []string{"-tags=race"}) {
+				t.Errorf("build flags = %v, want race tag", config.BuildFlags)
+			}
+			return nil, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("race load error = %v", err)
+	}
+}
+
+func TestGoLoadUsesSourceOverlay(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "helper.go")
+	source := []byte("package helper\n")
+	overlay := map[string][]byte{path: source}
+	_, err := goSkipFindingsForTargetWithOverlay(
+		context.Background(),
+		buildTarget{goos: "linux", goarch: "amd64"},
+		[]string{"./..."},
+		overlay,
+		func(config *packages.Config, _ ...string) ([]*packages.Package, error) {
+			if !bytes.Equal(config.Overlay[path], source) {
+				t.Errorf("source overlay = %q, want %q", config.Overlay[path], source)
+			}
+			return nil, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("overlay load error = %v", err)
+	}
+}
+
 func TestGoBuildUnitsPropagateCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
