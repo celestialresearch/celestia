@@ -500,6 +500,44 @@ func TestCargoLintAllowances(t *testing.T) {
 	}
 }
 
+func TestCargoConfigurationAllowances(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		source   string
+		findings int
+	}{
+		{"array allow", `[build]` + "\n" + `rustflags = ["-A", "clippy::all"]`, 1},
+		{"compact allow", `[build]` + "\n" + `rustflags = ["-Aclippy::all"]`, 1},
+		{"long allow", `[build]` + "\n" + `rustflags = "--allow warnings"`, 1},
+		{
+			"target cap",
+			`[target.x86_64-pc-windows-msvc]` + "\n" +
+				`rustflags = ["--cap-lints=allow"]`,
+			1,
+		},
+		{
+			"rustdoc allow",
+			`[build]` + "\n" + `rustdocflags = ["--allow=warnings"]`,
+			1,
+		},
+		{"linker", `[build]` + "\n" + `rustflags = ["-C", "link-arg=/Brepro"]`, 0},
+		{"malformed", `[build` + "\n", 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			findings := cargoConfigFindings(
+				".cargo/config.toml",
+				[]byte(test.source),
+			)
+			if len(findings) != test.findings {
+				t.Fatalf("findings = %v, want %d", findings, test.findings)
+			}
+		})
+	}
+}
+
 func TestRustPolicyAttributes(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -520,6 +558,9 @@ func TestRustPolicyAttributes(t *testing.T) {
 		},
 		{"comment", "// #[ignore]\nfn test() {}", modeTestSkips, 0},
 		{"string", `const VALUE: &str = "#[ignore]";`, modeTestSkips, 0},
+		{"include", `include!("skipped.inc");`, modeTestSkips, 1},
+		{"include comment", `// include!("skipped.inc");`, modeTestSkips, 0},
+		{"include string", `const VALUE: &str = "include!(ignored)";`, modeTestSkips, 0},
 		{"attribute string", `#[doc = "allow ignore"]`, modeSuppressions, 0},
 		{"raw attribute string", `#[doc = r##"" allow ignore"##]`, modeSuppressions, 0},
 		{"attribute comment", `#[cfg(/* allow ignore */ test)]`, modeSuppressions, 0},

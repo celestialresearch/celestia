@@ -147,7 +147,7 @@ main() {
     ;;
   esac
   trap '[[ -z "${paths:-}" ]] || rm -f -- "$paths"' EXIT HUP INT TERM
-  if ! git diff --name-only -z "$base" "$head" >"$paths"; then
+  if ! git diff --no-renames --name-only -z "$base" "$head" >"$paths"; then
     mark_full
     emit
     return

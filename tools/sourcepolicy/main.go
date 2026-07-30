@@ -120,11 +120,8 @@ func scanFile(
 		return readFindings(path, readFile, func(path string, source []byte) []string {
 			return rustFindings(path, source, mode)
 		})
-	case ".toml":
-		if mode != modeSuppressions || filepath.Base(path) != "Cargo.toml" {
-			return nil
-		}
-		return readFindings(path, readFile, cargoLintFindings)
+	case ".toml", "":
+		return tomlFindings(path, mode, readFile)
 	case ".sh", ".bash", ".ps1":
 		if mode != modeSuppressions {
 			return nil
@@ -132,6 +129,25 @@ func scanFile(
 		return readFindings(path, readFile, shellSuppressionFindings)
 	}
 	return nil
+}
+
+func tomlFindings(
+	path, mode string,
+	readFile func(string) ([]byte, error),
+) []string {
+	if mode != modeSuppressions {
+		return nil
+	}
+	switch {
+	case filepath.Base(path) == "Cargo.toml":
+		return readFindings(path, readFile, cargoLintFindings)
+	case (filepath.Base(path) == "config.toml" ||
+		filepath.Base(path) == "config") &&
+		filepath.Base(filepath.Dir(path)) == ".cargo":
+		return readFindings(path, readFile, cargoConfigFindings)
+	default:
+		return nil
+	}
 }
 
 func readFindings(
@@ -374,6 +390,11 @@ type rustAttribute struct {
 }
 
 func rustFindings(path string, source []byte, mode string) []string {
+	if line, found := rustIncludeLine(source); found {
+		return []string{fmt.Sprintf(
+			"%s:%d: Rust include! is prohibited", path, line,
+		)}
+	}
 	attributes, err := rustAttributes(source)
 	if err != nil {
 		return []string{fmt.Sprintf("%s: parse Rust attributes: %v", path, err)}
@@ -397,6 +418,37 @@ func rustFindings(path string, source []byte, mode string) []string {
 		}
 	}
 	return findings
+}
+
+func rustIncludeLine(source []byte) (int, bool) {
+	for index, line := 0, 1; index < len(source); {
+		next, nextLine, valid := skipRustTrivia(source, index, line)
+		index, line = next, nextLine
+		if !valid || index >= len(source) {
+			return 0, false
+		}
+		if rustTokenStart(source[index]) {
+			index, line = skipRustToken(source, index, line)
+			continue
+		}
+		start := index
+		for index < len(source) && isRustIdentifierByte(source[index]) {
+			index++
+		}
+		if start == index {
+			index++
+			continue
+		}
+		identifier := string(source[start:index])
+		index, line, valid = skipRustTrivia(source, index, line)
+		if !valid {
+			return 0, false
+		}
+		if identifier == "include" && index < len(source) && source[index] == '!' {
+			return line, true
+		}
+	}
+	return 0, false
 }
 
 func rustAttributes(source []byte) ([]rustAttribute, error) {

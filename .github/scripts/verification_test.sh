@@ -1328,6 +1328,30 @@ EOF
   }
   rm -- "$work_dir/ignored_test.rs"
 
+  cat >"$work_dir/included_test.rs" <<'EOF'
+include!("skipped.inc");
+EOF
+  cat >"$work_dir/skipped.inc" <<'EOF'
+#[test]
+#[ignore]
+fn ignored() {}
+EOF
+  set +e
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh test-skips 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted Rust include expansion\n' >&2
+    return 1
+  }
+  grep -Fq 'Rust include! is prohibited' <<<"$output" || {
+    printf 'policy output omitted the Rust include failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/included_test.rs" "$work_dir/skipped.inc"
+
   printf '%s%s\n' '// #no' 'sec -- broad' >"$work_dir/broad_suppression.go"
   printf '%s%s\n' '//no' 'lint -- broad' >"$work_dir/broad_nolint.go"
   printf '%s%s\n' '//no' 'lint:all -- reasoned blanket suppression' \
@@ -1351,6 +1375,11 @@ EOF
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "allow"
 EOF
+  mkdir -p "$work_dir/.cargo"
+  cat >"$work_dir/.cargo/config.toml" <<'EOF'
+[build]
+rustflags = ["-A", "clippy::all"]
+EOF
   head -c 1048577 /dev/zero | tr '\0' x >"$work_dir/oversized.sh"
   {
     printf '%s%s\n' '#[al' 'low('
@@ -1373,6 +1402,7 @@ EOF
     'invalid ShellCheck suppression' \
     'invalid Clippy suppression' \
     'Cargo lint allowances are prohibited' \
+    'Cargo rustflags must not allow diagnostics' \
     'source file exceeds 1048576 bytes'; do
     grep -Fq "$diagnostic" <<<"$output" || {
       printf 'policy output omitted %s:\n%s\n' "$diagnostic" "$output" >&2
@@ -1391,7 +1421,9 @@ EOF
     "$work_dir/inner_broad_expect.rs" \
     "$work_dir/reasoned_broad_multiline_clippy.rs" \
     "$work_dir/Cargo.toml" \
+    "$work_dir/.cargo/config.toml" \
     "$work_dir/oversized.sh"
+  rmdir -- "$work_dir/.cargo"
 
   {
     printf '%s%s\n' '// #no' 'sec G103 -- narrow native boundary'

@@ -159,6 +159,20 @@ main() {
   )
   assert_value true full "$output"
 
+  commit_file "$fixture_repo" internal/urlreferencev1/renamed.go
+  base=$(git -C "$fixture_repo" rev-parse HEAD)
+  git -C "$fixture_repo" mv \
+    internal/urlreferencev1/renamed.go \
+    docs/renamed.md
+  git -C "$fixture_repo" commit -q -m production-rename
+  output=$(
+    cd "$fixture_repo"
+    bash "$root/.github/scripts/changecheck.sh" "$base" HEAD
+  )
+  assert_value true docs "$output"
+  assert_value true go "$output"
+  assert_value true full "$output"
+
   commit_file "$fixture_repo" internal/workerprotocolv1/deleted.go
   base=$(git -C "$fixture_repo" rev-parse HEAD)
   git -C "$fixture_repo" rm -q internal/workerprotocolv1/deleted.go

@@ -106,6 +106,81 @@ func cargoLintFindings(path string, source []byte) []string {
 	return findings
 }
 
+func cargoConfigFindings(path string, source []byte) []string {
+	var document map[string]any
+	_, err := toml.Decode(string(source), &document)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: parse Cargo configuration: %v", path, err)}
+	}
+	var findings []string
+	inspectCargoConfig(path, document, &findings)
+	slices.Sort(findings)
+	return findings
+}
+
+func inspectCargoConfig(path string, value any, findings *[]string) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if key == "rustflags" || key == "rustdocflags" {
+				if cargoAllowsLint(child) {
+					*findings = append(*findings, fmt.Sprintf(
+						"%s: Cargo %s must not allow diagnostics", path, key,
+					))
+				}
+				continue
+			}
+			inspectCargoConfig(path, child, findings)
+		}
+	case []map[string]any:
+		for _, child := range typed {
+			inspectCargoConfig(path, child, findings)
+		}
+	}
+}
+
+func cargoAllowsLint(value any) bool {
+	flags, valid := cargoFlags(value)
+	if !valid {
+		return true
+	}
+	for index, flag := range flags {
+		if cargoFlagAllowsLint(flags, index, flag) {
+			return true
+		}
+	}
+	return false
+}
+
+func cargoFlags(value any) ([]string, bool) {
+	switch typed := value.(type) {
+	case string:
+		return strings.Fields(typed), true
+	case []any:
+		flags := make([]string, 0, len(typed))
+		for _, item := range typed {
+			flag, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			flags = append(flags, flag)
+		}
+		return flags, true
+	default:
+		return nil, false
+	}
+}
+
+func cargoFlagAllowsLint(flags []string, index int, flag string) bool {
+	return flag == "-A" ||
+		flag == "--allow" ||
+		strings.HasPrefix(flag, "-A") && len(flag) > 2 ||
+		strings.HasPrefix(flag, "--allow=") ||
+		flag == "--cap-lints=allow" ||
+		flag == "--cap-lints" &&
+			index+1 < len(flags) && flags[index+1] == "allow"
+}
+
 func nestedTable(document map[string]any, keys ...string) map[string]any {
 	current := document
 	for _, key := range keys {
