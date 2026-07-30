@@ -210,6 +210,15 @@ release_exe_suffix() {
   esac
 }
 
+cleanup_release_outputs() {
+  local target_dir=$1
+  local cache_root=$2
+
+  case "$target_dir" in
+  "$cache_root"/release-artefacts.*) rm -rf -- "$target_dir" ;;
+  esac
+}
+
 check_release_outputs() (
   local inventory
 
@@ -217,14 +226,7 @@ check_release_outputs() (
   mkdir -p "$cache_root"
   target_dir=$(mktemp -d "$cache_root/release-artefacts.XXXXXX")
 
-  # shellcheck disable=SC2329 # Invoked by the EXIT and signal trap.
-  cleanup() {
-    case "$target_dir" in
-    "$cache_root"/release-artefacts.*) rm -rf -- "$target_dir" ;;
-    esac
-  }
-
-  trap cleanup EXIT HUP INT TERM
+  trap 'cleanup_release_outputs "$target_dir" "$cache_root"' EXIT HUP INT TERM
   "$cargo_bin" build --workspace --release --locked --target-dir "$target_dir"
 
   release_dir=$target_dir/release

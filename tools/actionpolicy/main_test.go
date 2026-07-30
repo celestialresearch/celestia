@@ -12,16 +12,22 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
 var errWrite = errors.New("write failed")
 
 type failingWriter struct{}
+
+type failingReader struct{}
 
 type stagedWriter struct {
 	failAt int
@@ -36,7 +42,17 @@ type invalidDocument struct {
 	want  string
 }
 
+const codeQLTestPrefix = `permissions: read-all
+jobs:
+  analyze:
+    permissions: {security-events: write}
+`
+
 func (failingWriter) Write([]byte) (int, error) {
+	return 0, errWrite
+}
+
+func (failingReader) Read([]byte) (int, error) {
 	return 0, errWrite
 }
 
@@ -527,6 +543,195 @@ func TestInspectDocumentsRejectsInvalidSteps(t *testing.T) {
 			mode:  actionsMode,
 			want:  "action image must be scalar",
 		},
+		{
+			name:  "action step reference mapping",
+			path:  "action.yml",
+			input: "runs:\n  steps:\n    - uses: {}\n",
+			mode:  actionsMode,
+			want:  "action reference must be scalar",
+		},
+		{
+			name:  "service image mapping",
+			path:  "main.yml",
+			input: "jobs:\n  scan:\n    services:\n      database:\n        image: {}\n",
+			mode:  actionsMode,
+			want:  "container image must be scalar",
+		},
+	})
+}
+
+func TestYAMLHelpersRejectConstructedInvalidNodes(t *testing.T) {
+	t.Parallel()
+	if mappingValue(nil, "key") != nil ||
+		mappingValue(&yaml.Node{Kind: yaml.SequenceNode}, "key") != nil {
+		t.Fatal("mappingValue accepted a non-mapping node")
+	}
+	validator := yamlValidator{
+		active:    make(map[*yaml.Node]bool),
+		remaining: maxYAMLNodeVisits,
+	}
+	if err := validator.validate(nil, 0); err != nil {
+		t.Fatalf("nil node error = %v", err)
+	}
+	cyclic := &yaml.Node{Kind: yaml.MappingNode}
+	alias := &yaml.Node{Kind: yaml.AliasNode, Alias: cyclic}
+	cyclic.Content = []*yaml.Node{
+		{Kind: yaml.ScalarNode, Value: "cycle"},
+		alias,
+	}
+	if err := validator.validate(cyclic, 0); err == nil ||
+		!strings.Contains(err.Error(), "cycle") {
+		t.Fatalf("cycle error = %v", err)
+	}
+	for name, node := range map[string]*yaml.Node{
+		"document": {Kind: yaml.DocumentNode},
+		"alias":    {Kind: yaml.AliasNode},
+		"unknown":  {},
+	} {
+		if err := validator.validateKind(node, 0); err == nil {
+			t.Fatalf("%s node accepted", name)
+		}
+	}
+	if err := validator.validateMapping(&yaml.Node{
+		Kind:    yaml.MappingNode,
+		Content: []*yaml.Node{{Kind: yaml.ScalarNode}},
+	}, 0); err == nil {
+		t.Fatal("incomplete mapping accepted")
+	}
+	if err := validator.validateMapping(&yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			nil,
+			{Kind: yaml.ScalarNode},
+		},
+	}, 0); err == nil {
+		t.Fatal("nil mapping key accepted")
+	}
+	if err := validator.validateMapping(&yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			{Kind: yaml.SequenceNode},
+			{Kind: yaml.ScalarNode},
+		},
+	}, 0); err == nil {
+		t.Fatal("non-scalar mapping key accepted")
+	}
+}
+
+func TestReadFieldBoundaries(t *testing.T) {
+	t.Parallel()
+	value, eof, err := readField(
+		bufio.NewReader(strings.NewReader(strings.Repeat("a", 5000)+"\x00")),
+		6000,
+		false,
+	)
+	if err != nil || eof || len(value) != 5000 {
+		t.Fatalf("buffered field length=%d eof=%t error=%v", len(value), eof, err)
+	}
+	if _, _, err := readField(
+		bufio.NewReader(strings.NewReader("\x00")), 1, false,
+	); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("empty field error = %v", err)
+	}
+	if _, _, err := readField(
+		bufio.NewReaderSize(failingReader{}, 1), 1, false,
+	); !errors.Is(err, errWrite) {
+		t.Fatalf("reader error = %v", err)
+	}
+	if _, _, err := readField(
+		bufio.NewReader(io.LimitReader(strings.NewReader("abc"), 3)),
+		3,
+		false,
+	); err == nil || !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("truncated field error = %v", err)
+	}
+}
+
+func TestPermissionWorkflowBoundaries(t *testing.T) {
+	t.Parallel()
+	for name, input := range map[string]string{
+		"no jobs": "permissions: read-all\n",
+		"scalar job": `permissions: read-all
+jobs:
+  ignored: scalar
+`,
+		"job without write": `permissions: read-all
+jobs:
+  inspect:
+    permissions: read-all
+`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := inspectForFuzz([]byte(input), permissionsMode); err != nil {
+				t.Fatalf("inspect permissions: %v", err)
+			}
+		})
+	}
+
+}
+
+func TestPermissionWorkflowRejectsInvalidCodeQL(t *testing.T) {
+	t.Parallel()
+	testInvalidDocuments(t, []invalidDocument{
+		{
+			name:  "invalid workflow permissions",
+			path:  "main.yml",
+			input: "permissions: []\n",
+			mode:  permissionsMode,
+			want:  "workflow permissions",
+		},
+		{
+			name:  "invalid jobs",
+			path:  "main.yml",
+			input: "permissions: read-all\njobs: []\n",
+			mode:  permissionsMode,
+			want:  "jobs must be a mapping",
+		},
+		{
+			name:  "CodeQL steps missing",
+			path:  ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix,
+			mode:  permissionsMode,
+			want:  "steps must be a sequence",
+		},
+		{
+			name: "CodeQL actions missing",
+			path: ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + `    steps:
+      - uses: actions/setup-go@0123456789012345678901234567890123456789
+`,
+			mode: permissionsMode,
+			want: "exactly one CodeQL",
+		},
+		{
+			name: "CodeQL scalar step",
+			path: ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + `    steps:
+      - invalid
+`,
+			mode: permissionsMode,
+			want: "step must be a mapping",
+		},
+		{
+			name: "CodeQL step without action",
+			path: ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + `    steps:
+      - name: invalid
+`,
+			mode: permissionsMode,
+			want: "approved action",
+		},
+		{
+			name: "conditional CodeQL initialisation",
+			path: ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + `    steps:
+      - uses: github/codeql-action/init@0123456789012345678901234567890123456789
+        if: always()
+`,
+			mode: permissionsMode,
+			want: "initialisation must be unconditional",
+		},
 	})
 }
 
@@ -554,4 +759,55 @@ func testInvalidDocuments(t *testing.T, tests []invalidDocument) {
 			}
 		})
 	}
+}
+
+func FuzzInspectWorkflow(f *testing.F) {
+	f.Add([]byte("name: test\njobs: {}\n"))
+	f.Add([]byte("name: test\npermissions: read-all\njobs: {}\n"))
+	f.Add([]byte("name: &name test\njobs:\n  build:\n    steps:\n      - uses: actions/checkout@0123456789012345678901234567890123456789\n"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > maxActionDocumentBytes {
+			return
+		}
+		for _, mode := range []string{actionsMode, permissionsMode} {
+			firstOutput, firstErr := inspectForFuzz(data, mode)
+			secondOutput, secondErr := inspectForFuzz(data, mode)
+			if firstOutput != secondOutput ||
+				fmt.Sprint(firstErr) != fmt.Sprint(secondErr) {
+				t.Fatalf("inspection is nondeterministic for mode %s", mode)
+			}
+			if len(firstOutput) > maxActionCorpusBytes {
+				t.Fatalf("inspection output exceeds corpus bound for mode %s", mode)
+			}
+			firstOutput, firstErr = inspectStreamForFuzz(data, mode)
+			secondOutput, secondErr = inspectStreamForFuzz(data, mode)
+			if firstOutput != secondOutput ||
+				fmt.Sprint(firstErr) != fmt.Sprint(secondErr) {
+				t.Fatalf("stream inspection is nondeterministic for mode %s", mode)
+			}
+			if len(firstOutput) > maxActionCorpusBytes {
+				t.Fatalf("stream output exceeds corpus bound for mode %s", mode)
+			}
+		}
+	})
+}
+
+func inspectForFuzz(data []byte, mode string) (string, error) {
+	var output bytes.Buffer
+	err := inspect(document{
+		path: ".github/workflows/fuzz.yml",
+		data: data,
+	}, mode, &output)
+	return output.String(), err
+}
+
+func inspectStreamForFuzz(data []byte, mode string) (string, error) {
+	var output bytes.Buffer
+	err := inspectDocuments(bytes.NewReader(data), &output, mode, streamLimits{
+		documents:  maxActionDocuments,
+		pathBytes:  maxActionPathBytes,
+		dataBytes:  maxActionDocumentBytes,
+		totalBytes: maxActionCorpusBytes,
+	})
+	return output.String(), err
 }

@@ -10,6 +10,7 @@ linters:
       max-complexity: 12
       package-average: 0.0
     errcheck:
+      check-blank: true
       check-type-assertions: true
     funlen:
       lines: 80

@@ -80,6 +80,120 @@ check_private_keys() {
   done
 }
 
+check_test_skips() {
+  local matches
+
+  matches=$(git_grep --untracked -n -I \
+    -E '(^|[^[:alnum:]_])t\.Skip(f|Now)?[[:space:]]*\(' -- \
+    '*.go')
+  [[ -z "$matches" ]] || {
+    printf '%s\n' "$matches" >&2
+    fail 'Go tests must not skip cases'
+  }
+  matches=$(git_grep --untracked -n -I \
+    -E '#[[:space:]]*\[[[:space:]]*ignore([[:space:]]|\]|=)' -- \
+    '*.rs')
+  [[ -z "$matches" ]] || {
+    printf '%s\n' "$matches" >&2
+    fail 'Rust tests must not ignore cases'
+  }
+}
+
+check_suppressions() {
+  local allow_marker='#[al''low('
+  local allow_open=false
+  local allow_reason=false
+  local allow_rule=false
+  local allow_start=0
+  local file
+  local line
+  local line_number
+  local nolint_marker='//no''lint'
+  local nosec_marker='#no''sec'
+  local rule
+  local rules
+  local shellcheck_marker='# shell''check disable='
+  local suffix
+
+  while IFS= read -r -d '' file; do
+    [[ -f "$file" ]] || continue
+    case "$file" in
+    *.go | *.rs | *.sh | *.bash | *.ps1) ;;
+    *) continue ;;
+    esac
+    line_number=0
+    allow_open=false
+    allow_reason=false
+    allow_rule=false
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      line_number=$((line_number + 1))
+      if [[ "$allow_open" == true ]]; then
+        if [[ "$line" =~ ^[[:space:]]*clippy::[a-z0-9_]+,[[:space:]]*$ ]] &&
+          [[ "$allow_rule" == false ]]; then
+          rule=${line#*clippy::}
+          rule=${rule%%,*}
+          if [[ "$rule" == all ]]; then
+            fail "$file:$allow_start: invalid Clippy suppression"
+            allow_open=false
+          else
+            allow_rule=true
+          fi
+        elif [[ "$line" =~ ^[[:space:]]*reason[[:space:]]*=[[:space:]]*\"[^\"]+\"[[:space:]]*$ ]] &&
+          [[ "$allow_reason" == false ]]; then
+          allow_reason=true
+        elif [[ "$line" =~ ^[[:space:]]*\)\][[:space:]]*$ ]] &&
+          [[ "$allow_rule" == true && "$allow_reason" == true ]]; then
+          allow_open=false
+        else
+          fail "$file:$allow_start: invalid Clippy suppression"
+          allow_open=false
+        fi
+        continue
+      fi
+      if [[ "$line" == *"$nosec_marker"* ]]; then
+        suffix=${line#*"$nosec_marker"}
+        [[ "$suffix" =~ ^[[:space:]]+G[0-9]+(,G[0-9]+)*[[:space:]]+--[[:space:]]+[^[:space:]].*$ ]] ||
+          fail "$file:$line_number: invalid gosec suppression"
+      fi
+      if [[ "$line" == *"$nolint_marker"* ]]; then
+        suffix=${line#*"$nolint_marker"}
+        if [[ "$suffix" =~ ^:([a-z0-9][a-z0-9,-]*)[[:space:]]+--[[:space:]]+[^[:space:]].*$ ]]; then
+          rules=${BASH_REMATCH[1]}
+          [[ ",$rules," != *,all,* ]] ||
+            fail "$file:$line_number: invalid golangci-lint suppression"
+        else
+          fail "$file:$line_number: invalid golangci-lint suppression"
+        fi
+      fi
+      if [[ "$line" == *"$shellcheck_marker"* ]]; then
+        suffix=${line#*"$shellcheck_marker"}
+        [[ "$suffix" =~ ^SC[0-9]+(,SC[0-9]+)*[[:space:]]+#[[:space:]]+[^[:space:]].*$ ]] ||
+          fail "$file:$line_number: invalid ShellCheck suppression"
+      fi
+      if [[ "$line" == *"$allow_marker"* ]]; then
+        if [[ "$line" =~ ^[[:space:]]*#\[allow\(clippy::([a-z0-9_]+),[[:space:]]*reason[[:space:]]*=[[:space:]]*\"[^\"]+\"\)\][[:space:]]*$ ]]; then
+          if [[ "${BASH_REMATCH[1]}" == all ]]; then
+            fail "$file:$line_number: invalid Clippy suppression"
+          else
+            continue
+          fi
+        fi
+        if [[ "$line" =~ ^[[:space:]]*#\[allow\([[:space:]]*$ ]]; then
+          allow_open=true
+          allow_reason=false
+          allow_rule=false
+          allow_start=$line_number
+          continue
+        fi
+        fail "$file:$line_number: invalid Clippy suppression"
+      fi
+    done <"$file"
+    if [[ "$allow_open" == true ]]; then
+      fail "$file:$allow_start: incomplete Clippy suppression"
+    fi
+  done <"$source_inventory"
+}
+
 is_generated_source() {
   local count=0
   local file=$1
@@ -153,5 +267,7 @@ if ! "$git_bin" ls-files -co --exclude-standard -z >"$source_inventory"; then
 fi
 check_markers
 check_private_keys
+check_test_skips
+check_suppressions
 check_source_files
 exit "$status"

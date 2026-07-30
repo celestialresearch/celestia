@@ -15,6 +15,25 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 cache_root=${CELESTIA_CACHE_DIR:-"$root/.cache"}
 
+terminate_child() {
+  local pid=$1
+
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+
+cleanup_verification() {
+  local work_dir=$1
+  shift
+
+  for pid in "$@"; do
+    if [[ -n "$pid" ]]; then
+      terminate_child "$pid"
+    fi
+  done
+  rm -rf -- "$work_dir"
+}
+
 main() (
   local output
   local repo_dir
@@ -34,26 +53,6 @@ main() (
   local golangci_lint
   local platform_log
 
-  terminate_child() {
-    local pid=$1
-    kill "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-  }
-
-  # shellcheck disable=SC2329 # Invoked by the EXIT and signal trap.
-  cleanup() {
-    if [[ -n "$change_pid" ]]; then
-      terminate_child "$change_pid"
-    fi
-    if [[ -n "$currency_pid" ]]; then
-      terminate_child "$currency_pid"
-    fi
-    if [[ -n "$action_pid" ]]; then
-      terminate_child "$action_pid"
-    fi
-    rm -rf -- "$work_dir"
-  }
-
   mkdir -p "$cache_root"
   work_dir=$(mktemp -d "$cache_root/verification-test.XXXXXX")
   case "$work_dir" in
@@ -63,7 +62,7 @@ main() (
     return 1
     ;;
   esac
-  trap cleanup EXIT
+  trap 'cleanup_verification "$work_dir" "$change_pid" "$currency_pid" "$action_pid"' EXIT
   trap 'exit 1' HUP INT TERM
   real_go=$(command -v go)
   go_version=$(awk '$1 == "go" { print $2; exit }' "$root/go.mod")
@@ -138,15 +137,14 @@ main() (
     printf 'Windows shell check does not own devcheck\n' >&2
     return 1
   }
-  # shellcheck disable=SC2016 # This probe matches literal PowerShell source.
   [[ $(grep -Fc 'GIT_CONFIG_COUNT=3' "$shellcheck_script") -eq 1 &&
     $(grep -Fc 'GIT_CONFIG_KEY_0=safe.directory' "$shellcheck_script") -eq 1 &&
-    $(grep -Fc 'GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE"' \
+    $(grep -Fc "GIT_CONFIG_VALUE_0=\"\$GITHUB_WORKSPACE\"" \
       "$shellcheck_script") -eq 1 &&
     $(grep -Fc 'GIT_CONFIG_KEY_1=safe.directory' "$shellcheck_script") -eq 1 &&
-    $(grep -Fc 'GIT_CONFIG_VALUE_1="$PWD"' "$shellcheck_script") -eq 1 &&
+    $(grep -Fc "GIT_CONFIG_VALUE_1=\"\$PWD\"" "$shellcheck_script") -eq 1 &&
     $(grep -Fc 'GIT_CONFIG_KEY_2=safe.directory' "$shellcheck_script") -eq 1 &&
-    $(grep -Fc 'GIT_CONFIG_VALUE_2="$CELESTIA_CYGWIN_ROOT"' \
+    $(grep -Fc "GIT_CONFIG_VALUE_2=\"\$CELESTIA_CYGWIN_ROOT\"" \
       "$shellcheck_script") -eq 1 ]] || {
     printf 'Windows shell check omits command-scoped Git ownership\n' >&2
     return 1
@@ -173,13 +171,11 @@ main() (
     printf 'Windows shell check reads captured output without a bound\n' >&2
     return 1
   fi
-  # shellcheck disable=SC2016 # These probes match literal source.
-  grep -Fq '$cleanupFailures = @(' "$shellcheck_script" || {
+  grep -Fq "\$cleanupFailures = @(" "$shellcheck_script" || {
     printf 'Windows shell check does not retain cleanup failures as an array\n' >&2
     return 1
   }
-  # shellcheck disable=SC2016 # These probes match literal source.
-  grep -Fq 'CYGWIN*) go_profile=$(cygpath -w "$profile")' \
+  grep -Fq "CYGWIN*) go_profile=\$(cygpath -w \"\$profile\")" \
     "$root/.github/scripts/coveragecheck.sh" || {
     printf 'coverage check omits Cygwin Go-path conversion\n' >&2
     return 1
@@ -241,6 +237,7 @@ EOF
   output=$(
     cd "$work_dir/type-assertion" &&
       env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+        GOLANGCI_LINT_CACHE="$work_dir/lint-type-bad" \
         "$golangci_lint" run --config "$root/.golangci.yml" ./... 2>&1
   )
   status=$?
@@ -268,6 +265,7 @@ EOF
   (
     cd "$work_dir/type-assertion"
     env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+      GOLANGCI_LINT_CACHE="$work_dir/lint-type-good" \
       "$golangci_lint" run --config "$root/.golangci.yml" ./...
   ) || {
     printf 'errcheck rejected a checked type assertion\n' >&2
@@ -339,7 +337,8 @@ EOF
   set +e
   output=$(
     cd "$work_dir/linter-policy" &&
-      "$golangci_lint" run --config "$root/.golangci.yml" ./... 2>&1
+      GOLANGCI_LINT_CACHE="$work_dir/lint-policy-bad" \
+        "$golangci_lint" run --config "$root/.golangci.yml" ./... 2>&1
   )
   status=$?
   set -e
@@ -348,13 +347,27 @@ EOF
     return 1
   fi
   for linter in \
-    asciicheck contextcheck errchkjson godox nilnil recvcheck tparallel unparam; do
+    asciicheck contextcheck errcheck godox nilnil recvcheck tparallel unparam; do
     if ! grep -Fq "($linter)" <<<"$output"; then
       printf '%s did not reject its defective fixture:\n%s\n' \
         "$linter" "$output" >&2
       return 1
     fi
   done
+  set +e
+  output=$(
+    cd "$work_dir/linter-policy" &&
+      GOLANGCI_LINT_CACHE="$work_dir/lint-errchkjson" \
+        "$golangci_lint" run --config "$root/.golangci.yml" \
+        --enable-only=errchkjson ./... 2>&1
+  )
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ]] || ! grep -Fq '(errchkjson)' <<<"$output"; then
+    printf 'errchkjson accepted its defective fixture:\n%s\n' \
+      "$output" >&2
+    return 1
+  fi
   cat >"$work_dir/linter-policy/fixture.go" <<'EOF'
 package linterfixture
 
@@ -397,7 +410,11 @@ func Use() error {
 	value.mutate()
 	value.inspect()
 	inherit(context.Background())
-	_, _ = maybe()
+	result, err := maybe()
+	if err != nil {
+		return err
+	}
+	_ = result
 	_ = used(1)
 	return encode()
 }
@@ -416,7 +433,8 @@ func TestParallel(t *testing.T) {
 EOF
   (
     cd "$work_dir/linter-policy"
-    "$golangci_lint" run --config "$root/.golangci.yml" ./...
+    GOLANGCI_LINT_CACHE="$work_dir/lint-policy-good" \
+      "$golangci_lint" run --config "$root/.golangci.yml" ./...
   ) || {
     printf 'admitted linters rejected correct fixtures\n' >&2
     return 1
@@ -447,6 +465,20 @@ EOF
     >"$work_dir/.github/.coverage"
   printf 'module celestia.research/coverage\n\ngo 1.26.5\n' >"$work_dir/go.mod"
   git -C "$work_dir" init -q
+  cat >"$work_dir/.git/info/exclude" <<'EOF'
+/config-bin/
+/lint-*/
+/linter-policy/
+/platform-bin/
+/repo/
+/rust/
+/type-assertion/
+EOF
+  if git -C "$work_dir" ls-files -co --exclude-standard |
+    grep -Eq '^((lint-|linter-policy|platform-bin|repo|rust|type-assertion)/)'; then
+    printf 'coverage fixture inventory includes generated verifier state\n' >&2
+    return 1
+  fi
 
   set +e
   output=$(
@@ -1084,6 +1116,192 @@ EOF
     return 1
   }
   rm -- "$work_dir/coverage_test.go"
+
+  cat >"$work_dir/skipped_test.go" <<'EOF'
+package fixture
+
+import "testing"
+
+func TestSkipped(t *testing.T) {
+	t.Skip("unverified")
+}
+EOF
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a skipped Go test\n' >&2
+    return 1
+  }
+  grep -Fq 'Go tests must not skip cases' <<<"$output" || {
+    printf 'policy output omitted the skipped-test failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/skipped_test.go"
+
+  cat >"$work_dir/ignored_test.rs" <<'EOF'
+#[test]
+#[ignore]
+fn ignored() {}
+EOF
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted an ignored Rust test\n' >&2
+    return 1
+  }
+  grep -Fq 'Rust tests must not ignore cases' <<<"$output" || {
+    printf 'policy output omitted the ignored-test failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/ignored_test.rs"
+
+  printf '%s%s\n' '// #no' 'sec -- broad' >"$work_dir/broad_suppression.go"
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a broad gosec suppression\n' >&2
+    return 1
+  }
+  grep -Fq 'invalid gosec suppression' <<<"$output" || {
+    printf 'policy output omitted the gosec suppression failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/broad_suppression.go"
+
+  printf '%s%s\n' '//no' 'lint -- broad' >"$work_dir/broad_nolint.go"
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a broad golangci-lint suppression\n' >&2
+    return 1
+  }
+  grep -Fq 'invalid golangci-lint suppression' <<<"$output" || {
+    printf 'policy output omitted the golangci-lint suppression failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/broad_nolint.go"
+
+  printf '%s%s\n' '//no' 'lint:all -- reasoned blanket suppression' \
+    >"$work_dir/reasoned_broad_nolint.go"
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a reasoned blanket golangci-lint suppression\n' >&2
+    return 1
+  }
+  grep -Fq 'invalid golangci-lint suppression' <<<"$output" || {
+    printf 'policy output omitted the reasoned blanket golangci-lint failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/reasoned_broad_nolint.go"
+
+  printf '%s%s\n' '# shell' 'check disable=SC2329' \
+    >"$work_dir/broad_shellcheck.sh"
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted an unexplained ShellCheck suppression\n' >&2
+    return 1
+  }
+  grep -Fq 'invalid ShellCheck suppression' <<<"$output" || {
+    printf 'policy output omitted the ShellCheck suppression failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/broad_shellcheck.sh"
+
+  printf '%s%s\n' '#[al' 'low(clippy::needless_pass_by_value)]' \
+    >"$work_dir/broad_clippy.rs"
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted an unexplained Clippy suppression\n' >&2
+    return 1
+  }
+  grep -Fq 'invalid Clippy suppression' <<<"$output" || {
+    printf 'policy output omitted the Clippy suppression failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/broad_clippy.rs"
+
+  printf '%s%s\n' '#[al' \
+    'low(clippy::all, reason = "reasoned blanket suppression")]' \
+    >"$work_dir/reasoned_broad_clippy.rs"
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a reasoned blanket Clippy suppression\n' >&2
+    return 1
+  }
+  grep -Fq 'invalid Clippy suppression' <<<"$output" || {
+    printf 'policy output omitted the reasoned blanket Clippy failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/reasoned_broad_clippy.rs"
+
+  {
+    printf '%s%s\n' '#[al' 'low('
+    printf '%s\n' '    clippy::all,'
+    printf '%s\n' '    reason = "reasoned blanket suppression"'
+    printf '%s\n' ')]'
+  } >"$work_dir/reasoned_broad_multiline_clippy.rs"
+  set +e
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a multiline blanket Clippy suppression\n' >&2
+    return 1
+  }
+  grep -Fq 'invalid Clippy suppression' <<<"$output" || {
+    printf 'policy output omitted the multiline blanket Clippy failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/reasoned_broad_multiline_clippy.rs"
+
+  {
+    printf '%s%s\n' '// #no' 'sec G103 -- narrow native boundary'
+    printf '%s%s\n' '//no' 'lint:errcheck -- checked by an owning wrapper'
+  } >"$work_dir/valid_suppressions.go"
+  printf '%s%s\n' \
+    '# shell' 'check disable=SC2329 # Invoked by a registered trap' \
+    >"$work_dir/valid_suppressions.sh"
+  printf '%s%s\n' \
+    '#[al' 'low(clippy::needless_pass_by_value, reason = "FFI owns the value")]' \
+    >"$work_dir/valid_suppressions.rs"
+  output=$(cd "$work_dir" && bash .github/scripts/policycheck.sh 2>&1) || {
+    printf 'policy check rejected narrow suppressions:\n%s\n' "$output" >&2
+    return 1
+  }
+  rm -- \
+    "$work_dir/valid_suppressions.go" \
+    "$work_dir/valid_suppressions.sh" \
+    "$work_dir/valid_suppressions.rs"
+
   fake_bin="$work_dir/fake-bin"
   real_git=$(command -v git)
   mkdir -p "$fake_bin"

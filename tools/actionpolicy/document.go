@@ -164,10 +164,13 @@ func (validator *yamlValidator) validateMapping(node *yaml.Node, depth int) erro
 	keys := make(map[string]struct{}, len(node.Content)/2)
 	for index := 0; index < len(node.Content); index += 2 {
 		key := node.Content[index]
+		if key == nil {
+			return errors.New("YAML mapping key is not scalar")
+		}
 		if key.Kind == yaml.AliasNode {
 			return errors.New("YAML alias keys are unsupported")
 		}
-		if key == nil || key.Kind != yaml.ScalarNode {
+		if key.Kind != yaml.ScalarNode {
 			return errors.New("YAML mapping key is not scalar")
 		}
 		if key.Value == "<<" {

@@ -32,7 +32,8 @@ The baseline applies whenever Go packages exist:
 - ambiguous nil-result, nil-error and receiver-ownership checks;
 - unused parameter and unresolved `TODO` or `FIXME` checks;
 - resource and error checks already listed in `.golangci.yml`;
-- checked type assertions through `errcheck`;
+- checked type assertions and blank-identifier error assignments through
+  `errcheck`;
 - enum, tag, Unicode and security checks already listed there;
 - `cyclop` with a maximum function complexity of 12;
 - `funlen` with maxima of 80 lines and 50 statements;
