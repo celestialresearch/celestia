@@ -147,6 +147,10 @@ func TestContainerDeletionNativeStates(t *testing.T) {
 	if err := completeContainerDeletion(5, callErr); !errors.Is(err, callErr) {
 		t.Fatalf("deletion call error = %v", err)
 	}
+	if err := completeContainerDeletion(5, nil); err == nil ||
+		!strings.Contains(err.Error(), "HRESULT") {
+		t.Fatalf("deletion result error = %v", err)
+	}
 	err := completeContainerDeletion(5, windows.ERROR_SUCCESS)
 	if err == nil || !strings.Contains(err.Error(), "HRESULT") {
 		t.Fatalf("deletion HRESULT error = %v", err)

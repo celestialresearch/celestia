@@ -467,6 +467,13 @@ permissions:
 			mode:  actionsMode,
 			want:  "root must be a mapping",
 		},
+		{
+			name:  "empty root",
+			path:  "main.yml",
+			input: " \n",
+			mode:  actionsMode,
+			want:  "root must be a mapping",
+		},
 	})
 }
 

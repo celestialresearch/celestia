@@ -81,10 +81,15 @@ func TestWorkerPathPolicy(t *testing.T) {
 		path string
 		want bool
 	}{
-		"local":    {path: filepath.Join(t.TempDir(), "worker.exe"), want: true},
-		"relative": {path: "worker.exe"},
-		"UNC":      {path: `\\invalid.example\share\worker.exe`},
-		"device":   {path: `\\?\C:\worker.exe`},
+		"local":            {path: filepath.Join(t.TempDir(), "worker.exe"), want: true},
+		"lowercase drive":  {path: `c:\worker.exe`, want: true},
+		"before uppercase": {path: `@:\worker.exe`},
+		"after uppercase":  {path: `[:\worker.exe`},
+		"before lowercase": {path: "`:\\worker.exe"},
+		"after lowercase":  {path: `{:\worker.exe`},
+		"relative":         {path: "worker.exe"},
+		"UNC":              {path: `\\invalid.example\share\worker.exe`},
+		"device":           {path: `\\?\C:\worker.exe`},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
