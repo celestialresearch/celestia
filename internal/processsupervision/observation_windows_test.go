@@ -468,6 +468,21 @@ func TestAwaitStreamPrefersCompletedResultAtDeadline(t *testing.T) {
 	}
 }
 
+func TestResolveStreamDeadlinePrefersCompletedResult(t *testing.T) {
+	done := make(chan struct{})
+	close(done)
+	result := make(chan streamResult, 1)
+	result <- streamResult{data: []byte("complete")}
+	got := resolveStreamDeadline(
+		&streamReader{name: "output", done: done},
+		result,
+		time.Now().Add(-time.Second),
+	)
+	if got.cleanupErr != nil || string(got.data) != "complete" {
+		t.Fatalf("completed stream reported cleanup failure: %+v", got)
+	}
+}
+
 func TestConsumedInputResultIsNotAppliedTwice(t *testing.T) {
 	sentinel := errors.New("input")
 	input := make(chan inputResult, 1)

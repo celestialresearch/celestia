@@ -166,27 +166,35 @@ func awaitStream(
 	case value := <-result:
 		return value
 	case <-timer.C:
-		select {
-		case value := <-result:
-			return value
-		default:
-		}
-		cleanupErr := fmt.Errorf("join worker %s: cleanup deadline exceeded", reader.name)
-		if closeErr := reader.cancel(); closeErr != nil {
-			cleanupErr = errors.Join(
-				cleanupErr,
-				fmt.Errorf("close worker %s: %w", reader.name, closeErr),
-			)
-		}
-		joinTimer := time.NewTimer(cleanupRemaining(joinDeadline))
-		defer joinTimer.Stop()
-		select {
-		case <-reader.done:
-			value := <-result
-			value.cleanupErr = errors.Join(cleanupErr, value.cleanupErr)
-			return value
-		case <-joinTimer.C:
-			return streamResult{cleanupErr: cleanupErr}
-		}
+		return resolveStreamDeadline(reader, result, joinDeadline)
+	}
+}
+
+func resolveStreamDeadline(
+	reader *streamReader,
+	result <-chan streamResult,
+	joinDeadline time.Time,
+) streamResult {
+	select {
+	case value := <-result:
+		return value
+	default:
+	}
+	cleanupErr := fmt.Errorf("join worker %s: cleanup deadline exceeded", reader.name)
+	if closeErr := reader.cancel(); closeErr != nil {
+		cleanupErr = errors.Join(
+			cleanupErr,
+			fmt.Errorf("close worker %s: %w", reader.name, closeErr),
+		)
+	}
+	joinTimer := time.NewTimer(cleanupRemaining(joinDeadline))
+	defer joinTimer.Stop()
+	select {
+	case <-reader.done:
+		value := <-result
+		value.cleanupErr = errors.Join(cleanupErr, value.cleanupErr)
+		return value
+	case <-joinTimer.C:
+		return streamResult{cleanupErr: cleanupErr}
 	}
 }
