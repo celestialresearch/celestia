@@ -12,6 +12,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/build"
@@ -247,6 +248,19 @@ func goCandidateDirectories(
 }
 
 func runGoBuildUnits(units []goBuildUnit) ([]string, error) {
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		maxGoPolicyDuration,
+	)
+	defer cancel()
+	return runGoBuildUnitsWith(ctx, units, packages.Load)
+}
+
+func runGoBuildUnitsWith(
+	ctx context.Context,
+	units []goBuildUnit,
+	load packageLoader,
+) ([]string, error) {
 	type unitResult struct {
 		findings []string
 		err      error
@@ -259,7 +273,12 @@ func runGoBuildUnits(units []goBuildUnit) ([]string, error) {
 			limit <- struct{}{}
 			defer func() { <-limit }()
 			results[index].findings, results[index].err =
-				goSkipFindingsForTarget(unit.target, unit.patterns)
+				goSkipFindingsForTargetWith(
+					ctx,
+					unit.target,
+					unit.patterns,
+					load,
+				)
 		})
 	}
 	wait.Wait()
@@ -363,19 +382,13 @@ func hasGoPolicySelector(path string, source []byte) (bool, error) {
 	return found, nil
 }
 
-func goSkipFindingsForTarget(
-	target buildTarget,
-	patterns []string,
-) ([]string, error) {
-	return goSkipFindingsForTargetWith(target, patterns, packages.Load)
-}
-
 type packageLoader func(
 	*packages.Config,
 	...string,
 ) ([]*packages.Package, error)
 
 func goSkipFindingsForTargetWith(
+	ctx context.Context,
 	target buildTarget,
 	patterns []string,
 	load packageLoader,
@@ -392,6 +405,7 @@ func goSkipFindingsForTargetWith(
 		"CGO_ENABLED="+cgo,
 	)
 	loaded, err := load(&packages.Config{
+		Context: ctx,
 		Mode: packages.NeedName | packages.NeedFiles |
 			packages.NeedCompiledGoFiles | packages.NeedSyntax |
 			packages.NeedTypes | packages.NeedTypesInfo,

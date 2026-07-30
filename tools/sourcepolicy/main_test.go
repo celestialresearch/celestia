@@ -30,13 +30,12 @@ import (
 
 func TestRun(t *testing.T) {
 	root := t.TempDir()
-	goPath := filepath.Join(root, "skipped_test.go")
+	rustSkipPath := filepath.Join(root, "skipped.rs")
 	rustPath := filepath.Join(root, "suppressed.rs")
 	missingRustPath := filepath.Join(root, "missing.rs")
-	if err := os.WriteFile(goPath, []byte(
-		"package fixture\nimport \"testing\"\n"+
-			"func TestFixture(t *testing.T) { t.SkipNow() }\n",
-	), 0o600); err != nil {
+	if err := os.WriteFile(
+		rustSkipPath, []byte("#[ignore]\nfn skipped() {}"), 0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
@@ -66,11 +65,11 @@ func TestRun(t *testing.T) {
 			"inventory failed",
 		},
 		{
-			"Go skip",
+			"Rust skip",
 			[]string{modeTestSkips},
-			func() ([]string, error) { return []string{goPath}, nil },
+			func() ([]string, error) { return []string{rustSkipPath}, nil },
 			1,
-			"Go tests must not skip",
+			"Rust tests must not skip",
 		},
 		{
 			"Rust suppression",
@@ -437,7 +436,7 @@ func TestGoSkipAcrossFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	findings, err := goPackageSkipFindings(
+	findings, err := goPackageSkipFindingsWithTargets(
 		[]string{
 			filepath.Base(helper),
 			filepath.Base(caller),
@@ -445,6 +444,10 @@ func TestGoSkipAcrossFiles(t *testing.T) {
 			filepath.Base(windows),
 		},
 		os.ReadFile,
+		[]buildTarget{
+			{goos: "linux", goarch: "amd64"},
+			{goos: "windows", goarch: "amd64"},
+		},
 	)
 	if err != nil {
 		t.Fatal(err)

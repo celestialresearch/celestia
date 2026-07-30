@@ -13,6 +13,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -108,6 +109,7 @@ func TestGoSkipLoadFailures(t *testing.T) {
 	target := buildTarget{goos: "linux", goarch: "amd64"}
 	loadErr := errors.New("load failed")
 	_, err := goSkipFindingsForTargetWith(
+		context.Background(),
 		target,
 		[]string{"./..."},
 		func(*packages.Config, ...string) ([]*packages.Package, error) {
@@ -119,6 +121,7 @@ func TestGoSkipLoadFailures(t *testing.T) {
 	}
 
 	_, err = goSkipFindingsForTargetWith(
+		context.Background(),
 		target,
 		[]string{"./..."},
 		func(*packages.Config, ...string) ([]*packages.Package, error) {
@@ -132,6 +135,7 @@ func TestGoSkipLoadFailures(t *testing.T) {
 	}
 
 	_, err = goSkipFindingsForTargetWith(
+		context.Background(),
 		buildTarget{goos: "linux", goarch: "amd64", cgo: true},
 		[]string{"./..."},
 		func(config *packages.Config, _ ...string) ([]*packages.Package, error) {
@@ -149,5 +153,26 @@ func TestGoSkipLoadFailures(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("CGO load error = %v", err)
+	}
+}
+
+func TestGoBuildUnitsPropagateCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := runGoBuildUnitsWith(
+		ctx,
+		[]goBuildUnit{{
+			target:   buildTarget{goos: "linux", goarch: "amd64"},
+			patterns: []string{"./..."},
+		}},
+		func(config *packages.Config, _ ...string) ([]*packages.Package, error) {
+			if config.Context != ctx {
+				t.Fatal("package loader received a different context")
+			}
+			return nil, config.Context.Err()
+		},
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("load error = %v, want context cancellation", err)
 	}
 }
