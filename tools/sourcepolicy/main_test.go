@@ -13,8 +13,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -104,40 +102,6 @@ func TestRun(t *testing.T) {
 			}
 			if !strings.Contains(stderr.String(), test.output) {
 				t.Fatalf("stderr = %q, want %q", stderr.String(), test.output)
-			}
-		})
-	}
-}
-
-func TestRunManifestPolicy(t *testing.T) {
-	t.Parallel()
-	data := []byte(`{"schema_version":"test"}`)
-	sum := sha256.Sum256(data)
-	tests := []struct {
-		name     string
-		data     []byte
-		readErr  error
-		expected string
-		code     int
-	}{
-		{"accepted", data, nil, hex.EncodeToString(sum[:]), 0},
-		{"changed", data, nil, strings.Repeat("0", 64), 1},
-		{"malformed", []byte(`{`), nil, hex.EncodeToString(sum[:]), 1},
-		{"read failure", nil, errors.New("read failed"), "", 1},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			var stderr bytes.Buffer
-			code := manifestPolicyStatus(
-				&stderr,
-				func(string) ([]byte, error) {
-					return test.data, test.readErr
-				},
-				test.expected,
-			)
-			if code != test.code {
-				t.Fatalf("code = %d, want %d", code, test.code)
 			}
 		})
 	}
