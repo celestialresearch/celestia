@@ -2028,6 +2028,23 @@ EOF
   printf '%s%s\n' \
     '#[al' 'low(clippy::needless_pass_by_value, reason = "FFI owns the value")]' \
     >"$work_dir/valid_suppressions.rs"
+  cat >"$work_dir/Cargo.toml" <<'EOF'
+[workspace]
+members = ["worker/url-reference"]
+exclude = ["worker/qualification-fixtures"]
+EOF
+  cat >"$work_dir/worker/url-reference/Cargo.toml" <<'EOF'
+[package]
+name = "fixture"
+version = "0.0.0"
+edition = "2024"
+EOF
+  cat >"$work_dir/worker/qualification-fixtures/Cargo.toml" <<'EOF'
+[package]
+name = "qualification-fixture"
+version = "0.0.0"
+edition = "2024"
+EOF
   output=$(cd "$work_dir" &&
     bash .github/scripts/policycheck.sh suppressions 2>&1) || {
     printf 'policy check rejected narrow suppressions:\n%s\n' "$output" >&2
@@ -2036,7 +2053,10 @@ EOF
   rm -- \
     "$work_dir/valid_suppressions.go" \
     "$work_dir/valid_suppressions.sh" \
-    "$work_dir/valid_suppressions.rs"
+    "$work_dir/valid_suppressions.rs" \
+    "$work_dir/Cargo.toml" \
+    "$work_dir/worker/url-reference/Cargo.toml" \
+    "$work_dir/worker/qualification-fixtures/Cargo.toml"
 
   fake_bin="$work_dir/fake-bin"
   real_git=$(command -v git)
