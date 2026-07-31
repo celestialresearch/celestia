@@ -92,11 +92,7 @@ classify_path() {
   *.rs)
     rust=true
     compatibility=true
-    case "$path" in
-    worker/*/src/* | worker/*/tests/*)
-      mark_full
-      ;;
-    esac
+    mark_full
     ;;
   .editorconfig | .gitattributes | .gitignore | .golangci.yml)
     mark_full

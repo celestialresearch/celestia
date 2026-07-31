@@ -117,6 +117,15 @@ main() {
   done
 
   for path in \
+    worker/url-reference/build.rs \
+    worker/url-reference/benches/bench.rs \
+    tools/helper.rs; do
+    output=$(classify_path_directly "$path")
+    assert_value true rust "$output"
+    assert_value true full "$output"
+  done
+
+  for path in \
     internal/attemptstore/store.go \
     internal/processsupervision/supervisor_windows.go \
     internal/workerprotocolv1/protocol.go \
