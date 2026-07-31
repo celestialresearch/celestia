@@ -11,6 +11,7 @@
 # See the LICENSE file at the repository root for the complete terms.
 
 set -euo pipefail
+export GOWORK=off
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 temp_root=${CELESTIA_VERIFICATION_TMPDIR:-${TMPDIR:-/tmp}}
@@ -62,6 +63,7 @@ main() (
   local shellcheck_script
   local status
   local work_dir
+  local workspace_file
   local action_pid=
   local change_pid=
   local currency_pid=
@@ -564,6 +566,25 @@ EOF
   LC_ALL=C sort "$work_dir/go.sum" >"$work_dir/go.sum.sorted"
   mv "$work_dir/go.sum.sorted" "$work_dir/go.sum"
   git -C "$work_dir" init -q
+  for workspace_file in go.work go.work.sum; do
+    printf 'fixture\n' >"$work_dir/$workspace_file"
+    set +e
+    output=$(cd "$work_dir" &&
+      bash .github/scripts/policycheck.sh workspace 2>&1)
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'policy check accepted repository %s\n' "$workspace_file" >&2
+      return 1
+    }
+    grep -Fq "$workspace_file: Go workspace files are prohibited" \
+      <<<"$output" || {
+      printf 'policy output omitted the Go workspace diagnostic:\n%s\n' \
+        "$output" >&2
+      return 1
+    }
+    rm -- "$work_dir/$workspace_file"
+  done
   (
     cd "$work_dir"
     bash .github/scripts/policycheck.sh manifest
@@ -1312,11 +1333,49 @@ EOF
     return 1
   fi
   cp "$root/rust-toolchain.toml" "$repo_dir/rust-toolchain.toml"
+  mkdir -p "$work_dir/ambient/actionlint/cmd/actionlint"
+  cat >"$work_dir/ambient/go.work" <<'EOF'
+go 1.26.5
+
+use ../repo
+
+replace github.com/rhysd/actionlint => ./actionlint
+EOF
+  cat >"$work_dir/ambient/actionlint/go.mod" <<'EOF'
+module github.com/rhysd/actionlint
+
+go 1.26.5
+EOF
+  cat >"$work_dir/ambient/actionlint/cmd/actionlint/main.go" <<'EOF'
+package main
+
+import (
+	"os"
+)
+
+func main() {
+	if err := os.WriteFile(os.Getenv("CELESTIA_WORKSPACE_MARKER"), nil, 0o600); err != nil {
+		panic(err)
+	}
+}
+EOF
+  CELESTIA_WORKSPACE_MARKER="$work_dir/workspace-tool-invoked" \
+    GOWORK="$work_dir/ambient/go.work" go tool actionlint
+  [[ -e "$work_dir/workspace-tool-invoked" ]] || {
+    printf 'ambient Go workspace fixture did not replace the pinned tool\n' >&2
+    return 1
+  }
+  rm -- "$work_dir/workspace-tool-invoked"
   output=$(
     cd "$repo_dir" &&
-      DEVCHECK_PROFILE=config \
+      CELESTIA_WORKSPACE_MARKER="$work_dir/workspace-tool-invoked" \
+      GOWORK="$work_dir/ambient/go.work" DEVCHECK_PROFILE=config \
         bash .github/scripts/devcheck.sh 2>&1
   )
+  [[ ! -e "$work_dir/workspace-tool-invoked" ]] || {
+    printf 'devcheck allowed an ambient Go workspace to replace a pinned tool\n' >&2
+    return 1
+  }
   if grep -Fq 'Verification Scripts' <<<"$output" ||
     ! grep -Fq '0 skipped, 0 failed' <<<"$output"; then
     printf 'devcheck config profile did not stop after configuration:\n%s\n' \

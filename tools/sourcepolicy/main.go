@@ -40,7 +40,7 @@ const (
 	maxInventoryPaths     = 100_000
 	maxInventoryPathBytes = 32 << 10
 	maxGoBuildLoads       = 4
-	maxGoPolicyDuration   = 2 * time.Minute
+	maxGoPolicyDuration   = 3 * time.Minute
 	nolintMarker          = "//no" + "lint"
 	nosecMarker           = "#no" + "sec"
 	governedManifestPath  = "docs/contracts/governed_url_reference_v1.json"

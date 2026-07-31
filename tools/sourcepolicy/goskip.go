@@ -398,8 +398,21 @@ func runGoBuildUnitsWith(
 	var wait sync.WaitGroup
 	for index, unit := range units {
 		wait.Go(func() {
-			limit <- struct{}{}
+			if err := ctx.Err(); err != nil {
+				results[index].err = err
+				return
+			}
+			select {
+			case limit <- struct{}{}:
+			case <-ctx.Done():
+				results[index].err = ctx.Err()
+				return
+			}
 			defer func() { <-limit }()
+			if err := ctx.Err(); err != nil {
+				results[index].err = err
+				return
+			}
 			results[index].findings, results[index].err =
 				goSkipFindingsForTargetWithOverlay(
 					ctx,
@@ -611,10 +624,21 @@ func goSkipFindingsForTargetWithOverlay(
 			strings.HasSuffix(loadedPackage.PkgPath, ".test") {
 			continue
 		}
-		inspector := goPolicyInspector{loaded: loadedPackage}
+		inspector := goPolicyInspector{
+			loaded:  loadedPackage,
+			sources: inventoriedGoSources(overlay),
+		}
 		findings = append(findings, inspector.findings()...)
 	}
 	return findings, nil
+}
+
+func inventoriedGoSources(overlay map[string][]byte) map[string]bool {
+	sources := make(map[string]bool, len(overlay))
+	for path := range overlay {
+		sources[filepath.Clean(path)] = true
+	}
+	return sources
 }
 
 func goPolicyEnvironment(target buildTarget) []string {

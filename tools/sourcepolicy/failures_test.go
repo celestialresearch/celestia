@@ -663,20 +663,24 @@ func TestGoLoadUsesSourceOverlay(t *testing.T) {
 func TestGoBuildUnitsPropagateCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
+	called := make(chan struct{}, 1)
 	_, err := runGoBuildUnitsWith(
 		ctx,
 		[]goBuildUnit{{
 			target:   buildTarget{goos: "linux", goarch: "amd64"},
 			patterns: []string{"./..."},
 		}},
-		func(config *packages.Config, _ ...string) ([]*packages.Package, error) {
-			if config.Context != ctx {
-				t.Fatal("package loader received a different context")
-			}
-			return nil, config.Context.Err()
+		func(*packages.Config, ...string) ([]*packages.Package, error) {
+			called <- struct{}{}
+			return nil, nil
 		},
 	)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("load error = %v, want context cancellation", err)
+	}
+	select {
+	case <-called:
+		t.Fatal("package load started after cancellation")
+	default:
 	}
 }

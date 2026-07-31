@@ -25,8 +25,9 @@ import (
 )
 
 type goPolicyInspector struct {
-	loaded *packages.Package
-	found  []string
+	loaded  *packages.Package
+	sources map[string]bool
+	found   []string
 }
 
 func (inspector *goPolicyInspector) findings() []string {
@@ -54,6 +55,10 @@ func (inspector *goPolicyInspector) inspect(node ast.Node) bool {
 }
 
 func (inspector *goPolicyInspector) inspectComment(comment *ast.Comment) bool {
+	position := inspector.loaded.Fset.PositionFor(comment.Pos(), false)
+	if !inspector.sources[filepath.Clean(position.Filename)] {
+		return false
+	}
 	if strings.HasPrefix(strings.TrimSpace(comment.Text), "//go:linkname") {
 		inspector.add(comment, "Go tests must not use go:linkname")
 	}

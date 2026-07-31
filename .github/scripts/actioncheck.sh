@@ -11,6 +11,7 @@
 # See the LICENSE file at the repository root for the complete terms.
 
 set -euo pipefail
+export GOWORK=off
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}

@@ -51,17 +51,17 @@ var expectedCargoManifests = []string{
 
 func goSuppressionFindings(path string, source []byte) []string {
 	var findings []string
-	for _, line := range gosecDirectiveLines(source) {
-		findings = append(findings, fmt.Sprintf(
-			"%s:%d: invalid gosec suppression", path, line,
-		))
-	}
-	for index, line := range bytes.Split(source, []byte{'\n'}) {
-		text := string(line)
+	for _, comment := range goCommentLines(source) {
+		text := comment.text
+		if gosecDirective.MatchString(text) {
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d: invalid gosec suppression", path, comment.line,
+			))
+		}
 		_, nosec, hasNosec := strings.Cut(text, nosecMarker)
 		if hasNosec && !validNosec.MatchString(nosec) {
 			findings = append(findings, fmt.Sprintf(
-				"%s:%d: invalid gosec suppression", path, index+1,
+				"%s:%d: invalid gosec suppression", path, comment.line,
 			))
 		}
 		_, nolint, hasNolint := strings.Cut(text, nolintMarker)
@@ -73,7 +73,7 @@ func goSuppressionFindings(path string, source []byte) []string {
 				findings = append(findings, fmt.Sprintf(
 					"%s:%d: invalid golangci-lint suppression",
 					path,
-					index+1,
+					comment.line,
 				))
 			}
 		}
@@ -81,19 +81,31 @@ func goSuppressionFindings(path string, source []byte) []string {
 	return findings
 }
 
-func gosecDirectiveLines(source []byte) []int {
+type goCommentLine struct {
+	line int
+	text string
+}
+
+func goCommentLines(source []byte) []goCommentLine {
 	files := token.NewFileSet()
 	file := files.AddFile("source.go", -1, len(source))
 	var lexer scanner.Scanner
 	lexer.Init(file, source, nil, scanner.ScanComments)
-	var lines []int
+	var comments []goCommentLine
 	for {
 		position, kind, literal := lexer.Scan()
 		if kind == token.EOF {
-			return lines
+			return comments
 		}
-		if kind == token.COMMENT && gosecDirective.MatchString(literal) {
-			lines = append(lines, files.Position(position).Line)
+		if kind != token.COMMENT {
+			continue
+		}
+		start := files.Position(position).Line
+		for offset, text := range strings.Split(literal, "\n") {
+			comments = append(comments, goCommentLine{
+				line: start + offset,
+				text: strings.TrimSuffix(text, "\r"),
+			})
 		}
 	}
 }

@@ -11,6 +11,7 @@
 # See the LICENSE file at the repository root for the complete terms.
 
 set -euo pipefail
+export GOWORK=off
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
@@ -50,6 +51,16 @@ check_module() {
     fail 'go.mod: module path must use the celestia.research/ prefix'
   [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
     fail 'go.mod: Go version must be pinned at patch level'
+}
+
+check_workspace_files() {
+  local path
+
+  for path in go.work go.work.sum; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      fail "$path: Go workspace files are prohibited"
+    fi
+  done
 }
 
 check_markers() {
@@ -162,6 +173,7 @@ fi
 case "${1:-all}" in
 all)
   check_module
+  check_workspace_files
   check_markers
   check_private_keys
   check_manifest
@@ -181,11 +193,14 @@ suppressions)
 manifest)
   check_manifest
   ;;
+workspace)
+  check_workspace_files
+  ;;
 test-skips)
   check_test_skips
   ;;
 *)
-  printf 'Usage: %s [all|manifest|markers|source-files|suppressions|test-skips]\n' \
+  printf 'Usage: %s [all|manifest|markers|source-files|suppressions|test-skips|workspace]\n' \
     "${0##*/}" >&2
   exit 2
   ;;
