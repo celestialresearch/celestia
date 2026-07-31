@@ -458,21 +458,35 @@ func TestGoPolicyRejectsTestMainBypasses(t *testing.T) {
 	}
 }
 
-func TestGoPolicyRecognisesWindowsExit(t *testing.T) {
-	pkg := types.NewPackage("golang.org/x/sys/windows", "windows")
-	signature := types.NewSignatureType(
-		nil,
-		nil,
-		nil,
-		types.NewTuple(types.NewParam(token.NoPos, pkg, "code", types.Typ[types.Int])),
-		nil,
-		false,
-	)
-	function := types.NewFunc(token.NoPos, pkg, "Exit", signature)
-	identifier := &ast.Ident{Name: "Exit"}
-	info := &types.Info{Uses: map[*ast.Ident]types.Object{identifier: function}}
-	if !isProcessExitFunction(identifier, info) {
-		t.Fatal("Windows Exit was not recognised")
+func TestGoPolicyRecognisesSystemExit(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{
+		"golang.org/x/sys/windows",
+		"golang.org/x/sys/unix",
+		"golang.org/x/sys/plan9",
+	} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			pkg := types.NewPackage(path, filepath.Base(path))
+			signature := types.NewSignatureType(
+				nil,
+				nil,
+				nil,
+				types.NewTuple(types.NewParam(
+					token.NoPos, pkg, "code", types.Typ[types.Int],
+				)),
+				nil,
+				false,
+			)
+			function := types.NewFunc(token.NoPos, pkg, "Exit", signature)
+			identifier := &ast.Ident{Name: "Exit"}
+			info := &types.Info{
+				Uses: map[*ast.Ident]types.Object{identifier: function},
+			}
+			if !isProcessExitFunction(identifier, info) {
+				t.Fatalf("%s Exit was not recognised", path)
+			}
+		})
 	}
 }
 

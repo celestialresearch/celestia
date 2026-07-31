@@ -97,7 +97,7 @@
     "processes": 1,
     "memory_bytes": 67108864,
     "output_bytes": 65536,
-    "time_milliseconds": 15000,
+    "worker_time_milliseconds": 2000,
     "persistence_bytes": 1048576
   },
   "resources": [
@@ -722,6 +722,7 @@
   ],
   "residual_limitations": [
     "Worker containment and execution are qualified only on Windows AMD64",
+    "Synchronous staging, Windows setup, handle closure and AppContainer deletion are not pre-emptible, so the complete operation has no finite wall-time bound",
     "Local hashes do not resist an authorised administrator",
     "The URL operation does not establish any external fact"
   ],

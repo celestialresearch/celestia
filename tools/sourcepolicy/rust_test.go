@@ -304,6 +304,50 @@ func TestRustPolicyAttributes(t *testing.T) {
 	}
 }
 
+func TestRustDocumentationExit(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		source   string
+		findings int
+	}{
+		{
+			"documentation exit",
+			"/// ```\n/// std::process::exit(0);\n/// ```",
+			1,
+		},
+		{
+			"split documentation exit",
+			"/*!\nexit\n(\n0\n);\n*/",
+			1,
+		},
+		{
+			"aliased documentation exit",
+			"/// use std::process::exit as done;\n/// done(0);",
+			1,
+		},
+		{
+			"parenthesised documentation exit",
+			"/// (std::process::exit)(0);",
+			1,
+		},
+		{"ordinary exit prose", "/// Exit status is retained.", 0},
+		{"doc attribute", `#[doc = "ordinary"]`, 1},
+		{"doc include", `#![doc = include_str!("README.md")]`, 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			findings := rustFindings(
+				"fixture.rs", []byte(test.source), modeTestSkips,
+			)
+			if len(findings) != test.findings {
+				t.Fatalf("findings = %v, want %d", findings, test.findings)
+			}
+		})
+	}
+}
+
 func TestCargoWorkspaceInventory(t *testing.T) {
 	t.Parallel()
 	files := map[string]string{

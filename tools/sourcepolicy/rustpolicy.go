@@ -40,6 +40,11 @@ func rustFindings(path string, source []byte, mode string) []string {
 }
 
 func rustExpansionFinding(path string, source []byte, mode string) string {
+	if line, found := rustDocExitLine(source); mode == modeTestSkips && found {
+		return fmt.Sprintf(
+			"%s:%d: Rust documentation tests must not exit", path, line,
+		)
+	}
 	tokens, valid := rustPolicyTokens(source)
 	if !valid {
 		return fmt.Sprintf("%s: parse Rust source: unterminated token", path)
@@ -53,6 +58,42 @@ func rustExpansionFinding(path string, source []byte, mode string) string {
 		)
 	}
 	return ""
+}
+
+func rustDocExitLine(source []byte) (int, bool) {
+	inBlock := false
+	var documentation strings.Builder
+	for line := range strings.SplitSeq(string(source), "\n") {
+		trimmed := strings.TrimSpace(line)
+		doc := ""
+		switch {
+		case inBlock:
+			doc = trimmed
+		case strings.HasPrefix(trimmed, "///"),
+			strings.HasPrefix(trimmed, "//!"):
+			doc = trimmed[3:]
+		case strings.HasPrefix(trimmed, "/**"),
+			strings.HasPrefix(trimmed, "/*!"):
+			inBlock = true
+			doc = trimmed[3:]
+		}
+		if inBlock && strings.Contains(trimmed, "*/") {
+			inBlock = false
+			doc, _, _ = strings.Cut(doc, "*/")
+		}
+		documentation.WriteString(doc)
+		documentation.WriteByte('\n')
+	}
+	tokens, valid := rustPolicyTokens([]byte(documentation.String()))
+	if !valid {
+		return 0, false
+	}
+	for _, token := range tokens {
+		if token.text == "exit" {
+			return token.line, true
+		}
+	}
+	return 0, false
 }
 
 func rustIncludeLine(tokens []rustPolicyToken) (int, bool) {
@@ -120,6 +161,13 @@ func rustAttributeFindings(
 	}
 	switch mode {
 	case modeTestSkips:
+		if contains(words, "doc") {
+			return []string{fmt.Sprintf(
+				"%s:%d: Rust doc attributes are prohibited",
+				path,
+				attribute.line,
+			)}
+		}
 		if contains(words, "ignore") {
 			return []string{fmt.Sprintf(
 				"%s:%d: Rust tests must not ignore cases", path, attribute.line,

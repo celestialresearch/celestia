@@ -33,6 +33,9 @@ var (
 	shellcheckDirective = regexp.MustCompile(
 		`#[[:space:]]*shellcheck[[:space:]]+disable`,
 	)
+	gosecDirective = regexp.MustCompile(
+		`^[[:space:]]*//[[:space:]]*gosec:`,
+	)
 	validShellcheck = regexp.MustCompile(
 		`^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable[[:space:]]*=[[:space:]]*SC[0-9]+(,SC[0-9]+)*[[:space:]]+#[[:space:]]+[^[:space:]].*$`,
 	)
@@ -48,6 +51,11 @@ func goSuppressionFindings(path string, source []byte) []string {
 	var findings []string
 	for index, line := range bytes.Split(source, []byte{'\n'}) {
 		text := string(line)
+		if gosecDirective.Match(line) {
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d: invalid gosec suppression", path, index+1,
+			))
+		}
 		_, nosec, hasNosec := strings.Cut(text, nosecMarker)
 		if hasNosec && !validNosec.MatchString(nosec) {
 			findings = append(findings, fmt.Sprintf(

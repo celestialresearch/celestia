@@ -261,7 +261,9 @@ func isProcessExitFunction(expression ast.Expr, info *types.Info) bool {
 		return false
 	}
 	return object.Pkg().Path() == "syscall" ||
-		object.Pkg().Path() == "golang.org/x/sys/windows"
+		object.Pkg().Path() == "golang.org/x/sys/windows" ||
+		object.Pkg().Path() == "golang.org/x/sys/unix" ||
+		object.Pkg().Path() == "golang.org/x/sys/plan9"
 }
 
 func isOSExitFunction(expression ast.Expr, info *types.Info) bool {

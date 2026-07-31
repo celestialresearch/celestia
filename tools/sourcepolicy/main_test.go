@@ -208,9 +208,11 @@ func TestGoSuppressionFindings(t *testing.T) {
 		"//no" + "lint",
 		"//no" + "lint:errcheck -- checked by the owner",
 		"//no" + "lint:all -- broad suppression",
+		"// gosec:disable",
+		"//gosec:enable",
 	}, "\n"))
 	findings := goSuppressionFindings("source.go", source)
-	if len(findings) != 3 {
+	if len(findings) != 5 {
 		t.Fatalf("findings = %v", findings)
 	}
 }
