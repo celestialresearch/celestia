@@ -145,6 +145,10 @@ Do not suppress:
 `nolintlint` must remain enabled with specific-linter and explanation
 requirements.
 
+Configuration-level linter and formatter exclusions are prohibited. Place an
+unavoidable suppression at the narrow source location with the exact analyser
+and reason so the suppression gate can inspect it.
+
 ## Review and Removal
 
 Review the allowlist when:

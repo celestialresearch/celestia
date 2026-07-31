@@ -13,6 +13,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -48,6 +49,11 @@ func ExampleHidden() {}
 
 func TestWriteCargoExecutables(t *testing.T) {
 	t.Parallel()
+	root := t.TempDir()
+	aManifest := filepath.Join(root, "a", "Cargo.toml")
+	aExecutable := filepath.Join(root, "a-test")
+	zManifest := filepath.Join(root, "z", "Cargo.toml")
+	zExecutable := filepath.Join(root, "z-test")
 	input := bytes.NewBufferString(
 		`{"reason":"build-finished","profile":{"test":true},` +
 			`"executable":"ignored"}` + "\n" +
@@ -55,18 +61,32 @@ func TestWriteCargoExecutables(t *testing.T) {
 			`"executable":"ignored"}` + "\n" +
 			`{"reason":"compiler-artifact","profile":{"test":true},` +
 			`"executable":""}` + "\n" +
-			`{"reason":"compiler-artifact","profile":{"test":true},` +
-			`"executable":"z"}` + "\n" +
-			`{"reason":"compiler-artifact","profile":{"test":true},` +
-			`"executable":"a"}` + "\n" +
-			`{"reason":"compiler-artifact","profile":{"test":true},` +
-			`"executable":"z"}` + "\n",
+			fmt.Sprintf(
+				"{\"reason\":\"compiler-artifact\",\"profile\":{\"test\":true},"+
+					"\"manifest_path\":%q,\"executable\":%q}\n",
+				zManifest,
+				zExecutable,
+			) +
+			fmt.Sprintf(
+				"{\"reason\":\"compiler-artifact\",\"profile\":{\"test\":true},"+
+					"\"manifest_path\":%q,\"executable\":%q}\n",
+				aManifest,
+				aExecutable,
+			) +
+			fmt.Sprintf(
+				"{\"reason\":\"compiler-artifact\",\"profile\":{\"test\":true},"+
+					"\"manifest_path\":%q,\"executable\":%q}\n",
+				zManifest,
+				zExecutable,
+			),
 	)
 	var output bytes.Buffer
 	if err := writeCargoExecutables(input, &output); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := output.String(), "a\nz\n"; got != want {
+	want := filepath.Dir(aManifest) + "\t" + aExecutable + "\n" +
+		filepath.Dir(zManifest) + "\t" + zExecutable + "\n"
+	if got := output.String(); got != want {
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }
@@ -79,6 +99,15 @@ func TestWriteCargoExecutablesRejectsMalformedInput(t *testing.T) {
 		&output,
 	); err == nil {
 		t.Fatal("malformed Cargo output was accepted")
+	}
+	if err := writeCargoExecutables(
+		bytes.NewBufferString(
+			`{"reason":"compiler-artifact","profile":{"test":true},`+
+				`"executable":"missing-manifest"}`+"\n",
+		),
+		&output,
+	); err == nil {
+		t.Fatal("Cargo test executable without a manifest was accepted")
 	}
 }
 

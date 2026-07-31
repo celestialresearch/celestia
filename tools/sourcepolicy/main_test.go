@@ -138,6 +138,34 @@ func TestRunRejectsCargoSuppression(t *testing.T) {
 	}
 }
 
+func TestRunRejectsGolangciExclusions(t *testing.T) {
+	t.Parallel()
+	for _, owner := range []string{"linters", "formatters"} {
+		t.Run(owner, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), ".golangci.yml")
+			source := []byte(
+				"version: \"2\"\n" + owner +
+					":\n  exclusions:\n    paths:\n      - internal\n",
+			)
+			if err := os.WriteFile(path, source, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var stderr bytes.Buffer
+			code := run(
+				[]string{modeSuppressions},
+				&stderr,
+				func() ([]string, error) { return []string{path}, nil },
+				os.ReadFile,
+			)
+			if code != 1 ||
+				!strings.Contains(stderr.String(), "exclusions are prohibited") {
+				t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+			}
+		})
+	}
+}
+
 func TestGoSuppressionFindings(t *testing.T) {
 	source := []byte(strings.Join([]string{
 		"// #no" + "sec",

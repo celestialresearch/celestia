@@ -45,6 +45,16 @@ cargo_executables() {
   fi
 }
 
+shell_path() {
+  case "$1" in
+  [A-Za-z]:\\*)
+    command -v cygpath >/dev/null 2>&1 || return 1
+    cygpath -u -- "$1"
+    ;;
+  *) printf '%s\n' "$1" ;;
+  esac
+}
+
 go_tests() {
   local arguments=()
   local missing
@@ -106,6 +116,7 @@ go_tests() {
 rust_command() {
   local all_targets=$1
   local arguments=(test --workspace --locked --no-run --message-format=json)
+  local directory
   local executable
   local test_name
 
@@ -114,13 +125,20 @@ rust_command() {
   fi
   cargo "${arguments[@]}" |
     cargo_executables >"$temporary/rust-executables"
-  while IFS= read -r executable; do
-    "$executable" --list --format terse >"$temporary/rust-list"
+  while IFS=$'\t' read -r directory executable; do
+    directory=$(shell_path "$directory")
+    executable=$(shell_path "$executable")
+    (
+      cd -- "$directory"
+      "$executable" --list --format terse
+    ) >"$temporary/rust-list"
     while IFS= read -r test_name; do
       test_name=${test_name%: test}
       [[ "$test_name" == *": benchmark" ]] && continue
-      if ! "$executable" --exact "$test_name" --test-threads=1 \
-        >"$temporary/rust-result" 2>&1; then
+      if ! (
+        cd -- "$directory"
+        "$executable" --exact "$test_name" --test-threads=1
+      ) >"$temporary/rust-result" 2>&1; then
         cat "$temporary/rust-result"
         return 1
       fi

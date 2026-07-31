@@ -50,11 +50,17 @@ type goPackageInventory struct {
 }
 
 type cargoMessage struct {
-	Reason     string `json:"reason"`
-	Executable string `json:"executable"`
-	Profile    struct {
+	Reason       string `json:"reason"`
+	Executable   string `json:"executable"`
+	ManifestPath string `json:"manifest_path"`
+	Profile      struct {
 		Test bool `json:"test"`
 	} `json:"profile"`
+}
+
+type cargoExecutable struct {
+	directory  string
+	executable string
 }
 
 func runTestInventory(
@@ -162,23 +168,25 @@ func validGoTestName(name string) bool {
 func writeCargoExecutables(input io.Reader, output io.Writer) error {
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 64<<10), maxCargoMessageBytes)
-	seen := make(map[string]struct{})
-	var executables []string
+	seen := make(map[cargoExecutable]struct{})
+	var executables []cargoExecutable
 	for scanner.Scan() {
 		var message cargoMessage
 		if err := json.Unmarshal(scanner.Bytes(), &message); err != nil {
 			return fmt.Errorf("decode Cargo message: %w", err)
 		}
-		if message.Reason != "compiler-artifact" ||
-			!message.Profile.Test ||
-			message.Executable == "" {
+		entry, include, err := cargoExecutableFromMessage(message)
+		if err != nil {
+			return err
+		}
+		if !include {
 			continue
 		}
-		if _, exists := seen[message.Executable]; exists {
+		if _, exists := seen[entry]; exists {
 			continue
 		}
-		seen[message.Executable] = struct{}{}
-		executables = append(executables, message.Executable)
+		seen[entry] = struct{}{}
+		executables = append(executables, entry)
 		if len(executables) > maxCargoTestExecutables {
 			return fmt.Errorf(
 				"cargo test executable inventory exceeds %d entries",
@@ -189,13 +197,54 @@ func writeCargoExecutables(input io.Reader, output io.Writer) error {
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	sort.Strings(executables)
+	sort.Slice(executables, func(left, right int) bool {
+		if executables[left].directory == executables[right].directory {
+			return executables[left].executable < executables[right].executable
+		}
+		return executables[left].directory < executables[right].directory
+	})
 	for _, executable := range executables {
-		if _, err := fmt.Fprintln(output, executable); err != nil {
+		if _, err := fmt.Fprintf(
+			output,
+			"%s\t%s\n",
+			executable.directory,
+			executable.executable,
+		); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func cargoExecutableFromMessage(
+	message cargoMessage,
+) (cargoExecutable, bool, error) {
+	if message.Reason != "compiler-artifact" ||
+		!message.Profile.Test ||
+		message.Executable == "" {
+		return cargoExecutable{}, false, nil
+	}
+	if message.ManifestPath == "" {
+		return cargoExecutable{}, false, fmt.Errorf(
+			"cargo test inventory omits the package manifest",
+		)
+	}
+	if !validCargoPath(message.ManifestPath) ||
+		!validCargoPath(message.Executable) {
+		return cargoExecutable{}, false, fmt.Errorf(
+			"cargo test inventory contains an invalid path",
+		)
+	}
+	return cargoExecutable{
+		directory:  filepath.Dir(message.ManifestPath),
+		executable: message.Executable,
+	}, true, nil
+}
+
+func validCargoPath(path string) bool {
+	return filepath.IsAbs(path) &&
+		filepath.Clean(path) == path &&
+		!strings.ContainsAny(path, "\t\r\n")
 }
 
 type boundedInventoryBuffer struct {

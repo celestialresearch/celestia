@@ -149,12 +149,15 @@ func TestWriteCargoExecutablesEnforcesBounds(t *testing.T) {
 	}
 
 	var input strings.Builder
+	root := t.TempDir()
+	manifest := filepath.Join(root, "Cargo.toml")
 	for index := range maxCargoTestExecutables + 1 {
 		fmt.Fprintf(
 			&input,
 			"{\"reason\":\"compiler-artifact\",\"profile\":{\"test\":true},"+
-				"\"executable\":\"test-%d\"}\n",
-			index,
+				"\"manifest_path\":%q,\"executable\":%q}\n",
+			manifest,
+			filepath.Join(root, fmt.Sprintf("test-%d", index)),
 		)
 	}
 	if err := writeCargoExecutables(
@@ -167,9 +170,13 @@ func TestWriteCargoExecutablesEnforcesBounds(t *testing.T) {
 
 func TestWriteCargoExecutablesRejectsOutputFailure(t *testing.T) {
 	t.Parallel()
-	input := strings.NewReader(
-		`{"reason":"compiler-artifact","profile":{"test":true},"executable":"test"}` + "\n",
-	)
+	root := t.TempDir()
+	input := strings.NewReader(fmt.Sprintf(
+		"{\"reason\":\"compiler-artifact\",\"profile\":{\"test\":true},"+
+			"\"manifest_path\":%q,\"executable\":%q}\n",
+		filepath.Join(root, "Cargo.toml"),
+		filepath.Join(root, "test"),
+	))
 	if err := writeCargoExecutables(input, rejectedWrite{}); err == nil ||
 		!strings.Contains(err.Error(), "write rejected") {
 		t.Fatalf("writeCargoExecutables() error = %v", err)

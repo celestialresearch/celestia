@@ -138,6 +138,11 @@ func scanFile(
 		}
 		return readFindings(path, readFile, shellSuppressionFindings)
 	case ".yml", ".yaml":
+		if mode == modeSuppressions &&
+			(filepath.Base(path) == ".golangci.yml" ||
+				filepath.Base(path) == ".golangci.yaml") {
+			return readFindings(path, readFile, golangciConfigFindings)
+		}
 		return nil
 	}
 	return nil

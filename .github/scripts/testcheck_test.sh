@@ -21,7 +21,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' HUP INT TERM
 
-mkdir -p "$work/bin"
+mkdir -p "$work/bin" "$work/package"
 cat >"$work/bin/go" <<'EOF'
 #!/usr/bin/env bash
 if [[ "${SIGNAL_PARENT:-false}" == true ]]; then
@@ -42,7 +42,7 @@ cat >"$work/bin/testinventory" <<EOF
 if [[ "\$1" == go ]]; then
   printf '%s\\n' 'fixture.invalid/test	TestMustRun'
 else
-  printf '%s\\n' '$work/bin/rust-test'
+  printf '%s\\t%s\\n' '$work/package' '$work/bin/rust-test'
 fi
 EOF
 chmod +x "$work/bin/testinventory"
@@ -58,6 +58,8 @@ cat >"$work/bin/rust-test" <<'EOF'
 if [[ "$*" == *"--list"* ]]; then
   printf 'must_run: test\n'
 elif [[ "${COMPLETE_TEST:-false}" != true ]]; then
+  exit 1
+elif [[ "$PWD" != "${EXPECTED_PACKAGE_ROOT:?}" ]]; then
   exit 1
 else
   printf 'test result: ok. 1 passed; 0 failed; 0 ignored\n'
@@ -98,5 +100,5 @@ if PATH="$work/bin:$PATH" CARGO_BIN=true \
 fi
 PATH="$work/bin:$PATH" CARGO_BIN=true \
   TESTINVENTORY_BIN="$work/bin/testinventory" \
-  COMPLETE_TEST=true \
+  COMPLETE_TEST=true EXPECTED_PACKAGE_ROOT="$work/package" \
   bash "$root/.github/scripts/testcheck.sh" rust unused --fixture >/dev/null

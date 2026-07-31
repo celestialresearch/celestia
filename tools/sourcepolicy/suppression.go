@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"go.yaml.in/yaml/v3"
 )
 
 var (
@@ -76,6 +77,28 @@ func shellSuppressionFindings(path string, source []byte) []string {
 		if shellcheckDirective.Match(line) && !validShellcheck.Match(line) {
 			findings = append(findings, fmt.Sprintf(
 				"%s:%d: invalid ShellCheck suppression", path, index+1,
+			))
+		}
+	}
+	return findings
+}
+
+func golangciConfigFindings(path string, source []byte) []string {
+	var document map[string]any
+	if err := yaml.Unmarshal(source, &document); err != nil {
+		return []string{fmt.Sprintf(
+			"%s: parse golangci-lint configuration: %v",
+			path,
+			err,
+		)}
+	}
+	var findings []string
+	for _, owner := range []string{"linters", "formatters"} {
+		if _, exists := nestedTable(document, owner)["exclusions"]; exists {
+			findings = append(findings, fmt.Sprintf(
+				"%s: golangci-lint %s exclusions are prohibited",
+				path,
+				owner,
 			))
 		}
 	}
