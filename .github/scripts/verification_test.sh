@@ -563,6 +563,7 @@ github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeN
 EOF
   LC_ALL=C sort "$work_dir/go.sum" >"$work_dir/go.sum.sorted"
   mv "$work_dir/go.sum.sorted" "$work_dir/go.sum"
+  git -C "$work_dir" init -q
   (
     cd "$work_dir"
     bash .github/scripts/policycheck.sh manifest
@@ -587,7 +588,6 @@ EOF
   }
   cp "$root/docs/contracts/governed_url_reference_v1.json" \
     "$work_dir/docs/contracts/"
-  git -C "$work_dir" init -q
   cat >"$work_dir/.git/info/exclude" <<'EOF'
 /config-bin/
 /lint-*/
