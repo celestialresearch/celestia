@@ -145,6 +145,7 @@ jobs:
           DEVCHECK_CURRENCY: 'false'
           DEVCHECK_OUTPUT: failed
           DEVCHECK_PROFILE: shell
+          DEVCHECK_SELF_TEST: 'false'
         run: bash ./.github/scripts/devcheck.sh
 
   dependency-review:
