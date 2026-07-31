@@ -86,3 +86,33 @@ func TestGoSuppressionsAcceptExplainedComments(t *testing.T) {
 		t.Fatalf("findings = %v", findings)
 	}
 }
+
+func TestShellSuppressionFindings(t *testing.T) {
+	source := []byte(strings.Join([]string{
+		"#shellcheck disable=SC2086",
+		"# shellcheck disable=SC2329 # Invoked by a registered trap",
+		`printf '%s\n' '# shellcheck disable=SC2086'`,
+		"cat <<'EOF'",
+		"# shellcheck disable=SC2086",
+		"EOF",
+		"printf '%s\\n' \"multiline",
+		"# shellcheck disable=SC2086\"",
+	}, "\n"))
+	findings := shellSuppressionFindings("source.sh", source)
+	if len(findings) != 1 {
+		t.Fatalf("findings = %v", findings)
+	}
+}
+
+func TestPowerShellDoesNotUseShellCheckScanner(t *testing.T) {
+	findings := scanFile(
+		"script.ps1",
+		modeSuppressions,
+		func(string) ([]byte, error) {
+			return []byte("$items = @(1, 2)\n# shellcheck disable=SC2086\n"), nil
+		},
+	)
+	if len(findings) != 0 {
+		t.Fatalf("findings = %v", findings)
+	}
+}
