@@ -111,6 +111,49 @@ func TestWriteCargoExecutablesRejectsMalformedInput(t *testing.T) {
 	}
 }
 
+func TestCargoExecutableRejectsInvalidPaths(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	manifest := filepath.Join(root, "Cargo.toml")
+	executable := filepath.Join(root, "test-binary")
+	nonCanonicalManifest := root + string(os.PathSeparator) +
+		"nested" + string(os.PathSeparator) + ".." +
+		string(os.PathSeparator) + "Cargo.toml"
+	nonCanonicalExecutable := root + string(os.PathSeparator) +
+		"nested" + string(os.PathSeparator) + ".." +
+		string(os.PathSeparator) + "test-binary"
+	tests := []struct {
+		name       string
+		manifest   string
+		executable string
+	}{
+		{"relative manifest", "Cargo.toml", executable},
+		{"relative executable", manifest, "test-binary"},
+		{"non-canonical manifest", nonCanonicalManifest, executable},
+		{"non-canonical executable", manifest, nonCanonicalExecutable},
+		{"delimited manifest", manifest + "\t", executable},
+		{"delimited executable", manifest, executable + "\n"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			message := cargoMessage{
+				Reason:       "compiler-artifact",
+				ManifestPath: test.manifest,
+				Executable:   test.executable,
+			}
+			message.Profile.Test = true
+			_, include, err := cargoExecutableFromMessage(message)
+			if err == nil {
+				t.Fatal("invalid Cargo test path was accepted")
+			}
+			if include {
+				t.Fatal("invalid Cargo test path was included")
+			}
+		})
+	}
+}
+
 func TestRunTestInventory(t *testing.T) {
 	t.Parallel()
 	var output bytes.Buffer

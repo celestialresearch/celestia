@@ -533,6 +533,7 @@ require (
 	golang.org/x/mod v0.38.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/tools v0.48.0
+	go.yaml.in/yaml/v3 v3.0.5
 )
 
 require golang.org/x/sync v0.22.0 // indirect
@@ -549,7 +550,9 @@ EOF
     $1 == "golang.org/x/sys" &&
       ($2 == "v0.47.0" || $2 == "v0.47.0/go.mod") ||
     $1 == "golang.org/x/tools" &&
-      ($2 == "v0.48.0" || $2 == "v0.48.0/go.mod")
+      ($2 == "v0.48.0" || $2 == "v0.48.0/go.mod") ||
+    $1 == "go.yaml.in/yaml/v3" &&
+      ($2 == "v3.0.5" || $2 == "v3.0.5/go.mod")
   ' "$root/go.sum" >"$work_dir/go.sum"
   cat >>"$work_dir/go.sum" <<'EOF'
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
