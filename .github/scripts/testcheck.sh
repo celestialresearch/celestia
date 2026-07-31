@@ -17,7 +17,13 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 mode=${1:-}
 profile=${2:-}
 fixture_mode=${3:-}
-cargo_bin=${CARGO_BIN:-cargo}
+cargo_bin=cargo
+if [[ "$fixture_mode" == --fixture ]]; then
+  cargo_bin=${CARGO_BIN:-cargo}
+elif [[ -n "${CARGO_BIN+x}" ]]; then
+  printf 'CARGO_BIN is permitted only in fixture mode\n' >&2
+  exit 2
+fi
 work=${TMPDIR:-.cache}
 mkdir -p "$work"
 temporary=$(mktemp -d "$work/test-completion.XXXXXX")

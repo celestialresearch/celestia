@@ -96,6 +96,20 @@ PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
   COMPLETE_TEST=true \
   bash "$root/.github/scripts/testcheck.sh" go quick --fixture >/dev/null
 
+set +e
+output=$(
+  CARGO_BIN="$work/bin/cargo" \
+    bash "$root/.github/scripts/testcheck.sh" rust unused 2>&1
+)
+status=$?
+set -e
+if [[ "$status" -ne 2 ]] ||
+  [[ "$output" != *"CARGO_BIN is permitted only in fixture mode"* ]]; then
+  printf 'Rust completion check accepted normal CARGO_BIN override:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+
 if PATH="$work/bin:$PATH" CARGO_BIN="$work/bin/cargo" \
   TESTINVENTORY_BIN="$work/bin/testinventory" \
   bash "$root/.github/scripts/testcheck.sh" rust unused --fixture \
