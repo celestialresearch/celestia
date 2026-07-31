@@ -61,25 +61,21 @@ func rustExpansionFinding(path string, source []byte, mode string) string {
 }
 
 func rustDocExitLine(source []byte) (int, bool) {
-	inBlock := false
+	blockDepth := 0
 	var documentation strings.Builder
 	for line := range strings.SplitSeq(string(source), "\n") {
 		trimmed := strings.TrimSpace(line)
 		doc := ""
 		switch {
-		case inBlock:
-			doc = trimmed
+		case blockDepth > 0:
+			doc = rustBlockDocumentation(trimmed, &blockDepth)
 		case strings.HasPrefix(trimmed, "///"),
 			strings.HasPrefix(trimmed, "//!"):
 			doc = trimmed[3:]
 		case strings.HasPrefix(trimmed, "/**"),
 			strings.HasPrefix(trimmed, "/*!"):
-			inBlock = true
-			doc = trimmed[3:]
-		}
-		if inBlock && strings.Contains(trimmed, "*/") {
-			inBlock = false
-			doc, _, _ = strings.Cut(doc, "*/")
+			blockDepth = 1
+			doc = rustBlockDocumentation(trimmed[3:], &blockDepth)
 		}
 		documentation.WriteString(doc)
 		documentation.WriteByte('\n')
@@ -88,12 +84,50 @@ func rustDocExitLine(source []byte) (int, bool) {
 	if !valid {
 		return 0, false
 	}
-	for _, token := range tokens {
-		if token.text == "exit" {
+	for index, token := range tokens {
+		if token.text == "exit" && rustExitIsExecutable(tokens, index) {
 			return token.line, true
 		}
 	}
 	return 0, false
+}
+
+func rustExitIsExecutable(tokens []rustPolicyToken, index int) bool {
+	if index+1 < len(tokens) && tokens[index+1].text == "(" {
+		return true
+	}
+	if index+2 < len(tokens) &&
+		tokens[index+1].text == ")" && tokens[index+2].text == "(" {
+		return true
+	}
+	if index > 0 && tokens[index-1].text == ":" {
+		return true
+	}
+	for preceding := index - 1; preceding >= 0 &&
+		tokens[preceding].line == tokens[index].line; preceding-- {
+		if tokens[preceding].text == "use" {
+			return true
+		}
+	}
+	return false
+}
+
+func rustBlockDocumentation(line string, depth *int) string {
+	var documentation strings.Builder
+	for index := 0; index < len(line) && *depth > 0; {
+		switch {
+		case strings.HasPrefix(line[index:], "/*"):
+			*depth++
+			index += 2
+		case strings.HasPrefix(line[index:], "*/"):
+			*depth--
+			index += 2
+		default:
+			documentation.WriteByte(line[index])
+			index++
+		}
+	}
+	return documentation.String()
 }
 
 func rustIncludeLine(tokens []rustPolicyToken) (int, bool) {

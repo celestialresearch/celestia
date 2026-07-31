@@ -14,6 +14,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"go/scanner"
+	"go/token"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -34,7 +36,7 @@ var (
 		`#[[:space:]]*shellcheck[[:space:]]+disable`,
 	)
 	gosecDirective = regexp.MustCompile(
-		`^[[:space:]]*//[[:space:]]*gosec:`,
+		`gosec:`,
 	)
 	validShellcheck = regexp.MustCompile(
 		`^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable[[:space:]]*=[[:space:]]*SC[0-9]+(,SC[0-9]+)*[[:space:]]+#[[:space:]]+[^[:space:]].*$`,
@@ -49,13 +51,13 @@ var expectedCargoManifests = []string{
 
 func goSuppressionFindings(path string, source []byte) []string {
 	var findings []string
+	for _, line := range gosecDirectiveLines(source) {
+		findings = append(findings, fmt.Sprintf(
+			"%s:%d: invalid gosec suppression", path, line,
+		))
+	}
 	for index, line := range bytes.Split(source, []byte{'\n'}) {
 		text := string(line)
-		if gosecDirective.Match(line) {
-			findings = append(findings, fmt.Sprintf(
-				"%s:%d: invalid gosec suppression", path, index+1,
-			))
-		}
 		_, nosec, hasNosec := strings.Cut(text, nosecMarker)
 		if hasNosec && !validNosec.MatchString(nosec) {
 			findings = append(findings, fmt.Sprintf(
@@ -77,6 +79,23 @@ func goSuppressionFindings(path string, source []byte) []string {
 		}
 	}
 	return findings
+}
+
+func gosecDirectiveLines(source []byte) []int {
+	files := token.NewFileSet()
+	file := files.AddFile("source.go", -1, len(source))
+	var lexer scanner.Scanner
+	lexer.Init(file, source, nil, scanner.ScanComments)
+	var lines []int
+	for {
+		position, kind, literal := lexer.Scan()
+		if kind == token.EOF {
+			return lines
+		}
+		if kind == token.COMMENT && gosecDirective.MatchString(literal) {
+			lines = append(lines, files.Position(position).Line)
+		}
+	}
 }
 
 func shellSuppressionFindings(path string, source []byte) []string {

@@ -331,7 +331,12 @@ func TestRustDocumentationExit(t *testing.T) {
 			"/// (std::process::exit)(0);",
 			1,
 		},
-		{"ordinary exit prose", "/// Exit status is retained.", 0},
+		{
+			"nested block documentation exit",
+			"/**\n```rust\n/* nested */\nstd::process::exit(0);\n```\n*/",
+			1,
+		},
+		{"ordinary exit prose", "/// The exit status is retained.", 0},
 		{"doc attribute", `#[doc = "ordinary"]`, 1},
 		{"doc include", `#![doc = include_str!("README.md")]`, 1},
 	}
