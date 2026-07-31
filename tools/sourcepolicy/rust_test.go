@@ -328,7 +328,7 @@ func TestRustDocumentationExit(t *testing.T) {
 		},
 		{
 			"multiline braced alias",
-			"/// use std::process::{\n/// exit as done,\n/// };\n/// done(0);",
+			"/// ```rust\n/// use std::process::{\n/// exit as done,\n/// };\n/// done(0);\n/// ```",
 			1,
 		},
 		{
@@ -342,12 +342,18 @@ func TestRustDocumentationExit(t *testing.T) {
 			0,
 		},
 		{
+			"nested markers in string",
+			"/**\n```rust\nlet open = \"/*\";\nstd::process::exit(0);\nlet close = \"*/\";\n```\n*/",
+			1,
+		},
+		{
 			"nested block documentation exit",
 			"/**\n```rust\n/* nested */\nstd::process::exit(0);\n```\n*/",
 			1,
 		},
 		{"ordinary exit prose", "/// The exit status is retained.", 0},
 		{"colon exit prose", "/// Failure: exit status is retained.", 0},
+		{"use exit prose", "/// Callers use exit status for diagnostics.", 0},
 		{"doc attribute", `#[doc = "ordinary"]`, 1},
 		{"doc include", `#![doc = include_str!("README.md")]`, 1},
 	}

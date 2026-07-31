@@ -93,26 +93,48 @@ func rustDocExitLine(source []byte) (int, bool) {
 }
 
 func rustExitIsExecutable(tokens []rustPolicyToken, index int) bool {
-	if index+1 < len(tokens) && tokens[index+1].text == "(" {
-		return true
-	}
-	if index+2 < len(tokens) &&
-		tokens[index+1].text == ")" && tokens[index+2].text == "(" {
-		return true
-	}
-	if index > 1 &&
-		tokens[index-2].text == ":" && tokens[index-1].text == ":" {
-		return true
-	}
+	return rustExitIsCall(tokens, index) ||
+		rustExitIsPath(tokens, index) ||
+		rustExitIsImported(tokens, index)
+}
+
+func rustExitIsCall(tokens []rustPolicyToken, index int) bool {
+	return index+1 < len(tokens) && tokens[index+1].text == "(" ||
+		index+2 < len(tokens) &&
+			tokens[index+1].text == ")" && tokens[index+2].text == "("
+}
+
+func rustExitIsPath(tokens []rustPolicyToken, index int) bool {
+	return index > 1 &&
+		tokens[index-2].text == ":" && tokens[index-1].text == ":"
+}
+
+func rustExitIsImported(tokens []rustPolicyToken, index int) bool {
 	for preceding := index - 1; preceding >= 0; preceding-- {
 		if tokens[preceding].text == ";" {
 			break
 		}
-		if tokens[preceding].text == "use" {
+		if tokens[preceding].text == "use" &&
+			rustUseStartsStatement(tokens, preceding) {
 			return true
 		}
 	}
 	return false
+}
+
+func rustUseStartsStatement(tokens []rustPolicyToken, index int) bool {
+	if index == 0 {
+		return true
+	}
+	if tokens[index-1].line < tokens[index].line {
+		return true
+	}
+	switch tokens[index-1].text {
+	case ";", "{", "}", "`", "pub":
+		return true
+	default:
+		return false
+	}
 }
 
 func rustBlockDocumentation(line string, depth *int) string {
@@ -120,15 +142,17 @@ func rustBlockDocumentation(line string, depth *int) string {
 	for index := 0; index < len(line) && *depth > 0; {
 		switch {
 		case strings.HasPrefix(line[index:], "/*"):
+			documentation.WriteString("/*")
 			*depth++
 			index += 2
 		case strings.HasPrefix(line[index:], "*/"):
 			*depth--
+			if *depth > 0 {
+				documentation.WriteString("*/")
+			}
 			index += 2
 		default:
-			if *depth == 1 {
-				documentation.WriteByte(line[index])
-			}
+			documentation.WriteByte(line[index])
 			index++
 		}
 	}
