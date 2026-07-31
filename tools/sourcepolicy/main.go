@@ -44,7 +44,7 @@ const (
 	nolintMarker          = "//no" + "lint"
 	nosecMarker           = "#no" + "sec"
 	governedManifestPath  = "docs/contracts/governed_url_reference_v1.json"
-	governedManifestSHA   = "11962cae91bbffd7c7ed2ab0cdbfdf3c2dc54388c5738210d1e5dee71a87998d"
+	governedManifestSHA   = "aff0ab1df517151da1445093c61b7d05fce148c7465094936b99a91025e03533"
 )
 
 func main() {

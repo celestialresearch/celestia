@@ -29,6 +29,20 @@ func TestGoSuppressionsIgnoreStringLiterals(t *testing.T) {
 	}
 }
 
+func TestGoSuppressionsIgnoreStaticcheckReferences(t *testing.T) {
+	source := []byte(strings.Join([]string{
+		"package fixture",
+		"// Staticcheck documents lint:ignore directives.",
+		"// See /lint:ignore for the retained rationale.",
+		"/* explanatory block",
+		"//lint:file-ignore U1000 is quoted documentation.",
+		"*/",
+	}, "\n"))
+	if findings := goSuppressionFindings("source.go", source); len(findings) != 0 {
+		t.Fatalf("findings = %v", findings)
+	}
+}
+
 func TestGoSuppressionsReportCommentLines(t *testing.T) {
 	source := []byte(strings.Join([]string{
 		"package fixture",

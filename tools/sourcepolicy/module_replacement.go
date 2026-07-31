@@ -38,6 +38,13 @@ func rejectExternalModuleReplacements(
 		if filepath.Base(path) != "go.mod" {
 			continue
 		}
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return fmt.Errorf("%s: resolve Go module: %w", path, err)
+		}
+		if filepath.Clean(absolute) != filepath.Join(repositoryRoot, "go.mod") {
+			return fmt.Errorf("%s: nested Go modules are unsupported", path)
+		}
 		source, err := readFile(path)
 		if err != nil {
 			return fmt.Errorf("%s: %w", path, err)

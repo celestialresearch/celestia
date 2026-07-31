@@ -213,11 +213,13 @@ func TestGoSuppressionFindings(t *testing.T) {
 		"//no" + "lint:all -- broad suppression",
 		"// gosec:disable",
 		"//gosec:enable",
+		"//lint:ignore SA1000 retained finding",
+		"//lint:file-ignore U1000 retained finding",
 		"hash := md5.New() //gosec:disable",
 		`text := "//gosec:disable"`,
 	}, "\n"))
 	findings := goSuppressionFindings("source.go", source)
-	if len(findings) != 6 {
+	if len(findings) != 8 {
 		t.Fatalf("findings = %v", findings)
 	}
 }
@@ -526,7 +528,7 @@ func TestGoCGOSkip(t *testing.T) {
 	findings, err := goPackageSkipFindingsWithTargets(
 		[]string{filepath.Base(path)},
 		os.ReadFile,
-		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH, cgo: true}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -537,26 +539,24 @@ func TestGoCGOSkip(t *testing.T) {
 	}
 }
 
-func TestGoCGOPackageUsesFallbackOffHost(t *testing.T) {
+func TestGoPolicyRejectsCGOInTestedPackage(t *testing.T) {
 	root := t.TempDir()
+	nativePath := filepath.Join(root, "native.go")
 	testPath := filepath.Join(root, "native_test.go")
 	writeGoPolicyFixture(t, root, map[string]string{
-		testPath: "package fixture\n\n/* int fixture(void) { return 1; } */\n" +
-			"import \"C\"\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\n" +
+		nativePath: "package fixture\n\n/* int fixture(void) { return 1; } */\n" +
+			"import \"C\"\n",
+		testPath: "package fixture\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\n" +
 			"func TestFixture(t *testing.T) { os.Exit(0) }\n",
 	})
 	t.Chdir(root)
-	findings, err := goPackageSkipFindingsWithTargets(
-		[]string{filepath.Base(testPath)},
+	_, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(nativePath), filepath.Base(testPath)},
 		os.ReadFile,
 		[]buildTarget{{goos: "aix", goarch: "ppc64"}},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(findings) != 1 ||
-		!strings.Contains(findings[0], "Go tests must not exit successfully") {
-		t.Fatalf("findings = %v, want successful-exit rejection", findings)
+	if err == nil || !strings.Contains(err.Error(), "cgo is unsupported") {
+		t.Fatalf("cgo error = %v", err)
 	}
 }
 
@@ -769,7 +769,7 @@ func TestGoPolicyInspectsImportedHelpers(t *testing.T) {
 	}
 }
 
-func TestGoPolicyInspectsNestedModules(t *testing.T) {
+func TestGoPolicyRejectsNestedModules(t *testing.T) {
 	root := t.TempDir()
 	nested := filepath.Join(root, "nested")
 	if err := os.Mkdir(nested, 0o700); err != nil {
@@ -795,17 +795,13 @@ func TestGoPolicyInspectsNestedModules(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	findings, err := goPackageSkipFindingsWithTargets(
+	_, err := goPackageSkipFindingsWithTargets(
 		[]string{"root_test.go", "nested/go.mod", "nested/helper.go"},
 		os.ReadFile,
 		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(findings) != 1 ||
-		!strings.Contains(findings[0], "Go tests must not skip cases") {
-		t.Fatalf("findings = %v, want nested helper skip", findings)
+	if err == nil || !strings.Contains(err.Error(), "nested Go modules") {
+		t.Fatalf("nested-module error = %v", err)
 	}
 }
 
@@ -880,6 +876,13 @@ func writeGoPolicyFixture(
 ) {
 	t.Helper()
 	for path, source := range sources {
+		path = filepath.FromSlash(path)
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(root, path)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
 			t.Fatal(err)
 		}

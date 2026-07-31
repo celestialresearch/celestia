@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
-	"go/build/constraint"
 	"go/importer"
 	"go/parser"
 	"go/token"
@@ -94,8 +93,14 @@ func goPackageSkipFindingsWithTargets(
 	readFile func(string) ([]byte, error),
 	targets []buildTarget,
 ) ([]string, error) {
+	if err := rejectGoIgnoredTests(paths); err != nil {
+		return nil, err
+	}
 	directories, overlay, err := goCandidateDirectories(paths, readFile)
 	if err != nil || len(directories) == 0 {
+		return nil, err
+	}
+	if err := rejectUngovernedGoTests(paths, targets, overlay); err != nil {
 		return nil, err
 	}
 	units, err := goBuildUnits(paths, directories, targets, overlay)
@@ -273,33 +278,63 @@ func goCandidateDirectories(
 		directories[directory] = true
 	}
 	for _, path := range paths {
-		directory := filepath.Dir(path)
-		if isGoNativeSource(path) {
-			if testDirectories[directory] {
-				return nil, nil, fmt.Errorf(
-					"%s: Go native source is outside the test policy analyser",
-					path,
-				)
-			}
-			continue
-		}
-		absolute, source, selected, err := snapshotGoSource(path, readFile)
-		if err != nil {
-			return nil, nil, err
-		}
-		if !selected {
-			continue
-		}
-		overlay[absolute] = slices.Clone(source)
-		if !testDirectories[directory] {
-			continue
-		}
-		_, err = hasGoPolicySelector(path, source)
-		if err != nil {
+		if err := addGoCandidate(
+			path, testDirectories, overlay, readFile,
+		); err != nil {
 			return nil, nil, err
 		}
 	}
 	return directories, overlay, nil
+}
+
+func addGoCandidate(
+	path string,
+	testDirectories map[string]bool,
+	overlay map[string][]byte,
+	readFile func(string) ([]byte, error),
+) error {
+	directory := filepath.Dir(path)
+	if isGoNativeSource(path) {
+		return rejectTestedNative(path, testDirectories[directory])
+	}
+	absolute, source, selected, err := snapshotGoSource(path, readFile)
+	if err != nil || !selected {
+		return err
+	}
+	overlay[absolute] = slices.Clone(source)
+	if err := rejectTestedCGO(path, testDirectories[directory], overlay); err != nil {
+		return err
+	}
+	if !testDirectories[directory] {
+		return nil
+	}
+	_, err = hasGoPolicySelector(path, source)
+	return err
+}
+
+func rejectTestedNative(path string, tested bool) error {
+	if !tested {
+		return nil
+	}
+	return fmt.Errorf(
+		"%s: Go native source is outside the test policy analyser", path,
+	)
+}
+
+func rejectTestedCGO(path string, tested bool, overlay map[string][]byte) error {
+	if !tested {
+		return nil
+	}
+	importsC, err := goSourceImportsC(path, overlay)
+	if err != nil {
+		return err
+	}
+	if importsC {
+		return fmt.Errorf(
+			"%s: cgo is unsupported in packages containing Go tests", path,
+		)
+	}
+	return nil
 }
 
 func snapshotGoSource(
@@ -336,85 +371,6 @@ func isGoNativeSource(path string) bool {
 	default:
 		return false
 	}
-}
-
-func rejectUnsupportedBuildTags(path string, source []byte) error {
-	file, err := parser.ParseFile(
-		token.NewFileSet(),
-		path,
-		source,
-		parser.ParseComments,
-	)
-	if err != nil {
-		kind := "source"
-		if strings.HasSuffix(path, "_test.go") {
-			kind = "test"
-		}
-		return fmt.Errorf("%s: parse Go %s: %w", path, kind, err)
-	}
-	for _, group := range file.Comments {
-		for _, comment := range group.List {
-			text := strings.TrimSpace(comment.Text)
-			if !strings.HasPrefix(text, "//go:build ") &&
-				!strings.HasPrefix(text, "// +build ") {
-				continue
-			}
-			expression, err := constraint.Parse(text)
-			if err != nil {
-				return fmt.Errorf(
-					"%s: parse Go build constraint: %w",
-					path,
-					err,
-				)
-			}
-			if unsupportedBuildTag(expression) {
-				return fmt.Errorf(
-					"%s: ungoverned Go build constraints are unsupported",
-					path,
-				)
-			}
-		}
-	}
-	return nil
-}
-
-func unsupportedBuildTag(expression constraint.Expr) bool {
-	switch value := expression.(type) {
-	case *constraint.TagExpr:
-		return !governedBuildTag(value.Tag)
-	case *constraint.NotExpr:
-		return unsupportedBuildTag(value.X)
-	case *constraint.AndExpr:
-		return unsupportedBuildTag(value.X) ||
-			unsupportedBuildTag(value.Y)
-	case *constraint.OrExpr:
-		return unsupportedBuildTag(value.X) ||
-			unsupportedBuildTag(value.Y)
-	default:
-		return false
-	}
-}
-
-func governedBuildTag(tag string) bool {
-	switch tag {
-	case "cgo", "race", "unix":
-		return true
-	}
-	if tag == build.Default.Compiler ||
-		slices.Contains(build.Default.ReleaseTags, tag) {
-		return true
-	}
-	if slices.Contains(build.Default.ToolTags, tag) &&
-		!strings.HasPrefix(tag, "amd64.") &&
-		!strings.HasPrefix(tag, "arm64.") {
-		return true
-	}
-	for _, target := range policyBuildTargets {
-		if tag == target.goos || tag == target.goarch {
-			return true
-		}
-	}
-	return false
 }
 
 func runGoBuildUnits(units []goBuildUnit) ([]string, error) {

@@ -38,6 +38,9 @@ var (
 	gosecDirective = regexp.MustCompile(
 		`gosec:`,
 	)
+	staticcheckDirective = regexp.MustCompile(
+		`^//lint:(ignore|file-ignore)([[:space:]]|$)`,
+	)
 	validShellcheck = regexp.MustCompile(
 		`^[[:space:]]*#[[:space:]]*shellcheck[[:space:]]+disable[[:space:]]*=[[:space:]]*SC[0-9]+(,SC[0-9]+)*[[:space:]]+#[[:space:]]+[^[:space:]].*$`,
 	)
@@ -56,6 +59,12 @@ func goSuppressionFindings(path string, source []byte) []string {
 		if gosecDirective.MatchString(text) {
 			findings = append(findings, fmt.Sprintf(
 				"%s:%d: invalid gosec suppression", path, comment.line,
+			))
+		}
+		if comment.lineComment &&
+			staticcheckDirective.MatchString(strings.TrimSpace(text)) {
+			findings = append(findings, fmt.Sprintf(
+				"%s:%d: Staticcheck suppressions are prohibited", path, comment.line,
 			))
 		}
 		_, nosec, hasNosec := strings.Cut(text, nosecMarker)
@@ -82,8 +91,9 @@ func goSuppressionFindings(path string, source []byte) []string {
 }
 
 type goCommentLine struct {
-	line int
-	text string
+	line        int
+	text        string
+	lineComment bool
 }
 
 func goCommentLines(source []byte) []goCommentLine {
@@ -101,10 +111,12 @@ func goCommentLines(source []byte) []goCommentLine {
 			continue
 		}
 		start := files.PositionFor(position, false).Line
+		lineComment := strings.HasPrefix(literal, "//")
 		for offset, text := range strings.Split(literal, "\n") {
 			comments = append(comments, goCommentLine{
-				line: start + offset,
-				text: strings.TrimSuffix(text, "\r"),
+				line:        start + offset,
+				text:        strings.TrimSuffix(text, "\r"),
+				lineComment: lineComment,
 			})
 		}
 	}

@@ -123,13 +123,13 @@ go_tests() {
 
 rust_command() {
   local all_targets=$1
-  local arguments=(test --workspace --locked --no-run --message-format=json)
+  local arguments=(test --workspace --all-features --locked --no-run --message-format=json)
   local directory
   local executable
   local test_name
 
   if [[ "$all_targets" == true ]]; then
-    arguments=(test --workspace --all-targets --locked --no-run --message-format=json)
+    arguments=(test --workspace --all-features --all-targets --locked --no-run --message-format=json)
   fi
   "$cargo_bin" "${arguments[@]}" |
     cargo_executables >"$temporary/rust-executables"
@@ -159,7 +159,7 @@ rust_command() {
       fi
     done <"$temporary/rust-list"
   done <"$temporary/rust-executables"
-  "$cargo_bin" test --workspace --locked
+  "$cargo_bin" test --workspace --all-features --locked
 }
 
 rust_tests() {

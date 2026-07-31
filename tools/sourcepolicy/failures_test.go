@@ -351,12 +351,23 @@ func TestGoPolicyIgnoresUnrelatedNativeSource(t *testing.T) {
 }
 
 func TestGoPolicyRejectsUngovernedBuildTags(t *testing.T) {
-	for _, tag := range []string{"privatecheck", "go1.999", "gccgo", "amd64.v2"} {
-		t.Run(tag, func(t *testing.T) {
+	tests := []struct {
+		name      string
+		directive string
+	}{
+		{"custom", "//go:build privatecheck"},
+		{"modern tab", "//go:build\tprivatecheck"},
+		{"legacy tab", "// +build\tprivatecheck"},
+		{"future release", "//go:build go1.999"},
+		{"alternate compiler", "//go:build gccgo"},
+		{"architecture feature", "//go:build amd64.v2"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			root := t.TempDir()
 			testPath := filepath.Join(root, "feature_test.go")
 			writeGoPolicyFixture(t, root, map[string]string{
-				testPath: "//go:build " + tag + "\n\npackage fixture\n\n" +
+				testPath: test.directive + "\n\npackage fixture\n\n" +
 					"import \"testing\"\n\nfunc TestFeature(t *testing.T) {}\n",
 			})
 			t.Chdir(root)
@@ -370,6 +381,110 @@ func TestGoPolicyRejectsUngovernedBuildTags(t *testing.T) {
 				t.Fatalf("build-tag error = %v", err)
 			}
 		})
+	}
+}
+
+func TestGoPolicyIgnoresBuildTextAfterPackage(t *testing.T) {
+	root := t.TempDir()
+	testPath := filepath.Join(root, "feature_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "package fixture\n\nimport \"testing\"\n\n" +
+			"//go:build privatecheck\n" +
+			"func TestFeature(t *testing.T) {}\n",
+	})
+	t.Chdir(root)
+	if _, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: "linux", goarch: "amd64"}},
+	); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGoPolicyIgnoresDirectiveShapedPackageDocs(t *testing.T) {
+	root := t.TempDir()
+	testPath := filepath.Join(root, "feature_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "// +build privatecheck\npackage fixture\n\n" +
+			"import \"testing\"\n\nfunc TestFeature(t *testing.T) {}\n",
+	})
+	t.Chdir(root)
+	if _, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: "linux", goarch: "amd64"}},
+	); err != nil {
+		t.Fatalf("legacy package documentation: %v", err)
+	}
+}
+
+func TestGoPolicyIgnoresLegacyBuildBeforeBlockDoc(t *testing.T) {
+	root := t.TempDir()
+	testPath := filepath.Join(root, "feature_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "// +build privatecheck\n/* package documentation */\n\n" +
+			"package fixture\n\nimport \"testing\"\n\nfunc TestFeature(t *testing.T) {}\n",
+	})
+	t.Chdir(root)
+	if _, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: "linux", goarch: "amd64"}},
+	); err != nil {
+		t.Fatalf("legacy package documentation: %v", err)
+	}
+}
+
+func TestGoPolicyRejectsMultipleGoBuildComments(t *testing.T) {
+	root := t.TempDir()
+	testPath := filepath.Join(root, "feature_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "//go:build linux\n//go:build amd64\n\npackage fixture\n",
+	})
+	t.Chdir(root)
+	_, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: "linux", goarch: "amd64"}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "multiple //go:build comments") {
+		t.Fatalf("multiple go:build error = %v", err)
+	}
+}
+
+func TestGoPolicyRejectsBOMLegacyBuild(t *testing.T) {
+	root := t.TempDir()
+	testPath := filepath.Join(root, "feature_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "\ufeff// +build privatecheck\n\npackage fixture\n",
+	})
+	t.Chdir(root)
+	_, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: "linux", goarch: "amd64"}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "ungoverned Go build constraints") {
+		t.Fatalf("BOM legacy build error = %v", err)
+	}
+}
+
+func TestGoPolicyTreatsAdjacentGoBuildAsConstraint(t *testing.T) {
+	root := t.TempDir()
+	testPath := filepath.Join(root, "feature_test.go")
+	writeGoPolicyFixture(t, root, map[string]string{
+		testPath: "//go:build privatecheck\npackage fixture\n\n" +
+			"import \"testing\"\n\nfunc TestFeature(t *testing.T) {}\n",
+	})
+	t.Chdir(root)
+	_, err := goPackageSkipFindingsWithTargets(
+		[]string{filepath.Base(testPath)},
+		os.ReadFile,
+		[]buildTarget{{goos: "linux", goarch: "amd64"}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "ungoverned Go build constraints") {
+		t.Fatalf("adjacent go:build error = %v", err)
 	}
 }
 

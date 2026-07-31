@@ -12,12 +12,14 @@
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/build"
 	"go/parser"
 	"go/token"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -46,9 +48,16 @@ func goSourceFallbackFindings(
 	paths []string,
 	overlay map[string][]byte,
 ) []string {
+	testDirectories := make(map[string]bool)
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			testDirectories[filepath.Dir(path)] = true
+		}
+	}
 	directories := make(map[string][]string)
 	for _, path := range paths {
-		if filepath.Ext(path) == ".go" {
+		if filepath.Ext(path) == ".go" &&
+			testDirectories[filepath.Dir(path)] {
 			directories[filepath.Dir(path)] = append(
 				directories[filepath.Dir(path)],
 				path,
@@ -63,6 +72,96 @@ func goSourceFallbackFindings(
 		)
 	}
 	return findings
+}
+
+func rejectUngovernedGoTests(
+	paths []string,
+	targets []buildTarget,
+	overlay map[string][]byte,
+) error {
+	for _, path := range paths {
+		if !strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		selected, err := goTestSelected(path, targets, overlay)
+		if err != nil {
+			return err
+		}
+		if !selected {
+			return fmt.Errorf("%s: Go test is outside the governed target matrix", path)
+		}
+	}
+	return nil
+}
+
+func rejectGoIgnoredTests(paths []string) error {
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") && goIgnoredTestPath(path) {
+			return fmt.Errorf("%s: Go test is outside the governed package inventory", path)
+		}
+	}
+	return nil
+}
+
+func goTestSelected(
+	path string,
+	targets []buildTarget,
+	overlay map[string][]byte,
+) (bool, error) {
+	for _, target := range targets {
+		context := policyBuildContext(target, overlay)
+		matched, err := context.MatchFile(
+			filepath.Dir(path), filepath.Base(path),
+		)
+		if err != nil {
+			return false, fmt.Errorf(
+				"%s: match Go build constraints: %w", path, err,
+			)
+		}
+		if matched {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func goIgnoredTestPath(path string) bool {
+	relative, inside, err := repositoryRelativePath(path)
+	if err != nil {
+		return true
+	}
+	if !inside {
+		return false
+	}
+	for part := range strings.SplitSeq(relative, string(filepath.Separator)) {
+		if part == "." || part == ".." {
+			continue
+		}
+		if part == "testdata" || part == "vendor" ||
+			strings.HasPrefix(part, ".") || strings.HasPrefix(part, "_") {
+			return true
+		}
+	}
+	return false
+}
+
+func repositoryRelativePath(path string) (string, bool, error) {
+	repositoryRoot, err := filepath.Abs(".")
+	if err != nil {
+		return "", false, err
+	}
+	absolute := filepath.Clean(path)
+	if !filepath.IsAbs(absolute) {
+		absolute = filepath.Join(repositoryRoot, absolute)
+	}
+	relative, err := filepath.Rel(repositoryRoot, absolute)
+	if err != nil {
+		return "", false, err
+	}
+	if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", false, nil
+	}
+	return relative, true, nil
 }
 
 func goFallbackDirectoryFindings(

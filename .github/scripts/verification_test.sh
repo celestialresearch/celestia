@@ -512,6 +512,7 @@ EOF
     "$work_dir/.github/scripts/"
   cp \
     "$root/tools/sourcepolicy/gofallback.go" \
+    "$root/tools/sourcepolicy/gobuildtags.go" \
     "$root/tools/sourcepolicy/goinspect.go" \
     "$root/tools/sourcepolicy/goskip.go" \
     "$root/tools/sourcepolicy/main.go" \
