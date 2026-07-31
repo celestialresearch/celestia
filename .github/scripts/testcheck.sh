@@ -17,6 +17,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 mode=${1:-}
 profile=${2:-}
 fixture_mode=${3:-}
+cargo_bin=${CARGO_BIN:-cargo}
 work=${TMPDIR:-.cache}
 mkdir -p "$work"
 temporary=$(mktemp -d "$work/test-completion.XXXXXX")
@@ -123,7 +124,7 @@ rust_command() {
   if [[ "$all_targets" == true ]]; then
     arguments=(test --workspace --all-targets --locked --no-run --message-format=json)
   fi
-  cargo "${arguments[@]}" |
+  "$cargo_bin" "${arguments[@]}" |
     cargo_executables >"$temporary/rust-executables"
   while IFS=$'\t' read -r directory executable; do
     directory=$(shell_path "$directory")
@@ -151,6 +152,7 @@ rust_command() {
       fi
     done <"$temporary/rust-list"
   done <"$temporary/rust-executables"
+  "$cargo_bin" test --workspace --locked
 }
 
 rust_tests() {

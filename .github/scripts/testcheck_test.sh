@@ -49,6 +49,11 @@ chmod +x "$work/bin/testinventory"
 
 cat >"$work/bin/cargo" <<'EOF'
 #!/usr/bin/env bash
+if [[ "$*" == *"test --workspace --locked"* &&
+  "$*" != *"--no-run"* &&
+  "${FAIL_DOC_TEST:-false}" == true ]]; then
+  exit 1
+fi
 exit 0
 EOF
 chmod +x "$work/bin/cargo"
@@ -91,14 +96,23 @@ PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
   COMPLETE_TEST=true \
   bash "$root/.github/scripts/testcheck.sh" go quick --fixture >/dev/null
 
-if PATH="$work/bin:$PATH" CARGO_BIN=true \
+if PATH="$work/bin:$PATH" CARGO_BIN="$work/bin/cargo" \
   TESTINVENTORY_BIN="$work/bin/testinventory" \
   bash "$root/.github/scripts/testcheck.sh" rust unused --fixture \
   >/dev/null 2>&1; then
   printf 'Rust completion check accepted a failed executable\n' >&2
   exit 1
 fi
-PATH="$work/bin:$PATH" CARGO_BIN=true \
+if PATH="$work/bin:$PATH" CARGO_BIN="$work/bin/cargo" \
+  TESTINVENTORY_BIN="$work/bin/testinventory" \
+  COMPLETE_TEST=true EXPECTED_PACKAGE_ROOT="$work/package" \
+  FAIL_DOC_TEST=true \
+  bash "$root/.github/scripts/testcheck.sh" rust unused --fixture \
+  >/dev/null 2>&1; then
+  printf 'Rust completion check accepted a failed documentation test\n' >&2
+  exit 1
+fi
+PATH="$work/bin:$PATH" CARGO_BIN="$work/bin/cargo" \
   TESTINVENTORY_BIN="$work/bin/testinventory" \
   COMPLETE_TEST=true EXPECTED_PACKAGE_ROOT="$work/package" \
   bash "$root/.github/scripts/testcheck.sh" rust unused --fixture >/dev/null
