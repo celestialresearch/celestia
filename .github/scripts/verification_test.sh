@@ -1977,6 +1977,8 @@ EOF
     >"$work_dir/broad_shellcheck.sh"
   printf '%s%s\n' '#shell' 'check disable=SC2086' \
     >"$work_dir/compact_shellcheck.sh"
+  printf '%s\n' "printf '%s\\n' '# shellcheck disable=SC2086'" \
+    >"$work_dir/shellcheck_literal.sh"
   printf '%s%s\n' '#[al' 'low(clippy::needless_pass_by_value)]' \
     >"$work_dir/broad_clippy.rs"
   printf '%s%s\n' '#[al' \
@@ -2050,6 +2052,11 @@ EOF
     printf 'policy check accepted hostile suppression fixtures\n' >&2
     return 1
   }
+  if grep -Fq 'shellcheck_literal.sh' <<<"$output"; then
+    printf 'policy check treated a shell string as a suppression:\n%s\n' \
+      "$output" >&2
+    return 1
+  fi
   for diagnostic in \
     'invalid gosec suppression' \
     'invalid golangci-lint suppression' \

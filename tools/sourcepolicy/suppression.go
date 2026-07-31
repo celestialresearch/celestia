@@ -125,7 +125,11 @@ func goCommentLines(source []byte) []goCommentLine {
 func shellSuppressionFindings(path string, source []byte) []string {
 	var findings []string
 	for index, line := range bytes.Split(source, []byte{'\n'}) {
-		if shellcheckDirective.Match(line) && !validShellcheck.Match(line) {
+		trimmed := bytes.TrimSpace(line)
+		if !bytes.HasPrefix(trimmed, []byte{'#'}) {
+			continue
+		}
+		if shellcheckDirective.Match(trimmed) && !validShellcheck.Match(trimmed) {
 			findings = append(findings, fmt.Sprintf(
 				"%s:%d: invalid ShellCheck suppression", path, index+1,
 			))

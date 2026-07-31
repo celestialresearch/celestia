@@ -228,6 +228,7 @@ func TestShellSuppressionFindings(t *testing.T) {
 	source := []byte(strings.Join([]string{
 		"#shellcheck disable=SC2086",
 		"# shellcheck disable=SC2329 # Invoked by a registered trap",
+		`printf '%s\n' '# shellcheck disable=SC2086'`,
 	}, "\n"))
 	findings := shellSuppressionFindings("source.sh", source)
 	if len(findings) != 1 {
