@@ -511,6 +511,7 @@ EOF
     "$root/.github/scripts/policycheck.sh" \
     "$work_dir/.github/scripts/"
   cp \
+    "$root/tools/sourcepolicy/gofallback.go" \
     "$root/tools/sourcepolicy/goinspect.go" \
     "$root/tools/sourcepolicy/goskip.go" \
     "$root/tools/sourcepolicy/main.go" \
