@@ -1784,13 +1784,10 @@ EOF
   }
   rm -- "$work_dir/ignored_test.rs"
 
-  cat >"$work_dir/ffi_exit.rs" <<'EOF'
+  cat >"$work_dir/doctest.rs" <<'EOF'
 /// ```
-/// unsafe extern "C" {
-///     #[link_name = "_exit"]
-///     fn finish(status: i32);
-/// }
-/// unsafe { finish(0) };
+/// use std::os::unix::process::CommandExt;
+/// let _ = std::process::Command::new("true").exec();
 /// assert!(false);
 /// ```
 pub fn documented() {}
@@ -1801,15 +1798,16 @@ EOF
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a Rust FFI documentation exit\n' >&2
+    printf 'policy check accepted a Rust documentation test\n' >&2
     return 1
   }
-  grep -Fq 'Rust documentation tests must not declare foreign functions' \
+  grep -Fq 'Rust documentation comments are prohibited' \
     <<<"$output" || {
-    printf 'policy output omitted the Rust FFI exit:\n%s\n' "$output" >&2
+    printf 'policy output omitted the Rust documentation test:\n%s\n' \
+      "$output" >&2
     return 1
   }
-  rm -- "$work_dir/ffi_exit.rs"
+  rm -- "$work_dir/doctest.rs"
 
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]

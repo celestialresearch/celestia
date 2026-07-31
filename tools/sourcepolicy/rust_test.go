@@ -304,7 +304,7 @@ func TestRustPolicyAttributes(t *testing.T) {
 	}
 }
 
-func TestRustDocumentationExit(t *testing.T) {
+func TestRustDocumentationComments(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -312,64 +312,32 @@ func TestRustDocumentationExit(t *testing.T) {
 		findings int
 	}{
 		{
-			"documentation exit",
-			"/// ```\n/// std::process::exit(0);\n/// ```",
+			"line documentation",
+			"/// Explanation.",
 			1,
 		},
 		{
-			"split documentation exit",
-			"/*!\nexit\n(\n0\n);\n*/",
+			"crate documentation",
+			"//! Explanation.",
 			1,
 		},
 		{
-			"aliased documentation exit",
-			"/// use std::process::exit as done;\n/// done(0);",
+			"block documentation",
+			"/** Explanation. */",
 			1,
 		},
 		{
-			"multiline braced alias",
-			"/// ```rust\n/// use std::process::{\n/// exit as done,\n/// };\n/// done(0);\n/// ```",
+			"inner block documentation",
+			"/*! Explanation. */",
 			1,
 		},
 		{
-			"visibility import",
-			"/// ```rust\n/// pub(crate) use std::process::{exit as done};\n/// done(0);\n/// ```",
+			"nested block documentation",
+			"/**\n/* nested */\nExplanation.\n*/",
 			1,
 		},
-		{
-			"attributed import",
-			"/// ```rust\n/// #[allow(unused_imports)] use std::process::{exit as done};\n/// done(0);\n/// ```",
-			1,
-		},
-		{
-			"parenthesised documentation exit",
-			"/// (std::process::exit)(0);",
-			1,
-		},
-		{
-			"nested block comment",
-			"/**\n```rust\n/* std::process::exit(0); */\nassert!(true);\n```\n*/",
-			0,
-		},
-		{
-			"nested markers in string",
-			"/**\n```rust\nlet open = \"/*\";\nstd::process::exit(0);\nlet close = \"*/\";\n```\n*/",
-			1,
-		},
-		{
-			"nested block documentation exit",
-			"/**\n```rust\n/* nested */\nstd::process::exit(0);\n```\n*/",
-			1,
-		},
-		{"ordinary exit prose", "/// The exit status is retained.", 0},
-		{"colon exit prose", "/// Failure: exit status is retained.", 0},
-		{"use exit prose", "/// Callers use exit status for diagnostics.", 0},
-		{
-			"multiline use exit prose",
-			"/// Callers can\n/// use exit status for diagnostics.",
-			0,
-		},
-		{"punctuated use exit prose", "/// Guidance: use exit status;", 0},
+		{"ordinary code", "fn main() { let marker = \"```\"; }", 0},
+		{"ordinary comment", "// ```rust\n// assert!(true);", 0},
 		{"doc attribute", `#[doc = "ordinary"]`, 1},
 		{"doc include", `#![doc = include_str!("README.md")]`, 1},
 	}
@@ -383,28 +351,6 @@ func TestRustDocumentationExit(t *testing.T) {
 				t.Fatalf("findings = %v, want %d", findings, test.findings)
 			}
 		})
-	}
-}
-
-func TestRustDocumentationForeignExit(t *testing.T) {
-	t.Parallel()
-	tests := []string{
-		"/// unsafe extern \"C\" { fn _exit(status: i32); }\n" +
-			"/// unsafe { _exit(0) };",
-		"/// unsafe extern \"system\" { fn ExitProcess(code: u32); }\n" +
-			"/// unsafe { ExitProcess(0) };",
-		"/// unsafe extern \"C\" {\n" +
-			"/// #[link_name = \"_exit\"]\n" +
-			"/// fn finish(status: i32);\n" +
-			"/// }\n" +
-			"/// unsafe { finish(0) };",
-	}
-	for _, source := range tests {
-		if findings := rustFindings(
-			"fixture.rs", []byte(source), modeTestSkips,
-		); len(findings) != 1 {
-			t.Fatalf("findings = %v, want 1", findings)
-		}
 	}
 }
 

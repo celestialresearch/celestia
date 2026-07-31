@@ -61,8 +61,9 @@ func rustExpansionFinding(path string, source []byte, mode string) string {
 
 func rustDocFinding(source []byte) (int, string, bool) {
 	blockDepth := 0
-	var documentation strings.Builder
+	lineNumber := 0
 	for line := range strings.SplitSeq(string(source), "\n") {
+		lineNumber++
 		trimmed := strings.TrimSpace(line)
 		doc := ""
 		switch {
@@ -76,92 +77,11 @@ func rustDocFinding(source []byte) (int, string, bool) {
 			blockDepth = 1
 			doc = rustBlockDocumentation(trimmed[3:], &blockDepth)
 		}
-		documentation.WriteString(doc)
-		documentation.WriteByte('\n')
-	}
-	tokens, valid := rustPolicyTokens([]byte(documentation.String()))
-	if !valid {
-		return 0, "", false
-	}
-	if line, found := rustForeignDeclarationLine(tokens); found {
-		return line, "Rust documentation tests must not declare foreign functions",
-			true
-	}
-	for index, token := range tokens {
-		if rustExitToken(token.text) && rustExitIsExecutable(tokens, index) {
-			return token.line, "Rust documentation tests must not exit", true
+		if doc != "" {
+			return lineNumber, "Rust documentation comments are prohibited", true
 		}
 	}
 	return 0, "", false
-}
-
-func rustForeignDeclarationLine(tokens []rustPolicyToken) (int, bool) {
-	for index, token := range tokens {
-		if token.text == "extern" &&
-			(index > 0 && tokens[index-1].text == "unsafe" ||
-				index+1 < len(tokens) &&
-					(tokens[index+1].text == "{" ||
-						tokens[index+1].text == "fn")) {
-			return token.line, true
-		}
-	}
-	return 0, false
-}
-
-func rustExitToken(token string) bool {
-	switch token {
-	case "exit",
-		"_exit",
-		"_Exit",
-		"quick_exit",
-		"ExitProcess",
-		"proc_exit",
-		"TerminateProcess":
-		return true
-	default:
-		return false
-	}
-}
-
-func rustExitIsExecutable(tokens []rustPolicyToken, index int) bool {
-	return rustExitIsCall(tokens, index) ||
-		rustExitIsPath(tokens, index) ||
-		rustExitIsImported(tokens, index)
-}
-
-func rustExitIsCall(tokens []rustPolicyToken, index int) bool {
-	return index+1 < len(tokens) && tokens[index+1].text == "(" ||
-		index+2 < len(tokens) &&
-			tokens[index+1].text == ")" && tokens[index+2].text == "("
-}
-
-func rustExitIsPath(tokens []rustPolicyToken, index int) bool {
-	return index > 1 &&
-		tokens[index-2].text == ":" && tokens[index-1].text == ":"
-}
-
-func rustExitIsImported(tokens []rustPolicyToken, index int) bool {
-	path := false
-	imported := false
-	for preceding := index - 1; preceding >= 0; preceding-- {
-		if tokens[preceding].text == ";" {
-			break
-		}
-		if preceding > 0 &&
-			tokens[preceding-1].text == ":" &&
-			tokens[preceding].text == ":" {
-			path = true
-		}
-		if tokens[preceding].text == "use" {
-			imported = true
-		}
-	}
-	for following := index + 1; following < len(tokens); following++ {
-		if tokens[following].text == ";" {
-			return imported && path
-		}
-	}
-	return false
 }
 
 func rustBlockDocumentation(line string, depth *int) string {
