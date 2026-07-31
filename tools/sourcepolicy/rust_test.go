@@ -369,6 +369,7 @@ func TestRustDocumentationExit(t *testing.T) {
 			"/// Callers can\n/// use exit status for diagnostics.",
 			0,
 		},
+		{"punctuated use exit prose", "/// Guidance: use exit status;", 0},
 		{"doc attribute", `#[doc = "ordinary"]`, 1},
 		{"doc include", `#![doc = include_str!("README.md")]`, 1},
 	}

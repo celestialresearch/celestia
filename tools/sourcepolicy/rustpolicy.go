@@ -116,7 +116,9 @@ func rustExitIsImported(tokens []rustPolicyToken, index int) bool {
 		if tokens[preceding].text == ";" {
 			break
 		}
-		if tokens[preceding].text == ":" {
+		if preceding > 0 &&
+			tokens[preceding-1].text == ":" &&
+			tokens[preceding].text == ":" {
 			path = true
 		}
 		if tokens[preceding].text == "use" {
