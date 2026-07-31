@@ -70,7 +70,6 @@ check_lint_policy() {
 }
 
 check_environment() {
-  local cargo_home=
   local had_nocasematch=false
   local config
   local directory
@@ -78,6 +77,7 @@ check_environment() {
   local parent
   local physical
   local repo_root
+  local selected_cargo_home=
   local uncontrolled=
 
   shopt -q nocasematch && had_nocasematch=true
@@ -86,7 +86,7 @@ check_environment() {
     case "$name" in
     CARGO_TARGET_DIR) ;;
     CARGO_HOME)
-      [[ -z "${!name:-}" ]] || cargo_home=${!name}
+      [[ -z "${!name:-}" ]] || selected_cargo_home=${!name}
       ;;
     RUSTC | RUSTDOC | RUSTC_BOOTSTRAP | RUSTC_WRAPPER | \
       RUSTC_WORKSPACE_WRAPPER | RUSTFLAGS | RUSTDOCFLAGS | \
@@ -106,8 +106,10 @@ check_environment() {
     return 1
   fi
 
-  cargo_home=${cargo_home:-${CARGO_HOME:-"$HOME/.cargo"}}
-  for config in "$cargo_home/config" "$cargo_home/config.toml"; do
+  selected_cargo_home=${selected_cargo_home:-${CARGO_HOME:-"$HOME/.cargo"}}
+  for config in \
+    "$selected_cargo_home/config" \
+    "$selected_cargo_home/config.toml"; do
     if [[ -e "$config" || -L "$config" ]]; then
       if [[ ! -f "$config" || -L "$config" ]]; then
         printf 'Cargo configuration must be a regular file: %s\n' \
