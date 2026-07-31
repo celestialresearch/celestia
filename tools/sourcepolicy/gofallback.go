@@ -153,6 +153,10 @@ func repositoryRelativePath(path string) (string, bool, error) {
 	absolute := filepath.Clean(path)
 	if !filepath.IsAbs(absolute) {
 		absolute = filepath.Join(repositoryRoot, absolute)
+	} else if !strings.EqualFold(
+		filepath.VolumeName(repositoryRoot), filepath.VolumeName(absolute),
+	) {
+		return "", false, nil
 	}
 	relative, err := filepath.Rel(repositoryRoot, absolute)
 	if err != nil {
