@@ -863,10 +863,10 @@ EOF
     mkdir -p "$rust_dir/junction-cargo"
     printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
       >"$rust_dir/junction-cargo/config.toml"
-    CEL_CARGO_LINK=$(cygpath -w "$rust_dir/.cargo") \
-      CEL_CARGO_TARGET=$(cygpath -w "$rust_dir/junction-cargo") \
-      MSYS2_ARG_CONV_EXCL='*' cmd.exe /d /c \
-      'mklink /J "%CEL_CARGO_LINK%" "%CEL_CARGO_TARGET%"' >/dev/null
+    CEL_CARGO_LINK=$(cygpath -w "$rust_dir/.cargo")
+    CEL_CARGO_TARGET=$(cygpath -w "$rust_dir/junction-cargo")
+    MSYS2_ARG_CONV_EXCL='*' cmd.exe /d /c mklink /J \
+      "$CEL_CARGO_LINK" "$CEL_CARGO_TARGET" >/dev/null
     set +e
     output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
     status=$?
