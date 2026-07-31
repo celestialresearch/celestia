@@ -252,11 +252,12 @@ func validateSourceInfo(info os.FileInfo) error {
 }
 
 func sourceFiles() ([]string, error) {
-	git := os.Getenv("CELESTIA_GIT_BIN")
-	if git == "" {
-		git = "git"
-	}
-	return inventorySourceFiles(git, inventoryCommandContext)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	command := exec.CommandContext(
+		ctx, "git", "ls-files", "-co", "--exclude-standard", "-z",
+	)
+	return inventorySourceFiles(command, cancel)
 }
 
 type inventoryCommand interface {
@@ -265,30 +266,10 @@ type inventoryCommand interface {
 	Wait() error
 }
 
-type inventoryCommandFactory func(
-	context.Context,
-	string,
-	...string,
-) inventoryCommand
-
-func inventoryCommandContext(
-	ctx context.Context,
-	name string,
-	args ...string,
-) inventoryCommand {
-	// #nosec G204,G702 -- The Git binary is an explicit repository control.
-	return exec.CommandContext(ctx, name, args...)
-}
-
 func inventorySourceFiles(
-	git string,
-	commandFactory inventoryCommandFactory,
+	command inventoryCommand,
+	cancel context.CancelFunc,
 ) ([]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	command := commandFactory(
-		ctx, git, "ls-files", "-co", "--exclude-standard", "-z",
-	)
 	output, err := command.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("inventory source files: %w", err)

@@ -13,7 +13,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"go/ast"
 	"go/parser"
@@ -252,15 +251,10 @@ func TestSourceFiles(t *testing.T) {
 
 func TestSourceFilesCommand(t *testing.T) {
 	t.Parallel()
-	files, err := inventorySourceFiles("git", func(
-		context.Context,
-		string,
-		...string,
-	) inventoryCommand {
-		return &fakeInventoryCommand{
-			output: strings.NewReader("main.go\x00"),
-		}
-	})
+	files, err := inventorySourceFiles(
+		&fakeInventoryCommand{output: strings.NewReader("main.go\x00")},
+		func() {},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,17 +282,22 @@ func TestSourceFilesCommand(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := inventorySourceFiles("git", func(
-				context.Context,
-				string,
-				...string,
-			) inventoryCommand {
-				return test.command
-			})
+			_, err := inventorySourceFiles(test.command, func() {})
 			if err == nil {
 				t.Fatal("inventorySourceFiles accepted a command failure")
 			}
 		})
+	}
+}
+
+func TestSourceFilesIgnoresGitOverride(t *testing.T) {
+	t.Setenv("CELESTIA_GIT_BIN", "celestia-nonexistent-git")
+	files, err := sourceFiles()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(files, "main.go") {
+		t.Fatalf("source inventory does not contain sourcepolicy: %v", files)
 	}
 }
 
