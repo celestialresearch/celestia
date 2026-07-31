@@ -347,6 +347,7 @@ func TestRustDocumentationExit(t *testing.T) {
 			1,
 		},
 		{"ordinary exit prose", "/// The exit status is retained.", 0},
+		{"colon exit prose", "/// Failure: exit status is retained.", 0},
 		{"doc attribute", `#[doc = "ordinary"]`, 1},
 		{"doc include", `#![doc = include_str!("README.md")]`, 1},
 	}

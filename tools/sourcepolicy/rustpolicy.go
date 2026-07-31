@@ -100,7 +100,8 @@ func rustExitIsExecutable(tokens []rustPolicyToken, index int) bool {
 		tokens[index+1].text == ")" && tokens[index+2].text == "(" {
 		return true
 	}
-	if index > 0 && tokens[index-1].text == ":" {
+	if index > 1 &&
+		tokens[index-2].text == ":" && tokens[index-1].text == ":" {
 		return true
 	}
 	for preceding := index - 1; preceding >= 0; preceding-- {
