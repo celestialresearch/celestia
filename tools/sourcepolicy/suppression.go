@@ -100,7 +100,7 @@ func goCommentLines(source []byte) []goCommentLine {
 		if kind != token.COMMENT {
 			continue
 		}
-		start := files.Position(position).Line
+		start := files.PositionFor(position, false).Line
 		for offset, text := range strings.Split(literal, "\n") {
 			comments = append(comments, goCommentLine{
 				line: start + offset,

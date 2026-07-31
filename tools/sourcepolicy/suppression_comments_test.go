@@ -48,6 +48,20 @@ func TestGoSuppressionsReportCommentLines(t *testing.T) {
 	}
 }
 
+func TestGoSuppressionsUsePhysicalLines(t *testing.T) {
+	source := []byte(strings.Join([]string{
+		"package fixture",
+		"//line generated.go:100",
+		"//no" + "lint:all",
+	}, "\n"))
+	want := []string{
+		"source.go:3: invalid golangci-lint suppression",
+	}
+	if findings := goSuppressionFindings("source.go", source); !slices.Equal(findings, want) {
+		t.Fatalf("findings = %v, want %v", findings, want)
+	}
+}
+
 func TestGoSuppressionsAcceptExplainedComments(t *testing.T) {
 	source := []byte(strings.Join([]string{
 		"package fixture",
