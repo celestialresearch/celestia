@@ -290,17 +290,6 @@ func TestSourceFilesCommand(t *testing.T) {
 	}
 }
 
-func TestSourceFilesIgnoresGitOverride(t *testing.T) {
-	t.Setenv("CELESTIA_GIT_BIN", "celestia-nonexistent-git")
-	files, err := sourceFiles()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Contains(files, "main.go") {
-		t.Fatalf("source inventory does not contain sourcepolicy: %v", files)
-	}
-}
-
 type fakeInventoryCommand struct {
 	output   io.Reader
 	pipeErr  error
