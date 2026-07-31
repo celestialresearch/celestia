@@ -82,6 +82,10 @@ func (inspector *goPolicyInspector) inspectSelector(selector *ast.SelectorExpr) 
 		inspector.add(selector, "Go tests must not skip cases")
 		return true
 	}
+	if isRawSyscallFunction(selector, inspector.loaded.TypesInfo) {
+		inspector.add(selector, "Go tests must not use raw system calls")
+		return false
+	}
 	if isProcessExitFunction(selector, inspector.loaded.TypesInfo) {
 		inspector.add(selector, "Go tests must not alias process exit")
 		return false
@@ -92,6 +96,10 @@ func (inspector *goPolicyInspector) inspectSelector(selector *ast.SelectorExpr) 
 func (inspector *goPolicyInspector) inspectIdentifier(identifier *ast.Ident) bool {
 	if inspector.isExecutableMainReference(identifier) {
 		inspector.add(identifier, "Go tests must not reference executable main")
+		return false
+	}
+	if isRawSyscallFunction(identifier, inspector.loaded.TypesInfo) {
+		inspector.add(identifier, "Go tests must not use raw system calls")
 		return false
 	}
 	if !isProcessExitFunction(identifier, inspector.loaded.TypesInfo) {
@@ -266,6 +274,27 @@ func isProcessExitFunction(expression ast.Expr, info *types.Info) bool {
 		object.Pkg().Path() == "golang.org/x/sys/plan9"
 }
 
+func isRawSyscallFunction(expression ast.Expr, info *types.Info) bool {
+	object := expressionFunction(expression, info)
+	if object == nil || object.Pkg() == nil {
+		return false
+	}
+	name := object.Name()
+	if !strings.HasPrefix(name, "Syscall") &&
+		!strings.HasPrefix(name, "RawSyscall") {
+		return false
+	}
+	switch object.Pkg().Path() {
+	case "syscall",
+		"golang.org/x/sys/windows",
+		"golang.org/x/sys/unix",
+		"golang.org/x/sys/plan9":
+		return true
+	default:
+		return false
+	}
+}
+
 func isOSExitFunction(expression ast.Expr, info *types.Info) bool {
 	object := functionObject(expression, "Exit", info)
 	return object != nil && object.Pkg() != nil && object.Pkg().Path() == "os"
@@ -276,17 +305,22 @@ func functionObject(
 	name string,
 	info *types.Info,
 ) *types.Func {
+	function := expressionFunction(expression, info)
+	if function == nil || function.Name() != name {
+		return nil
+	}
+	return function
+}
+
+func expressionFunction(
+	expression ast.Expr,
+	info *types.Info,
+) *types.Func {
 	var object types.Object
 	switch exit := expression.(type) {
 	case *ast.SelectorExpr:
-		if exit.Sel.Name != name {
-			return nil
-		}
 		object = info.Uses[exit.Sel]
 	case *ast.Ident:
-		if exit.Name != name {
-			return nil
-		}
 		object = info.Uses[exit]
 	default:
 		return nil

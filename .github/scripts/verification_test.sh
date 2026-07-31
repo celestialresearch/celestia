@@ -1561,6 +1561,17 @@ package fixture
 
 const platform = "windows"
 EOF
+  cat >"$work_dir/raw_exit_linux.go" <<'EOF'
+//go:build linux
+
+package fixture
+
+import "syscall"
+
+func init() {
+	syscall.RawSyscall(syscall.SYS_EXIT_GROUP, 0, 0, 0)
+}
+EOF
   set +e
   output=$(cd "$work_dir" &&
     bash .github/scripts/policycheck.sh test-skips 2>&1)
@@ -1580,11 +1591,17 @@ EOF
       "$output" >&2
     return 1
   }
+  grep -Fq 'Go tests must not use raw system calls' <<<"$output" || {
+    printf 'policy output omitted the raw-system-call failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
   rm -- \
     "$work_dir/helper.go" \
     "$work_dir/skipped_test.go" \
     "$work_dir/platform_linux.go" \
-    "$work_dir/platform_windows.go"
+    "$work_dir/platform_windows.go" \
+    "$work_dir/raw_exit_linux.go"
 
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]
