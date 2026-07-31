@@ -166,6 +166,37 @@ func TestRunRejectsGolangciExclusions(t *testing.T) {
 	}
 }
 
+func TestRunRejectsAlternateGolangciConfigs(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{
+		".golangci.yaml",
+		".golangci.toml",
+		".golangci.json",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), name)
+			if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var stderr bytes.Buffer
+			code := run(
+				[]string{modeSuppressions},
+				&stderr,
+				func() ([]string, error) { return []string{path}, nil },
+				os.ReadFile,
+			)
+			if code != 1 ||
+				!strings.Contains(
+					stderr.String(),
+					"alternate golangci-lint configurations are prohibited",
+				) {
+				t.Fatalf("code = %d, stderr = %q", code, stderr.String())
+			}
+		})
+	}
+}
+
 func TestGoSuppressionFindings(t *testing.T) {
 	source := []byte(strings.Join([]string{
 		"// #no" + "sec",

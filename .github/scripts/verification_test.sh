@@ -763,6 +763,49 @@ EOF
     }
   done
 
+  for variable in rustflags RuStFlAgS; do
+    set +e
+    output=$(
+      cd "$rust_dir" &&
+        env "$variable=hostile" bash .github/scripts/rustcheck.sh config 2>&1
+    )
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'Rust config check accepted inherited %s\n' "$variable" >&2
+      return 1
+    }
+    grep -Fq "Uncontrolled Rust build environment: $variable" <<<"$output" || {
+      printf 'Rust config check omitted the %s diagnostic:\n%s\n' \
+        "$variable" "$output" >&2
+      return 1
+    }
+  done
+
+  mkdir -p "$rust_dir/external-cargo-home"
+  printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
+    >"$rust_dir/external-cargo-home/config.toml"
+  for variable in cargo_home CaRgO_HoMe; do
+    set +e
+    output=$(
+      cd "$rust_dir" &&
+        env "$variable=$rust_dir/external-cargo-home" \
+          bash .github/scripts/rustcheck.sh config 2>&1
+    )
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'Rust config check accepted inherited %s\n' "$variable" >&2
+      return 1
+    }
+    grep -Fq 'External Cargo configuration is prohibited' <<<"$output" || {
+      printf 'Rust config check omitted the %s diagnostic:\n%s\n' \
+        "$variable" "$output" >&2
+      return 1
+    }
+  done
+  rm -rf -- "$rust_dir/external-cargo-home"
+
   mkdir -p "$rust_dir/.cargo"
   printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
     >"$rust_dir/.cargo/config.toml"
@@ -780,6 +823,44 @@ EOF
       "$output" >&2
     return 1
   }
+
+  if [[ "$(uname -s)" != MINGW* ]] &&
+    command -v mkfifo >/dev/null 2>&1; then
+    mkdir -p "$rust_dir/.cargo"
+    mkfifo "$rust_dir/.cargo/config"
+    set +e
+    (
+      cd "$rust_dir" &&
+        bash .github/scripts/rustcheck.sh config
+    ) >"$rust_dir/cargo-fifo-output" 2>&1 &
+    fifo_pid=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      sleep 0.1
+      kill -0 "$fifo_pid" 2>/dev/null || break
+    done
+    if kill -0 "$fifo_pid" 2>/dev/null; then
+      terminate_child "$fifo_pid"
+      printf 'Rust config check blocked while inspecting a Cargo FIFO\n' >&2
+      return 1
+    fi
+    wait "$fifo_pid"
+    status=$?
+    set -e
+    fifo_pid=
+    rm -- "$rust_dir/.cargo/config"
+    rmdir -- "$rust_dir/.cargo"
+    [[ "$status" -ne 0 ]] || {
+      printf 'Rust config check accepted a Cargo FIFO\n' >&2
+      return 1
+    }
+    grep -Fq 'Cargo configuration must be a regular file' \
+      "$rust_dir/cargo-fifo-output" || {
+      printf 'Rust config check omitted the Cargo FIFO diagnostic:\n' >&2
+      cat "$rust_dir/cargo-fifo-output" >&2
+      return 1
+    }
+    rm -- "$rust_dir/cargo-fifo-output"
+  fi
 
   printf '%s\n' '[package]' 'rust-version = "1.94.0"' '' \
     '[lints.rust]' 'non_ascii_idents = "deny"' \

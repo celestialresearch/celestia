@@ -120,6 +120,16 @@ func scanFile(
 	path, mode string,
 	readFile func(string) ([]byte, error),
 ) []string {
+	base := filepath.Base(path)
+	if mode == modeSuppressions {
+		switch base {
+		case ".golangci.yaml", ".golangci.toml", ".golangci.json":
+			return []string{fmt.Sprintf(
+				"%s: alternate golangci-lint configurations are prohibited",
+				path,
+			)}
+		}
+	}
 	switch filepath.Ext(path) {
 	case ".go":
 		if mode != modeSuppressions {
@@ -138,9 +148,7 @@ func scanFile(
 		}
 		return readFindings(path, readFile, shellSuppressionFindings)
 	case ".yml", ".yaml":
-		if mode == modeSuppressions &&
-			(filepath.Base(path) == ".golangci.yml" ||
-				filepath.Base(path) == ".golangci.yaml") {
+		if mode == modeSuppressions && base == ".golangci.yml" {
 			return readFindings(path, readFile, golangciConfigFindings)
 		}
 		return nil

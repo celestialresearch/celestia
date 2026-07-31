@@ -71,38 +71,62 @@ check_lint_policy() {
 
 check_environment() {
   local cargo_home
+  local had_nocasematch=false
   local config
   local directory
   local name
   local parent
+  local uncontrolled
 
+  shopt -q nocasematch && had_nocasematch=true
+  shopt -s nocasematch
   while IFS= read -r name; do
     case "$name" in
     CARGO_TARGET_DIR) ;;
+    CARGO_HOME)
+      [[ -z "${!name:-}" ]] || cargo_home=${!name}
+      ;;
     RUSTC | RUSTDOC | RUSTC_BOOTSTRAP | RUSTC_WRAPPER | \
       RUSTC_WORKSPACE_WRAPPER | RUSTFLAGS | RUSTDOCFLAGS | \
       CARGO_ENCODED_RUSTFLAGS | \
       CARGO_ENCODED_RUSTDOCFLAGS | CARGO_BUILD_* | CARGO_TARGET_* | \
       CARGO_PROFILE_* | CARGO_ALIAS_*)
       if [[ -n "${!name:-}" ]]; then
-        printf 'Uncontrolled Rust build environment: %s\n' "$name" >&2
-        return 1
+        uncontrolled=$name
+        break
       fi
       ;;
     esac
   done < <(compgen -e)
+  [[ "$had_nocasematch" == true ]] || shopt -u nocasematch
+  if [[ -n "$uncontrolled" ]]; then
+    printf 'Uncontrolled Rust build environment: %s\n' "$uncontrolled" >&2
+    return 1
+  fi
 
-  cargo_home=${CARGO_HOME:-"$HOME/.cargo"}
+  cargo_home=${cargo_home:-${CARGO_HOME:-"$HOME/.cargo"}}
   for config in "$cargo_home/config" "$cargo_home/config.toml"; do
-    if [[ -f "$config" ]]; then
+    if [[ -e "$config" || -L "$config" ]]; then
+      if [[ ! -f "$config" || -L "$config" ]]; then
+        printf 'Cargo configuration must be a regular file: %s\n' \
+          "$config" >&2
+        return 1
+      fi
       printf 'External Cargo configuration is prohibited: %s\n' "$config" >&2
       return 1
     fi
   done
 
   for config in .cargo/config .cargo/config.toml; do
-    if [[ -f "$config" ]] &&
-      ! git ls-files --error-unmatch -- "$config" >/dev/null 2>&1; then
+    if [[ ! -e "$config" && ! -L "$config" ]]; then
+      continue
+    fi
+    if [[ ! -f "$config" || -L "$config" ]]; then
+      printf 'Cargo configuration must be a regular file: %s\n' \
+        "$config" >&2
+      return 1
+    fi
+    if ! git ls-files --error-unmatch -- "$config" >/dev/null 2>&1; then
       printf 'Untracked Cargo configuration is prohibited: %s\n' \
         "$config" >&2
       return 1
@@ -112,7 +136,12 @@ check_environment() {
   directory=$(cd .. && pwd -P) || return
   while [[ -n "$directory" ]]; do
     for config in "$directory/.cargo/config" "$directory/.cargo/config.toml"; do
-      if [[ -f "$config" ]]; then
+      if [[ -e "$config" || -L "$config" ]]; then
+        if [[ ! -f "$config" || -L "$config" ]]; then
+          printf 'Cargo configuration must be a regular file: %s\n' \
+            "$config" >&2
+          return 1
+        fi
         printf 'Parent Cargo configuration is prohibited: %s\n' "$config" >&2
         return 1
       fi
