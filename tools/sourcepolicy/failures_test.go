@@ -112,6 +112,41 @@ func TestReadSourceFailures(t *testing.T) {
 	}
 }
 
+func TestReadSourcePostOpenType(t *testing.T) {
+	rootPath := t.TempDir()
+	filePath := filepath.Join(rootPath, "source.go")
+	if err := os.WriteFile(filePath, []byte("package source"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := os.Stat(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := false
+	_, err = readSourceWith("source.go", sourceReader{
+		openRoot: func(string) (*os.Root, error) {
+			return os.OpenRoot(rootPath)
+		},
+		statPath: (*os.Root).Stat,
+		openFile: func(root *os.Root, name string) (*os.File, error) {
+			return root.Open(name)
+		},
+		stat: func(*os.File) (os.FileInfo, error) {
+			return directory, nil
+		},
+		read: func(io.Reader) ([]byte, error) {
+			read = true
+			return nil, nil
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "bounded regular file") {
+		t.Fatalf("post-open type error = %v", err)
+	}
+	if read {
+		t.Fatal("post-open non-regular source was read")
+	}
+}
+
 func TestReadSourceGrowth(t *testing.T) {
 	rootPath := t.TempDir()
 	if err := os.WriteFile(
