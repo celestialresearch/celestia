@@ -23,6 +23,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"go.yaml.in/yaml/v3"
+	"mvdan.cc/sh/v3/syntax"
 )
 
 var (
@@ -123,18 +124,30 @@ func goCommentLines(source []byte) []goCommentLine {
 }
 
 func shellSuppressionFindings(path string, source []byte) []string {
-	var findings []string
-	for index, line := range bytes.Split(source, []byte{'\n'}) {
-		trimmed := bytes.TrimSpace(line)
-		if !bytes.HasPrefix(trimmed, []byte{'#'}) {
-			continue
-		}
-		if shellcheckDirective.Match(trimmed) && !validShellcheck.Match(trimmed) {
-			findings = append(findings, fmt.Sprintf(
-				"%s:%d: invalid ShellCheck suppression", path, index+1,
-			))
-		}
+	file, err := syntax.NewParser(syntax.KeepComments(true)).Parse(
+		bytes.NewReader(source),
+		path,
+	)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: parse shell source: %v", path, err)}
 	}
+	var findings []string
+	syntax.Walk(file, func(node syntax.Node) bool {
+		comment, ok := node.(*syntax.Comment)
+		if !ok {
+			return true
+		}
+		line := []byte("#" + comment.Text)
+		if !shellcheckDirective.Match(line) || validShellcheck.Match(line) {
+			return true
+		}
+		findings = append(findings, fmt.Sprintf(
+			"%s:%d: invalid ShellCheck suppression",
+			path,
+			comment.Pos().Line(),
+		))
+		return true
+	})
 	return findings
 }
 

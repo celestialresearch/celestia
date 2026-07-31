@@ -229,9 +229,27 @@ func TestShellSuppressionFindings(t *testing.T) {
 		"#shellcheck disable=SC2086",
 		"# shellcheck disable=SC2329 # Invoked by a registered trap",
 		`printf '%s\n' '# shellcheck disable=SC2086'`,
+		"cat <<'EOF'",
+		"# shellcheck disable=SC2086",
+		"EOF",
+		"printf '%s\\n' \"multiline",
+		"# shellcheck disable=SC2086\"",
 	}, "\n"))
 	findings := shellSuppressionFindings("source.sh", source)
 	if len(findings) != 1 {
+		t.Fatalf("findings = %v", findings)
+	}
+}
+
+func TestPowerShellDoesNotUseShellCheckScanner(t *testing.T) {
+	findings := scanFile(
+		"script.ps1",
+		modeSuppressions,
+		func(string) ([]byte, error) {
+			return []byte("$items = @(1, 2)\n# shellcheck disable=SC2086\n"), nil
+		},
+	)
+	if len(findings) != 0 {
 		t.Fatalf("findings = %v", findings)
 	}
 }
@@ -684,6 +702,47 @@ func TestGoSuccessfulExit(t *testing.T) {
 				t.Fatalf("findings = %v, want one %s", findings, test.message)
 			}
 		})
+	}
+}
+
+func TestGoKnownDependencyExit(t *testing.T) {
+	root := t.TempDir()
+	dependency := filepath.Join(root, "logrus")
+	writeGoPolicyFixture(t, root, map[string]string{
+		"exit_test.go": "package fixture\n\n" +
+			"import (\"testing\"; \"github.com/sirupsen/logrus\")\n" +
+			"func init() { logrus.Exit(0) }\n" +
+			"func TestFailure(t *testing.T) { t.Fatal(\"must run\") }\n",
+		filepath.Join(dependency, "logrus.go"): "package logrus\nfunc Exit(int) {}\n",
+	})
+	if err := os.WriteFile(
+		filepath.Join(dependency, "go.mod"),
+		[]byte("module github.com/sirupsen/logrus\n\ngo 1.26.5\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "go.mod"),
+		[]byte("module fixture.invalid/sourcepolicy\n\ngo 1.26.5\n\n"+
+			"require github.com/sirupsen/logrus v0.0.0\n"+
+			"replace github.com/sirupsen/logrus => ./logrus\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	findings, err := goPackageSkipFindingsWithTargets(
+		[]string{"exit_test.go"},
+		os.ReadFile,
+		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 ||
+		!strings.Contains(findings[0], "Go tests must not exit successfully") {
+		t.Fatalf("findings = %v, want dependency exit rejection", findings)
 	}
 }
 

@@ -296,6 +296,10 @@ func isProcessExitFunction(expression ast.Expr, info *types.Info) bool {
 	if object == nil || object.Pkg() == nil {
 		return false
 	}
+	if object.Pkg().Path() == "github.com/sirupsen/logrus" &&
+		object.Name() == "Exit" {
+		return true
+	}
 	switch object.Name() {
 	case "Exit", "ExitProcess", "ProcExit", "TerminateProcess":
 	default:

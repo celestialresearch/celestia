@@ -50,7 +50,7 @@ jobs:
       needs.classify.outputs.ci == 'true' ||
       needs.classify.outputs.go == 'true' ||
       needs.classify.outputs.rust == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -58,10 +58,13 @@ jobs:
         include:
           - language: actions
             build-mode: none
+            os: ubuntu-24.04
           - language: go
             build-mode: autobuild
+            os: windows-2025
           - language: rust
             build-mode: none
+            os: ubuntu-24.04
     steps:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

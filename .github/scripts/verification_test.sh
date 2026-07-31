@@ -541,6 +541,7 @@ require (
 	golang.org/x/mod v0.38.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/tools v0.48.0
+	mvdan.cc/sh/v3 v3.13.1
 )
 
 require golang.org/x/sync v0.22.0 // indirect
@@ -548,8 +549,16 @@ EOF
   awk '
     $1 == "github.com/BurntSushi/toml" &&
       ($2 == "v1.6.0" || $2 == "v1.6.0/go.mod") ||
+    $1 == "github.com/go-quicktest/qt" &&
+      ($2 == "v1.101.0" || $2 == "v1.101.0/go.mod") ||
     $1 == "github.com/google/go-cmp" &&
-      ($2 == "v0.6.0" || $2 == "v0.6.0/go.mod") ||
+      ($2 == "v0.7.0" || $2 == "v0.7.0/go.mod") ||
+    $1 == "github.com/kr/pretty" &&
+      ($2 == "v0.3.1" || $2 == "v0.3.1/go.mod") ||
+    $1 == "github.com/kr/text" &&
+      ($2 == "v0.2.0" || $2 == "v0.2.0/go.mod") ||
+    $1 == "github.com/rogpeppe/go-internal" &&
+      ($2 == "v1.14.1" || $2 == "v1.14.1/go.mod") ||
     $1 == "golang.org/x/mod" &&
       ($2 == "v0.38.0" || $2 == "v0.38.0/go.mod") ||
     $1 == "golang.org/x/sync" &&
@@ -559,12 +568,10 @@ EOF
     $1 == "golang.org/x/tools" &&
       ($2 == "v0.48.0" || $2 == "v0.48.0/go.mod") ||
     $1 == "go.yaml.in/yaml/v3" &&
-      ($2 == "v3.0.5" || $2 == "v3.0.5/go.mod")
+      ($2 == "v3.0.5" || $2 == "v3.0.5/go.mod") ||
+    $1 == "mvdan.cc/sh/v3" &&
+      ($2 == "v3.13.1" || $2 == "v3.13.1/go.mod")
   ' "$root/go.sum" >"$work_dir/go.sum"
-  cat >>"$work_dir/go.sum" <<'EOF'
-github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
-github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
-EOF
   LC_ALL=C sort "$work_dir/go.sum" >"$work_dir/go.sum.sorted"
   mv "$work_dir/go.sum.sorted" "$work_dir/go.sum"
   git -C "$work_dir" init -q
@@ -1979,6 +1986,13 @@ EOF
     >"$work_dir/compact_shellcheck.sh"
   printf '%s\n' "printf '%s\\n' '# shellcheck disable=SC2086'" \
     >"$work_dir/shellcheck_literal.sh"
+  cat >"$work_dir/shellcheck_data.sh" <<'EOF'
+cat <<'PAYLOAD'
+# shellcheck disable=SC2086
+PAYLOAD
+printf '%s\n' "multiline
+# shellcheck disable=SC2086"
+EOF
   printf '%s%s\n' '#[al' 'low(clippy::needless_pass_by_value)]' \
     >"$work_dir/broad_clippy.rs"
   printf '%s%s\n' '#[al' \
@@ -2052,7 +2066,7 @@ EOF
     printf 'policy check accepted hostile suppression fixtures\n' >&2
     return 1
   }
-  if grep -Fq 'shellcheck_literal.sh' <<<"$output"; then
+  if grep -Eq 'shellcheck_(literal|data)\.sh' <<<"$output"; then
     printf 'policy check treated a shell string as a suppression:\n%s\n' \
       "$output" >&2
     return 1

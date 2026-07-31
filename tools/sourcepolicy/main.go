@@ -177,11 +177,13 @@ func scanFile(
 		})
 	case ".toml", "":
 		return tomlFindings(path, mode, readFile)
-	case ".sh", ".bash", ".ps1":
+	case ".sh", ".bash":
 		if mode != modeSuppressions {
 			return nil
 		}
 		return readFindings(path, readFile, shellSuppressionFindings)
+	case ".ps1":
+		return nil
 	case ".yml", ".yaml":
 		if mode == modeSuppressions &&
 			filepath.Base(path) == ".golangci.yml" {
