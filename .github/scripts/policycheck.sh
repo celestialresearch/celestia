@@ -84,6 +84,10 @@ check_suppressions() {
   go run ./tools/sourcepolicy suppressions || status=1
 }
 
+check_manifest() {
+  go run ./tools/sourcepolicy manifest || status=1
+}
+
 is_generated_source() {
   local count=0
   local file=$1
@@ -160,6 +164,7 @@ all)
   check_module
   check_markers
   check_private_keys
+  check_manifest
   check_test_skips
   check_suppressions
   check_source_files
@@ -173,11 +178,14 @@ source-files)
 suppressions)
   check_suppressions
   ;;
+manifest)
+  check_manifest
+  ;;
 test-skips)
   check_test_skips
   ;;
 *)
-  printf 'Usage: %s [all|markers|source-files|suppressions|test-skips]\n' \
+  printf 'Usage: %s [all|manifest|markers|source-files|suppressions|test-skips]\n' \
     "${0##*/}" >&2
   exit 2
   ;;

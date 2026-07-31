@@ -51,6 +51,9 @@ classify_path() {
 
   count=$((count + 1))
   case "$path" in
+  docs/contracts/*.json)
+    mark_full
+    ;;
   README.md | docs/*)
     docs=true
     policy=true

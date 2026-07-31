@@ -532,13 +532,16 @@ func TestGoPolicyRecognisesWindowsTermination(t *testing.T) {
 	windows := types.NewPackage("golang.org/x/sys/windows", "windows")
 	terminate := testFunction(windows, "TerminateProcess")
 	newProc := testFunction(windows, "NewProc")
+	mustFindProc := testFunction(windows, "MustFindProc")
 	terminateIdentifier := &ast.Ident{Name: "TerminateProcess"}
 	newProcIdentifier := &ast.Ident{Name: "NewProc"}
+	mustFindProcIdentifier := &ast.Ident{Name: "MustFindProc"}
 	info := &types.Info{
 		Types: map[ast.Expr]types.TypeAndValue{},
 		Uses: map[*ast.Ident]types.Object{
-			terminateIdentifier: terminate,
-			newProcIdentifier:   newProc,
+			terminateIdentifier:    terminate,
+			newProcIdentifier:      newProc,
+			mustFindProcIdentifier: mustFindProc,
 		},
 	}
 	zero := &ast.BasicLit{Kind: token.INT, Value: "0"}
@@ -563,10 +566,27 @@ func TestGoPolicyRecognisesWindowsTermination(t *testing.T) {
 		Value: constant.MakeString("ExitProcess"),
 	}
 	if !isDynamicProcessExitResolution(&ast.CallExpr{
-		Fun:  newProcIdentifier,
-		Args: []ast.Expr{exitName},
+		Fun: newProcIdentifier,
+		Args: []ast.Expr{
+			&ast.Ident{Name: "dll"},
+			exitName,
+		},
 	}, info) {
-		t.Fatal(`NewProc("ExitProcess") was not recognised`)
+		t.Fatal(`LazyDLL.NewProc(dll, "ExitProcess") was not recognised`)
+	}
+	terminateName := &ast.BasicLit{
+		Kind:  token.STRING,
+		Value: `"TerminateProcess"`,
+	}
+	info.Types[terminateName] = types.TypeAndValue{
+		Type:  types.Typ[types.UntypedString],
+		Value: constant.MakeString("TerminateProcess"),
+	}
+	if !isDynamicProcessExitResolution(&ast.CallExpr{
+		Fun:  mustFindProcIdentifier,
+		Args: []ast.Expr{terminateName},
+	}, info) {
+		t.Fatal(`MustFindProc("TerminateProcess") was not recognised`)
 	}
 }
 

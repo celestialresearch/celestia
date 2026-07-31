@@ -82,6 +82,11 @@ main() {
   assert_value true policy "$output"
   assert_value false full "$output"
 
+  output=$(
+    classify_path_directly docs/contracts/governed_url_reference_v1.json
+  )
+  assert_value true full "$output"
+
   output=$(classify_path_directly policies/commit.md)
   assert_value true policy "$output"
   assert_value false full "$output"

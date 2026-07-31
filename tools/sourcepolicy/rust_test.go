@@ -386,6 +386,23 @@ func TestRustDocumentationExit(t *testing.T) {
 	}
 }
 
+func TestRustDocumentationForeignExit(t *testing.T) {
+	t.Parallel()
+	tests := []string{
+		"/// unsafe extern \"C\" { fn _exit(status: i32); }\n" +
+			"/// unsafe { _exit(0) };",
+		"/// unsafe extern \"system\" { fn ExitProcess(code: u32); }\n" +
+			"/// unsafe { ExitProcess(0) };",
+	}
+	for _, source := range tests {
+		if findings := rustFindings(
+			"fixture.rs", []byte(source), modeTestSkips,
+		); len(findings) != 1 {
+			t.Fatalf("findings = %v, want 1", findings)
+		}
+	}
+}
+
 func TestCargoWorkspaceInventory(t *testing.T) {
 	t.Parallel()
 	files := map[string]string{

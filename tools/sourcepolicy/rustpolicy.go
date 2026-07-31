@@ -85,11 +85,20 @@ func rustDocExitLine(source []byte) (int, bool) {
 		return 0, false
 	}
 	for index, token := range tokens {
-		if token.text == "exit" && rustExitIsExecutable(tokens, index) {
+		if rustExitToken(token.text) && rustExitIsExecutable(tokens, index) {
 			return token.line, true
 		}
 	}
 	return 0, false
+}
+
+func rustExitToken(token string) bool {
+	switch token {
+	case "exit", "_exit", "_Exit", "quick_exit", "ExitProcess", "proc_exit":
+		return true
+	default:
+		return false
+	}
 }
 
 func rustExitIsExecutable(tokens []rustPolicyToken, index int) bool {

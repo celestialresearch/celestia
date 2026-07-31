@@ -502,6 +502,7 @@ EOF
     "$work_dir/.github/scripts" \
     "$work_dir/a" \
     "$work_dir/b" \
+    "$work_dir/docs/contracts" \
     "$work_dir/tools/sourcepolicy"
   cp "$root/.github/scripts/coveragecheck.sh" \
     "$root/.github/scripts/modcheck.sh" \
@@ -521,6 +522,8 @@ EOF
     "$root/tools/sourcepolicy/suppression.go" \
     "$root/tools/sourcepolicy/testinventory.go" \
     "$work_dir/tools/sourcepolicy/"
+  cp "$root/docs/contracts/governed_url_reference_v1.json" \
+    "$work_dir/docs/contracts/"
   printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
     >"$work_dir/.github/.coverage"
   cat >"$work_dir/go.mod" <<'EOF'
@@ -560,6 +563,30 @@ github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeN
 EOF
   LC_ALL=C sort "$work_dir/go.sum" >"$work_dir/go.sum.sorted"
   mv "$work_dir/go.sum.sorted" "$work_dir/go.sum"
+  (
+    cd "$work_dir"
+    bash .github/scripts/policycheck.sh manifest
+  ) || {
+    printf 'policy check rejected the reviewed governed manifest\n' >&2
+    return 1
+  }
+  printf '\n' >>"$work_dir/docs/contracts/governed_url_reference_v1.json"
+  set +e
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh manifest 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted changed governed-manifest bytes\n' >&2
+    return 1
+  }
+  grep -Fq 'governed manifest differs from its reviewed form' <<<"$output" || {
+    printf 'policy output omitted governed-manifest drift:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  cp "$root/docs/contracts/governed_url_reference_v1.json" \
+    "$work_dir/docs/contracts/"
   git -C "$work_dir" init -q
   cat >"$work_dir/.git/info/exclude" <<'EOF'
 /config-bin/
@@ -1627,6 +1654,43 @@ func init() {
 	windows.NewLazySystemDLL("kernel32.dll").NewProc("ExitProcess").Call(0)
 }
 EOF
+  cat >"$work_dir/dynamic_terminate_windows.go" <<'EOF'
+//go:build windows
+
+package fixture
+
+import "golang.org/x/sys/windows"
+
+func init() {
+	windows.NewLazySystemDLL("kernel32.dll").
+		MustFindProc("TerminateProcess").
+		Call(uintptr(windows.CurrentProcess()), 0)
+}
+EOF
+  cat >"$work_dir/aliased_resolver_windows.go" <<'EOF'
+//go:build windows
+
+package fixture
+
+import "golang.org/x/sys/windows"
+
+func init() {
+	resolve := windows.NewLazySystemDLL("kernel32.dll").NewProc
+	resolve("ExitProcess").Call(0)
+}
+EOF
+  cat >"$work_dir/method_resolver_windows.go" <<'EOF'
+//go:build windows
+
+package fixture
+
+import "golang.org/x/sys/windows"
+
+func init() {
+	dll := windows.NewLazySystemDLL("kernel32.dll")
+	(*windows.LazyDLL).NewProc(dll, "ExitProcess").Call(0)
+}
+EOF
   set +e
   output=$(cd "$work_dir" &&
     bash .github/scripts/policycheck.sh test-skips 2>&1)
@@ -1673,7 +1737,10 @@ EOF
     exit_windows.go \
     exit_wasip1.go \
     terminate_self_windows.go \
-    dynamic_exit_windows.go
+    dynamic_exit_windows.go \
+    dynamic_terminate_windows.go \
+    aliased_resolver_windows.go \
+    method_resolver_windows.go
   do
     grep -Fq "$expected_file:" <<<"$output" || {
       printf 'policy output omitted %s:\n%s\n' \
@@ -1691,7 +1758,10 @@ EOF
     "$work_dir/exit_windows.go" \
     "$work_dir/exit_wasip1.go" \
     "$work_dir/terminate_self_windows.go" \
-    "$work_dir/dynamic_exit_windows.go"
+    "$work_dir/dynamic_exit_windows.go" \
+    "$work_dir/dynamic_terminate_windows.go" \
+    "$work_dir/aliased_resolver_windows.go" \
+    "$work_dir/method_resolver_windows.go"
 
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]
@@ -1713,6 +1783,31 @@ EOF
     return 1
   }
   rm -- "$work_dir/ignored_test.rs"
+
+  cat >"$work_dir/ffi_exit.rs" <<'EOF'
+/// ```
+/// unsafe extern "C" {
+///     fn _exit(status: i32);
+/// }
+/// unsafe { _exit(0) };
+/// assert!(false);
+/// ```
+pub fn documented() {}
+EOF
+  set +e
+  output=$(cd "$work_dir" &&
+    bash .github/scripts/policycheck.sh test-skips 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted a Rust FFI documentation exit\n' >&2
+    return 1
+  }
+  grep -Fq 'Rust documentation tests must not exit' <<<"$output" || {
+    printf 'policy output omitted the Rust FFI exit:\n%s\n' "$output" >&2
+    return 1
+  }
+  rm -- "$work_dir/ffi_exit.rs"
 
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]

@@ -87,6 +87,10 @@ func (inspector *goPolicyInspector) inspectSelector(selector *ast.SelectorExpr) 
 		inspector.add(selector, "Go tests must not use raw system calls")
 		return false
 	}
+	if isProcessResolverFunction(selector, inspector.loaded.TypesInfo) {
+		inspector.add(selector, "Go tests must not alias system procedure resolution")
+		return false
+	}
 	if isProcessExitFunction(selector, inspector.loaded.TypesInfo) {
 		inspector.add(selector, "Go tests must not alias process exit")
 		return false
@@ -101,6 +105,10 @@ func (inspector *goPolicyInspector) inspectIdentifier(identifier *ast.Ident) boo
 	}
 	if isRawSyscallFunction(identifier, inspector.loaded.TypesInfo) {
 		inspector.add(identifier, "Go tests must not use raw system calls")
+		return false
+	}
+	if isProcessResolverFunction(identifier, inspector.loaded.TypesInfo) {
+		inspector.add(identifier, "Go tests must not alias system procedure resolution")
 		return false
 	}
 	if !isProcessExitFunction(identifier, inspector.loaded.TypesInfo) {
@@ -135,6 +143,9 @@ func (inspector *goPolicyInspector) inspectCall(call *ast.CallExpr) bool {
 	}
 	if isDynamicProcessExitResolution(call, inspector.loaded.TypesInfo) {
 		inspector.add(call, "Go tests must not resolve process exit dynamically")
+		return false
+	}
+	if isProcessResolverFunction(call.Fun, inspector.loaded.TypesInfo) {
 		return false
 	}
 	if !isProcessExit(call, inspector.loaded.TypesInfo) {
@@ -318,19 +329,31 @@ func isDynamicProcessExitResolution(
 	call *ast.CallExpr,
 	info *types.Info,
 ) bool {
-	if len(call.Args) != 1 {
+	if len(call.Args) == 0 {
 		return false
 	}
 	function := expressionFunction(call.Fun, info)
-	if function == nil || function.Pkg() == nil ||
-		(function.Name() != "NewProc" && function.Name() != "FindProc") ||
-		!isSystemPackage(function.Pkg().Path()) {
+	if function == nil || !isProcessResolverFunction(call.Fun, info) {
 		return false
 	}
-	value := info.Types[call.Args[0]].Value
+	value := info.Types[call.Args[len(call.Args)-1]].Value
 	return value == nil ||
 		value.Kind() != constant.String ||
-		constant.StringVal(value) == "ExitProcess"
+		constant.StringVal(value) == "ExitProcess" ||
+		constant.StringVal(value) == "TerminateProcess"
+}
+
+func isProcessResolverFunction(expression ast.Expr, info *types.Info) bool {
+	function := expressionFunction(expression, info)
+	if function == nil || function.Pkg() == nil {
+		return false
+	}
+	switch function.Name() {
+	case "NewProc", "FindProc", "MustFindProc":
+		return isSystemPackage(function.Pkg().Path())
+	default:
+		return false
+	}
 }
 
 func isSystemFunction(
