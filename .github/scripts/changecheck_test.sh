@@ -123,6 +123,7 @@ main() {
     internal/urladmission/admission.go \
     internal/urloperation/operation_windows.go \
     worker/url-reference/src/main.rs \
+    worker/url-reference/tests/process.rs \
     .github/scripts/devcheck.sh \
     .github/scripts/windows-shellcheck.ps1 \
     .github/generated/probe.yml \

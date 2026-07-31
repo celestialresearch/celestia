@@ -93,7 +93,7 @@ classify_path() {
     rust=true
     compatibility=true
     case "$path" in
-    worker/*/src/*)
+    worker/*/src/* | worker/*/tests/*)
       mark_full
       ;;
     esac
