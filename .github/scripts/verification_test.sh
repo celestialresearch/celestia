@@ -1384,6 +1384,7 @@ EOF
       "$output" >&2
     return 1
   fi
+  rm -rf -- "$work_dir/ambient"
   fake_bin="$work_dir/config-bin"
   mkdir -p "$fake_bin"
   cat >"$fake_bin/go" <<'EOF'
