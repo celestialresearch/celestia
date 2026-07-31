@@ -1605,6 +1605,28 @@ func init() {
 	syscall.ProcExit(0)
 }
 EOF
+  cat >"$work_dir/terminate_self_windows.go" <<'EOF'
+//go:build windows
+
+package fixture
+
+import "golang.org/x/sys/windows"
+
+func init() {
+	windows.TerminateProcess(windows.CurrentProcess(), 0)
+}
+EOF
+  cat >"$work_dir/dynamic_exit_windows.go" <<'EOF'
+//go:build windows
+
+package fixture
+
+import "golang.org/x/sys/windows"
+
+func init() {
+	windows.NewLazySystemDLL("kernel32.dll").NewProc("ExitProcess").Call(0)
+}
+EOF
   set +e
   output=$(cd "$work_dir" &&
     bash .github/scripts/policycheck.sh test-skips 2>&1)
@@ -1629,6 +1651,36 @@ EOF
       "$output" >&2
     return 1
   }
+  grep -Fq 'Go tests must not alias process exit' <<<"$output" || {
+    printf 'policy output omitted the process-exit failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  grep -Fq 'Go tests must not terminate the test process' <<<"$output" || {
+    printf 'policy output omitted the self-termination failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  grep -Fq 'Go tests must not resolve process exit dynamically' \
+    <<<"$output" || {
+    printf 'policy output omitted the dynamic-exit failure:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  for expected_file in \
+    raw_exit_linux.go \
+    all_threads_exit_linux.go \
+    exit_windows.go \
+    exit_wasip1.go \
+    terminate_self_windows.go \
+    dynamic_exit_windows.go
+  do
+    grep -Fq "$expected_file:" <<<"$output" || {
+      printf 'policy output omitted %s:\n%s\n' \
+        "$expected_file" "$output" >&2
+      return 1
+    }
+  done
   rm -- \
     "$work_dir/helper.go" \
     "$work_dir/skipped_test.go" \
@@ -1637,7 +1689,9 @@ EOF
     "$work_dir/raw_exit_linux.go" \
     "$work_dir/all_threads_exit_linux.go" \
     "$work_dir/exit_windows.go" \
-    "$work_dir/exit_wasip1.go"
+    "$work_dir/exit_wasip1.go" \
+    "$work_dir/terminate_self_windows.go" \
+    "$work_dir/dynamic_exit_windows.go"
 
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]

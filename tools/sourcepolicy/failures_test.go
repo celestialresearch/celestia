@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
 	"io"
@@ -500,9 +501,8 @@ func TestGoPolicyRecognisesRawSyscalls(t *testing.T) {
 			"AllThreadsSyscall",
 			"AllThreadsSyscall6",
 		},
-		"golang.org/x/sys/windows": {"SyscallN"},
-		"golang.org/x/sys/unix":    {"Syscall", "RawSyscall"},
-		"golang.org/x/sys/plan9":   {"Syscall", "RawSyscall"},
+		"golang.org/x/sys/unix":  {"Syscall", "RawSyscall"},
+		"golang.org/x/sys/plan9": {"Syscall", "RawSyscall"},
 	}
 	for path, names := range tests {
 		t.Run(path, func(t *testing.T) {
@@ -527,13 +527,74 @@ func TestGoPolicyRecognisesRawSyscalls(t *testing.T) {
 	}
 }
 
+func TestGoPolicyRecognisesWindowsTermination(t *testing.T) {
+	t.Parallel()
+	windows := types.NewPackage("golang.org/x/sys/windows", "windows")
+	terminate := testFunction(windows, "TerminateProcess")
+	newProc := testFunction(windows, "NewProc")
+	terminateIdentifier := &ast.Ident{Name: "TerminateProcess"}
+	newProcIdentifier := &ast.Ident{Name: "NewProc"}
+	info := &types.Info{
+		Types: map[ast.Expr]types.TypeAndValue{},
+		Uses: map[*ast.Ident]types.Object{
+			terminateIdentifier: terminate,
+			newProcIdentifier:   newProc,
+		},
+	}
+	zero := &ast.BasicLit{Kind: token.INT, Value: "0"}
+	info.Types[zero] = types.TypeAndValue{
+		Type:  types.Typ[types.UntypedInt],
+		Value: constant.MakeInt64(0),
+	}
+	terminateCall := &ast.CallExpr{
+		Fun: terminateIdentifier,
+		Args: []ast.Expr{
+			&ast.Ident{Name: "process"},
+			zero,
+		},
+	}
+	if !isSuccessfulTerminateProcessCall(terminateCall, info) {
+		t.Fatal("TerminateProcess(process, 0) was not recognised")
+	}
+
+	exitName := &ast.BasicLit{Kind: token.STRING, Value: `"ExitProcess"`}
+	info.Types[exitName] = types.TypeAndValue{
+		Type:  types.Typ[types.UntypedString],
+		Value: constant.MakeString("ExitProcess"),
+	}
+	if !isDynamicProcessExitResolution(&ast.CallExpr{
+		Fun:  newProcIdentifier,
+		Args: []ast.Expr{exitName},
+	}, info) {
+		t.Fatal(`NewProc("ExitProcess") was not recognised`)
+	}
+}
+
+func testFunction(pkg *types.Package, name string) *types.Func {
+	return types.NewFunc(
+		token.NoPos,
+		pkg,
+		name,
+		types.NewSignatureType(nil, nil, nil, nil, nil, false),
+	)
+}
+
 func TestGoPolicyRecognisesProcessTermination(t *testing.T) {
 	t.Parallel()
 	tests := map[string][]string{
-		"syscall":                  {"Exit", "ExitProcess", "ProcExit"},
-		"golang.org/x/sys/windows": {"Exit", "ExitProcess"},
-		"golang.org/x/sys/unix":    {"Exit"},
-		"golang.org/x/sys/plan9":   {"Exit"},
+		"syscall": {
+			"Exit",
+			"ExitProcess",
+			"ProcExit",
+			"TerminateProcess",
+		},
+		"golang.org/x/sys/windows": {
+			"Exit",
+			"ExitProcess",
+			"TerminateProcess",
+		},
+		"golang.org/x/sys/unix":  {"Exit"},
+		"golang.org/x/sys/plan9": {"Exit"},
 	}
 	for path, names := range tests {
 		t.Run(path, func(t *testing.T) {

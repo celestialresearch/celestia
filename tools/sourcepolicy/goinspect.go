@@ -14,6 +14,7 @@ package main
 import (
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"go/types"
 	"path/filepath"
@@ -123,6 +124,17 @@ func (inspector *goPolicyInspector) isExecutableMainReference(
 func (inspector *goPolicyInspector) inspectCall(call *ast.CallExpr) bool {
 	if inspector.isExecutableMainCall(call) {
 		inspector.add(call, "Go tests must not invoke executable main")
+		return false
+	}
+	if isSuccessfulTerminateProcessCall(call, inspector.loaded.TypesInfo) {
+		inspector.add(call, "Go tests must not terminate the test process")
+		return false
+	}
+	if isTerminateProcessCall(call, inspector.loaded.TypesInfo) {
+		return false
+	}
+	if isDynamicProcessExitResolution(call, inspector.loaded.TypesInfo) {
+		inspector.add(call, "Go tests must not resolve process exit dynamically")
 		return false
 	}
 	if !isProcessExit(call, inspector.loaded.TypesInfo) {
@@ -269,7 +281,7 @@ func isProcessExitFunction(expression ast.Expr, info *types.Info) bool {
 		return false
 	}
 	switch object.Name() {
-	case "Exit", "ExitProcess", "ProcExit":
+	case "Exit", "ExitProcess", "ProcExit", "TerminateProcess":
 	default:
 		return false
 	}
@@ -288,6 +300,53 @@ func isRawSyscallFunction(expression ast.Expr, info *types.Info) bool {
 		return false
 	}
 	return isSystemPackage(object.Pkg().Path())
+}
+
+func isSuccessfulTerminateProcessCall(
+	call *ast.CallExpr,
+	info *types.Info,
+) bool {
+	return isTerminateProcessCall(call, info) &&
+		(len(call.Args) != 2 || !provenNonzeroInteger(call.Args[1], info))
+}
+
+func isTerminateProcessCall(call *ast.CallExpr, info *types.Info) bool {
+	return isSystemFunction(call.Fun, "TerminateProcess", info)
+}
+
+func isDynamicProcessExitResolution(
+	call *ast.CallExpr,
+	info *types.Info,
+) bool {
+	if len(call.Args) != 1 {
+		return false
+	}
+	function := expressionFunction(call.Fun, info)
+	if function == nil || function.Pkg() == nil ||
+		(function.Name() != "NewProc" && function.Name() != "FindProc") ||
+		!isSystemPackage(function.Pkg().Path()) {
+		return false
+	}
+	value := info.Types[call.Args[0]].Value
+	return value == nil ||
+		value.Kind() != constant.String ||
+		constant.StringVal(value) == "ExitProcess"
+}
+
+func isSystemFunction(
+	expression ast.Expr,
+	name string,
+	info *types.Info,
+) bool {
+	object := functionObject(expression, name, info)
+	return object != nil && object.Pkg() != nil &&
+		isSystemPackage(object.Pkg().Path())
+}
+
+func provenNonzeroInteger(expression ast.Expr, info *types.Info) bool {
+	value := info.Types[expression].Value
+	return value != nil && value.Kind() == constant.Int &&
+		constant.Sign(value) != 0
 }
 
 func isSystemPackage(path string) bool {

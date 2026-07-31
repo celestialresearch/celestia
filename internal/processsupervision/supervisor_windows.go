@@ -173,11 +173,13 @@ func defaultSuspendedProcessOperations() suspendedProcessOperations {
 
 func defaultStartupStopOperations() startupStopOperations {
 	return startupStopOperations{
-		closeChild:       (*pipeSet).closeChildEnds,
-		terminateJob:     windows.TerminateJobObject,
-		terminateProcess: windows.TerminateProcess,
-		wait:             waitCleanup,
-		closeHandle:      windows.CloseHandle,
+		closeChild:   (*pipeSet).closeChildEnds,
+		terminateJob: windows.TerminateJobObject,
+		terminateProcess: func(process windows.Handle, _ uint32) error {
+			return windows.TerminateProcess(process, 1)
+		},
+		wait:        waitCleanup,
+		closeHandle: windows.CloseHandle,
 	}
 }
 
