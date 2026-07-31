@@ -327,9 +327,19 @@ func TestRustDocumentationExit(t *testing.T) {
 			1,
 		},
 		{
+			"multiline braced alias",
+			"/// use std::process::{\n/// exit as done,\n/// };\n/// done(0);",
+			1,
+		},
+		{
 			"parenthesised documentation exit",
 			"/// (std::process::exit)(0);",
 			1,
+		},
+		{
+			"nested block comment",
+			"/**\n```rust\n/* std::process::exit(0); */\nassert!(true);\n```\n*/",
+			0,
 		},
 		{
 			"nested block documentation exit",

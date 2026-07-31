@@ -103,8 +103,10 @@ func rustExitIsExecutable(tokens []rustPolicyToken, index int) bool {
 	if index > 0 && tokens[index-1].text == ":" {
 		return true
 	}
-	for preceding := index - 1; preceding >= 0 &&
-		tokens[preceding].line == tokens[index].line; preceding-- {
+	for preceding := index - 1; preceding >= 0; preceding-- {
+		if tokens[preceding].text == ";" {
+			break
+		}
 		if tokens[preceding].text == "use" {
 			return true
 		}
@@ -123,7 +125,9 @@ func rustBlockDocumentation(line string, depth *int) string {
 			*depth--
 			index += 2
 		default:
-			documentation.WriteByte(line[index])
+			if *depth == 1 {
+				documentation.WriteByte(line[index])
+			}
 			index++
 		}
 	}
