@@ -54,6 +54,11 @@ The Rust baseline applies whenever a Cargo workspace exists:
 - qualification fixtures deny non-ASCII identifiers but may use reviewed
   unsafe code when the hostile platform probe requires it.
 
+No PowerShell analyser is currently governed. Admitting one requires a
+PowerShell-aware suppression parser, a failing suppression fixture and a
+passing comment-data fixture in the same change. Bash or ShellCheck parsing
+must not be applied to `.ps1` files.
+
 ## Admission
 
 Before enabling a linter:
