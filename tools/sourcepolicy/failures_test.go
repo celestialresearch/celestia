@@ -361,6 +361,11 @@ func TestGoPolicyRejectsUngovernedBuildTags(t *testing.T) {
 		{"future release", "//go:build go1.999"},
 		{"alternate compiler", "//go:build gccgo"},
 		{"architecture feature", "//go:build amd64.v2"},
+		{"negated", "//go:build !privatecheck"},
+		{"and right", "//go:build linux && privatecheck"},
+		{"and left", "//go:build privatecheck && linux"},
+		{"or right", "//go:build linux || privatecheck"},
+		{"or left", "//go:build privatecheck || linux"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
