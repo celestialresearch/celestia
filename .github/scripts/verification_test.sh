@@ -824,6 +824,29 @@ EOF
     return 1
   }
 
+  mkdir -p "$rust_dir/linked-cargo"
+  printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
+    >"$rust_dir/linked-cargo/config.toml"
+  if ln -s "$rust_dir/linked-cargo" "$rust_dir/.cargo" 2>/dev/null &&
+    [[ -L "$rust_dir/.cargo" ]]; then
+    set +e
+    output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+    status=$?
+    set -e
+    rm -- "$rust_dir/.cargo"
+    [[ "$status" -ne 0 ]] || {
+      printf 'Rust config check accepted a linked Cargo directory\n' >&2
+      return 1
+    }
+    grep -Fq 'Cargo configuration directory must be a real directory' \
+      <<<"$output" || {
+      printf 'Rust config check omitted the linked-directory diagnostic:\n%s\n' \
+        "$output" >&2
+      return 1
+    }
+  fi
+  rm -rf -- "$rust_dir/linked-cargo" "$rust_dir/.cargo"
+
   if [[ "$(uname -s)" != MINGW* ]] &&
     command -v mkfifo >/dev/null 2>&1; then
     mkdir -p "$rust_dir/.cargo"

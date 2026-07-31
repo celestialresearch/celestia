@@ -172,6 +172,10 @@ func TestRunRejectsAlternateGolangciConfigs(t *testing.T) {
 		".golangci.yaml",
 		".golangci.toml",
 		".golangci.json",
+		".GOLANGCI.YML",
+		".GoLaNgCi.YaMl",
+		".GolangCI.TOML",
+		".golangCI.JSON",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

@@ -76,6 +76,8 @@ check_environment() {
   local directory
   local name
   local parent
+  local physical
+  local repo_root
   local uncontrolled
 
   shopt -q nocasematch && had_nocasematch=true
@@ -116,6 +118,21 @@ check_environment() {
       return 1
     fi
   done
+
+  repo_root=$(pwd -P) || return
+  if [[ -e .cargo || -L .cargo ]]; then
+    if [[ ! -d .cargo || -L .cargo ]]; then
+      printf 'Cargo configuration directory must be a real directory: .cargo\n' \
+        >&2
+      return 1
+    fi
+    physical=$(cd -- .cargo && pwd -P) || return
+    if [[ "$physical" != "$repo_root/.cargo" ]]; then
+      printf 'Cargo configuration directory escapes the repository: .cargo\n' \
+        >&2
+      return 1
+    fi
+  fi
 
   for config in .cargo/config .cargo/config.toml; do
     if [[ ! -e "$config" && ! -L "$config" ]]; then
