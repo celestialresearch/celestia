@@ -40,10 +40,6 @@ func rustFindings(path string, source []byte, mode string) []string {
 }
 
 func rustExpansionFinding(path string, source []byte, mode string) string {
-	if line, message, found := rustDocFinding(source); mode == modeTestSkips &&
-		found {
-		return fmt.Sprintf("%s:%d: %s", path, line, message)
-	}
 	tokens, valid := rustPolicyTokens(source)
 	if !valid {
 		return fmt.Sprintf("%s: parse Rust source: unterminated token", path)
@@ -57,53 +53,6 @@ func rustExpansionFinding(path string, source []byte, mode string) string {
 		)
 	}
 	return ""
-}
-
-func rustDocFinding(source []byte) (int, string, bool) {
-	blockDepth := 0
-	lineNumber := 0
-	for line := range strings.SplitSeq(string(source), "\n") {
-		lineNumber++
-		trimmed := strings.TrimSpace(line)
-		doc := ""
-		switch {
-		case blockDepth > 0:
-			doc = rustBlockDocumentation(trimmed, &blockDepth)
-		case strings.HasPrefix(trimmed, "///"),
-			strings.HasPrefix(trimmed, "//!"):
-			doc = trimmed[3:]
-		case strings.HasPrefix(trimmed, "/**"),
-			strings.HasPrefix(trimmed, "/*!"):
-			blockDepth = 1
-			doc = rustBlockDocumentation(trimmed[3:], &blockDepth)
-		}
-		if doc != "" {
-			return lineNumber, "Rust documentation comments are prohibited", true
-		}
-	}
-	return 0, "", false
-}
-
-func rustBlockDocumentation(line string, depth *int) string {
-	var documentation strings.Builder
-	for index := 0; index < len(line) && *depth > 0; {
-		switch {
-		case strings.HasPrefix(line[index:], "/*"):
-			documentation.WriteString("/*")
-			*depth++
-			index += 2
-		case strings.HasPrefix(line[index:], "*/"):
-			*depth--
-			if *depth > 0 {
-				documentation.WriteString("*/")
-			}
-			index += 2
-		default:
-			documentation.WriteByte(line[index])
-			index++
-		}
-	}
-	return documentation.String()
 }
 
 func rustIncludeLine(tokens []rustPolicyToken) (int, bool) {
@@ -171,13 +120,6 @@ func rustAttributeFindings(
 	}
 	switch mode {
 	case modeTestSkips:
-		if contains(words, "doc") {
-			return []string{fmt.Sprintf(
-				"%s:%d: Rust doc attributes are prohibited",
-				path,
-				attribute.line,
-			)}
-		}
 		if contains(words, "ignore") {
 			return []string{fmt.Sprintf(
 				"%s:%d: Rust tests must not ignore cases", path, attribute.line,

@@ -245,7 +245,21 @@ func cargoWorkspaceInventoryFindings(
 	if !slices.Equal(manifests, expectedCargoManifests) {
 		findings = append(findings, "Cargo.toml: unexpected Cargo manifest inventory")
 	}
+	if cargoHasLibrarySource(files) {
+		findings = append(
+			findings,
+			"Cargo.toml: Cargo library targets are prohibited",
+		)
+	}
 	return findings
+}
+
+func cargoHasLibrarySource(files []string) bool {
+	return slices.ContainsFunc(files, func(path string) bool {
+		slashPath := filepath.ToSlash(path)
+		return slashPath == "src/lib.rs" ||
+			strings.HasSuffix(slashPath, "/src/lib.rs")
+	})
 }
 
 func cargoStringListEquals(value any, expected []string) bool {
@@ -296,7 +310,12 @@ func cargoTestDiscoveryFindings(
 			}
 		}
 	}
-	for _, key := range []string{"lib", "bin", "example", "test", "bench"} {
+	if document["lib"] != nil {
+		findings = append(findings, fmt.Sprintf(
+			"%s: Cargo library targets are prohibited", path,
+		))
+	}
+	for _, key := range []string{"bin", "example", "test", "bench"} {
 		for _, target := range cargoTargetTables(document[key]) {
 			if cargoTargetOmitsTests(target) {
 				findings = append(findings, fmt.Sprintf(

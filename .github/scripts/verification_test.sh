@@ -1784,7 +1784,8 @@ EOF
   }
   rm -- "$work_dir/ignored_test.rs"
 
-  cat >"$work_dir/doctest.rs" <<'EOF'
+  mkdir -p "$work_dir/worker/url-reference/src"
+  cat >"$work_dir/worker/url-reference/src/lib.rs" <<'EOF'
 /// ```
 /// use std::os::unix::process::CommandExt;
 /// let _ = std::process::Command::new("true").exec();
@@ -1798,16 +1799,16 @@ EOF
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted a Rust documentation test\n' >&2
+    printf 'policy check accepted a Cargo library target\n' >&2
     return 1
   }
-  grep -Fq 'Rust documentation comments are prohibited' \
+  grep -Fq 'Cargo library targets are prohibited' \
     <<<"$output" || {
-    printf 'policy output omitted the Rust documentation test:\n%s\n' \
+    printf 'policy output omitted the Cargo library target:\n%s\n' \
       "$output" >&2
     return 1
   }
-  rm -- "$work_dir/doctest.rs"
+  rm -- "$work_dir/worker/url-reference/src/lib.rs"
 
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]

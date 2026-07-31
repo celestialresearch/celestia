@@ -13,6 +13,7 @@ package main
 
 import (
 	"errors"
+	"slices"
 	"testing"
 )
 
@@ -72,6 +73,7 @@ var cargoLintCases = []struct {
 	},
 	{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 1},
 	{"doctests disabled", "[lib]\ndoctest = false\n", 1},
+	{"library target", "[lib]\npath = \"src/library.rs\"\n", 1},
 	{"custom harness", "[[test]]\nname = \"fixture\"\nharness = false\n", 1},
 	{
 		"feature-gated test",
@@ -304,56 +306,6 @@ func TestRustPolicyAttributes(t *testing.T) {
 	}
 }
 
-func TestRustDocumentationComments(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name     string
-		source   string
-		findings int
-	}{
-		{
-			"line documentation",
-			"/// Explanation.",
-			1,
-		},
-		{
-			"crate documentation",
-			"//! Explanation.",
-			1,
-		},
-		{
-			"block documentation",
-			"/** Explanation. */",
-			1,
-		},
-		{
-			"inner block documentation",
-			"/*! Explanation. */",
-			1,
-		},
-		{
-			"nested block documentation",
-			"/**\n/* nested */\nExplanation.\n*/",
-			1,
-		},
-		{"ordinary code", "fn main() { let marker = \"```\"; }", 0},
-		{"ordinary comment", "// ```rust\n// assert!(true);", 0},
-		{"doc attribute", `#[doc = "ordinary"]`, 1},
-		{"doc include", `#![doc = include_str!("README.md")]`, 1},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
-			findings := rustFindings(
-				"fixture.rs", []byte(test.source), modeTestSkips,
-			)
-			if len(findings) != test.findings {
-				t.Fatalf("findings = %v, want %d", findings, test.findings)
-			}
-		})
-	}
-}
-
 func TestCargoWorkspaceInventory(t *testing.T) {
 	t.Parallel()
 	files := map[string]string{
@@ -373,6 +325,16 @@ exclude = ["worker/qualification-fixtures"]
 	}
 	if findings := cargoWorkspaceInventoryFindings(paths, readFile); len(findings) != 0 {
 		t.Fatalf("valid inventory findings = %v", findings)
+	}
+	withLibrary := append(
+		slices.Clone(paths),
+		"worker/url-reference/src/lib.rs",
+	)
+	if findings := cargoWorkspaceInventoryFindings(
+		withLibrary,
+		readFile,
+	); len(findings) != 1 {
+		t.Fatalf("library target findings = %v, want 1", findings)
 	}
 	paths = append(paths, "hidden/Cargo.toml")
 	if findings := cargoWorkspaceInventoryFindings(paths, readFile); len(findings) != 1 {
