@@ -85,11 +85,11 @@ func TestRun(t *testing.T) {
 			"missing.rs",
 		},
 		{
-			"irrelevant file",
+			"missing Cargo workspace",
 			[]string{modeSuppressions},
 			func() ([]string, error) { return []string{"README.md"}, nil },
-			0,
-			"",
+			1,
+			"missing governed Cargo workspace",
 		},
 	}
 	for _, test := range tests {

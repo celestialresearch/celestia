@@ -326,30 +326,6 @@ exclude = ["worker/qualification-fixtures"]
 	if findings := cargoWorkspaceInventoryFindings(paths, readFile); len(findings) != 0 {
 		t.Fatalf("valid inventory findings = %v", findings)
 	}
-	withLibrary := append(
-		slices.Clone(paths),
-		"worker/url-reference/src/lib.rs",
-	)
-	if findings := cargoWorkspaceInventoryFindings(
-		withLibrary,
-		readFile,
-	); len(findings) != 1 {
-		t.Fatalf("library target findings = %v, want 1", findings)
-	}
-	unrelatedLibrary := append(slices.Clone(paths), "docs/fixture/src/lib.rs")
-	if findings := cargoWorkspaceInventoryFindings(
-		unrelatedLibrary,
-		readFile,
-	); len(findings) != 0 {
-		t.Fatalf("unrelated library findings = %v", findings)
-	}
-	virtualRootLibrary := append(slices.Clone(paths), "src/lib.rs")
-	if findings := cargoWorkspaceInventoryFindings(
-		virtualRootLibrary,
-		readFile,
-	); len(findings) != 0 {
-		t.Fatalf("virtual root library findings = %v", findings)
-	}
 	paths = append(paths, "hidden/Cargo.toml")
 	if findings := cargoWorkspaceInventoryFindings(paths, readFile); len(findings) != 1 {
 		t.Fatalf("hidden manifest findings = %v, want 1", findings)
@@ -364,8 +340,60 @@ exclude = ["worker/qualification-fixtures"]
 	); len(findings) != 1 {
 		t.Fatalf("read findings = %v, want 1", findings)
 	}
+	if findings := cargoWorkspaceInventoryFindings(nil, readFile); len(findings) != 1 {
+		t.Fatalf("missing workspace findings = %v, want 1", findings)
+	}
 	if cargoStringListEquals([]any{"one", 2}, []string{"one", "two"}) {
 		t.Fatal("mixed Cargo string list accepted")
+	}
+}
+
+func TestCargoLibraryInventory(t *testing.T) {
+	files := map[string]string{
+		"Cargo.toml": `[workspace]
+members = ["worker/url-reference"]
+exclude = ["worker/qualification-fixtures"]
+`,
+		"worker/url-reference/Cargo.toml":          "[package]\n",
+		"worker/qualification-fixtures/Cargo.toml": "[package]\n",
+	}
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	readFile := func(path string) ([]byte, error) {
+		source, exists := files[path]
+		if !exists {
+			return nil, errors.New("missing fixture")
+		}
+		return []byte(source), nil
+	}
+	tests := []struct {
+		name     string
+		path     string
+		findings int
+	}{
+		{"member library", "worker/url-reference/src/lib.rs", 1},
+		{"case variant", "worker/url-reference/SRC/LIB.RS", 1},
+		{"unrelated path", "docs/fixture/src/lib.rs", 0},
+		{"virtual root", "src/lib.rs", 0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			inventory := append(slices.Clone(paths), test.path)
+			findings := cargoWorkspaceInventoryFindings(inventory, readFile)
+			if len(findings) != test.findings {
+				t.Fatalf("findings = %v, want %d", findings, test.findings)
+			}
+		})
+	}
+	files["Cargo.toml"] = "[package]\nname = \"root\"\n"
+	inventory := append(slices.Clone(paths), "src/lib.rs")
+	if findings := cargoWorkspaceInventoryFindings(
+		inventory,
+		readFile,
+	); len(findings) != 2 {
+		t.Fatalf("root package findings = %v, want 2", findings)
 	}
 }
 

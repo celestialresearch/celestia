@@ -157,7 +157,7 @@ func TestCargoWorkspaceMalformedShapes(t *testing.T) {
 		findings int
 	}{
 		{"malformed", "[workspace", 0},
-		{"missing workspace", "[package]\nname = \"fixture\"", 0},
+		{"missing workspace", "[package]\nname = \"fixture\"", 1},
 		{"scalar members", "[workspace]\nmembers = \"worker/url-reference\"\nexclude = [\"worker/qualification-fixtures\"]", 1},
 		{"scalar exclusion", "[workspace]\nmembers = [\"worker/url-reference\"]\nexclude = true", 1},
 	}

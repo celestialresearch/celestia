@@ -208,7 +208,7 @@ func cargoWorkspaceInventoryFindings(
 	readFile func(string) ([]byte, error),
 ) []string {
 	if !slices.Contains(files, "Cargo.toml") {
-		return nil
+		return []string{"Cargo.toml: missing governed Cargo workspace"}
 	}
 	source, err := readFile("Cargo.toml")
 	if err != nil {
@@ -219,21 +219,22 @@ func cargoWorkspaceInventoryFindings(
 		return nil
 	}
 	workspace := nestedTable(document, "workspace")
-	if workspace == nil {
-		return nil
-	}
 	var findings []string
-	if !cargoStringListEquals(
-		workspace["members"],
-		[]string{"worker/url-reference"},
-	) {
-		findings = append(findings, "Cargo.toml: unexpected workspace members")
-	}
-	if !cargoStringListEquals(
-		workspace["exclude"],
-		[]string{"worker/qualification-fixtures"},
-	) {
-		findings = append(findings, "Cargo.toml: unexpected workspace exclusions")
+	if workspace == nil {
+		findings = append(findings, "Cargo.toml: missing governed workspace table")
+	} else {
+		if !cargoStringListEquals(
+			workspace["members"],
+			[]string{"worker/url-reference"},
+		) {
+			findings = append(findings, "Cargo.toml: unexpected workspace members")
+		}
+		if !cargoStringListEquals(
+			workspace["exclude"],
+			[]string{"worker/qualification-fixtures"},
+		) {
+			findings = append(findings, "Cargo.toml: unexpected workspace exclusions")
+		}
 	}
 	var manifests []string
 	for _, path := range files {
@@ -265,7 +266,9 @@ func cargoHasLibrarySource(files []string, rootPackage bool) bool {
 		if directory != "." {
 			path = directory + "/" + path
 		}
-		return slices.Contains(files, path)
+		return slices.ContainsFunc(files, func(file string) bool {
+			return strings.EqualFold(filepath.ToSlash(file), path)
+		})
 	})
 }
 
