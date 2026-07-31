@@ -121,13 +121,13 @@ check_environment() {
 
   repo_root=$(pwd -P) || return
   if [[ -e .cargo || -L .cargo ]]; then
-    if [[ ! -d .cargo || -L .cargo ]]; then
+    if [[ ! -d .cargo ]]; then
       printf 'Cargo configuration directory must be a real directory: .cargo\n' \
         >&2
       return 1
     fi
     physical=$(cd -- .cargo && pwd -P) || return
-    if [[ "$physical" != "$repo_root/.cargo" ]]; then
+    if [[ -L .cargo || "$physical" != "$repo_root/.cargo" ]]; then
       printf 'Cargo configuration directory escapes the repository: .cargo\n' \
         >&2
       return 1

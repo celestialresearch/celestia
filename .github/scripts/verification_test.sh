@@ -848,7 +848,7 @@ EOF
       printf 'Rust config check accepted a linked Cargo directory\n' >&2
       return 1
     }
-    grep -Fq 'Cargo configuration directory must be a real directory' \
+    grep -Fq 'Cargo configuration directory escapes the repository' \
       <<<"$output" || {
       printf 'Rust config check omitted the linked-directory diagnostic:\n%s\n' \
         "$output" >&2
@@ -871,7 +871,7 @@ EOF
     output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
     status=$?
     set -e
-    rmdir -- "$rust_dir/.cargo"
+    rm -- "$rust_dir/.cargo"
     rm -rf -- "$rust_dir/junction-cargo"
     [[ "$status" -ne 0 ]] || {
       printf 'Rust config check accepted a junction-backed Cargo directory\n' \
