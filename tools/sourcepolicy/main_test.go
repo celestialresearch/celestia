@@ -539,17 +539,15 @@ func TestGoCGOSkip(t *testing.T) {
 
 func TestGoCGOPackageUsesFallbackOffHost(t *testing.T) {
 	root := t.TempDir()
-	cgoPath := filepath.Join(root, "native.go")
 	testPath := filepath.Join(root, "native_test.go")
 	writeGoPolicyFixture(t, root, map[string]string{
-		cgoPath: "package fixture\n\n/* int fixture(void) { return 1; } */\n" +
-			"import \"C\"\n",
-		testPath: "package fixture\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\n" +
+		testPath: "package fixture\n\n/* int fixture(void) { return 1; } */\n" +
+			"import \"C\"\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\n" +
 			"func TestFixture(t *testing.T) { os.Exit(0) }\n",
 	})
 	t.Chdir(root)
 	findings, err := goPackageSkipFindingsWithTargets(
-		[]string{filepath.Base(cgoPath), filepath.Base(testPath)},
+		[]string{filepath.Base(testPath)},
 		os.ReadFile,
 		[]buildTarget{{goos: "aix", goarch: "ppc64"}},
 	)

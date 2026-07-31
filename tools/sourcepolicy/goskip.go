@@ -45,6 +45,10 @@ type goBuildUnit struct {
 	overlay  map[string][]byte
 }
 
+type cgoPolicyImporter struct {
+	standard types.Importer
+}
+
 var policyBuildTargets = []buildTarget{
 	{goos: "aix", goarch: "ppc64"},
 	{goos: "darwin", goarch: "amd64"},
@@ -161,12 +165,24 @@ func goTypePackage(
 	files *token.FileSet,
 ) (*types.Info, *types.Package) {
 	info := newGoTypeInfo()
-	config := types.Config{Importer: importer.Default()}
+	config := types.Config{
+		Error: func(error) {},
+		Importer: cgoPolicyImporter{
+			standard: importer.Default(),
+		},
+	}
 	typed, checkErr := config.Check(
 		packageFiles[0].Name.Name, files, packageFiles, info,
 	)
 	_ = checkErr
 	return info, typed
+}
+
+func (value cgoPolicyImporter) Import(path string) (*types.Package, error) {
+	if path == "C" {
+		return types.NewPackage("C", "C"), nil
+	}
+	return value.standard.Import(path)
 }
 
 func newGoTypeInfo() *types.Info {

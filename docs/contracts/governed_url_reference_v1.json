@@ -117,7 +117,7 @@
       "acquisition": "Acquire one exclusive non-replacing lock before staging",
       "bound": "One lock per attempt",
       "release": "Release after publication or failed staging",
-      "cleanup_failure": "Record indeterminate or reject the duplicate attempt"
+      "cleanup_failure": "Preserve a published terminal outcome and report the release error; otherwise record indeterminate or reject the duplicate attempt"
     },
     {
       "id": "CEL-RESOURCE-EVIDENCE-001",

@@ -16,10 +16,8 @@ import (
 	"go/build"
 	"go/parser"
 	"go/token"
-	"go/types"
 	"path/filepath"
 	"runtime"
-	"slices"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -111,15 +109,7 @@ func goFallbackPackageFindings(
 	syntax []*ast.File,
 	sources map[string]bool,
 ) []string {
-	typedSyntax := slices.DeleteFunc(
-		slices.Clone(syntax),
-		goFileImportsC,
-	)
-	info := newGoTypeInfo()
-	typed := types.NewPackage("", name)
-	if len(typedSyntax) > 0 {
-		info, typed = goTypePackage(typedSyntax, files)
-	}
+	info, typed := goTypePackage(syntax, files)
 	loaded := &packages.Package{
 		Name:      name,
 		Fset:      files,
