@@ -19,6 +19,13 @@ import (
 	"golang.org/x/mod/modfile"
 )
 
+type replacementPathOperations struct {
+	absolute func(string) (string, error)
+	relative func(string, string) (string, error)
+	linked   func(string, string) (bool, error)
+	physical func(string) (string, error)
+}
+
 func rejectExternalModuleReplacements(
 	paths []string,
 	readFile func(string) ([]byte, error),
@@ -64,6 +71,25 @@ func moduleReplacementEscapes(
 	replacement *modfile.Replace,
 	repositoryRoot string,
 ) (bool, error) {
+	return moduleReplacementEscapesWith(
+		modulePath,
+		replacement,
+		repositoryRoot,
+		replacementPathOperations{
+			absolute: filepath.Abs,
+			relative: filepath.Rel,
+			linked:   replacementPathLinked,
+			physical: filepath.EvalSymlinks,
+		},
+	)
+}
+
+func moduleReplacementEscapesWith(
+	modulePath string,
+	replacement *modfile.Replace,
+	repositoryRoot string,
+	operations replacementPathOperations,
+) (bool, error) {
 	if replacement.New.Version != "" || replacement.New.Path == "" {
 		return false, nil
 	}
@@ -71,7 +97,7 @@ func moduleReplacementEscapes(
 	if !filepath.IsAbs(target) {
 		target = filepath.Join(filepath.Dir(modulePath), target)
 	}
-	absolute, err := filepath.Abs(target)
+	absolute, err := operations.absolute(target)
 	if err != nil {
 		return false, fmt.Errorf(
 			"%s: resolve Go module replacement: %w",
@@ -79,7 +105,7 @@ func moduleReplacementEscapes(
 			err,
 		)
 	}
-	relative, err := filepath.Rel(repositoryRoot, absolute)
+	relative, err := operations.relative(repositoryRoot, absolute)
 	if err != nil {
 		return false, fmt.Errorf(
 			"%s: compare Go module replacement: %w",
@@ -90,7 +116,7 @@ func moduleReplacementEscapes(
 	if pathEscapesRoot(relative) {
 		return true, nil
 	}
-	linked, err := replacementPathLinked(repositoryRoot, absolute)
+	linked, err := operations.linked(repositoryRoot, absolute)
 	if err != nil {
 		return false, fmt.Errorf(
 			"%s: inspect Go module replacement path: %w",
@@ -101,7 +127,7 @@ func moduleReplacementEscapes(
 	if linked {
 		return true, nil
 	}
-	resolved, err := filepath.EvalSymlinks(absolute)
+	resolved, err := operations.physical(absolute)
 	if err != nil {
 		return false, fmt.Errorf(
 			"%s: resolve physical Go module replacement: %w",
@@ -109,7 +135,7 @@ func moduleReplacementEscapes(
 			err,
 		)
 	}
-	physicalRelative, err := filepath.Rel(repositoryRoot, resolved)
+	physicalRelative, err := operations.relative(repositoryRoot, resolved)
 	if err != nil {
 		return false, fmt.Errorf(
 			"%s: compare physical Go module replacement: %w",

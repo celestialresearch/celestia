@@ -177,6 +177,93 @@ func TestModuleReplacementContainment(t *testing.T) {
 	}
 }
 
+func TestModuleReplacementPathErrors(t *testing.T) {
+	pathFailure := errors.New("path failure")
+	root := t.TempDir()
+	target := filepath.Join(root, "inside")
+	module, err := modfile.Parse(
+		filepath.Join(root, "go.mod"),
+		[]byte("module fixture.invalid/root\n\ngo 1.26.5\n\n"+
+			"replace fixture.invalid/a => ./inside\n"),
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name   string
+		change func(*replacementPathOperations)
+		want   string
+	}{
+		{
+			name: "absolute",
+			change: func(operations *replacementPathOperations) {
+				operations.absolute = func(string) (string, error) {
+					return "", pathFailure
+				}
+			},
+			want: "resolve Go module replacement",
+		},
+		{
+			name: "relative",
+			change: func(operations *replacementPathOperations) {
+				operations.relative = func(string, string) (string, error) {
+					return "", pathFailure
+				}
+			},
+			want: "compare Go module replacement",
+		},
+		{
+			name: "physical",
+			change: func(operations *replacementPathOperations) {
+				operations.physical = func(string) (string, error) {
+					return "", pathFailure
+				}
+			},
+			want: "resolve physical Go module replacement",
+		},
+		{
+			name: "physical relative",
+			change: func(operations *replacementPathOperations) {
+				calls := 0
+				operations.relative = func(base, target string) (string, error) {
+					calls++
+					if calls == 2 {
+						return "", pathFailure
+					}
+					return filepath.Rel(base, target)
+				}
+			},
+			want: "compare physical Go module replacement",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			operations := replacementTestOperations(target)
+			test.change(&operations)
+			_, err := moduleReplacementEscapesWith(
+				filepath.Join(root, "go.mod"),
+				module.Replace[0],
+				root,
+				operations,
+			)
+			if err == nil || !errors.Is(err, pathFailure) ||
+				!strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q wrapping path failure", err, test.want)
+			}
+		})
+	}
+}
+
+func replacementTestOperations(target string) replacementPathOperations {
+	return replacementPathOperations{
+		absolute: func(string) (string, error) { return target, nil },
+		relative: filepath.Rel,
+		linked:   func(string, string) (bool, error) { return false, nil },
+		physical: func(string) (string, error) { return target, nil },
+	}
+}
+
 func TestPathEscapesRoot(t *testing.T) {
 	tests := map[string]bool{
 		".":      false,
