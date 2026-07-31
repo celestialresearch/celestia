@@ -343,6 +343,13 @@ exclude = ["worker/qualification-fixtures"]
 	); len(findings) != 0 {
 		t.Fatalf("unrelated library findings = %v", findings)
 	}
+	virtualRootLibrary := append(slices.Clone(paths), "src/lib.rs")
+	if findings := cargoWorkspaceInventoryFindings(
+		virtualRootLibrary,
+		readFile,
+	); len(findings) != 0 {
+		t.Fatalf("virtual root library findings = %v", findings)
+	}
 	paths = append(paths, "hidden/Cargo.toml")
 	if findings := cargoWorkspaceInventoryFindings(paths, readFile); len(findings) != 1 {
 		t.Fatalf("hidden manifest findings = %v, want 1", findings)

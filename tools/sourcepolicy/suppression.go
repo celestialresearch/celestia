@@ -245,7 +245,7 @@ func cargoWorkspaceInventoryFindings(
 	if !slices.Equal(manifests, expectedCargoManifests) {
 		findings = append(findings, "Cargo.toml: unexpected Cargo manifest inventory")
 	}
-	if cargoHasLibrarySource(files) {
+	if cargoHasLibrarySource(files, nestedTable(document, "package") != nil) {
 		findings = append(
 			findings,
 			"Cargo.toml: Cargo library targets are prohibited",
@@ -254,8 +254,12 @@ func cargoWorkspaceInventoryFindings(
 	return findings
 }
 
-func cargoHasLibrarySource(files []string) bool {
-	return slices.ContainsFunc(expectedCargoManifests, func(manifest string) bool {
+func cargoHasLibrarySource(files []string, rootPackage bool) bool {
+	manifests := expectedCargoManifests[1:]
+	if rootPackage {
+		manifests = expectedCargoManifests
+	}
+	return slices.ContainsFunc(manifests, func(manifest string) bool {
 		directory := filepath.ToSlash(filepath.Dir(manifest))
 		path := "src/lib.rs"
 		if directory != "." {

@@ -1785,6 +1785,24 @@ EOF
   rm -- "$work_dir/ignored_test.rs"
 
   mkdir -p "$work_dir/worker/url-reference/src"
+  mkdir -p "$work_dir/worker/qualification-fixtures"
+  cat >"$work_dir/Cargo.toml" <<'EOF'
+[workspace]
+members = ["worker/url-reference"]
+exclude = ["worker/qualification-fixtures"]
+EOF
+  cat >"$work_dir/worker/url-reference/Cargo.toml" <<'EOF'
+[package]
+name = "fixture"
+version = "0.0.0"
+edition = "2024"
+EOF
+  cat >"$work_dir/worker/qualification-fixtures/Cargo.toml" <<'EOF'
+[package]
+name = "qualification-fixture"
+version = "0.0.0"
+edition = "2024"
+EOF
   cat >"$work_dir/worker/url-reference/src/lib.rs" <<'EOF'
 /// ```
 /// use std::os::unix::process::CommandExt;
@@ -1808,7 +1826,11 @@ EOF
       "$output" >&2
     return 1
   }
-  rm -- "$work_dir/worker/url-reference/src/lib.rs"
+  rm -- \
+    "$work_dir/Cargo.toml" \
+    "$work_dir/worker/url-reference/Cargo.toml" \
+    "$work_dir/worker/url-reference/src/lib.rs" \
+    "$work_dir/worker/qualification-fixtures/Cargo.toml"
 
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]
