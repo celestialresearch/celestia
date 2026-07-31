@@ -782,6 +782,16 @@ EOF
     }
   done
 
+  output=$(
+    cd "$rust_dir" &&
+      env -i PATH="$PATH" HOME="$HOME" SYSTEMROOT="${SYSTEMROOT:-}" \
+        bash .github/scripts/rustcheck.sh config 2>&1
+  ) || {
+    printf 'Rust config check rejected a clean environment:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+
   mkdir -p "$rust_dir/external-cargo-home"
   printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
     >"$rust_dir/external-cargo-home/config.toml"

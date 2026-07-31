@@ -70,7 +70,7 @@ check_lint_policy() {
 }
 
 check_environment() {
-  local cargo_home
+  local cargo_home=
   local had_nocasematch=false
   local config
   local directory
@@ -78,7 +78,7 @@ check_environment() {
   local parent
   local physical
   local repo_root
-  local uncontrolled
+  local uncontrolled=
 
   shopt -q nocasematch && had_nocasematch=true
   shopt -s nocasematch
