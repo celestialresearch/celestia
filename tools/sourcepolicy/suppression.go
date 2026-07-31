@@ -255,10 +255,13 @@ func cargoWorkspaceInventoryFindings(
 }
 
 func cargoHasLibrarySource(files []string) bool {
-	return slices.ContainsFunc(files, func(path string) bool {
-		slashPath := filepath.ToSlash(path)
-		return slashPath == "src/lib.rs" ||
-			strings.HasSuffix(slashPath, "/src/lib.rs")
+	return slices.ContainsFunc(expectedCargoManifests, func(manifest string) bool {
+		directory := filepath.ToSlash(filepath.Dir(manifest))
+		path := "src/lib.rs"
+		if directory != "." {
+			path = directory + "/" + path
+		}
+		return slices.Contains(files, path)
 	})
 }
 

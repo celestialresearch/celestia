@@ -1795,7 +1795,7 @@ pub fn documented() {}
 EOF
   set +e
   output=$(cd "$work_dir" &&
-    bash .github/scripts/policycheck.sh test-skips 2>&1)
+    bash .github/scripts/policycheck.sh suppressions 2>&1)
   status=$?
   set -e
   [[ "$status" -ne 0 ]] || {
@@ -1964,7 +1964,7 @@ EOF
     'invalid Clippy suppression' \
     'dynamic Rust attributes are prohibited' \
     'Cargo automatic target discovery must remain enabled' \
-    'Cargo target lib may omit tests' \
+    'Cargo library targets are prohibited' \
     'optional Cargo dependencies require an explicit test matrix' \
     'Cargo profile overrides are prohibited' \
     'Cargo lint allowances are prohibited' \
