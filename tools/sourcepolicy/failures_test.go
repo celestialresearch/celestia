@@ -350,22 +350,26 @@ func TestGoPolicyIgnoresUnrelatedNativeSource(t *testing.T) {
 	}
 }
 
-func TestGoPolicyRejectsArchitectureFeatures(t *testing.T) {
-	root := t.TempDir()
-	testPath := filepath.Join(root, "feature_test.go")
-	writeGoPolicyFixture(t, root, map[string]string{
-		testPath: "//go:build amd64.v2\n\npackage fixture\n\n" +
-			"import \"testing\"\n\nfunc TestFeature(t *testing.T) {}\n",
-	})
-	t.Chdir(root)
-	_, err := goPackageSkipFindingsWithTargets(
-		[]string{filepath.Base(testPath)},
-		os.ReadFile,
-		[]buildTarget{{goos: "linux", goarch: "amd64"}},
-	)
-	if err == nil ||
-		!strings.Contains(err.Error(), "architecture feature build constraints") {
-		t.Fatalf("architecture-feature error = %v", err)
+func TestGoPolicyRejectsUngovernedBuildTags(t *testing.T) {
+	for _, tag := range []string{"privatecheck", "go1.999", "gccgo", "amd64.v2"} {
+		t.Run(tag, func(t *testing.T) {
+			root := t.TempDir()
+			testPath := filepath.Join(root, "feature_test.go")
+			writeGoPolicyFixture(t, root, map[string]string{
+				testPath: "//go:build " + tag + "\n\npackage fixture\n\n" +
+					"import \"testing\"\n\nfunc TestFeature(t *testing.T) {}\n",
+			})
+			t.Chdir(root)
+			_, err := goPackageSkipFindingsWithTargets(
+				[]string{filepath.Base(testPath)},
+				os.ReadFile,
+				[]buildTarget{{goos: "linux", goarch: "amd64"}},
+			)
+			if err == nil ||
+				!strings.Contains(err.Error(), "ungoverned Go build constraints") {
+				t.Fatalf("build-tag error = %v", err)
+			}
+		})
 	}
 }
 

@@ -25,6 +25,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -98,21 +99,130 @@ func goPackageSkipFindingsWithTargets(
 	if err != nil {
 		return nil, err
 	}
-	return runGoBuildUnits(units)
+	findings := goSourceFallbackFindings(paths, overlay)
+	loadedFindings, err := runGoBuildUnits(units)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, loadedFindings...)
+	slices.Sort(findings)
+	return slices.Compact(findings), nil
 }
 
 func policyTargets() []buildTarget {
 	targets := make([]buildTarget, 0, len(policyBuildTargets)*3)
 	for _, target := range policyBuildTargets {
 		targets = append(targets, target)
-		target.cgo = true
-		targets = append(targets, target)
+		if target.goos == runtime.GOOS &&
+			target.goarch == runtime.GOARCH &&
+			build.Default.CgoEnabled {
+			cgoTarget := target
+			cgoTarget.cgo = true
+			targets = append(targets, cgoTarget)
+		}
 		if policyRaceTargets[target.goos+"/"+target.goarch] {
-			target.race = true
-			targets = append(targets, target)
+			raceTarget := target
+			raceTarget.race = true
+			targets = append(targets, raceTarget)
 		}
 	}
 	return targets
+}
+
+func goSourceFallbackFindings(
+	paths []string,
+	overlay map[string][]byte,
+) []string {
+	directories := make(map[string][]string)
+	for _, path := range paths {
+		if filepath.Ext(path) == ".go" {
+			directories[filepath.Dir(path)] = append(
+				directories[filepath.Dir(path)],
+				path,
+			)
+		}
+	}
+	var findings []string
+	for _, directoryPaths := range directories {
+		findings = append(
+			findings,
+			goFallbackDirectoryFindings(directoryPaths, overlay)...,
+		)
+	}
+	return findings
+}
+
+func goFallbackDirectoryFindings(
+	paths []string,
+	overlay map[string][]byte,
+) []string {
+	files := token.NewFileSet()
+	syntaxByPackage := make(map[string][]*ast.File)
+	sources := make(map[string]bool)
+	for _, path := range paths {
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			continue
+		}
+		source, found := overlay[absolute]
+		if !found {
+			continue
+		}
+		file, err := parser.ParseFile(
+			files, absolute, source, parser.ParseComments,
+		)
+		if err != nil {
+			continue
+		}
+		syntaxByPackage[file.Name.Name] = append(
+			syntaxByPackage[file.Name.Name],
+			file,
+		)
+		sources[filepath.Clean(absolute)] = true
+	}
+	var findings []string
+	for name, syntax := range syntaxByPackage {
+		findings = append(
+			findings,
+			goFallbackPackageFindings(name, files, syntax, sources)...,
+		)
+	}
+	return findings
+}
+
+func goFallbackPackageFindings(
+	name string,
+	files *token.FileSet,
+	syntax []*ast.File,
+	sources map[string]bool,
+) []string {
+	typedSyntax := slices.DeleteFunc(
+		slices.Clone(syntax),
+		goFileImportsC,
+	)
+	info := newGoTypeInfo()
+	typed := types.NewPackage("", name)
+	if len(typedSyntax) > 0 {
+		info, typed = goTypePackage(typedSyntax, files)
+	}
+	loaded := &packages.Package{
+		Name:      name,
+		Fset:      files,
+		Syntax:    syntax,
+		Types:     typed,
+		TypesInfo: info,
+	}
+	inspector := goPolicyInspector{loaded: loaded, sources: sources}
+	return inspector.findings()
+}
+
+func goFileImportsC(file *ast.File) bool {
+	for _, imported := range file.Imports {
+		if imported.Path.Value == `"C"` {
+			return true
+		}
+	}
+	return false
 }
 
 func goSkipFindings(path string, source []byte) []string {
@@ -159,18 +269,30 @@ func goSkipFindingsInPackage(
 }
 
 func goTypeInfo(packageFiles []*ast.File, files *token.FileSet) *types.Info {
-	info := &types.Info{
+	info, _ := goTypePackage(packageFiles, files)
+	return info
+}
+
+func goTypePackage(
+	packageFiles []*ast.File,
+	files *token.FileSet,
+) (*types.Info, *types.Package) {
+	info := newGoTypeInfo()
+	config := types.Config{Importer: importer.Default()}
+	typed, checkErr := config.Check(
+		packageFiles[0].Name.Name, files, packageFiles, info,
+	)
+	_ = checkErr
+	return info, typed
+}
+
+func newGoTypeInfo() *types.Info {
+	return &types.Info{
 		Defs:       make(map[*ast.Ident]types.Object),
 		Selections: make(map[*ast.SelectorExpr]*types.Selection),
+		Types:      make(map[ast.Expr]types.TypeAndValue),
 		Uses:       make(map[*ast.Ident]types.Object),
 	}
-	config := types.Config{Importer: importer.Default()}
-	if _, checkErr := config.Check(
-		packageFiles[0].Name.Name, files, packageFiles, info,
-	); checkErr != nil {
-		return info
-	}
-	return info
 }
 
 func isTestingSkip(selector *ast.SelectorExpr, info *types.Info) bool {
@@ -300,7 +422,7 @@ func snapshotGoSource(
 			err,
 		)
 	}
-	if err := rejectArchitectureFeatureTags(path, source); err != nil {
+	if err := rejectUnsupportedBuildTags(path, source); err != nil {
 		return "", nil, false, err
 	}
 	return absolute, source, true, nil
@@ -317,7 +439,7 @@ func isGoNativeSource(path string) bool {
 	}
 }
 
-func rejectArchitectureFeatureTags(path string, source []byte) error {
+func rejectUnsupportedBuildTags(path string, source []byte) error {
 	file, err := parser.ParseFile(
 		token.NewFileSet(),
 		path,
@@ -346,9 +468,9 @@ func rejectArchitectureFeatureTags(path string, source []byte) error {
 					err,
 				)
 			}
-			if architectureFeatureTag(expression) {
+			if unsupportedBuildTag(expression) {
 				return fmt.Errorf(
-					"%s: architecture feature build constraints are unsupported",
+					"%s: ungoverned Go build constraints are unsupported",
 					path,
 				)
 			}
@@ -357,22 +479,43 @@ func rejectArchitectureFeatureTags(path string, source []byte) error {
 	return nil
 }
 
-func architectureFeatureTag(expression constraint.Expr) bool {
+func unsupportedBuildTag(expression constraint.Expr) bool {
 	switch value := expression.(type) {
 	case *constraint.TagExpr:
-		return strings.HasPrefix(value.Tag, "amd64.v") ||
-			strings.HasPrefix(value.Tag, "arm64.v")
+		return !governedBuildTag(value.Tag)
 	case *constraint.NotExpr:
-		return architectureFeatureTag(value.X)
+		return unsupportedBuildTag(value.X)
 	case *constraint.AndExpr:
-		return architectureFeatureTag(value.X) ||
-			architectureFeatureTag(value.Y)
+		return unsupportedBuildTag(value.X) ||
+			unsupportedBuildTag(value.Y)
 	case *constraint.OrExpr:
-		return architectureFeatureTag(value.X) ||
-			architectureFeatureTag(value.Y)
+		return unsupportedBuildTag(value.X) ||
+			unsupportedBuildTag(value.Y)
 	default:
 		return false
 	}
+}
+
+func governedBuildTag(tag string) bool {
+	switch tag {
+	case "cgo", "race", "unix":
+		return true
+	}
+	if tag == build.Default.Compiler ||
+		slices.Contains(build.Default.ReleaseTags, tag) {
+		return true
+	}
+	if slices.Contains(build.Default.ToolTags, tag) &&
+		!strings.HasPrefix(tag, "amd64.") &&
+		!strings.HasPrefix(tag, "arm64.") {
+		return true
+	}
+	for _, target := range policyBuildTargets {
+		if tag == target.goos || tag == target.goarch {
+			return true
+		}
+	}
+	return false
 }
 
 func runGoBuildUnits(units []goBuildUnit) ([]string, error) {
@@ -464,26 +607,17 @@ func goBuildSelection(
 	overlay map[string][]byte,
 ) ([]string, error) {
 	context := policyBuildContext(target, overlay)
-	selectedDirectories := make(map[string]string)
-	for _, path := range paths {
-		if filepath.Ext(path) != ".go" || !directories[filepath.Dir(path)] {
-			continue
-		}
-		match, err := context.MatchFile(filepath.Dir(path), filepath.Base(path))
-		if err != nil {
-			return nil, fmt.Errorf(
-				"%s: match Go build constraints: %w", path, err,
-			)
-		}
-		if !match {
-			continue
-		}
-		if strings.HasSuffix(path, "_test.go") {
-			selectedDirectories[filepath.Dir(path)] = path
-		}
+	selectedDirectories, cgoDirectories, err := selectGoDirectories(
+		paths, directories, context, overlay,
+	)
+	if err != nil {
+		return nil, err
 	}
 	patterns := make([]string, 0, len(selectedDirectories))
 	for directory, testFile := range selectedDirectories {
+		if !target.cgo && cgoDirectories[directory] {
+			continue
+		}
 		switch {
 		case directory == ".":
 			patterns = append(patterns, ".")
@@ -495,6 +629,62 @@ func goBuildSelection(
 	}
 	slices.Sort(patterns)
 	return patterns, nil
+}
+
+func selectGoDirectories(
+	paths []string,
+	directories map[string]bool,
+	context build.Context,
+	overlay map[string][]byte,
+) (map[string]string, map[string]bool, error) {
+	cgoDirectories := make(map[string]bool)
+	selectedDirectories := make(map[string]string)
+	for _, path := range paths {
+		if filepath.Ext(path) != ".go" || !directories[filepath.Dir(path)] {
+			continue
+		}
+		match, err := context.MatchFile(filepath.Dir(path), filepath.Base(path))
+		if err != nil {
+			return nil, nil, fmt.Errorf(
+				"%s: match Go build constraints: %w", path, err,
+			)
+		}
+		if !match {
+			continue
+		}
+		importsC, err := goSourceImportsC(path, overlay)
+		if err != nil {
+			return nil, nil, err
+		}
+		if importsC {
+			cgoDirectories[filepath.Dir(path)] = true
+		}
+		if strings.HasSuffix(path, "_test.go") {
+			selectedDirectories[filepath.Dir(path)] = path
+		}
+	}
+	return selectedDirectories, cgoDirectories, nil
+}
+
+func goSourceImportsC(
+	path string,
+	overlay map[string][]byte,
+) (bool, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return false, fmt.Errorf("%s: resolve Go source: %w", path, err)
+	}
+	source, found := overlay[absolute]
+	if !found {
+		return false, nil
+	}
+	file, err := parser.ParseFile(
+		token.NewFileSet(), path, source, parser.ImportsOnly,
+	)
+	if err != nil {
+		return false, fmt.Errorf("%s: parse Go imports: %w", path, err)
+	}
+	return goFileImportsC(file), nil
 }
 
 func policyBuildContext(
