@@ -264,14 +264,16 @@ func isProcessExitFunction(expression ast.Expr, info *types.Info) bool {
 	if isOSExitFunction(expression, info) {
 		return true
 	}
-	object := functionObject(expression, "Exit", info)
+	object := expressionFunction(expression, info)
 	if object == nil || object.Pkg() == nil {
 		return false
 	}
-	return object.Pkg().Path() == "syscall" ||
-		object.Pkg().Path() == "golang.org/x/sys/windows" ||
-		object.Pkg().Path() == "golang.org/x/sys/unix" ||
-		object.Pkg().Path() == "golang.org/x/sys/plan9"
+	switch object.Name() {
+	case "Exit", "ExitProcess", "ProcExit":
+	default:
+		return false
+	}
+	return isSystemPackage(object.Pkg().Path())
 }
 
 func isRawSyscallFunction(expression ast.Expr, info *types.Info) bool {
@@ -281,10 +283,15 @@ func isRawSyscallFunction(expression ast.Expr, info *types.Info) bool {
 	}
 	name := object.Name()
 	if !strings.HasPrefix(name, "Syscall") &&
-		!strings.HasPrefix(name, "RawSyscall") {
+		!strings.HasPrefix(name, "RawSyscall") &&
+		!strings.HasPrefix(name, "AllThreadsSyscall") {
 		return false
 	}
-	switch object.Pkg().Path() {
+	return isSystemPackage(object.Pkg().Path())
+}
+
+func isSystemPackage(path string) bool {
+	switch path {
 	case "syscall",
 		"golang.org/x/sys/windows",
 		"golang.org/x/sys/unix",

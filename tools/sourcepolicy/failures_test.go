@@ -492,16 +492,23 @@ func TestGoPolicyRecognisesSystemExit(t *testing.T) {
 
 func TestGoPolicyRecognisesRawSyscalls(t *testing.T) {
 	t.Parallel()
-	for _, path := range []string{
-		"syscall",
-		"golang.org/x/sys/windows",
-		"golang.org/x/sys/unix",
-		"golang.org/x/sys/plan9",
-	} {
+	tests := map[string][]string{
+		"syscall": {
+			"Syscall",
+			"Syscall6",
+			"RawSyscall",
+			"AllThreadsSyscall",
+			"AllThreadsSyscall6",
+		},
+		"golang.org/x/sys/windows": {"SyscallN"},
+		"golang.org/x/sys/unix":    {"Syscall", "RawSyscall"},
+		"golang.org/x/sys/plan9":   {"Syscall", "RawSyscall"},
+	}
+	for path, names := range tests {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()
 			pkg := types.NewPackage(path, filepath.Base(path))
-			for _, name := range []string{"Syscall", "Syscall6", "RawSyscall"} {
+			for _, name := range names {
 				function := types.NewFunc(
 					token.NoPos,
 					pkg,
@@ -513,6 +520,37 @@ func TestGoPolicyRecognisesRawSyscalls(t *testing.T) {
 					Uses: map[*ast.Ident]types.Object{identifier: function},
 				}
 				if !isRawSyscallFunction(identifier, info) {
+					t.Fatalf("%s.%s was not recognised", path, name)
+				}
+			}
+		})
+	}
+}
+
+func TestGoPolicyRecognisesProcessTermination(t *testing.T) {
+	t.Parallel()
+	tests := map[string][]string{
+		"syscall":                  {"Exit", "ExitProcess", "ProcExit"},
+		"golang.org/x/sys/windows": {"Exit", "ExitProcess"},
+		"golang.org/x/sys/unix":    {"Exit"},
+		"golang.org/x/sys/plan9":   {"Exit"},
+	}
+	for path, names := range tests {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+			pkg := types.NewPackage(path, filepath.Base(path))
+			for _, name := range names {
+				function := types.NewFunc(
+					token.NoPos,
+					pkg,
+					name,
+					types.NewSignatureType(nil, nil, nil, nil, nil, false),
+				)
+				identifier := &ast.Ident{Name: name}
+				info := &types.Info{
+					Uses: map[*ast.Ident]types.Object{identifier: function},
+				}
+				if !isProcessExitFunction(identifier, info) {
 					t.Fatalf("%s.%s was not recognised", path, name)
 				}
 			}

@@ -1572,6 +1572,39 @@ func init() {
 	syscall.RawSyscall(syscall.SYS_EXIT_GROUP, 0, 0, 0)
 }
 EOF
+  cat >"$work_dir/all_threads_exit_linux.go" <<'EOF'
+//go:build linux
+
+package fixture
+
+import "syscall"
+
+func init() {
+	syscall.AllThreadsSyscall(syscall.SYS_EXIT_GROUP, 0, 0, 0)
+}
+EOF
+  cat >"$work_dir/exit_windows.go" <<'EOF'
+//go:build windows
+
+package fixture
+
+import "syscall"
+
+func init() {
+	syscall.ExitProcess(0)
+}
+EOF
+  cat >"$work_dir/exit_wasip1.go" <<'EOF'
+//go:build wasip1
+
+package fixture
+
+import "syscall"
+
+func init() {
+	syscall.ProcExit(0)
+}
+EOF
   set +e
   output=$(cd "$work_dir" &&
     bash .github/scripts/policycheck.sh test-skips 2>&1)
@@ -1601,7 +1634,10 @@ EOF
     "$work_dir/skipped_test.go" \
     "$work_dir/platform_linux.go" \
     "$work_dir/platform_windows.go" \
-    "$work_dir/raw_exit_linux.go"
+    "$work_dir/raw_exit_linux.go" \
+    "$work_dir/all_threads_exit_linux.go" \
+    "$work_dir/exit_windows.go" \
+    "$work_dir/exit_wasip1.go"
 
   cat >"$work_dir/ignored_test.rs" <<'EOF'
 #[test]
