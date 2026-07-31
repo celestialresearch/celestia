@@ -110,31 +110,25 @@ func rustExitIsPath(tokens []rustPolicyToken, index int) bool {
 }
 
 func rustExitIsImported(tokens []rustPolicyToken, index int) bool {
+	path := false
+	imported := false
 	for preceding := index - 1; preceding >= 0; preceding-- {
 		if tokens[preceding].text == ";" {
 			break
 		}
-		if tokens[preceding].text == "use" &&
-			rustUseStartsStatement(tokens, preceding) {
-			return true
+		if tokens[preceding].text == ":" {
+			path = true
+		}
+		if tokens[preceding].text == "use" {
+			imported = true
+		}
+	}
+	for following := index + 1; following < len(tokens); following++ {
+		if tokens[following].text == ";" {
+			return imported && path
 		}
 	}
 	return false
-}
-
-func rustUseStartsStatement(tokens []rustPolicyToken, index int) bool {
-	if index == 0 {
-		return true
-	}
-	if tokens[index-1].line < tokens[index].line {
-		return true
-	}
-	switch tokens[index-1].text {
-	case ";", "{", "}", "`", "pub":
-		return true
-	default:
-		return false
-	}
 }
 
 func rustBlockDocumentation(line string, depth *int) string {

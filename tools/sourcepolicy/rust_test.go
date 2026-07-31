@@ -332,6 +332,16 @@ func TestRustDocumentationExit(t *testing.T) {
 			1,
 		},
 		{
+			"visibility import",
+			"/// ```rust\n/// pub(crate) use std::process::{exit as done};\n/// done(0);\n/// ```",
+			1,
+		},
+		{
+			"attributed import",
+			"/// ```rust\n/// #[allow(unused_imports)] use std::process::{exit as done};\n/// done(0);\n/// ```",
+			1,
+		},
+		{
 			"parenthesised documentation exit",
 			"/// (std::process::exit)(0);",
 			1,
@@ -354,6 +364,11 @@ func TestRustDocumentationExit(t *testing.T) {
 		{"ordinary exit prose", "/// The exit status is retained.", 0},
 		{"colon exit prose", "/// Failure: exit status is retained.", 0},
 		{"use exit prose", "/// Callers use exit status for diagnostics.", 0},
+		{
+			"multiline use exit prose",
+			"/// Callers can\n/// use exit status for diagnostics.",
+			0,
+		},
 		{"doc attribute", `#[doc = "ordinary"]`, 1},
 		{"doc include", `#![doc = include_str!("README.md")]`, 1},
 	}
