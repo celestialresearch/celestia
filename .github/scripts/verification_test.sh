@@ -1546,6 +1546,13 @@ func hideSkip(value skipper) {
 	value.Skip("unverified")
 }
 EOF
+  cat >"$work_dir/aliased_exit.go" <<'EOF'
+package fixture
+
+import "os"
+
+var processExit = os.Exit
+EOF
   cat >"$work_dir/skipped_test.go" <<'EOF'
 package fixture
 
@@ -1663,7 +1670,7 @@ import "golang.org/x/sys/windows"
 
 func init() {
 	windows.NewLazySystemDLL("kernel32.dll").
-		MustFindProc("TerminateProcess").
+		NewProc("TerminateProcess").
 		Call(uintptr(windows.CurrentProcess()), 0)
 }
 EOF
@@ -1732,6 +1739,7 @@ EOF
     return 1
   }
   for expected_file in \
+    aliased_exit.go \
     raw_exit_linux.go \
     all_threads_exit_linux.go \
     exit_windows.go \
@@ -1749,6 +1757,7 @@ EOF
     }
   done
   rm -- \
+    "$work_dir/aliased_exit.go" \
     "$work_dir/helper.go" \
     "$work_dir/skipped_test.go" \
     "$work_dir/platform_linux.go" \
