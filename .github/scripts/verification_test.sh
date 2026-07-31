@@ -1787,9 +1787,10 @@ EOF
   cat >"$work_dir/ffi_exit.rs" <<'EOF'
 /// ```
 /// unsafe extern "C" {
-///     fn _exit(status: i32);
+///     #[link_name = "_exit"]
+///     fn finish(status: i32);
 /// }
-/// unsafe { _exit(0) };
+/// unsafe { finish(0) };
 /// assert!(false);
 /// ```
 pub fn documented() {}
@@ -1803,7 +1804,8 @@ EOF
     printf 'policy check accepted a Rust FFI documentation exit\n' >&2
     return 1
   }
-  grep -Fq 'Rust documentation tests must not exit' <<<"$output" || {
+  grep -Fq 'Rust documentation tests must not declare foreign functions' \
+    <<<"$output" || {
     printf 'policy output omitted the Rust FFI exit:\n%s\n' "$output" >&2
     return 1
   }

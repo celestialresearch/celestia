@@ -40,10 +40,9 @@ func rustFindings(path string, source []byte, mode string) []string {
 }
 
 func rustExpansionFinding(path string, source []byte, mode string) string {
-	if line, found := rustDocExitLine(source); mode == modeTestSkips && found {
-		return fmt.Sprintf(
-			"%s:%d: Rust documentation tests must not exit", path, line,
-		)
+	if line, message, found := rustDocFinding(source); mode == modeTestSkips &&
+		found {
+		return fmt.Sprintf("%s:%d: %s", path, line, message)
 	}
 	tokens, valid := rustPolicyTokens(source)
 	if !valid {
@@ -60,7 +59,7 @@ func rustExpansionFinding(path string, source []byte, mode string) string {
 	return ""
 }
 
-func rustDocExitLine(source []byte) (int, bool) {
+func rustDocFinding(source []byte) (int, string, bool) {
 	blockDepth := 0
 	var documentation strings.Builder
 	for line := range strings.SplitSeq(string(source), "\n") {
@@ -82,10 +81,27 @@ func rustDocExitLine(source []byte) (int, bool) {
 	}
 	tokens, valid := rustPolicyTokens([]byte(documentation.String()))
 	if !valid {
-		return 0, false
+		return 0, "", false
+	}
+	if line, found := rustForeignDeclarationLine(tokens); found {
+		return line, "Rust documentation tests must not declare foreign functions",
+			true
 	}
 	for index, token := range tokens {
 		if rustExitToken(token.text) && rustExitIsExecutable(tokens, index) {
+			return token.line, "Rust documentation tests must not exit", true
+		}
+	}
+	return 0, "", false
+}
+
+func rustForeignDeclarationLine(tokens []rustPolicyToken) (int, bool) {
+	for index, token := range tokens {
+		if token.text == "extern" &&
+			(index > 0 && tokens[index-1].text == "unsafe" ||
+				index+1 < len(tokens) &&
+					(tokens[index+1].text == "{" ||
+						tokens[index+1].text == "fn")) {
 			return token.line, true
 		}
 	}
@@ -94,7 +110,13 @@ func rustDocExitLine(source []byte) (int, bool) {
 
 func rustExitToken(token string) bool {
 	switch token {
-	case "exit", "_exit", "_Exit", "quick_exit", "ExitProcess", "proc_exit":
+	case "exit",
+		"_exit",
+		"_Exit",
+		"quick_exit",
+		"ExitProcess",
+		"proc_exit",
+		"TerminateProcess":
 		return true
 	default:
 		return false

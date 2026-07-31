@@ -393,6 +393,11 @@ func TestRustDocumentationForeignExit(t *testing.T) {
 			"/// unsafe { _exit(0) };",
 		"/// unsafe extern \"system\" { fn ExitProcess(code: u32); }\n" +
 			"/// unsafe { ExitProcess(0) };",
+		"/// unsafe extern \"C\" {\n" +
+			"/// #[link_name = \"_exit\"]\n" +
+			"/// fn finish(status: i32);\n" +
+			"/// }\n" +
+			"/// unsafe { finish(0) };",
 	}
 	for _, source := range tests {
 		if findings := rustFindings(
