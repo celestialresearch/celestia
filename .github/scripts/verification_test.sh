@@ -857,6 +857,35 @@ EOF
   fi
   rm -rf -- "$rust_dir/linked-cargo" "$rust_dir/.cargo"
 
+  if [[ "$(uname -s)" == MINGW* ]] &&
+    command -v cygpath >/dev/null 2>&1 &&
+    command -v cmd.exe >/dev/null 2>&1; then
+    mkdir -p "$rust_dir/junction-cargo"
+    printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
+      >"$rust_dir/junction-cargo/config.toml"
+    CEL_CARGO_LINK=$(cygpath -w "$rust_dir/.cargo") \
+      CEL_CARGO_TARGET=$(cygpath -w "$rust_dir/junction-cargo") \
+      MSYS2_ARG_CONV_EXCL='*' cmd.exe /d /c \
+      'mklink /J "%CEL_CARGO_LINK%" "%CEL_CARGO_TARGET%"' >/dev/null
+    set +e
+    output=$(cd "$rust_dir" && bash .github/scripts/rustcheck.sh config 2>&1)
+    status=$?
+    set -e
+    rmdir -- "$rust_dir/.cargo"
+    rm -rf -- "$rust_dir/junction-cargo"
+    [[ "$status" -ne 0 ]] || {
+      printf 'Rust config check accepted a junction-backed Cargo directory\n' \
+        >&2
+      return 1
+    }
+    grep -Fq 'Cargo configuration directory escapes the repository' \
+      <<<"$output" || {
+      printf 'Rust config check omitted the junction diagnostic:\n%s\n' \
+        "$output" >&2
+      return 1
+    }
+  fi
+
   if [[ "$(uname -s)" != MINGW* ]] &&
     command -v mkfifo >/dev/null 2>&1; then
     mkdir -p "$rust_dir/.cargo"
