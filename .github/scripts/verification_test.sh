@@ -2430,6 +2430,7 @@ EOF
       printf 'licence check omitted the .%s source diagnostic\n' "$extension" >&2
       return 1
     }
+    rm -- "$licence_dir/fixture.$extension"
   done
 
   rust_dir="$work_dir/rust"
