@@ -91,7 +91,7 @@ func TestArchitectureImportsNormaliseMigrationOwners(t *testing.T) {
 	t.Parallel()
 
 	reason := forbiddenArchitectureImport(
-		"internal/urlreferencev1",
+		"internal/operation/urlreference/transform",
 		architectureModule+"/internal/execution/supervision",
 	)
 	if reason == "" {

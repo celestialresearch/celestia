@@ -9,7 +9,6 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-// Package urlreference validates and transforms bounded URL references.
 package urlreference
 
 import (

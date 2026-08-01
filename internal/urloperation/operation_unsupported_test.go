@@ -19,7 +19,7 @@ import (
 	"testing"
 
 	"celestia.research/celestia/internal/execution/supervision"
-	"celestia.research/celestia/internal/urlreferencev1"
+	"celestia.research/celestia/internal/operation/urlreference/transform"
 )
 
 func TestOperationFailsClosed(t *testing.T) {

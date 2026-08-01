@@ -22,7 +22,7 @@ import (
 	"io"
 	"time"
 
-	"celestia.research/celestia/internal/urlreferencev1"
+	"celestia.research/celestia/internal/operation/urlreference/transform"
 	"celestia.research/celestia/internal/workerprotocolv1"
 )
 

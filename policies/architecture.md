@@ -29,7 +29,7 @@ rejected.
 
 Every package requires one concise package comment describing its present
 owner and authority. A package at its final path must use `doc.go`. A package
-beneath one of the five migration roots may place the comment in an existing
+beneath one of the four migration roots may place the comment in an existing
 file until its assigned move because its frozen inventory cannot gain a file.
 
 ## Dependency Direction
@@ -59,16 +59,15 @@ The temporary registry contains exactly:
   `CEL-STRUCT-004C`;
 - `internal/urloperation` to `internal/operation/urlreference` in
   `CEL-STRUCT-004E`;
-- `internal/urlreferencev1` to
-  `internal/operation/urlreference/transform` in `CEL-STRUCT-004A`;
 - `internal/workerprotocolv1` to
   `internal/operation/urlreference/protocol` in `CEL-STRUCT-004B`.
 
 Each entry binds the exact base commit, file count and canonical inventory
 digest. Existing files may be corrected, moved or deleted. A new tracked file
 beneath a migration root is rejected. Wildcards, parent roots, expired entries and
-recreated migrated paths are rejected. `internal/processsupervision` is
-retired and cannot be recreated. Each migration slice removes its entry
+recreated migrated paths are rejected. `internal/processsupervision` and
+`internal/urlreferencev1` are retired and cannot be recreated. Each migration
+slice removes its entry
 when it moves the package; `CEL-STRUCT-005` reconciles the registry to empty.
 
 ## Exceptions

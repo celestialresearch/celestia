@@ -60,7 +60,7 @@ func TestConformanceFixture(t *testing.T) {
 func loadConformanceFixture(t *testing.T) conformanceFixture {
 	t.Helper()
 
-	data, err := os.ReadFile("../../testdata/url-reference-v1.json")
+	data, err := os.ReadFile("../../../../testdata/url-reference-v1.json")
 	if err != nil {
 		t.Fatalf("read conformance fixture: %v", err)
 	}
