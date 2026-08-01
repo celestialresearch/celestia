@@ -51,6 +51,23 @@ func TestArchitectureOwnsAdmissionAtFinalPath(t *testing.T) {
 	}
 }
 
+func TestArchitectureOwnsAttemptAtFinalPath(t *testing.T) {
+	t.Parallel()
+
+	policy := validArchitectureFixturePolicy()
+	if !slices.Contains(policy.Packages, "internal/operation/urlreference/attempt") {
+		t.Fatal("final attempt-evidence package is not governed")
+	}
+	for _, root := range policy.MigrationRoots {
+		if root.Path == "internal/attemptstore" {
+			t.Fatal("retired attempt-evidence package remains registered for migration")
+		}
+	}
+	if !slices.Contains(policy.RetiredMigration, "internal/attemptstore") {
+		t.Fatal("retired attempt-evidence package can be recreated")
+	}
+}
+
 func TestArchitectureSourceOwnership(t *testing.T) {
 	t.Parallel()
 
@@ -59,7 +76,7 @@ func TestArchitectureSourceOwnership(t *testing.T) {
 		file string
 		want bool
 	}{
-		"declared internal":   {file: "internal/attemptstore/native.c"},
+		"declared internal":   {file: "internal/operation/urlreference/attempt/native.c"},
 		"declared Java":       {file: "tools/sourcepolicy/Main.java"},
 		"declared worker":     {file: "worker/url-reference/data.bin"},
 		"command data":        {file: "cmd/rogue/data.json", want: true},

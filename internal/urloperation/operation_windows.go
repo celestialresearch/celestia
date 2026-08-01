@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"time"
 
-	"celestia.research/celestia/internal/attemptstore"
 	"celestia.research/celestia/internal/execution/supervision"
 	"celestia.research/celestia/internal/operation/urlreference/admission"
+	"celestia.research/celestia/internal/operation/urlreference/attempt"
 	"celestia.research/celestia/internal/operation/urlreference/protocol"
 	"celestia.research/celestia/internal/operation/urlreference/transform"
 )

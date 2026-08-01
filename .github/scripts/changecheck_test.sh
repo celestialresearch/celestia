@@ -131,7 +131,7 @@ main() {
   done
 
   for path in \
-    internal/attemptstore/store.go \
+    internal/operation/urlreference/attempt/store.go \
     internal/execution/supervision/supervisor_windows.go \
     internal/operation/urlreference/protocol/protocol.go \
     internal/operation/urlreference/admission/admission.go \

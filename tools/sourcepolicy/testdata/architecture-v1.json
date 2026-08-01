@@ -41,6 +41,8 @@
     {"name": "protocol-outside-operation", "mutation": "protocol-outside-operation", "rule": "operation-package-ownership", "expected": "reject"},
     {"name": "worker-protocol-recreated", "mutation": "worker-protocol-recreated", "rule": "migration-recreation", "expected": "reject"},
     {"name": "admission-outside-operation", "mutation": "admission-outside-operation", "rule": "operation-package-ownership", "expected": "reject"},
-    {"name": "url-admission-recreated", "mutation": "url-admission-recreated", "rule": "migration-recreation", "expected": "reject"}
+    {"name": "url-admission-recreated", "mutation": "url-admission-recreated", "rule": "migration-recreation", "expected": "reject"},
+    {"name": "attempt-outside-operation", "mutation": "attempt-outside-operation", "rule": "operation-package-ownership", "expected": "reject"},
+    {"name": "attempt-store-recreated", "mutation": "attempt-store-recreated", "rule": "migration-recreation", "expected": "reject"}
   ]
 }

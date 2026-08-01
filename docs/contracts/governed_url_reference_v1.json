@@ -62,7 +62,7 @@
     },
     {
       "id": "CEL-AUTH-PUBLICATION-001",
-      "owner": "internal/attemptstore",
+      "owner": "internal/operation/urlreference/attempt",
       "grant": "Publish one canonical terminal bundle under exclusive attempt ownership",
       "refusal": "Reject duplicates, corruption, contradictory records and incomplete ownership"
     }
@@ -89,7 +89,7 @@
     {
       "id": "CEL-TRUST-EVIDENCE-001",
       "source": "filesystem evidence",
-      "target": "internal/attemptstore",
+      "target": "internal/operation/urlreference/attempt",
       "treatment": "Validate ownership, paths, canonical records, identities, transitions and hashes"
     }
   ],
@@ -113,7 +113,7 @@
     {
       "id": "CEL-RESOURCE-LOCK-001",
       "kind": "lock",
-      "owner": "internal/attemptstore",
+      "owner": "internal/operation/urlreference/attempt",
       "acquisition": "Acquire one exclusive non-replacing lock before staging",
       "bound": "One lock per attempt",
       "release": "Release after publication or failed staging",
@@ -122,7 +122,7 @@
     {
       "id": "CEL-RESOURCE-EVIDENCE-001",
       "kind": "durable",
-      "owner": "internal/attemptstore",
+      "owner": "internal/operation/urlreference/attempt",
       "acquisition": "Create one exclusive pending evidence bundle",
       "bound": "1048576 bytes",
       "release": "Publish one terminal bundle or retain recoverable pending state",
@@ -646,7 +646,7 @@
     {
       "id": "CEL-URL-INV-004",
       "statement": "A verified result is not returned unless its terminal evidence is durably published",
-      "owner": "internal/attemptstore",
+      "owner": "internal/operation/urlreference/attempt",
       "severity": "critical",
       "boundary": "terminal observation to publication",
       "falsifier": "Return verified after publication failure or contradictory retained evidence",
@@ -699,7 +699,7 @@
     },
     {
       "id": "CEL-URL-PROD-004",
-      "owner": "internal/attemptstore publication and recovery tests"
+      "owner": "internal/operation/urlreference/attempt publication and recovery tests"
     }
   ],
   "assurance_controls": [
