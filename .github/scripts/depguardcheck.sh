@@ -98,12 +98,15 @@ cancel_bounded() {
 run_bounded() {
   local child
   local deadline_root
+  local process_group
   local status
   local watchdog
   local watchdog_status=0
 
-  if ! command -v taskkill.exe >/dev/null 2>&1 &&
-    ! command -v pgrep >/dev/null 2>&1; then
+  if ! command -v taskkill.exe >/dev/null 2>&1 && {
+    ! command -v pgrep >/dev/null 2>&1 ||
+      ! command -v ps >/dev/null 2>&1
+  }; then
     printf 'depguard deadline cannot own the process tree\n' >&2
     return 125
   fi
@@ -121,6 +124,15 @@ run_bounded() {
     set +m
   fi
   child=$!
+  if ! command -v taskkill.exe >/dev/null 2>&1 && kill -0 "$child" 2>/dev/null; then
+    process_group=$(ps -o pgid= -p "$child" 2>/dev/null | tr -d '[:space:]')
+    if [[ "$process_group" != "$child" ]]; then
+      kill -KILL "$child" 2>/dev/null || true
+      wait "$child" 2>/dev/null || true
+      printf 'depguard child lacks an isolated process group\n' >&2
+      return 125
+    fi
+  fi
   (
     elapsed=0
     while [[ "$elapsed" -lt "$deadline_seconds" ]]; do
