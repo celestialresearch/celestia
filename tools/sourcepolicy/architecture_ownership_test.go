@@ -100,3 +100,17 @@ func TestArchitectureRejectsWindowsInvalidPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestArchitectureRejectsCaseCollisions(t *testing.T) {
+	t.Parallel()
+
+	for _, files := range [][]string{
+		{"docs/contracts/cel_struct_001.json", "docs/contracts/CEL_STRUCT_001.json"},
+		{"docs/k.txt", "docs/K.txt"},
+	} {
+		findings := architecturePathFindings(files, nil, validArchitectureFixturePolicy())
+		if len(findings) != 1 || !strings.Contains(findings[0], "collides") {
+			t.Fatalf("findings = %v", findings)
+		}
+	}
+}

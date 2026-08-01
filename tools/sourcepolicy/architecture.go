@@ -425,6 +425,9 @@ func validateCurrentModule(
 func architecturePathFindings(
 	files []string, executables map[string]struct{}, policy architecturePolicy,
 ) []string {
+	if collision := architectureCaseCollision(files); collision != "" {
+		return []string{collision}
+	}
 	roots := stringSet(policy.RootDirectories)
 	rootFiles := stringSet(policy.RootFiles)
 	packages := stringSet(policy.Packages)
@@ -444,6 +447,32 @@ func architecturePathFindings(
 		}
 	}
 	return findings
+}
+
+func architectureCaseCollision(files []string) string {
+	seen := make(map[string]string, len(files))
+	for _, file := range files {
+		key := windowsFoldPath(file)
+		if previous, exists := seen[key]; exists && previous != file {
+			return fmt.Sprintf("%q: tracked path collides with %q", file, previous)
+		}
+		seen[key] = file
+	}
+	return ""
+}
+
+func windowsFoldPath(file string) string {
+	var folded strings.Builder
+	for _, character := range file {
+		minimum := character
+		for next := unicode.SimpleFold(character); next != character; next = unicode.SimpleFold(next) {
+			if next < minimum {
+				minimum = next
+			}
+		}
+		folded.WriteRune(minimum)
+	}
+	return folded.String()
 }
 
 func architectureFileFindings(
