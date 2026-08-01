@@ -46,6 +46,16 @@ func TestArchitecturePolicyRejectsModuleReplacement(t *testing.T) {
 	}
 }
 
+func TestArchitecturePolicyBindsMigrationReasons(t *testing.T) {
+	t.Parallel()
+
+	policy := validArchitectureFixturePolicy()
+	policy.MigrationRoots[0].Reason = "different reason"
+	if err := validateArchitecturePolicy(policy); err == nil {
+		t.Fatal("validateArchitecturePolicy() accepted a changed migration reason")
+	}
+}
+
 func TestArchitecturePolicyRejectsInfrastructureFailures(t *testing.T) {
 	t.Parallel()
 

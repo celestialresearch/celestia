@@ -329,8 +329,8 @@ func validateMigrationRoots(migration []architectureMigrationRoot) error {
 func validMigrationEntry(entry, expected architectureMigrationRoot) bool {
 	return entry.Path == expected.Path && entry.Count == expected.Count &&
 		entry.Digest == expected.Digest && entry.Destination == expected.Destination &&
-		entry.Slice == expected.Slice && entry.Expiry == expected.Expiry &&
-		!entry.AllowNewFiles && strings.TrimSpace(entry.Reason) != "" &&
+		entry.Slice == expected.Slice && entry.Reason == expected.Reason &&
+		entry.Expiry == expected.Expiry && !entry.AllowNewFiles &&
 		len(entry.Inventory) == entry.Count &&
 		inventoryDigest(entry.Inventory) == entry.Digest &&
 		validMigrationInventory(entry.Path, entry.Inventory)
