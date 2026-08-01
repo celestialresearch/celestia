@@ -24,6 +24,8 @@ const (
 	governedManifestSHA   = "aff0ab1df517151da1445093c61b7d05fce148c7465094936b99a91025e03533"
 	structureManifestPath = "docs/contracts/cel_struct_001.json"
 	structureManifestSHA  = "e062137f91713d0a9176d1af20720b20bf7c4ebfbc88ee0bf70a4d6316c490cc"
+	executionManifestPath = "docs/contracts/cel_struct_003.json"
+	executionManifestSHA  = "8b59e1fde2adad247eb72b5fb6e533dff8cb717f144d1e13552579c0f33eb47c"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {
@@ -33,6 +35,7 @@ func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) 
 	}{
 		{governedManifestPath, governedManifestSHA},
 		{structureManifestPath, structureManifestSHA},
+		{executionManifestPath, executionManifestSHA},
 	}
 	for _, manifest := range manifests {
 		if manifestPolicyStatus(stderr, readFile, manifest.path, manifest.digest) != 0 {
