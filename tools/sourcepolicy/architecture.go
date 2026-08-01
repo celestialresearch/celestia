@@ -544,20 +544,25 @@ func validWindowsArchitecturePath(file string) bool {
 
 func windowsReservedName(segment string) bool {
 	name := strings.ToUpper(strings.SplitN(segment, ".", 2)[0])
-	if name == "CON" || name == "PRN" || name == "AUX" || name == "NUL" ||
-		name == "CONIN$" || name == "CONOUT$" {
+	if slices.Contains(
+		[]string{"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"},
+		name,
+	) {
 		return true
 	}
-	if !strings.HasPrefix(name, "COM") && !strings.HasPrefix(name, "LPT") {
+	suffix := ""
+	if strings.HasPrefix(name, "COM") {
+		suffix = strings.TrimPrefix(name, "COM")
+	} else if strings.HasPrefix(name, "LPT") {
+		suffix = strings.TrimPrefix(name, "LPT")
+	} else {
 		return false
 	}
-	suffix := strings.TrimPrefix(strings.TrimPrefix(name, "COM"), "LPT")
 	if len([]rune(suffix)) != 1 {
 		return false
 	}
 	character, _ := utf8.DecodeRuneInString(suffix)
-	return character >= '1' && character <= '9' ||
-		character == '¹' || character == '²' || character == '³'
+	return slices.Contains([]rune("123456789¹²³"), character)
 }
 
 func architectureOwnerPathFindings(
