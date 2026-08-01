@@ -591,6 +591,48 @@ EOF
     printf 'depguard deadline fixture returned %s, expected 124\n' "$status" >&2
     return 1
   }
+  depguard_cancel_dir="$work_dir/depguard-cancel"
+  mkdir -p "$depguard_cancel_dir"
+  TMPDIR="$depguard_cancel_dir" CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
+    bash "$architecture_dir/.github/scripts/depguardcheck.sh" &
+  depguard_wrapper=$!
+  depguard_deadline_root=
+  for _ in 1 2 3 4 5; do
+    for candidate in "$depguard_cancel_dir"/celestia-depguard-deadline.*; do
+      if [[ -f "$candidate/child.pid" && -f "$candidate/watchdog.pid" ]]; then
+        depguard_deadline_root=$candidate
+        break 2
+      fi
+    done
+    sleep 1
+  done
+  [[ -n "$depguard_deadline_root" ]] || {
+    kill -TERM "$depguard_wrapper" 2>/dev/null || true
+    wait "$depguard_wrapper" 2>/dev/null || true
+    printf 'depguard cancellation fixture did not publish owned processes\n' >&2
+    return 1
+  }
+  depguard_child=$(cat "$depguard_deadline_root/child.pid")
+  depguard_watchdog=$(cat "$depguard_deadline_root/watchdog.pid")
+  kill -TERM "$depguard_wrapper"
+  set +e
+  wait "$depguard_wrapper"
+  status=$?
+  set -e
+  [[ "$status" -eq 143 ]] || {
+    printf 'cancelled depguard wrapper returned %s, expected 143\n' "$status" >&2
+    return 1
+  }
+  for pid in "$depguard_child" "$depguard_watchdog"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      printf 'cancelled depguard wrapper left process %s alive\n' "$pid" >&2
+      return 1
+    fi
+  done
+  [[ ! -e "$depguard_deadline_root" ]] || {
+    printf 'cancelled depguard wrapper retained deadline state\n' >&2
+    return 1
+  }
   mkdir -p "$architecture_dir/worker/rogue"
   printf 'package rogue\n' >"$architecture_dir/worker/rogue/main.go"
   git -C "$architecture_dir" add worker/rogue/main.go

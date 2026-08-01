@@ -57,6 +57,32 @@ terminate_tree() {
   kill -KILL "$pid" 2>/dev/null || true
 }
 
+cancel_bounded() {
+  local owned
+  local status=$1
+
+  trap - EXIT HUP INT TERM
+  if [[ -n "${watchdog:-}" ]]; then
+    terminate_tree "$watchdog" 2>/dev/null || true
+    wait "$watchdog" 2>/dev/null || true
+    watchdog=
+  fi
+  if [[ -n "${child:-}" ]]; then
+    terminate_tree "$child" 2>/dev/null || true
+    wait "$child" 2>/dev/null || true
+    child=
+  fi
+  for owned in $(jobs -pr); do
+    terminate_tree "$owned" 2>/dev/null || true
+    wait "$owned" 2>/dev/null || true
+  done
+  if [[ -n "${deadline_root:-}" ]]; then
+    rm -rf -- "$deadline_root"
+    deadline_root=
+  fi
+  exit "$status"
+}
+
 run_bounded() {
   local child
   local deadline_root
@@ -70,6 +96,9 @@ run_bounded() {
     return 125
   fi
 
+  trap 'cancel_bounded 129' HUP
+  trap 'cancel_bounded 130' INT
+  trap 'cancel_bounded 143' TERM
   deadline_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-depguard-deadline.XXXXXX")
   bash "$0" --celestia-depguard-bounded "$@" &
   child=$!
@@ -84,15 +113,23 @@ run_bounded() {
     terminate_tree "$child"
   ) &
   watchdog=$!
+  if [[ "${CELESTIA_DEPGUARD_DEADLINE_FIXTURE:-}" == 1 ]]; then
+    printf '%s' "$child" >"$deadline_root/child.pid"
+    printf '%s' "$watchdog" >"$deadline_root/watchdog.pid"
+  fi
 
   set +e
   wait "$child"
   status=$?
   set -e
+  child=
   printf '%s' "done" >"$deadline_root/done"
   if [[ -f "$deadline_root/expired" ]]; then
     wait "$watchdog" 2>/dev/null || watchdog_status=$?
+    watchdog=
     rm -rf -- "$deadline_root"
+    deadline_root=
+    trap - HUP INT TERM
     if [[ "$watchdog_status" -ne 0 ]]; then
       printf 'depguard deadline process cleanup failed\n' >&2
       return 125
@@ -101,7 +138,10 @@ run_bounded() {
     return 124
   fi
   wait "$watchdog" 2>/dev/null || true
+  watchdog=
   rm -rf -- "$deadline_root"
+  deadline_root=
+  trap - HUP INT TERM
   return "$status"
 }
 
