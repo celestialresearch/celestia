@@ -47,13 +47,24 @@ func sourceExecutables(files []string) ([]string, error) {
 	if waitErr != nil {
 		return nil, waitErr
 	}
+	return supplementExecutableInventory(files, executables, os.Lstat)
+}
+
+func supplementExecutableInventory(
+	files, executables []string,
+	lstat func(string) (os.FileInfo, error),
+) ([]string, error) {
 	declared := stringSet(executables)
 	for _, file := range files {
-		if _, tracked := declared[file]; tracked {
-			continue
+		info, err := lstat(file)
+		if err != nil {
+			return nil, fmt.Errorf("inspect source %s: %w", file, err)
 		}
-		info, err := os.Lstat(file)
-		if err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0o111 != 0 {
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("inspect source %s: source is not a regular file", file)
+		}
+		_, alreadyExecutable := declared[file]
+		if !alreadyExecutable && info.Mode().Perm()&0o111 != 0 {
 			executables = append(executables, file)
 		}
 	}

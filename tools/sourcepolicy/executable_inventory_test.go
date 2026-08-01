@@ -12,6 +12,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -28,6 +30,23 @@ func TestExecutableInventory(t *testing.T) {
 	}
 	if want := []string{"tools/run"}; !reflect.DeepEqual(files, want) {
 		t.Fatalf("executables = %v, want %v", files, want)
+	}
+}
+
+func TestExecutableInventoryRejectsInvalidFiles(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	directory := filepath.Join(root, "directory")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{directory, filepath.Join(root, "missing")} {
+		if _, err := supplementExecutableInventory(
+			[]string{file}, nil, os.Lstat,
+		); err == nil {
+			t.Fatalf("invalid source %s accepted", file)
+		}
 	}
 }
 
