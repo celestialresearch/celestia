@@ -2412,21 +2412,24 @@ EOF
     return 1
   }
 
-  printf 'TEXT\n' >"$licence_dir/fixture.s"
-  git -C "$licence_dir" add fixture.s
-  set +e
-  output=$(cd "$licence_dir" &&
-    bash .github/scripts/licencecheck.sh verify 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'licence check accepted Go assembly without a header\n' >&2
-    return 1
-  }
-  grep -Fq 'fixture.s: missing or incorrect proprietary header' <<<"$output" || {
-    printf 'licence check omitted the Go assembly diagnostic\n' >&2
-    return 1
-  }
+  for extension in s m f F for f90 swig swigcxx; do
+    printf 'SOURCE\n' >"$licence_dir/fixture.$extension"
+    git -C "$licence_dir" add "fixture.$extension"
+    set +e
+    output=$(cd "$licence_dir" &&
+      bash .github/scripts/licencecheck.sh verify 2>&1)
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'licence check accepted .%s source without a header\n' "$extension" >&2
+      return 1
+    }
+    grep -Fq "fixture.$extension: missing or incorrect proprietary header" \
+      <<<"$output" || {
+      printf 'licence check omitted the .%s source diagnostic\n' "$extension" >&2
+      return 1
+    }
+  done
 
   rust_dir="$work_dir/rust"
   rust_bin="$rust_dir/bin"

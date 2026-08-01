@@ -567,9 +567,10 @@ func architectureOwnerAccepts(file, root, owner string) bool {
 
 func architectureMaintainedSource(file string) bool {
 	switch strings.ToLower(path.Ext(file)) {
-	case ".c", ".cc", ".cpp", ".cxx", ".go", ".h", ".hh", ".hpp", ".hxx",
-		".java", ".js", ".jsx", ".kt", ".kts", ".proto", ".rs", ".s", ".sql",
-		".swift", ".ts", ".tsx", ".zig":
+	case ".c", ".cc", ".cpp", ".cxx", ".f", ".f90", ".for", ".go", ".h",
+		".hh", ".hpp", ".hxx", ".java", ".js", ".jsx", ".kt", ".kts", ".m",
+		".proto", ".rs", ".s", ".sql", ".swift", ".swig", ".swigcxx", ".ts",
+		".tsx", ".zig":
 		return true
 	default:
 		base := path.Base(file)
