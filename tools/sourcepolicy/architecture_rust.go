@@ -88,7 +88,7 @@ func decodeArchitectureRustPackage(
 	if !valid || architectureRustHasExtraTargets(document) {
 		return architectureRustPackage{name: name}, nil
 	}
-	if len(targets) == 0 && expected.implicitTarget {
+	if len(targets) == 0 && expected.implicitTarget && architectureRustAutobins(document) {
 		targets = slices.Clone(expected.targets)
 	}
 	slices.SortFunc(targets, func(left, right architectureRustTarget) int {
@@ -109,6 +109,11 @@ func decodeArchitectureRustPackage(
 	return architectureRustPackage{name: name, targets: targets}, nil
 }
 
+func architectureRustAutobins(document map[string]any) bool {
+	value, exists := nestedTable(document, "package")["autobins"]
+	return !exists || value == true
+}
+
 func architectureRustPackageName(document map[string]any) string {
 	name, valid := nestedTable(document, "package")["name"].(string)
 	if !valid {
@@ -127,7 +132,13 @@ func architectureRustHasExtraTargets(document map[string]any) bool {
 }
 
 func architectureRustTargets(value any) ([]architectureRustTarget, bool) {
+	if value == nil {
+		return nil, true
+	}
 	tables := cargoTargetTables(value)
+	if len(tables) == 0 {
+		return nil, false
+	}
 	targets := make([]architectureRustTarget, 0, len(tables))
 	for _, table := range tables {
 		name, nameOK := table["name"].(string)

@@ -19,23 +19,37 @@ import (
 func TestArchitectureRustTargets(t *testing.T) {
 	t.Chdir("../..")
 
-	read := func(path string) ([]byte, error) {
-		if path == "worker/url-reference/Cargo.toml" {
-			return []byte(`[package]
+	for name, source := range map[string]string{
+		"cross-package path": `[package]
 name = "celestia-url-reference"
 
 [[bin]]
 name = "celestia-url-reference"
 path = "../qualification-fixtures/src/bin/hostile.rs"
-`), nil
-		}
-		return readSource(path)
-	}
-	findings, err := architectureRustTargetFindings(read)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(findings) != 1 || !strings.Contains(findings[0], "Rust targets") {
-		t.Fatalf("findings = %v", findings)
+		`,
+		"disabled implicit target": `[package]
+name = "celestia-url-reference"
+autobins = false
+		`,
+		"malformed targets": `bin = "invalid"
+[package]
+name = "celestia-url-reference"
+		`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			read := func(path string) ([]byte, error) {
+				if path == "worker/url-reference/Cargo.toml" {
+					return []byte(source), nil
+				}
+				return readSource(path)
+			}
+			findings, err := architectureRustTargetFindings(read)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(findings) != 1 || !strings.Contains(findings[0], "Rust targets") {
+				t.Fatalf("findings = %v", findings)
+			}
+		})
 	}
 }
