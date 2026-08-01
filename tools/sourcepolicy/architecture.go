@@ -652,10 +652,25 @@ func observePackageDocumentation(
 	if err != nil {
 		return fmt.Errorf("parse package documentation %s: %w", file, err)
 	}
-	if parsed.Doc != nil && strings.HasPrefix(parsed.Doc.Text(), "Package "+parsed.Name.Name+" ") {
+	if portablePackageDocumentation(source) && parsed.Doc != nil &&
+		strings.HasPrefix(parsed.Doc.Text(), "Package "+parsed.Name.Name+" ") {
 		documented[directory] = true
 	}
 	return nil
+}
+
+func portablePackageDocumentation(source []byte) bool {
+	for line := range bytes.SplitSeq(source, []byte{'\n'}) {
+		trimmed := bytes.TrimSpace(line)
+		if bytes.HasPrefix(trimmed, []byte("package ")) {
+			return true
+		}
+		if bytes.HasPrefix(trimmed, []byte("//go:build")) ||
+			bytes.HasPrefix(trimmed, []byte("// +build")) {
+			return false
+		}
+	}
+	return false
 }
 
 func inventoryDigest(files []string) string {

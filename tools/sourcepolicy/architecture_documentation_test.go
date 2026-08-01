@@ -35,3 +35,20 @@ func TestFinalPackageRequiresDocFile(t *testing.T) {
 		t.Fatalf("doc.go documentation = %v, %v", findings, err)
 	}
 }
+
+func TestMigrationDocumentationMustBePortable(t *testing.T) {
+	t.Parallel()
+
+	policy := validArchitectureFixturePolicy()
+	policy.Packages = []string{"internal/example"}
+	policy.MigrationRoots[0].Path = "internal/example"
+	read := func(string) ([]byte, error) {
+		return []byte("//go:build windows\n\n// Package example owns the fixture.\npackage example\n"), nil
+	}
+	findings, err := packageDocumentationFindings(
+		[]string{"internal/example/example.go"}, policy, read,
+	)
+	if err != nil || len(findings) != 1 {
+		t.Fatalf("platform documentation = %v, %v", findings, err)
+	}
+}

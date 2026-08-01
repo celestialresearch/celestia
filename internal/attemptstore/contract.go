@@ -9,6 +9,8 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+// Package attemptstore retains governed operation evidence without deciding
+// whether an operation result is trusted.
 package attemptstore
 
 const (

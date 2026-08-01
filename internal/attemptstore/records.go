@@ -11,8 +11,6 @@
 
 //go:build windows
 
-// Package attemptstore retains governed operation evidence without deciding
-// whether an operation result is trusted.
 package attemptstore
 
 import (
