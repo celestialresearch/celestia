@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"maps"
 	"testing"
 )
 
@@ -46,14 +47,26 @@ func TestArchitecturePolicyRejectsModuleReplacement(t *testing.T) {
 	}
 }
 
-func TestArchitecturePolicyBindsMigrationReasons(t *testing.T) {
+func TestArchitecturePolicyRejectsMigrationFields(t *testing.T) {
 	t.Parallel()
 
-	policy := validArchitectureFixturePolicy()
-	policy.MigrationRoots = []architectureMigrationRoot{architectureMigrationTestEntry()}
-	policy.MigrationRoots[0].Reason = "different reason"
-	if err := validateArchitecturePolicy(policy); err == nil {
-		t.Fatal("validateArchitecturePolicy() accepted a changed migration reason")
+	base, err := json.Marshal(validArchitectureFixturePolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(base, &document); err != nil {
+		t.Fatal(err)
+	}
+	candidate := maps.Clone(document)
+	candidate["migration_roots"] = []any{}
+	candidate["retired_migration_paths"] = expectedProhibitedPaths()
+	data, err := json.Marshal(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeArchitecturePolicy(data); err == nil {
+		t.Fatal("decodeArchitecturePolicy() accepted migration fields")
 	}
 }
 

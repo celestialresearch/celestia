@@ -95,7 +95,7 @@ func TestArchitectureImportsNormaliseMigrationOwners(t *testing.T) {
 		architectureModule+"/internal/execution/supervision",
 	)
 	if reason == "" {
-		t.Fatal("migration transformation import of execution accepted")
+		t.Fatal("transformation import of execution accepted")
 	}
 }
 

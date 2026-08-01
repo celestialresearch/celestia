@@ -34,7 +34,7 @@ const (
 	architectureSchema       = "celestia.production.architecture.v1"
 	architectureBaseCommit   = "ea8f840aa230f0498f82f3cd00dca22760cf6020"
 	architectureModule       = "celestia.research/celestia"
-	architectureCurrentSlice = "CEL-STRUCT-004E"
+	architectureCurrentSlice = "CEL-STRUCT-005"
 	architectureInventory    = "sha256-lf-paths-v1"
 	maxArchitectureDepth     = 64
 	maxArchitectureFindings  = 16
@@ -42,22 +42,21 @@ const (
 )
 
 type architecturePolicy struct {
-	Schema           string                      `json:"schema_version"`
-	CurrentSlice     string                      `json:"current_slice"`
-	BaseCommit       string                      `json:"base_commit"`
-	ModulePath       string                      `json:"module_path"`
-	InventoryFormat  string                      `json:"inventory_format"`
-	RootDirectories  []string                    `json:"allowed_root_directories"`
-	RootFiles        []string                    `json:"allowed_root_files"`
-	Prohibited       []string                    `json:"prohibited_segments"`
-	Packages         []string                    `json:"declared_packages"`
-	RustPackages     []string                    `json:"declared_rust_packages"`
-	Scripts          []string                    `json:"declared_scripts"`
-	Commands         []string                    `json:"declared_commands"`
-	FileExceptions   []architectureExcept        `json:"file_exceptions"`
-	ImportRules      []string                    `json:"forbidden_import_rules"`
-	RetiredMigration []string                    `json:"retired_migration_paths"`
-	MigrationRoots   []architectureMigrationRoot `json:"migration_roots"`
+	Schema          string               `json:"schema_version"`
+	CurrentSlice    string               `json:"current_slice"`
+	BaseCommit      string               `json:"base_commit"`
+	ModulePath      string               `json:"module_path"`
+	InventoryFormat string               `json:"inventory_format"`
+	RootDirectories []string             `json:"allowed_root_directories"`
+	RootFiles       []string             `json:"allowed_root_files"`
+	Prohibited      []string             `json:"prohibited_segments"`
+	Packages        []string             `json:"declared_packages"`
+	RustPackages    []string             `json:"declared_rust_packages"`
+	Scripts         []string             `json:"declared_scripts"`
+	Commands        []string             `json:"declared_commands"`
+	FileExceptions  []architectureExcept `json:"file_exceptions"`
+	ImportRules     []string             `json:"forbidden_import_rules"`
+	ProhibitedPaths []string             `json:"prohibited_paths"`
 }
 
 type architectureExcept struct {
@@ -66,18 +65,6 @@ type architectureExcept struct {
 	Reason  string `json:"reason"`
 	Removal string `json:"removal_condition"`
 	Expiry  string `json:"expires_at_completion"`
-}
-
-type architectureMigrationRoot struct {
-	Path          string   `json:"path"`
-	Count         int      `json:"inventory_count"`
-	Digest        string   `json:"inventory_sha256"`
-	Destination   string   `json:"destination"`
-	Slice         string   `json:"migration_slice"`
-	Reason        string   `json:"reason"`
-	Expiry        string   `json:"expires_at_completion"`
-	AllowNewFiles bool     `json:"allow_new_files"`
-	Inventory     []string `json:"inventory_paths"`
 }
 
 func runArchitecturePolicy(
@@ -287,7 +274,7 @@ func validateArchitecturePolicy(policy architecturePolicy) error {
 	if !validArchitectureIdentity(policy) || !validArchitectureLists(policy) {
 		return errors.New("architecture policy contradicts the compiled constitution")
 	}
-	return validateMigrationRoots(policy.MigrationRoots)
+	return nil
 }
 
 func validArchitectureIdentity(policy architecturePolicy) bool {
@@ -306,45 +293,8 @@ func validArchitectureLists(policy architecturePolicy) bool {
 		equalStrings(policy.RustPackages, expectedRustPackages()) &&
 		equalStrings(policy.Scripts, expectedScripts()) &&
 		len(policy.Commands) == 0 && len(policy.FileExceptions) == 0 &&
-		equalStrings(policy.RetiredMigration, expectedRetiredMigration()) &&
+		equalStrings(policy.ProhibitedPaths, expectedProhibitedPaths()) &&
 		equalStrings(policy.ImportRules, expectedImportRules())
-}
-
-func validateMigrationRoots(migration []architectureMigrationRoot) error {
-	expected := expectedMigrationRoots()
-	if len(migration) != len(expected) {
-		return errors.New("architecture policy has an invalid migration root count")
-	}
-	for index, entry := range migration {
-		if !validMigrationEntry(entry, expected[index]) {
-			return fmt.Errorf("invalid migration root %q", entry.Path)
-		}
-	}
-	return nil
-}
-
-func validMigrationEntry(entry, expected architectureMigrationRoot) bool {
-	return entry.Path == expected.Path && entry.Count == expected.Count &&
-		entry.Digest == expected.Digest && entry.Destination == expected.Destination &&
-		entry.Slice == expected.Slice && entry.Reason == expected.Reason &&
-		entry.Expiry == expected.Expiry && !entry.AllowNewFiles &&
-		len(entry.Inventory) == entry.Count &&
-		inventoryDigest(entry.Inventory) == entry.Digest &&
-		validMigrationInventory(entry.Path, entry.Inventory)
-}
-
-func validMigrationInventory(root string, files []string) bool {
-	if !slices.IsSorted(files) {
-		return false
-	}
-	prefix := root + "/"
-	for index, file := range files {
-		if !strings.HasPrefix(file, prefix) ||
-			(index > 0 && file == files[index-1]) {
-			return false
-		}
-	}
-	return true
 }
 
 func architectureFindings(
@@ -373,11 +323,6 @@ func architectureFindings(
 		return nil, err
 	}
 	findings = append(findings, imports...)
-	if architectureFindingsFull(findings) {
-		return boundedArchitectureFindings(findings), nil
-	}
-	migrationFindings := architectureMigrationFindings(files, policy)
-	findings = append(findings, migrationFindings...)
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
@@ -439,13 +384,13 @@ func architecturePathFindings(
 	rustPackages := stringSet(policy.RustPackages)
 	scripts := stringSet(policy.Scripts)
 	prohibited := stringSet(policy.Prohibited)
-	retired := stringSet(policy.RetiredMigration)
+	prohibitedPaths := stringSet(policy.ProhibitedPaths)
 	var findings []string
 	for _, file := range files {
 		_, executable := executables[file]
 		findings = append(findings, architectureFileFindings(
 			file, executable, roots, rootFiles, packages, rustPackages, scripts,
-			stringSet(policy.Commands), prohibited, retired,
+			stringSet(policy.Commands), prohibited, prohibitedPaths,
 		)...)
 		if architectureFindingsFull(findings) {
 			return boundedArchitectureFindings(findings)
@@ -482,15 +427,15 @@ func windowsFoldPath(file string) string {
 
 func architectureFileFindings(
 	file string, executable bool,
-	roots, rootFiles, packages, rustPackages, scripts, commands, prohibited, retired map[string]struct{},
+	roots, rootFiles, packages, rustPackages, scripts, commands, prohibited, prohibitedPaths map[string]struct{},
 ) []string {
 	if !validArchitecturePath(file) {
 		return []string{fmt.Sprintf("%q: invalid tracked path", file)}
 	}
 	segments := strings.Split(file, "/")
-	for root := range retired {
+	for root := range prohibitedPaths {
 		if file == root || strings.HasPrefix(file, root+"/") {
-			return []string{file + ": retired package path was recreated"}
+			return []string{file + ": prohibited package path was recreated"}
 		}
 	}
 	if len(segments) == 1 {
@@ -660,42 +605,15 @@ func prohibitedPathFindings(
 	return findings
 }
 
-func architectureMigrationFindings(
-	files []string,
-	policy architecturePolicy,
-) []string {
-	var findings []string
-	for _, entry := range policy.MigrationRoots {
-		allowed := stringSet(entry.Inventory)
-		prefix := entry.Path + "/"
-		for _, file := range files {
-			if !strings.HasPrefix(file, prefix) {
-				continue
-			}
-			if _, exists := allowed[file]; !exists {
-				findings = append(findings, file+": migration root inventory expanded")
-				if architectureFindingsFull(findings) {
-					return boundedArchitectureFindings(findings)
-				}
-			}
-		}
-	}
-	return findings
-}
-
 func packageDocumentationFindings(
 	files []string,
 	policy architecturePolicy,
 	readFile func(string) ([]byte, error),
 ) ([]string, error) {
 	documented := make(map[string]bool, len(policy.Packages))
-	migration := make(map[string]struct{}, len(policy.MigrationRoots))
-	for _, entry := range policy.MigrationRoots {
-		migration[entry.Path] = struct{}{}
-	}
 	for _, file := range files {
 		if err := observePackageDocumentation(
-			file, policy.Packages, migration, documented, readFile,
+			file, policy.Packages, documented, readFile,
 		); err != nil {
 			return nil, err
 		}
@@ -715,7 +633,6 @@ func packageDocumentationFindings(
 func observePackageDocumentation(
 	file string,
 	packages []string,
-	migration map[string]struct{},
 	documented map[string]bool,
 	readFile func(string) ([]byte, error),
 ) error {
@@ -726,7 +643,7 @@ func observePackageDocumentation(
 	if documented[directory] || !slices.Contains(packages, directory) {
 		return nil
 	}
-	if _, temporary := migration[directory]; !temporary && path.Base(file) != "doc.go" {
+	if path.Base(file) != "doc.go" {
 		return nil
 	}
 	source, err := readFile(file)

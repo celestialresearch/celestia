@@ -89,8 +89,6 @@ func forbiddenArchitectureImport(importer, imported string) string {
 	if relative == imported {
 		return ""
 	}
-	importer = normaliseArchitecturePath(importer)
-	relative = normaliseArchitecturePath(relative)
 	if strings.HasPrefix(importer, "internal/execution/") &&
 		strings.HasPrefix(relative, "internal/operation/") {
 		return "execution packages must not import operations"
@@ -99,18 +97,6 @@ func forbiddenArchitectureImport(importer, imported string) string {
 		return reason
 	}
 	return forbiddenOperationImport(importer, relative)
-}
-
-func normaliseArchitecturePath(value string) string {
-	for _, migration := range expectedMigrationRoots() {
-		if value == migration.Path {
-			return migration.Destination
-		}
-		if strings.HasPrefix(value, migration.Path+"/") {
-			return migration.Destination + strings.TrimPrefix(value, migration.Path)
-		}
-	}
-	return value
 }
 
 func forbiddenCommandImport(importer, imported string) string {

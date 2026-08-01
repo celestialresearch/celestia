@@ -112,13 +112,6 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"worker-private-key-path": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"worker/example/private-key.pem"}, policy)
 	},
-	"migration-additional-file": func(policy architecturePolicy) bool {
-		policy.MigrationRoots = []architectureMigrationRoot{architectureMigrationTestEntry()}
-		entry := policy.MigrationRoots[0]
-		files := append([]string(nil), entry.Inventory...)
-		files = append(files, entry.Path+"/unexpected.go")
-		return len(architectureMigrationFindings(files, policy)) != 0
-	},
 	"unregistered-flat-package": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"internal/newpackage/file.go"}, policy)
 	},
@@ -133,24 +126,9 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"unregistered-script": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"tools/rogue/run.sh"}, policy)
 	},
-	"migration-wildcard-entry": func(policy architecturePolicy) bool {
-		policy.MigrationRoots = []architectureMigrationRoot{architectureMigrationTestEntry()}
-		policy.MigrationRoots[0].Path = "internal/*"
-		return validateArchitecturePolicy(policy) != nil
-	},
-	"migration-parent-entry": func(policy architecturePolicy) bool {
-		policy.MigrationRoots = []architectureMigrationRoot{architectureMigrationTestEntry()}
-		policy.MigrationRoots[0].Path = "internal"
-		return validateArchitecturePolicy(policy) != nil
-	},
-	"migration-expired-entry": func(policy architecturePolicy) bool {
-		policy.MigrationRoots = []architectureMigrationRoot{architectureMigrationTestEntry()}
-		policy.MigrationRoots[0].Expiry = "CEL-STRUCT-001"
-		return validateArchitecturePolicy(policy) != nil
-	},
-	"migrated-path-recreated": func(architecturePolicy) bool {
+	"prohibited-path-recreated": func(architecturePolicy) bool {
 		policy := validArchitectureFixturePolicy()
-		policy.RetiredMigration = []string{"internal/attemptstore"}
+		policy.ProhibitedPaths = []string{"internal/attemptstore"}
 		return hasArchitecturePathFinding([]string{"internal/attemptstore/store.go"}, policy)
 	},
 	"process-supervision-recreated": processSupervisionRecreated,
@@ -176,15 +154,6 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"url-operation-recreated": urlOperationRecreated,
 }
 
-func architectureMigrationTestEntry() architectureMigrationRoot {
-	return architectureMigrationRoot{
-		Path: "internal/example", Count: 1, Digest: inventoryDigest([]string{"internal/example/example.go"}),
-		Destination: "internal/operation/example", Slice: "CEL-STRUCT-TEST",
-		Reason: "Bounded test entry", Expiry: "CEL-STRUCT-TEST",
-		Inventory: []string{"internal/example/example.go"},
-	}
-}
-
 func processSupervisionRecreated(policy architecturePolicy) bool {
 	return hasArchitecturePathFinding(
 		[]string{"internal/processsupervision/supervisor.go"}, policy,
@@ -204,21 +173,21 @@ func workerProtocolRecreated(policy architecturePolicy) bool {
 }
 
 func urlAdmissionRecreated(policy architecturePolicy) bool {
-	policy.RetiredMigration = append(policy.RetiredMigration, "internal/urladmission")
+	policy.ProhibitedPaths = append(policy.ProhibitedPaths, "internal/urladmission")
 	return hasArchitecturePathFinding(
 		[]string{"internal/urladmission/admission.go"}, policy,
 	)
 }
 
 func attemptStoreRecreated(policy architecturePolicy) bool {
-	policy.RetiredMigration = append(policy.RetiredMigration, "internal/attemptstore")
+	policy.ProhibitedPaths = append(policy.ProhibitedPaths, "internal/attemptstore")
 	return hasArchitecturePathFinding(
 		[]string{"internal/attemptstore/store.go"}, policy,
 	)
 }
 
 func urlOperationRecreated(policy architecturePolicy) bool {
-	policy.RetiredMigration = append(policy.RetiredMigration, "internal/urloperation")
+	policy.ProhibitedPaths = append(policy.ProhibitedPaths, "internal/urloperation")
 	return hasArchitecturePathFinding(
 		[]string{"internal/urloperation/operation.go"}, policy,
 	)
