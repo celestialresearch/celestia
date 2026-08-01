@@ -40,6 +40,8 @@ The baseline applies whenever Go packages exist:
 - neutral-English `misspell` restricted to Go comments;
 - test-helper, parallel-subtest and standard-testing checks;
 - `modernize` as secondary evidence after `go fix`.
+- `depguard` for the declared Production, Assurance, tool, worker, execution
+  and command dependency boundaries.
 
 `.golangci.yml` is the executable allowlist. This policy is the normative
 contract for changing that allowlist.
@@ -93,7 +95,7 @@ Linter | Enable When | Required Configuration or Proof
 `promlinter` | Prometheus metrics exist | Establish naming, unit and cardinality policy first
 `protogetter` | Generated protobuf APIs exist | Confirm generated API and nil semantics
 `testifylint` | Testify is materially adopted | Enable only rules matching the adopted assertion style
-`depguard` | Package dependency directions exist | Encode documented package boundaries and prove allowed imports remain possible
+`depguard` | Package dependency directions exist | Enabled for the architecture constitution; every added rule requires allowed and forbidden import fixtures
 `unqueryvet` | SQL queries or query builders exist | Prove explicit-column policy and generated-query exclusions
 `canonicalheader` | Go code constructs HTTP headers | Prove protocol-defined non-canonical exceptions
 `sloglint` and `spancheck` | Both logging and tracing exist | Keep their contracts separate; do not infer tracing from logging

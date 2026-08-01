@@ -65,6 +65,7 @@ main() (
   local work_dir
   local workspace_file
   local action_pid=
+  local architecture_dir
   local change_pid=
   local currency_pid=
   local fifo_pid=
@@ -134,6 +135,11 @@ main() (
   grep -Fq "SSL_CA_CERT_FILE=\"\$ca_bundle\"" \
     "$root/.github/scripts/dragonfly-bootstrap.sh" || {
     printf 'DragonFly trusted CA handoff is missing\n' >&2
+    return 1
+  }
+  grep -Fq 'pkg install -y go git' \
+    "$root/.github/scripts/dragonfly-bootstrap.sh" || {
+    printf 'DragonFly Git bootstrap is outside the trusted package path\n' >&2
     return 1
   }
   grep -Fq '.github/generated/dragonfly-ca.pem' \
@@ -512,14 +518,21 @@ EOF
     "$work_dir/.github/scripts/"
   cp \
     "$root/tools/sourcepolicy/gofallback.go" \
+    "$root/tools/sourcepolicy/architecture.go" \
+    "$root/tools/sourcepolicy/architecture_inventory.go" \
+    "$root/tools/sourcepolicy/architecture_limits.go" \
+    "$root/tools/sourcepolicy/architecture_imports.go" \
+    "$root/tools/sourcepolicy/architecture_paths.go" \
+    "$root/tools/sourcepolicy/architecture_rust.go" \
+    "$root/tools/sourcepolicy/architecture_scripts.go" \
+    "$root/tools/sourcepolicy/architecture_values.go" \
+    "$root/tools/sourcepolicy/executable_inventory.go" \
     "$root/tools/sourcepolicy/gobuildtags.go" \
     "$root/tools/sourcepolicy/goinspect.go" \
     "$root/tools/sourcepolicy/goskip.go" \
     "$root/tools/sourcepolicy/main.go" \
+    "$root/tools/sourcepolicy/manifest.go" \
     "$root/tools/sourcepolicy/module_replacement.go" \
-    "$root/tools/sourcepolicy/replacement_path.go" \
-    "$root/tools/sourcepolicy/replacement_path_other.go" \
-    "$root/tools/sourcepolicy/replacement_path_windows.go" \
     "$root/tools/sourcepolicy/rustpolicy.go" \
     "$root/tools/sourcepolicy/source_open_other.go" \
     "$root/tools/sourcepolicy/source_open_unix.go" \
@@ -527,7 +540,133 @@ EOF
     "$root/tools/sourcepolicy/testinventory.go" \
     "$work_dir/tools/sourcepolicy/"
   cp "$root/docs/contracts/governed_url_reference_v1.json" \
+    "$root/docs/contracts/cel_struct_001.json" \
     "$work_dir/docs/contracts/"
+
+  architecture_dir="$work_dir/architecture-repo"
+  mkdir -p "$architecture_dir"
+  git -C "$root" archive HEAD | tar -xf - -C "$architecture_dir"
+  cp "$root/.golangci.yml" "$architecture_dir/.golangci.yml"
+  cp "$root/.github/scripts/depguardcheck.sh" \
+    "$root/.github/scripts/policycheck.sh" \
+    "$architecture_dir/.github/scripts/"
+  git -C "$architecture_dir" init -q
+  git -C "$architecture_dir" add .
+  (
+    cd "$architecture_dir"
+    bash .github/scripts/policycheck.sh architecture
+  ) || {
+    printf 'policy check rejected the governed architecture\n' >&2
+    return 1
+  }
+  for variable in GOFLAGS GOENV; do
+    set +e
+    if [[ "$variable" == GOFLAGS ]]; then
+      output=$(cd "$architecture_dir" &&
+        GOFLAGS='-overlay=attacker.json' \
+          bash .github/scripts/policycheck.sh architecture 2>&1)
+    else
+      output=$(cd "$architecture_dir" &&
+        GOENV='attacker.env' \
+          bash .github/scripts/policycheck.sh architecture 2>&1)
+    fi
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'policy check accepted uncontrolled %s\n' "$variable" >&2
+      return 1
+    }
+    grep -Fq "Uncontrolled Go policy environment: $variable" <<<"$output" || {
+      printf 'policy check did not own the %s rejection:\n%s\n' \
+        "$variable" "$output" >&2
+      return 1
+    }
+  done
+  set +e
+  CELESTIA_DEPGUARD_BOUNDED=1 CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
+    bash "$architecture_dir/.github/scripts/depguardcheck.sh"
+  status=$?
+  set -e
+  [[ "$status" -eq 124 ]] || {
+    printf 'depguard deadline fixture returned %s, expected 124\n' "$status" >&2
+    return 1
+  }
+  depguard_cancel_dir="$work_dir/depguard-cancel"
+  mkdir -p "$depguard_cancel_dir"
+  TMPDIR="$depguard_cancel_dir" CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
+    bash "$architecture_dir/.github/scripts/depguardcheck.sh" &
+  depguard_wrapper=$!
+  depguard_deadline_root=
+  for _ in 1 2 3 4 5; do
+    for candidate in "$depguard_cancel_dir"/celestia-depguard-deadline.*; do
+      if [[ -f "$candidate/child.pid" && -f "$candidate/watchdog.pid" ]]; then
+        depguard_deadline_root=$candidate
+        break 2
+      fi
+    done
+    sleep 1
+  done
+  [[ -n "$depguard_deadline_root" ]] || {
+    kill -TERM "$depguard_wrapper" 2>/dev/null || true
+    wait "$depguard_wrapper" 2>/dev/null || true
+    printf 'depguard cancellation fixture did not publish owned processes\n' >&2
+    return 1
+  }
+  depguard_child=$(cat "$depguard_deadline_root/child.pid")
+  depguard_watchdog=$(cat "$depguard_deadline_root/watchdog.pid")
+  kill -TERM "$depguard_wrapper"
+  set +e
+  wait "$depguard_wrapper"
+  status=$?
+  set -e
+  [[ "$status" -eq 143 ]] || {
+    printf 'cancelled depguard wrapper returned %s, expected 143\n' "$status" >&2
+    return 1
+  }
+  for pid in "$depguard_child" "$depguard_watchdog"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      printf 'cancelled depguard wrapper left process %s alive\n' "$pid" >&2
+      return 1
+    fi
+  done
+  [[ ! -e "$depguard_deadline_root" ]] || {
+    printf 'cancelled depguard wrapper retained deadline state\n' >&2
+    return 1
+  }
+  if ! command -v taskkill.exe >/dev/null 2>&1; then
+    depguard_descendants="$work_dir/depguard-descendants"
+    status=0
+    CELESTIA_DEPGUARD_BOUNDED=1 CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
+      CELESTIA_DEPGUARD_DESCENDANT_FILE="$depguard_descendants" \
+      bash "$architecture_dir/.github/scripts/depguardcheck.sh" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 124 ]] || {
+      printf 'depguard descendant fixture returned %s, expected 124\n' "$status" >&2
+      return 1
+    }
+    while IFS= read -r pid; do
+      if kill -0 "$pid" 2>/dev/null; then
+        printf 'depguard deadline left descendant %s alive\n' "$pid" >&2
+        return 1
+      fi
+    done <"$depguard_descendants"
+  fi
+  mkdir -p "$architecture_dir/worker/rogue"
+  printf 'package rogue\n' >"$architecture_dir/worker/rogue/main.go"
+  git -C "$architecture_dir" add worker/rogue/main.go
+  set +e
+  output=$(cd "$architecture_dir" &&
+    bash .github/scripts/policycheck.sh architecture 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted an undeclared worker package\n' >&2
+    return 1
+  }
+  grep -Fq 'worker/rogue/main.go: Go package is not declared' <<<"$output" || {
+    printf 'policy output omitted the architecture diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
   printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
     >"$work_dir/.github/.coverage"
   cat >"$work_dir/go.mod" <<'EOF'
@@ -574,6 +713,24 @@ EOF
   ' "$root/go.sum" >"$work_dir/go.sum"
   LC_ALL=C sort "$work_dir/go.sum" >"$work_dir/go.sum.sorted"
   mv "$work_dir/go.sum.sorted" "$work_dir/go.sum"
+  cat >"$work_dir/xsys_fixture_windows.go" <<'EOF'
+// Copyright © 2026 @sudocelestia. All rights reserved.
+//
+// PROPRIETARY AND CONFIDENTIAL SOURCE CODE.
+//
+// No licence, permission or authorisation is granted to use, copy, modify,
+// compile, execute, distribute, publish, sublicense or otherwise exploit this
+// file, except to the limited extent unavoidably permitted by applicable law
+// or GitHub's Terms of Service.
+//
+// See the LICENSE file at the repository root for the complete terms.
+
+//go:build windows
+
+package fixture
+
+import _ "golang.org/x/sys/windows"
+EOF
   git -C "$work_dir" init -q
   for workspace_file in go.work go.work.sum; do
     printf 'fixture\n' >"$work_dir/$workspace_file"
@@ -601,23 +758,40 @@ EOF
     printf 'policy check rejected the reviewed governed manifest\n' >&2
     return 1
   }
-  printf '\n' >>"$work_dir/docs/contracts/governed_url_reference_v1.json"
-  set +e
-  output=$(cd "$work_dir" &&
-    bash .github/scripts/policycheck.sh manifest 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted changed governed-manifest bytes\n' >&2
-    return 1
-  }
-  grep -Fq 'governed manifest differs from its reviewed form' <<<"$output" || {
-    printf 'policy output omitted governed-manifest drift:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  cp "$root/docs/contracts/governed_url_reference_v1.json" \
-    "$work_dir/docs/contracts/"
+  mkdir -p "$work_dir/config-bin"
+  (
+    cd "$work_dir"
+    go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
+  )
+  for manifest in governed_url_reference_v1.json cel_struct_001.json; do
+    printf '\n' >>"$work_dir/docs/contracts/$manifest"
+    set +e
+    output=$(cd "$work_dir" &&
+      "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'policy check accepted changed manifest %s\n' "$manifest" >&2
+      return 1
+    }
+    grep -Fq 'governed manifest differs from its reviewed form' <<<"$output" || {
+      printf 'policy output omitted manifest drift for %s:\n%s\n' \
+        "$manifest" "$output" >&2
+      return 1
+    }
+    cp "$root/docs/contracts/$manifest" "$work_dir/docs/contracts/"
+    rm -- "$work_dir/docs/contracts/$manifest"
+    set +e
+    output=$(cd "$work_dir" &&
+      "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'policy check accepted missing manifest %s\n' "$manifest" >&2
+      return 1
+    }
+    cp "$root/docs/contracts/$manifest" "$work_dir/docs/contracts/"
+  done
   cat >"$work_dir/.git/info/exclude" <<'EOF'
 /config-bin/
 /lint-*/
@@ -629,11 +803,6 @@ EOF
 EOF
   if [[ "$(go env GOOS)" != windows ]] &&
     command -v mkfifo >/dev/null 2>&1; then
-    mkdir -p "$work_dir/config-bin"
-    (
-      cd "$work_dir"
-      go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
-    )
     printf '%s\n' 'package fixture' >"$work_dir/fifo.go"
     git -C "$work_dir" add -- fifo.go
     rm -- "$work_dir/fifo.go"
@@ -2010,7 +2179,6 @@ EOF
 name = "fixture"
 version = "0.0.0"
 edition = "2024"
-autotests = false
 
 [lib]
 doctest = false
@@ -2077,7 +2245,6 @@ EOF
     'invalid ShellCheck suppression' \
     'invalid Clippy suppression' \
     'dynamic Rust attributes are prohibited' \
-    'Cargo automatic target discovery must remain enabled' \
     'Cargo library targets are prohibited' \
     'optional Cargo dependencies require an explicit test matrix' \
     'Cargo profile overrides are prohibited' \
@@ -2261,6 +2428,27 @@ EOF
     printf 'licence cache did not report the renamed fixture\n' >&2
     return 1
   }
+
+  for extension in s m f F for f90 swig swigcxx; do
+    printf 'SOURCE\n' >"$licence_dir/fixture.$extension"
+    git -C "$licence_dir" add "fixture.$extension"
+    set +e
+    output=$(cd "$licence_dir" &&
+      bash .github/scripts/licencecheck.sh verify 2>&1)
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'licence check accepted .%s source without a header\n' "$extension" >&2
+      return 1
+    }
+    grep -Fq "fixture.$extension: missing or incorrect proprietary header" \
+      <<<"$output" || {
+      printf 'licence check omitted the .%s source diagnostic\n' "$extension" >&2
+      return 1
+    }
+    rm -- "$licence_dir/fixture.$extension"
+    git -C "$licence_dir" rm --cached -q -- "fixture.$extension"
+  done
 
   rust_dir="$work_dir/rust"
   rust_bin="$rust_dir/bin"

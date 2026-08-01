@@ -9,14 +9,15 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+// Package urloperation coordinates the governed URL-reference use case.
 package urloperation
 
 import (
 	"errors"
 
-	"celestia.research/governed-operation/internal/attemptstore"
-	"celestia.research/governed-operation/internal/processsupervision"
-	"celestia.research/governed-operation/internal/workerprotocolv1"
+	"celestia.research/celestia/internal/attemptstore"
+	"celestia.research/celestia/internal/processsupervision"
+	"celestia.research/celestia/internal/workerprotocolv1"
 )
 
 const (

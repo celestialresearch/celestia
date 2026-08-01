@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"celestia.research/governed-operation/internal/workerprotocolv1"
+	"celestia.research/celestia/internal/workerprotocolv1"
 )
 
 func TestStageRejectsAcceptedFrameMismatch(t *testing.T) {

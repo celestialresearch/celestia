@@ -14,6 +14,7 @@ package main
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -47,29 +48,29 @@ var cargoLintCases = []struct {
 	{"deny", "[workspace.lints.clippy]\nall = \"deny\"\n", 0},
 	{"workspace inheritance", "[lints]\nworkspace = true\n", 0},
 	{
-		"automatic tests disabled",
+		"explicit tests",
 		"[package]\nname = \"fixture\"\nautotests = false\n",
-		1,
+		0,
 	},
 	{
 		"automatic library disabled",
 		"[package]\nname = \"fixture\"\nautolib = false\n",
-		1,
+		0,
 	},
 	{
-		"automatic binaries disabled",
+		"explicit binaries",
 		"[package]\nname = \"fixture\"\nautobins = false\n",
-		1,
+		0,
 	},
 	{
 		"automatic examples disabled",
 		"[package]\nname = \"fixture\"\nautoexamples = false\n",
-		1,
+		0,
 	},
 	{
 		"automatic benches disabled",
 		"[package]\nname = \"fixture\"\nautobenches = false\n",
-		1,
+		0,
 	},
 	{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 1},
 	{"doctests disabled", "[lib]\ndoctest = false\n", 1},
@@ -303,6 +304,19 @@ func TestRustPolicyAttributes(t *testing.T) {
 				t.Fatalf("findings = %v, want %d", findings, test.findings)
 			}
 		})
+	}
+}
+
+func TestRustPolicyRejectsForwardedInclude(t *testing.T) {
+	t.Parallel()
+
+	source := []byte(`macro_rules! load {
+    ($macro_name:ident) => { $macro_name!("owned.rs") }
+}
+load!(include);`)
+	findings := rustFindings("fixture.rs", source, modeTestSkips)
+	if len(findings) != 1 || !strings.Contains(findings[0], "Rust include! is prohibited") {
+		t.Fatalf("findings = %v", findings)
 	}
 }
 

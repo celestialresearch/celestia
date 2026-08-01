@@ -9,20 +9,5 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+// Package main implements bounded repository source-policy checks.
 package main
-
-import (
-	"path/filepath"
-	"testing"
-)
-
-func TestSplitPath(t *testing.T) {
-	path := filepath.Join("one", "two", "three")
-	parts := splitPath(path)
-	if len(parts) != 3 ||
-		parts[0] != "one" ||
-		parts[1] != "two" ||
-		parts[2] != "three" {
-		t.Fatalf("splitPath(%q) = %v", path, parts)
-	}
-}

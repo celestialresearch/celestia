@@ -9,15 +9,5 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+// Package main implements the repository's GitHub Actions policy checker.
 package main
-
-import (
-	"path/filepath"
-	"strings"
-)
-
-func splitPath(path string) []string {
-	return strings.FieldsFunc(path, func(value rune) bool {
-		return value == rune(filepath.Separator)
-	})
-}

@@ -19,11 +19,11 @@ import (
 	"fmt"
 	"time"
 
-	"celestia.research/governed-operation/internal/attemptstore"
-	"celestia.research/governed-operation/internal/processsupervision"
-	"celestia.research/governed-operation/internal/urladmission"
-	"celestia.research/governed-operation/internal/urlreferencev1"
-	"celestia.research/governed-operation/internal/workerprotocolv1"
+	"celestia.research/celestia/internal/attemptstore"
+	"celestia.research/celestia/internal/processsupervision"
+	"celestia.research/celestia/internal/urladmission"
+	"celestia.research/celestia/internal/urlreferencev1"
+	"celestia.research/celestia/internal/workerprotocolv1"
 )
 
 type Operation struct {

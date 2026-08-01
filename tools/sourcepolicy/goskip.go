@@ -263,7 +263,7 @@ func goCandidateDirectories(
 	paths []string,
 	readFile func(string) ([]byte, error),
 ) (map[string]bool, map[string][]byte, error) {
-	if err := rejectExternalModuleReplacements(paths, readFile); err != nil {
+	if err := rejectModuleReplacements(paths, readFile); err != nil {
 		return nil, nil, err
 	}
 	testDirectories := make(map[string]bool)

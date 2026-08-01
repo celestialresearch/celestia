@@ -15,9 +15,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,6 +32,7 @@ const (
 	modeSuppressions      = "suppressions"
 	modeTestSkips         = "test-skips"
 	modeManifest          = "manifest"
+	modeArchitecture      = "architecture"
 	maxSourceBytes        = 1 << 20
 	maxInventoryBytes     = 16 << 20
 	maxInventoryPaths     = 100_000
@@ -43,11 +41,14 @@ const (
 	maxGoPolicyDuration   = 3 * time.Minute
 	nolintMarker          = "//no" + "lint"
 	nosecMarker           = "#no" + "sec"
-	governedManifestPath  = "docs/contracts/governed_url_reference_v1.json"
-	governedManifestSHA   = "aff0ab1df517151da1445093c61b7d05fce148c7465094936b99a91025e03533"
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == modeArchitecture {
+		os.Exit(runArchitecturePolicy(
+			os.Stderr, sourceFiles, sourceExecutables, readSource,
+		))
+	}
 	if len(os.Args) == 2 && os.Args[1] == modeManifest {
 		os.Exit(runManifestPolicy(os.Stderr, readSource))
 	}
@@ -71,7 +72,7 @@ func run(
 	if len(args) != 1 ||
 		(args[0] != modeSuppressions && args[0] != modeTestSkips) {
 		if _, err := fmt.Fprintln(
-			stderr, "usage: sourcepolicy [manifest|suppressions|test-skips]",
+			stderr, "usage: sourcepolicy [architecture|manifest|suppressions|test-skips]",
 		); err != nil {
 			return 1
 		}
@@ -95,39 +96,6 @@ func run(
 		return 0
 	}
 	if _, err := fmt.Fprintln(stderr, strings.Join(findings, "\n")); err != nil {
-		return 1
-	}
-	return 1
-}
-
-func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {
-	return manifestPolicyStatus(stderr, readFile, governedManifestSHA)
-}
-
-func manifestPolicyStatus(
-	stderr io.Writer,
-	readFile func(string) ([]byte, error),
-	expected string,
-) int {
-	data, err := readFile(governedManifestPath)
-	if err != nil {
-		return writeManifestError(stderr, "read governed manifest: "+err.Error())
-	}
-	if !json.Valid(data) {
-		return writeManifestError(stderr, "governed manifest is not valid JSON")
-	}
-	digest := sha256.Sum256(data)
-	if hex.EncodeToString(digest[:]) != expected {
-		return writeManifestError(
-			stderr,
-			"governed manifest differs from its reviewed form",
-		)
-	}
-	return 0
-}
-
-func writeManifestError(stderr io.Writer, message string) int {
-	if _, err := fmt.Fprintln(stderr, message); err != nil {
 		return 1
 	}
 	return 1

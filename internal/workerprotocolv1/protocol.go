@@ -9,6 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+// Package workerprotocol validates the URL-reference worker protocol.
 package workerprotocol
 
 import (
@@ -24,7 +25,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"celestia.research/governed-operation/internal/urlreferencev1"
+	"celestia.research/celestia/internal/urlreferencev1"
 )
 
 const (

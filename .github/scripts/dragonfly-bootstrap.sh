@@ -59,4 +59,4 @@ AUTO: {
 EOF
 
 retry sudo env SSL_CA_CERT_FILE="$ca_bundle" pkg update -f
-retry sudo env SSL_CA_CERT_FILE="$ca_bundle" pkg install -y go
+retry sudo env SSL_CA_CERT_FILE="$ca_bundle" pkg install -y go git

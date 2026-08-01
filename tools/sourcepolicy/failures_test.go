@@ -27,7 +27,6 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -493,7 +492,7 @@ func TestGoPolicyTreatsAdjacentGoBuildAsConstraint(t *testing.T) {
 	}
 }
 
-func TestGoPolicyRejectsExternalReplacement(t *testing.T) {
+func TestGoPolicyRejectsModuleReplacement(t *testing.T) {
 	root := t.TempDir()
 	modulePath := filepath.Join(root, "go.mod")
 	testPath := filepath.Join(root, "replace_test.go")
@@ -504,7 +503,7 @@ func TestGoPolicyRejectsExternalReplacement(t *testing.T) {
 	if err := os.WriteFile(
 		modulePath,
 		[]byte("module fixture.invalid/root\n\ngo 1.26.5\n\n"+
-			"replace fixture.invalid/helper => ../helper\n"),
+			"replace fixture.invalid/helper => ./helper\n"),
 		0o600,
 	); err != nil {
 		t.Fatal(err)
@@ -515,38 +514,8 @@ func TestGoPolicyRejectsExternalReplacement(t *testing.T) {
 		os.ReadFile,
 		[]buildTarget{{goos: runtime.GOOS, goarch: runtime.GOARCH}},
 	)
-	if err == nil || !strings.Contains(err.Error(), "escapes the repository") {
+	if err == nil || !strings.Contains(err.Error(), "replacements are prohibited") {
 		t.Fatalf("replacement error = %v", err)
-	}
-}
-
-func TestGoPolicyRejectsLinkedReplacement(t *testing.T) {
-	root := t.TempDir()
-	external := t.TempDir()
-	link := filepath.Join(root, "linked")
-	if err := os.Symlink(external, link); err != nil {
-		t.Fatalf("create replacement link: %v", err)
-	}
-	modulePath := filepath.Join(root, "go.mod")
-	module, err := modfile.Parse(
-		modulePath,
-		[]byte("module fixture.invalid/root\n\ngo 1.26.5\n\n"+
-			"replace fixture.invalid/helper => ./linked\n"),
-		nil,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	escapes, err := moduleReplacementEscapes(
-		modulePath,
-		module.Replace[0],
-		root,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !escapes {
-		t.Fatal("linked replacement outside repository was accepted")
 	}
 }
 

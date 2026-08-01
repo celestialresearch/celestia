@@ -9,6 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+// Package processsupervision owns bounded native worker execution and cleanup.
 package processsupervision
 
 import (

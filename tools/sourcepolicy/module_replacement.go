@@ -14,19 +14,11 @@ package main
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"golang.org/x/mod/modfile"
 )
 
-type replacementPathOperations struct {
-	absolute func(string) (string, error)
-	relative func(string, string) (string, error)
-	linked   func(string, string) (bool, error)
-	physical func(string) (string, error)
-}
-
-func rejectExternalModuleReplacements(
+func rejectModuleReplacements(
 	paths []string,
 	readFile func(string) ([]byte, error),
 ) error {
@@ -53,107 +45,9 @@ func rejectExternalModuleReplacements(
 		if err != nil {
 			return fmt.Errorf("%s: parse Go module: %w", path, err)
 		}
-		for _, replacement := range module.Replace {
-			escapes, err := moduleReplacementEscapes(
-				path,
-				replacement,
-				repositoryRoot,
-			)
-			if err != nil {
-				return err
-			}
-			if escapes {
-				return fmt.Errorf(
-					"%s: Go module replacement escapes the repository",
-					path,
-				)
-			}
+		if len(module.Replace) != 0 {
+			return fmt.Errorf("%s: Go module replacements are prohibited", path)
 		}
 	}
 	return nil
-}
-
-func moduleReplacementEscapes(
-	modulePath string,
-	replacement *modfile.Replace,
-	repositoryRoot string,
-) (bool, error) {
-	return moduleReplacementEscapesWith(
-		modulePath,
-		replacement,
-		repositoryRoot,
-		replacementPathOperations{
-			absolute: filepath.Abs,
-			relative: filepath.Rel,
-			linked:   replacementPathLinked,
-			physical: filepath.EvalSymlinks,
-		},
-	)
-}
-
-func moduleReplacementEscapesWith(
-	modulePath string,
-	replacement *modfile.Replace,
-	repositoryRoot string,
-	operations replacementPathOperations,
-) (bool, error) {
-	if replacement.New.Version != "" || replacement.New.Path == "" {
-		return false, nil
-	}
-	target := replacement.New.Path
-	if !filepath.IsAbs(target) {
-		target = filepath.Join(filepath.Dir(modulePath), target)
-	}
-	absolute, err := operations.absolute(target)
-	if err != nil {
-		return false, fmt.Errorf(
-			"%s: resolve Go module replacement: %w",
-			modulePath,
-			err,
-		)
-	}
-	relative, err := operations.relative(repositoryRoot, absolute)
-	if err != nil {
-		return false, fmt.Errorf(
-			"%s: compare Go module replacement: %w",
-			modulePath,
-			err,
-		)
-	}
-	if pathEscapesRoot(relative) {
-		return true, nil
-	}
-	linked, err := operations.linked(repositoryRoot, absolute)
-	if err != nil {
-		return false, fmt.Errorf(
-			"%s: inspect Go module replacement path: %w",
-			modulePath,
-			err,
-		)
-	}
-	if linked {
-		return true, nil
-	}
-	resolved, err := operations.physical(absolute)
-	if err != nil {
-		return false, fmt.Errorf(
-			"%s: resolve physical Go module replacement: %w",
-			modulePath,
-			err,
-		)
-	}
-	physicalRelative, err := operations.relative(repositoryRoot, resolved)
-	if err != nil {
-		return false, fmt.Errorf(
-			"%s: compare physical Go module replacement: %w",
-			modulePath,
-			err,
-		)
-	}
-	return pathEscapesRoot(physicalRelative), nil
-}
-
-func pathEscapesRoot(relative string) bool {
-	return relative == ".." ||
-		strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }

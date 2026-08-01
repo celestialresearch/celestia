@@ -16,6 +16,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -45,11 +46,45 @@ func TestRunManifestPolicy(t *testing.T) {
 				func(string) ([]byte, error) {
 					return test.data, test.readErr
 				},
+				governedManifestPath,
 				test.expected,
 			)
 			if code != test.code {
 				t.Fatalf("code = %d, want %d", code, test.code)
 			}
 		})
+	}
+}
+
+func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
+	t.Chdir("../..")
+
+	var stderr bytes.Buffer
+	if runManifestPolicy(&stderr, os.ReadFile) != 0 {
+		t.Fatalf("reviewed manifests rejected: %s", stderr.String())
+	}
+	for _, target := range []string{governedManifestPath, structureManifestPath} {
+		for _, missing := range []bool{false, true} {
+			read := func(name string) ([]byte, error) {
+				if name == target {
+					if missing {
+						return nil, errors.New("missing")
+					}
+					return []byte(`{"schema_version":"changed"}`), nil
+				}
+				switch name {
+				case governedManifestPath:
+					return os.ReadFile(governedManifestPath)
+				case structureManifestPath:
+					return os.ReadFile(structureManifestPath)
+				default:
+					return nil, errors.New("unexpected manifest")
+				}
+			}
+			stderr.Reset()
+			if runManifestPolicy(&stderr, read) == 0 {
+				t.Fatalf("changed or missing manifest %s accepted", target)
+			}
+		}
 	}
 }

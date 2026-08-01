@@ -79,5 +79,5 @@ code; they do not authenticate a deliberately hostile test executable.
 
 Package overrides use:
 ```text
-package celestia.research/governed-operation/example 95
+package celestia.research/celestia/example 95
 ```

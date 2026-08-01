@@ -172,6 +172,26 @@ jobs:
                 ;;
             esac
           fi
+          if ! command -v git >/dev/null 2>&1; then
+            case "$(uname -s)" in
+              FreeBSD)
+                sudo pkg install -y git
+                ;;
+              DragonFly)
+                bash ./.github/scripts/dragonfly-bootstrap.sh
+                ;;
+              NetBSD)
+                sudo pkgin -y install git
+                ;;
+              OpenBSD)
+                sudo pkg_add git
+                ;;
+              *)
+                echo 'Repository policy requires Git but the guest has no Git executable' >&2
+                exit 1
+                ;;
+            esac
+          fi
           export GOTOOLCHAIN=go1.26.5+auto
           test "$(go env GOVERSION)" = go1.26.5
           go test -count=1 ./...

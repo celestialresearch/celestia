@@ -11,7 +11,16 @@
 # See the LICENSE file at the repository root for the complete terms.
 
 set -euo pipefail
-export GOWORK=off
+
+if [[ -n "${GOFLAGS:-}" && ! "$GOFLAGS" =~ ^-p=[1-9][0-9]*$ ]]; then
+  printf 'Uncontrolled Go policy environment: GOFLAGS\n' >&2
+  exit 1
+fi
+if [[ -n "${GOENV:-}" && "$GOENV" != off ]]; then
+  printf 'Uncontrolled Go policy environment: GOENV\n' >&2
+  exit 1
+fi
+export GOENV=off GOWORK=off
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
@@ -99,6 +108,14 @@ check_manifest() {
   go run ./tools/sourcepolicy manifest || status=1
 }
 
+check_architecture() {
+	if ! go run ./tools/sourcepolicy architecture; then
+		status=1
+		return
+	fi
+	bash ./.github/scripts/depguardcheck.sh || status=1
+}
+
 is_generated_source() {
   local count=0
   local file=$1
@@ -172,6 +189,7 @@ fi
 
 case "${1:-all}" in
 all)
+  check_architecture
   check_module
   check_workspace_files
   check_markers
@@ -193,6 +211,9 @@ suppressions)
 manifest)
   check_manifest
   ;;
+architecture)
+  check_architecture
+  ;;
 workspace)
   check_workspace_files
   ;;
@@ -200,7 +221,7 @@ test-skips)
   check_test_skips
   ;;
 *)
-  printf 'Usage: %s [all|manifest|markers|source-files|suppressions|test-skips|workspace]\n' \
+  printf 'Usage: %s [all|architecture|manifest|markers|source-files|suppressions|test-skips|workspace]\n' \
     "${0##*/}" >&2
   exit 2
   ;;
