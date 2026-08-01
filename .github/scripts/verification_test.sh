@@ -514,6 +514,7 @@ EOF
   cp \
     "$root/tools/sourcepolicy/gofallback.go" \
     "$root/tools/sourcepolicy/architecture.go" \
+    "$root/tools/sourcepolicy/architecture_limits.go" \
     "$root/tools/sourcepolicy/architecture_imports.go" \
     "$root/tools/sourcepolicy/architecture_values.go" \
     "$root/tools/sourcepolicy/gobuildtags.go" \
