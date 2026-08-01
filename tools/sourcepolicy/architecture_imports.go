@@ -48,6 +48,9 @@ func architectureImportFindings(
 			}
 			if reason != "" {
 				findings = append(findings, file+": "+reason)
+				if architectureFindingsFull(findings) {
+					return boundedArchitectureFindings(findings), nil
+				}
 			}
 		}
 	}

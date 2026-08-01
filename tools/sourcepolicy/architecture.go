@@ -37,6 +37,8 @@ const (
 	architectureCurrentSlice = "CEL-STRUCT-001"
 	architectureInventory    = "sha256-lf-paths-v1"
 	maxArchitectureDepth     = 64
+	maxArchitectureFindings  = 16
+	architectureTruncated    = "additional architecture findings omitted"
 )
 
 type architecturePolicy struct {
@@ -275,20 +277,43 @@ func architectureFindings(
 		return nil, err
 	}
 	findings := architecturePathFindings(files, policy)
+	if architectureFindingsFull(findings) {
+		return boundedArchitectureFindings(findings), nil
+	}
 	imports, err := architectureImportFindings(files, readFile)
 	if err != nil {
 		return nil, err
 	}
 	findings = append(findings, imports...)
+	if architectureFindingsFull(findings) {
+		return boundedArchitectureFindings(findings), nil
+	}
 	legacyFindings := architectureLegacyFindings(files, policy)
 	findings = append(findings, legacyFindings...)
+	if architectureFindingsFull(findings) {
+		return boundedArchitectureFindings(findings), nil
+	}
 	documentation, err := packageDocumentationFindings(files, policy, readFile)
 	if err != nil {
 		return nil, err
 	}
 	findings = append(findings, documentation...)
+	findings = boundedArchitectureFindings(findings)
 	sort.Strings(findings)
 	return findings, nil
+}
+
+func architectureFindingsFull(findings []string) bool {
+	return len(findings) > maxArchitectureFindings
+}
+
+func boundedArchitectureFindings(findings []string) []string {
+	if !architectureFindingsFull(findings) {
+		return findings
+	}
+	bounded := slices.Clone(findings[:maxArchitectureFindings])
+	sort.Strings(bounded)
+	return append(bounded, architectureTruncated)
 }
 
 func validateCurrentModule(
@@ -317,6 +342,9 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 		findings = append(findings, architectureFileFindings(
 			file, roots, rootFiles, packages, stringSet(policy.Commands), prohibited, retired,
 		)...)
+		if architectureFindingsFull(findings) {
+			return boundedArchitectureFindings(findings)
+		}
 	}
 	return findings
 }
@@ -390,6 +418,9 @@ func prohibitedPathFindings(
 	for _, segment := range segments[1 : len(segments)-1] {
 		if _, denied := prohibited[segment]; denied {
 			findings = append(findings, file+": prohibited directory segment "+segment)
+			if architectureFindingsFull(findings) {
+				return boundedArchitectureFindings(findings)
+			}
 		}
 	}
 	if strings.EqualFold(segments[len(segments)-1], "private-key.pem") {
@@ -412,6 +443,9 @@ func architectureLegacyFindings(
 			}
 			if _, exists := allowed[file]; !exists {
 				findings = append(findings, file+": legacy package inventory expanded")
+				if architectureFindingsFull(findings) {
+					return boundedArchitectureFindings(findings)
+				}
 			}
 		}
 	}
@@ -433,6 +467,9 @@ func packageDocumentationFindings(
 	for _, directory := range policy.Packages {
 		if !documented[directory] {
 			findings = append(findings, directory+": package documentation is missing")
+			if architectureFindingsFull(findings) {
+				return boundedArchitectureFindings(findings), nil
+			}
 		}
 	}
 	return findings, nil
