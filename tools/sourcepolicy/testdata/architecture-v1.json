@@ -35,6 +35,8 @@
     {"name": "migration-parent-entry", "mutation": "migration-parent-entry", "rule": "migration-exact-path", "expected": "reject"},
     {"name": "migration-expired-entry", "mutation": "migration-expired-entry", "rule": "migration-expiry", "expected": "reject"},
     {"name": "migrated-path-recreated", "mutation": "migrated-path-recreated", "rule": "migration-recreation", "expected": "reject"},
-    {"name": "process-supervision-recreated", "mutation": "process-supervision-recreated", "rule": "migration-recreation", "expected": "reject"}
+    {"name": "process-supervision-recreated", "mutation": "process-supervision-recreated", "rule": "migration-recreation", "expected": "reject"},
+    {"name": "transform-outside-operation", "mutation": "transform-outside-operation", "rule": "operation-package-ownership", "expected": "reject"},
+    {"name": "url-reference-transform-recreated", "mutation": "url-reference-transform-recreated", "rule": "migration-recreation", "expected": "reject"}
   ]
 }

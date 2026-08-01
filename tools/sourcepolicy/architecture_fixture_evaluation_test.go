@@ -150,6 +150,10 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 		return hasArchitecturePathFinding([]string{"internal/attemptstore/store.go"}, policy)
 	},
 	"process-supervision-recreated": processSupervisionRecreated,
+	"transform-outside-operation": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"internal/transform/transform.go"}, policy)
+	},
+	"url-reference-transform-recreated": urlReferenceTransformRecreated,
 }
 
 func processSupervisionRecreated(policy architecturePolicy) bool {
@@ -163,6 +167,22 @@ func processSupervisionRecreated(policy architecturePolicy) bool {
 	policy.RetiredMigration = []string{"internal/processsupervision"}
 	return hasArchitecturePathFinding(
 		[]string{"internal/processsupervision/supervisor.go"}, policy,
+	)
+}
+
+func urlReferenceTransformRecreated(policy architecturePolicy) bool {
+	roots := make([]architectureMigrationRoot, 0, len(policy.MigrationRoots)-1)
+	for _, root := range policy.MigrationRoots {
+		if root.Path != "internal/urlreferencev1" {
+			roots = append(roots, root)
+		}
+	}
+	policy.MigrationRoots = roots
+	policy.RetiredMigration = append(
+		policy.RetiredMigration, "internal/urlreferencev1",
+	)
+	return hasArchitecturePathFinding(
+		[]string{"internal/urlreferencev1/urlreference.go"}, policy,
 	)
 }
 
