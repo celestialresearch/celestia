@@ -22,14 +22,23 @@ func TestArchitectureRustTargets(t *testing.T) {
 	for name, source := range map[string]string{
 		"cross-package path": `[package]
 name = "celestia-url-reference"
+autobins = false
 
 [[bin]]
 name = "celestia-url-reference"
 path = "../qualification-fixtures/src/bin/hostile.rs"
 		`,
-		"disabled implicit target": `[package]
+		"missing explicit target": `[package]
 name = "celestia-url-reference"
 autobins = false
+		`,
+		"enabled automatic targets": `[package]
+name = "celestia-url-reference"
+autobins = true
+
+[[bin]]
+name = "celestia-url-reference"
+path = "src/main.rs"
 		`,
 		"malformed targets": `bin = "invalid"
 [package]

@@ -19,10 +19,9 @@ import (
 )
 
 type architectureRustPackage struct {
-	manifest       string
-	name           string
-	implicitTarget bool
-	targets        []architectureRustTarget
+	manifest string
+	name     string
+	targets  []architectureRustTarget
 }
 
 type architectureRustTarget struct {
@@ -33,9 +32,8 @@ type architectureRustTarget struct {
 func expectedArchitectureRustPackages() []architectureRustPackage {
 	return []architectureRustPackage{
 		{
-			manifest:       "worker/url-reference/Cargo.toml",
-			name:           "celestia-url-reference",
-			implicitTarget: true,
+			manifest: "worker/url-reference/Cargo.toml",
+			name:     "celestia-url-reference",
 			targets: []architectureRustTarget{
 				{name: "celestia-url-reference", path: "src/main.rs"},
 			},
@@ -85,11 +83,9 @@ func decodeArchitectureRustPackage(
 	}
 	name := architectureRustPackageName(document)
 	targets, valid := architectureRustTargets(document["bin"])
-	if !valid || architectureRustHasExtraTargets(document) || architectureRustHasBuildScript(document) {
+	if !valid || architectureRustAutobins(document) ||
+		architectureRustHasExtraTargets(document) || architectureRustHasBuildScript(document) {
 		return architectureRustPackage{name: name}, nil
-	}
-	if len(targets) == 0 && expected.implicitTarget && architectureRustAutobins(document) {
-		targets = slices.Clone(expected.targets)
 	}
 	slices.SortFunc(targets, func(left, right architectureRustTarget) int {
 		if left.name != right.name {
@@ -116,7 +112,7 @@ func architectureRustHasBuildScript(document map[string]any) bool {
 
 func architectureRustAutobins(document map[string]any) bool {
 	value, exists := nestedTable(document, "package")["autobins"]
-	return !exists || value == true
+	return !exists || value != false
 }
 
 func architectureRustPackageName(document map[string]any) string {

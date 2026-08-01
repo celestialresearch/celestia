@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 publish = false
+autobins = false
+
+[[bin]]
+name = "celestia-url-reference"
+path = "src/main.rs"
 
 [lints]
 workspace = true
