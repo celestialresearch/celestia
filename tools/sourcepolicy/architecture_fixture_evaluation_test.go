@@ -149,6 +149,21 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 		policy.RetiredMigration = []string{"internal/attemptstore"}
 		return hasArchitecturePathFinding([]string{"internal/attemptstore/store.go"}, policy)
 	},
+	"process-supervision-recreated": processSupervisionRecreated,
+}
+
+func processSupervisionRecreated(policy architecturePolicy) bool {
+	roots := make([]architectureMigrationRoot, 0, len(policy.MigrationRoots)-1)
+	for _, root := range policy.MigrationRoots {
+		if root.Path != "internal/processsupervision" {
+			roots = append(roots, root)
+		}
+	}
+	policy.MigrationRoots = roots
+	policy.RetiredMigration = []string{"internal/processsupervision"}
+	return hasArchitecturePathFinding(
+		[]string{"internal/processsupervision/supervisor.go"}, policy,
+	)
 }
 
 func missingPackageCommentRejected(policy architecturePolicy) bool {
