@@ -522,6 +522,7 @@ EOF
     "$root/tools/sourcepolicy/architecture_inventory.go" \
     "$root/tools/sourcepolicy/architecture_limits.go" \
     "$root/tools/sourcepolicy/architecture_imports.go" \
+    "$root/tools/sourcepolicy/architecture_paths.go" \
     "$root/tools/sourcepolicy/architecture_rust.go" \
     "$root/tools/sourcepolicy/architecture_scripts.go" \
     "$root/tools/sourcepolicy/architecture_values.go" \
