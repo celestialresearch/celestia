@@ -156,6 +156,9 @@ func evaluateArchitecture(
 	if err != nil {
 		return nil, fmt.Errorf("inventory architecture: %w", err)
 	}
+	if err := rejectModuleReplacements(files, budget.readFile); err != nil {
+		return nil, err
+	}
 	executables, err := executableInventory(files)
 	if err != nil {
 		return nil, fmt.Errorf("inventory executable sources: %w", err)

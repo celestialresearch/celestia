@@ -28,6 +28,24 @@ func TestArchitecturePolicyAcceptsRepository(t *testing.T) {
 	}
 }
 
+func TestArchitecturePolicyRejectsModuleReplacement(t *testing.T) {
+	t.Chdir("../..")
+
+	var stderr bytes.Buffer
+	read := func(path string) ([]byte, error) {
+		if path == "go.mod" {
+			return []byte("module celestia.research/celestia\n\ngo 1.26.5\n\nreplace mirror.invalid/assurance => celestia.research/assurance v1.0.0\n"), nil
+		}
+		return readSource(path)
+	}
+	status := runArchitecturePolicy(
+		&stderr, sourceFiles, sourceExecutables, read,
+	)
+	if status == 0 || !bytes.Contains(stderr.Bytes(), []byte("replacements are prohibited")) {
+		t.Fatalf("status = %d, stderr = %q", status, stderr.String())
+	}
+}
+
 func TestArchitecturePolicyRejectsInfrastructureFailures(t *testing.T) {
 	t.Parallel()
 
