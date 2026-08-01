@@ -57,9 +57,9 @@ var cargoLintCases = []struct {
 		1,
 	},
 	{
-		"automatic binaries disabled",
+		"explicit binaries",
 		"[package]\nname = \"fixture\"\nautobins = false\n",
-		1,
+		0,
 	},
 	{
 		"automatic examples disabled",

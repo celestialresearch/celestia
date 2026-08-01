@@ -347,7 +347,6 @@ func cargoTestDiscoveryFindings(
 	if packageTable := nestedTable(document, "package"); packageTable != nil {
 		for _, setting := range []string{
 			"autolib",
-			"autobins",
 			"autoexamples",
 			"autotests",
 			"autobenches",
