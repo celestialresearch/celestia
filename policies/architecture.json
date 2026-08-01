@@ -1,6 +1,6 @@
 {
   "schema_version": "celestia.production.architecture.v1",
-  "current_slice": "CEL-STRUCT-004D",
+  "current_slice": "CEL-STRUCT-004E",
   "base_commit": "ea8f840aa230f0498f82f3cd00dca22760cf6020",
   "module_path": "celestia.research/celestia",
   "inventory_format": "sha256-lf-paths-v1",
@@ -60,11 +60,11 @@
   ],
   "declared_packages": [
     "internal/execution/supervision",
+    "internal/operation/urlreference",
     "internal/operation/urlreference/admission",
     "internal/operation/urlreference/attempt",
     "internal/operation/urlreference/protocol",
     "internal/operation/urlreference/transform",
-    "internal/urloperation",
     "tools/actionpolicy",
     "tools/sourcepolicy"
   ],
@@ -104,30 +104,13 @@
     "runtime-imports-tools",
     "runtime-imports-worker"
   ],
-  "migration_roots": [
-    {
-      "path": "internal/urloperation",
-      "inventory_count": 5,
-      "inventory_sha256": "9ea53ceaa57bb11f17df5e1da4d30f9d174e0d9cb38eef41ebd22cf7779d0755",
-      "destination": "internal/operation/urlreference",
-      "migration_slice": "CEL-STRUCT-004E",
-      "reason": "URL operation remains at its pre-constitution path until its path-only move",
-      "expires_at_completion": "CEL-STRUCT-004E",
-      "allow_new_files": false,
-      "inventory_paths": [
-        "internal/urloperation/operation.go",
-        "internal/urloperation/operation_unsupported.go",
-        "internal/urloperation/operation_unsupported_test.go",
-        "internal/urloperation/operation_windows.go",
-        "internal/urloperation/operation_windows_test.go"
-      ]
-    }
-  ],
+  "migration_roots": [],
   "retired_migration_paths": [
     "internal/processsupervision",
     "internal/urlreferencev1",
     "internal/workerprotocolv1",
     "internal/urladmission",
-    "internal/attemptstore"
+    "internal/attemptstore",
+    "internal/urloperation"
   ]
 }

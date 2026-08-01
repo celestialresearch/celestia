@@ -68,6 +68,21 @@ func TestArchitectureOwnsAttemptAtFinalPath(t *testing.T) {
 	}
 }
 
+func TestArchitectureOwnsOperationAtFinalPath(t *testing.T) {
+	t.Parallel()
+
+	policy := validArchitectureFixturePolicy()
+	if !slices.Contains(policy.Packages, "internal/operation/urlreference") {
+		t.Fatal("final URL-reference operation root is not governed")
+	}
+	if len(policy.MigrationRoots) != 0 {
+		t.Fatal("completed operation move leaves migration state")
+	}
+	if !slices.Contains(policy.RetiredMigration, "internal/urloperation") {
+		t.Fatal("retired URL-reference operation can be recreated")
+	}
+}
+
 func TestArchitectureSourceOwnership(t *testing.T) {
 	t.Parallel()
 

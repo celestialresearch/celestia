@@ -789,7 +789,10 @@ func testHostileWorker(t *testing.T) string {
 
 func locateWorker(tb testing.TB, name string) string {
 	tb.Helper()
-	root := filepath.Clean(filepath.Join(testWorkingDirectory(tb), "..", ".."))
+	root, err := repositoryRoot()
+	if err != nil {
+		tb.Fatalf("repository root: %v", err)
+	}
 	binaryDirectory := filepath.Join(root, "target", "debug")
 	if name == "celestia-hostile-worker.exe" || name == "celestia-blocked-input-worker.exe" {
 		binaryDirectory = filepath.Join(root, "worker", "qualification-fixtures", "target", "debug")
@@ -801,21 +804,12 @@ func locateWorker(tb testing.TB, name string) string {
 	return path
 }
 
-func testWorkingDirectory(tb testing.TB) string {
-	tb.Helper()
-	workingDirectory, err := os.Getwd()
-	if err != nil {
-		tb.Fatalf("working directory: %v", err)
-	}
-	return workingDirectory
-}
-
 func repositoryRoot() (string, error) {
 	workingDirectory, err := os.Getwd()
 	if err != nil {
 		return "", fmt.Errorf("working directory: %w", err)
 	}
-	return filepath.Clean(filepath.Join(workingDirectory, "..", "..")), nil
+	return filepath.Clean(filepath.Join(workingDirectory, "..", "..", "..")), nil
 }
 
 func TestPublishReleaseFailurePreservesTerminalStatus(t *testing.T) {

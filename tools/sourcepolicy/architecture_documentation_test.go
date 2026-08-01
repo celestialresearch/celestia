@@ -41,7 +41,7 @@ func TestMigrationDocumentationMustBePortable(t *testing.T) {
 
 	policy := validArchitectureFixturePolicy()
 	policy.Packages = []string{"internal/example"}
-	policy.MigrationRoots[0].Path = "internal/example"
+	policy.MigrationRoots = []architectureMigrationRoot{{Path: "internal/example"}}
 	read := func(string) ([]byte, error) {
 		return []byte("//go:build windows\n\n// Package example owns the fixture.\npackage example\n"), nil
 	}
@@ -58,7 +58,7 @@ func TestMigrationDocumentationRejectsTargetFilename(t *testing.T) {
 
 	policy := validArchitectureFixturePolicy()
 	policy.Packages = []string{"internal/example"}
-	policy.MigrationRoots[0].Path = "internal/example"
+	policy.MigrationRoots = []architectureMigrationRoot{{Path: "internal/example"}}
 	read := func(string) ([]byte, error) {
 		return []byte("// Package example owns the fixture.\npackage example\n"), nil
 	}

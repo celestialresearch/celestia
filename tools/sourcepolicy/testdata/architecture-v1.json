@@ -43,6 +43,8 @@
     {"name": "admission-outside-operation", "mutation": "admission-outside-operation", "rule": "operation-package-ownership", "expected": "reject"},
     {"name": "url-admission-recreated", "mutation": "url-admission-recreated", "rule": "migration-recreation", "expected": "reject"},
     {"name": "attempt-outside-operation", "mutation": "attempt-outside-operation", "rule": "operation-package-ownership", "expected": "reject"},
-    {"name": "attempt-store-recreated", "mutation": "attempt-store-recreated", "rule": "migration-recreation", "expected": "reject"}
+    {"name": "attempt-store-recreated", "mutation": "attempt-store-recreated", "rule": "migration-recreation", "expected": "reject"},
+    {"name": "outside-operation-root", "mutation": "outside-operation-root", "rule": "operation-package-ownership", "expected": "reject"},
+    {"name": "url-operation-recreated", "mutation": "url-operation-recreated", "rule": "migration-recreation", "expected": "reject"}
   ]
 }
