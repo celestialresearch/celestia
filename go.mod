@@ -1,4 +1,4 @@
-module celestia.research/governed-operation
+module celestia.research/celestia
 
 go 1.26.5
 

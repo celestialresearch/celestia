@@ -24,7 +24,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"celestia.research/governed-operation/internal/urlreferencev1"
+	"celestia.research/celestia/internal/urlreferencev1"
 )
 
 const (

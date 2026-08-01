@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"celestia.research/governed-operation/internal/urladmission"
-	"celestia.research/governed-operation/internal/urlreferencev1"
-	"celestia.research/governed-operation/internal/workerprotocolv1"
+	"celestia.research/celestia/internal/urladmission"
+	"celestia.research/celestia/internal/urlreferencev1"
+	"celestia.research/celestia/internal/workerprotocolv1"
 )
 
 func TestStoreRejectsInvalidEvidenceRoots(t *testing.T) {

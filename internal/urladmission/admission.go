@@ -21,8 +21,8 @@ import (
 	"io"
 	"time"
 
-	"celestia.research/governed-operation/internal/urlreferencev1"
-	"celestia.research/governed-operation/internal/workerprotocolv1"
+	"celestia.research/celestia/internal/urlreferencev1"
+	"celestia.research/celestia/internal/workerprotocolv1"
 )
 
 const identityBytes = 32
