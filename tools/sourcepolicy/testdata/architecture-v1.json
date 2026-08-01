@@ -27,6 +27,7 @@
     {"name": "worker-private-key-path", "mutation": "worker-private-key-path", "rule": "composed-private-key-policy", "expected": "reject"},
     {"name": "migration-additional-file", "mutation": "migration-additional-file", "rule": "migration-inventory", "expected": "reject"},
     {"name": "unregistered-flat-package", "mutation": "unregistered-flat-package", "rule": "package-declaration", "expected": "reject"},
+    {"name": "unregistered-testdata-package", "mutation": "unregistered-testdata-package", "rule": "package-declaration", "expected": "reject"},
     {"name": "migration-wildcard-entry", "mutation": "migration-wildcard-entry", "rule": "migration-exact-path", "expected": "reject"},
     {"name": "migration-parent-entry", "mutation": "migration-parent-entry", "rule": "migration-exact-path", "expected": "reject"},
     {"name": "migration-expired-entry", "mutation": "migration-expired-entry", "rule": "migration-expiry", "expected": "reject"},

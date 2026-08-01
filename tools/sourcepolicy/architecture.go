@@ -390,25 +390,10 @@ func architectureGoPathFindings(
 		}
 		return nil
 	}
-	if fixturePackageOwned(directory, packages) {
-		return nil
-	}
 	if _, declared := packages[directory]; !declared {
 		return []string{file + ": Go package is not declared"}
 	}
 	return nil
-}
-
-func fixturePackageOwned(directory string, packages map[string]struct{}) bool {
-	prefix, found := strings.CutSuffix(directory, "/testdata")
-	if !found {
-		prefix, _, found = strings.Cut(directory, "/testdata/")
-	}
-	if !found {
-		return false
-	}
-	_, declared := packages[prefix]
-	return declared
 }
 
 func prohibitedPathFindings(
