@@ -20,14 +20,14 @@ import (
 	"time"
 
 	"celestia.research/celestia/internal/attemptstore"
-	"celestia.research/celestia/internal/processsupervision"
+	"celestia.research/celestia/internal/execution/supervision"
 	"celestia.research/celestia/internal/urladmission"
 	"celestia.research/celestia/internal/urlreferencev1"
 	"celestia.research/celestia/internal/workerprotocolv1"
 )
 
 type Operation struct {
-	supervisor *processsupervision.Supervisor
+	supervisor *supervision.Supervisor
 	store      *attemptstore.Store
 	admit      func(string, urlreference.Mode, time.Time) (urladmission.Accepted, error)
 	stage      func(
@@ -48,7 +48,7 @@ func New(
 	workerPath string,
 	evidenceRoot string,
 ) (*Operation, error) {
-	supervisor, err := processsupervision.New(workerPath, operationLimits())
+	supervisor, err := supervision.New(workerPath, operationLimits())
 	if err != nil {
 		return nil, fmt.Errorf("configure URL operation: %w", err)
 	}
@@ -137,12 +137,12 @@ func (operation *Operation) executeAccepted(
 	ctx context.Context,
 	accepted urladmission.Accepted,
 	admittedAt time.Time,
-) (Result, processsupervision.Outcome) {
+) (Result, supervision.Outcome) {
 	startDeadline := admittedAt.Add(
 		time.Duration(workerprotocol.StartTimeoutMS) * time.Millisecond,
 	)
 	process := operation.supervisor.RunBefore(ctx, accepted.Frame, startDeadline)
-	if process.Status != processsupervision.Completed || !process.CleanupComplete {
+	if process.Status != supervision.Completed || !process.CleanupComplete {
 		return Result{
 			Status:  terminalStatus(process),
 			Process: callerProcess(process),
@@ -167,7 +167,7 @@ func (operation *Operation) executeAccepted(
 
 func evaluateResponse(
 	accepted urladmission.Accepted,
-	process processsupervision.Outcome,
+	process supervision.Outcome,
 	response workerprotocol.Response,
 ) Result {
 	diagnostics := projectDiagnostics(response.Status, response.Diagnostics)
@@ -208,7 +208,7 @@ func evaluateResponse(
 	return result
 }
 
-func callerProcess(process processsupervision.Outcome) processsupervision.Outcome {
+func callerProcess(process supervision.Outcome) supervision.Outcome {
 	process.Stdout = nil
 	process.Stderr = nil
 	return process
@@ -248,32 +248,32 @@ func diagnosticMessage(code string) string {
 	}
 }
 
-func terminalStatus(process processsupervision.Outcome) Status {
+func terminalStatus(process supervision.Outcome) Status {
 	switch process.Status {
-	case processsupervision.Cancelled:
+	case supervision.Cancelled:
 		if errors.Is(process.Err, context.DeadlineExceeded) {
 			return TimedOut
 		}
 		return Cancelled
-	case processsupervision.TimedOut:
+	case supervision.TimedOut:
 		return TimedOut
-	case processsupervision.StartFailed:
+	case supervision.StartFailed:
 		if errors.Is(process.Err, context.DeadlineExceeded) {
 			return TimedOut
 		}
 		return Failed
-	case processsupervision.Completed,
-		processsupervision.OutputOverflow,
-		processsupervision.ErrorOverflow,
-		processsupervision.ExitFailed,
-		processsupervision.CleanupFailed:
+	case supervision.Completed,
+		supervision.OutputOverflow,
+		supervision.ErrorOverflow,
+		supervision.ExitFailed,
+		supervision.CleanupFailed:
 		return Failed
 	}
 	return Failed
 }
 
-func operationLimits() processsupervision.Limits {
-	return processsupervision.Limits{
+func operationLimits() supervision.Limits {
+	return supervision.Limits{
 		InputBytes:     workerprotocol.MaxResponseBytes,
 		OutputBytes:    workerprotocol.MaxResponseBytes,
 		ErrorBytes:     workerprotocol.StderrBytes,
@@ -287,7 +287,7 @@ func operationLimits() processsupervision.Limits {
 
 func observationFrom(
 	result Result,
-	process processsupervision.Outcome,
+	process supervision.Outcome,
 ) attemptstore.Observation {
 	processStatus := observationProcessStatus(result)
 	return attemptstore.Observation{
@@ -314,7 +314,7 @@ func observationProtocolStatus(result Result) string {
 	if result.Response != nil {
 		return protocolValid
 	}
-	if result.Process.Status == processsupervision.Completed &&
+	if result.Process.Status == supervision.Completed &&
 		errors.Is(result.Err, ErrProtocol) {
 		return protocolRejected
 	}
@@ -324,14 +324,14 @@ func observationProtocolStatus(result Result) string {
 func observationProcessStatus(result Result) string {
 	if result.Response != nil &&
 		result.Response.Status == workerprotocol.Failed {
-		return string(processsupervision.ExitFailed)
+		return string(supervision.ExitFailed)
 	}
 	return string(result.Process.Status)
 }
 
 func observationProcessError(
 	result Result,
-	process processsupervision.Outcome,
+	process supervision.Outcome,
 ) string {
 	if process.Err != nil {
 		return process.Err.Error()
@@ -343,7 +343,7 @@ func observationProcessError(
 		result.Response.Status == workerprotocol.Failed {
 		return result.Err.Error()
 	}
-	if process.Status != processsupervision.Completed {
+	if process.Status != supervision.Completed {
 		return result.Err.Error()
 	}
 	return ""

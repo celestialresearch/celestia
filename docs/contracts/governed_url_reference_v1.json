@@ -132,7 +132,7 @@
     {
       "id": "CEL-RESOURCE-IMAGE-001",
       "kind": "file",
-      "owner": "internal/processsupervision",
+      "owner": "internal/execution/supervision",
       "acquisition": "Copy, hash and lock one configured worker image",
       "bound": "One fixed image",
       "release": "Close the image and remove profile staging",
@@ -141,7 +141,7 @@
     {
       "id": "CEL-RESOURCE-PROCESS-001",
       "kind": "process",
-      "owner": "internal/processsupervision",
+      "owner": "internal/execution/supervision",
       "acquisition": "Create suspended and assign to one Job Object before resume",
       "bound": "One process, 67108864 bytes and 2000 milliseconds",
       "release": "Terminate when required and observe zero active processes",
@@ -152,7 +152,7 @@
     {
       "id": "CEL-RESOURCE-STREAMS-001",
       "kind": "stream",
-      "owner": "internal/processsupervision",
+      "owner": "internal/execution/supervision",
       "acquisition": "Inherit only the three explicit standard-stream handles",
       "bound": "65536 stdout, 8192 stderr and 65536 stdin bytes",
       "release": "Close and join every stream owner",
@@ -161,7 +161,7 @@
     {
       "id": "CEL-RESOURCE-PROFILE-001",
       "kind": "native_profile",
-      "owner": "internal/processsupervision",
+      "owner": "internal/execution/supervision",
       "acquisition": "Create one capability-free AppContainer profile",
       "bound": "One unique profile per attempt",
       "release": "Delete after complete process-tree cleanup",
@@ -622,7 +622,7 @@
     {
       "id": "CEL-URL-INV-003",
       "statement": "Cancellation and timeout cannot report complete cleanup unless the owned process tree is observed empty",
-      "owner": "internal/processsupervision",
+      "owner": "internal/execution/supervision",
       "severity": "critical",
       "boundary": "worker process tree lifecycle",
       "falsifier": "Report complete cleanup after cancellation or timeout while an owned descendant remains alive",
@@ -695,7 +695,7 @@
     },
     {
       "id": "CEL-URL-PROD-003",
-      "owner": "internal/processsupervision hostile lifecycle tests"
+      "owner": "internal/execution/supervision hostile lifecycle tests"
     },
     {
       "id": "CEL-URL-PROD-004",

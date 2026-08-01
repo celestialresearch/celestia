@@ -132,7 +132,7 @@ main() {
 
   for path in \
     internal/attemptstore/store.go \
-    internal/processsupervision/supervisor_windows.go \
+    internal/execution/supervision/supervisor_windows.go \
     internal/workerprotocolv1/protocol.go \
     internal/urladmission/admission.go \
     internal/urloperation/operation_windows.go \

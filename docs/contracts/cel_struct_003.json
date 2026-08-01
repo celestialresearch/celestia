@@ -371,7 +371,7 @@
   ],
   "non_goals": [
     "Change process, containment, protocol, persistence or worker behaviour",
-    "Retain compatibility with internal/processsupervision",
+    "Create a forwarding package, alias, shim or dual implementation",
     "Split or simplify supervision source",
     "Move another package",
     "Qualify another platform"

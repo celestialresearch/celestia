@@ -11,7 +11,7 @@
 
 //go:build windows && amd64
 
-package processsupervision
+package supervision
 
 import (
 	"errors"

@@ -21,7 +21,7 @@ import (
 	"strings"
 )
 
-const supervisionQualificationTest = "internal/processsupervision/supervisor_windows_test.go"
+const supervisionQualificationTest = "internal/execution/supervision/supervisor_windows_test.go"
 
 func architectureImportFindings(
 	files []string,
@@ -69,7 +69,7 @@ func forbiddenSupervisionQualificationImport(imported string) string {
 		return reason
 	}
 	allowed := []string{
-		architectureModule + "/internal/processsupervision",
+		architectureModule + "/internal/execution/supervision",
 		architectureModule + "/internal/urladmission",
 		architectureModule + "/internal/urlreferencev1",
 		architectureModule + "/internal/workerprotocolv1",

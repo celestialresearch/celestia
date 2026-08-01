@@ -11,25 +11,23 @@
 
 //go:build !windows || (windows && !amd64)
 
-package processsupervision
+package supervision
 
 import (
 	"context"
-	"errors"
-	"testing"
+	"fmt"
 	"time"
 )
 
-func TestSupervisorFailsClosed(t *testing.T) {
-	if _, err := New("/worker", Limits{}); !errors.Is(err, ErrUnavailable) {
-		t.Fatalf("constructor error=%v", err)
-	}
-	outcome := (&Supervisor{}).RunBefore(
-		context.Background(),
-		[]byte("request"),
-		time.Now(),
-	)
-	if outcome.Status != StartFailed || !errors.Is(outcome.Err, ErrUnavailable) {
-		t.Fatalf("outcome=%+v", outcome)
+type Supervisor struct{}
+
+func newSupervisor(string, Limits) (*Supervisor, error) {
+	return nil, fmt.Errorf("%w: native containment is not qualified", ErrUnavailable)
+}
+
+func (*Supervisor) run(context.Context, []byte, time.Time) Outcome {
+	return Outcome{
+		Status: StartFailed,
+		Err:    fmt.Errorf("%w: native containment is not qualified", ErrUnavailable),
 	}
 }

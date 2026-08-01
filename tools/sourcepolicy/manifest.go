@@ -21,11 +21,11 @@ import (
 
 const (
 	governedManifestPath  = "docs/contracts/governed_url_reference_v1.json"
-	governedManifestSHA   = "aff0ab1df517151da1445093c61b7d05fce148c7465094936b99a91025e03533"
+	governedManifestSHA   = "a22945a95c40129b37b8a5851e05743c3424a8fcb09297edb79bdb140b3879c7"
 	structureManifestPath = "docs/contracts/cel_struct_001.json"
 	structureManifestSHA  = "e062137f91713d0a9176d1af20720b20bf7c4ebfbc88ee0bf70a4d6316c490cc"
 	executionManifestPath = "docs/contracts/cel_struct_003.json"
-	executionManifestSHA  = "8b59e1fde2adad247eb72b5fb6e533dff8cb717f144d1e13552579c0f33eb47c"
+	executionManifestSHA  = "2dc8126222fd440e8820b30276056a6c3fd68b14e77fc937c5ef61de35b81626"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {
