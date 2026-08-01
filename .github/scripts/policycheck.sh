@@ -11,7 +11,16 @@
 # See the LICENSE file at the repository root for the complete terms.
 
 set -euo pipefail
-export GOWORK=off
+
+if [[ -n "${GOFLAGS:-}" && ! "$GOFLAGS" =~ ^-p=[1-9][0-9]*$ ]]; then
+  printf 'Uncontrolled Go policy environment: GOFLAGS\n' >&2
+  exit 1
+fi
+if [[ -n "${GOENV:-}" && "$GOENV" != off ]]; then
+  printf 'Uncontrolled Go policy environment: GOENV\n' >&2
+  exit 1
+fi
+export GOENV=off GOWORK=off
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 

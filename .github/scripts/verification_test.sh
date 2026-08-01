@@ -555,6 +555,29 @@ EOF
     printf 'policy check rejected the governed architecture\n' >&2
     return 1
   }
+  for variable in GOFLAGS GOENV; do
+    set +e
+    if [[ "$variable" == GOFLAGS ]]; then
+      output=$(cd "$architecture_dir" &&
+        GOFLAGS='-overlay=attacker.json' \
+          bash .github/scripts/policycheck.sh architecture 2>&1)
+    else
+      output=$(cd "$architecture_dir" &&
+        GOENV='attacker.env' \
+          bash .github/scripts/policycheck.sh architecture 2>&1)
+    fi
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'policy check accepted uncontrolled %s\n' "$variable" >&2
+      return 1
+    }
+    grep -Fq "Uncontrolled Go policy environment: $variable" <<<"$output" || {
+      printf 'policy check did not own the %s rejection:\n%s\n' \
+        "$variable" "$output" >&2
+      return 1
+    }
+  done
   set +e
   CELESTIA_DEPGUARD_BOUNDED=1 CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
     bash "$architecture_dir/.github/scripts/depguardcheck.sh"
