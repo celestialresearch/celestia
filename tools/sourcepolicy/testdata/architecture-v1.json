@@ -22,6 +22,7 @@
     {"name": "policy-permits-forbidden-edge", "mutation": "policy-permits-forbidden-edge", "rule": "compiled-boundary", "expected": "reject"},
     {"name": "root-common-helper", "mutation": "root-common-helper", "rule": "approved-root", "expected": "reject"},
     {"name": "internal-utils", "mutation": "internal-utils", "rule": "prohibited-segment", "expected": "reject"},
+    {"name": "mixed-case-utils", "mutation": "mixed-case-utils", "rule": "prohibited-segment-case", "expected": "reject"},
     {"name": "root-services", "mutation": "root-services", "rule": "approved-root", "expected": "reject"},
     {"name": "root-src", "mutation": "root-src", "rule": "approved-root", "expected": "reject"},
     {"name": "worker-private-key-path", "mutation": "worker-private-key-path", "rule": "composed-private-key-policy", "expected": "reject"},

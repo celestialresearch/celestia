@@ -100,6 +100,9 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"internal-utils": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"internal/utils/file.go"}, policy)
 	},
+	"mixed-case-utils": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"internal/Utils/file.go"}, policy)
+	},
 	"root-services": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"services/file.go"}, policy)
 	},

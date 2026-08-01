@@ -646,7 +646,7 @@ func prohibitedPathFindings(
 ) []string {
 	var findings []string
 	for _, segment := range segments[1 : len(segments)-1] {
-		if _, denied := prohibited[segment]; denied {
+		if _, denied := prohibited[strings.ToLower(segment)]; denied {
 			findings = append(findings, file+": prohibited directory segment "+segment)
 			if architectureFindingsFull(findings) {
 				return boundedArchitectureFindings(findings)
