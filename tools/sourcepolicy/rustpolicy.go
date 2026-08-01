@@ -59,26 +59,17 @@ func rustIncludeLine(tokens []rustPolicyToken) (int, bool) {
 	inUse := false
 	var macroDepth []bool
 	for index, token := range tokens {
+		if next, delimiter := rustMacroDelimiter(tokens, index, macroDepth); delimiter {
+			macroDepth = next
+			continue
+		}
 		switch token.text {
-		case "(", "[", "{":
-			inMacro := index > 0 && tokens[index-1].text == "!"
-			if len(macroDepth) > 0 && macroDepth[len(macroDepth)-1] {
-				inMacro = true
-			}
-			macroDepth = append(macroDepth, inMacro)
-		case ")", "]", "}":
-			if len(macroDepth) > 0 {
-				macroDepth = macroDepth[:len(macroDepth)-1]
-			}
 		case "use":
 			inUse = true
 		case ";":
 			inUse = false
 		case "include":
-			alias := index > 0 && tokens[index-1].text == "as"
-			if (inUse && !alias) ||
-				index+1 < len(tokens) && tokens[index+1].text == "!" ||
-				len(macroDepth) > 0 && macroDepth[len(macroDepth)-1] {
+			if rustIncludeToken(tokens, index, inUse, macroDepth) {
 				return token.line, true
 			}
 		}
@@ -86,27 +77,52 @@ func rustIncludeLine(tokens []rustPolicyToken) (int, bool) {
 	return 0, false
 }
 
+func rustIncludeToken(
+	tokens []rustPolicyToken,
+	index int,
+	inUse bool,
+	macroDepth []bool,
+) bool {
+	alias := index > 0 && tokens[index-1].text == "as"
+	direct := index+1 < len(tokens) && tokens[index+1].text == "!"
+	forwarded := len(macroDepth) > 0 && macroDepth[len(macroDepth)-1]
+	return inUse && !alias || direct || forwarded
+}
+
 func rustMacroIgnoreLine(tokens []rustPolicyToken) (int, bool) {
 	var macroDepth []bool
 	for index, token := range tokens {
-		switch token.text {
-		case "(", "[", "{":
-			inMacro := index > 0 && tokens[index-1].text == "!"
-			if len(macroDepth) > 0 && macroDepth[len(macroDepth)-1] {
-				inMacro = true
-			}
-			macroDepth = append(macroDepth, inMacro)
-		case ")", "]", "}":
-			if len(macroDepth) > 0 {
-				macroDepth = macroDepth[:len(macroDepth)-1]
-			}
-		default:
-			if rustForwardedIgnore(tokens, index, macroDepth) {
-				return token.line, true
-			}
+		if next, delimiter := rustMacroDelimiter(tokens, index, macroDepth); delimiter {
+			macroDepth = next
+			continue
+		}
+		if rustForwardedIgnore(tokens, index, macroDepth) {
+			return token.line, true
 		}
 	}
 	return 0, false
+}
+
+func rustMacroDelimiter(
+	tokens []rustPolicyToken,
+	index int,
+	depth []bool,
+) ([]bool, bool) {
+	switch tokens[index].text {
+	case "(", "[", "{":
+		inMacro := index > 0 && tokens[index-1].text == "!"
+		if len(depth) > 0 && depth[len(depth)-1] {
+			inMacro = true
+		}
+		return append(depth, inMacro), true
+	case ")", "]", "}":
+		if len(depth) > 0 {
+			depth = depth[:len(depth)-1]
+		}
+		return depth, true
+	default:
+		return depth, false
+	}
 }
 
 func rustForwardedIgnore(

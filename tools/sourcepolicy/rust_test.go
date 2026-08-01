@@ -14,6 +14,7 @@ package main
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -257,13 +258,6 @@ func TestRustPolicyAttributes(t *testing.T) {
 			modeTestSkips,
 			1,
 		},
-		{
-			"include identifier forwarding",
-			`macro_rules! load { ($macro_name:ident) => { $macro_name!("owned.rs") } }
-			load!(include);`,
-			modeTestSkips,
-			1,
-		},
 		{"path module", `#[path = "skipped.inc"] mod skipped;`, modeTestSkips, 1},
 		{
 			"conditional path",
@@ -310,6 +304,19 @@ func TestRustPolicyAttributes(t *testing.T) {
 				t.Fatalf("findings = %v, want %d", findings, test.findings)
 			}
 		})
+	}
+}
+
+func TestRustPolicyRejectsForwardedInclude(t *testing.T) {
+	t.Parallel()
+
+	source := []byte(`macro_rules! load {
+    ($macro_name:ident) => { $macro_name!("owned.rs") }
+}
+load!(include);`)
+	findings := rustFindings("fixture.rs", source, modeTestSkips)
+	if len(findings) != 1 || !strings.Contains(findings[0], "Rust include! is prohibited") {
+		t.Fatalf("findings = %v", findings)
 	}
 }
 
