@@ -344,9 +344,4 @@ run_case transform-allow internal/operation/urlreference/transform/example.go fm
 run_case transform-reject internal/operation/urlreference/transform/example.go \
   celestia.research/celestia/internal/execution/supervision reject \
   'transformation must not import other Production internals'
-run_case final-transform-reject \
-  internal/operation/urlreference/transform/example.go \
-  celestia.research/celestia/internal/execution/supervision reject \
-  'transformation must not import other Production internals'
-
 wait_cases
