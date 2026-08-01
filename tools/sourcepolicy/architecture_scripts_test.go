@@ -20,16 +20,19 @@ func TestArchitectureShebangOwnership(t *testing.T) {
 	t.Parallel()
 
 	read := func(file string) ([]byte, error) {
-		if file == "tools/sourcepolicy/rogue" {
+		if file == "tools/sourcepolicy/rogue" ||
+			file == "tools/sourcepolicy/rogue.txt" {
 			return []byte("#!/usr/bin/env bash\n"), nil
 		}
 		return []byte("ordinary text\n"), nil
 	}
 	findings, err := architectureShebangFindings(
-		[]string{"LICENSE", "tools/sourcepolicy/rogue"}, nil, read,
+		[]string{"LICENSE", "tools/sourcepolicy/rogue", "tools/sourcepolicy/rogue.txt"},
+		nil, read,
 	)
-	if err != nil || len(findings) != 1 ||
-		findings[0] != "tools/sourcepolicy/rogue: script is not declared" {
+	if err != nil || len(findings) != 2 ||
+		findings[0] != "tools/sourcepolicy/rogue: script is not declared" ||
+		findings[1] != "tools/sourcepolicy/rogue.txt: script is not declared" {
 		t.Fatalf("findings = %v, error = %v", findings, err)
 	}
 	findings, err = architectureShebangFindings(

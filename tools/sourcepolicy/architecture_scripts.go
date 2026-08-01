@@ -14,7 +14,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"path"
 )
 
 func architectureShebangFindings(
@@ -24,9 +23,6 @@ func architectureShebangFindings(
 	declared := stringSet(declaredScripts)
 	var findings []string
 	for _, file := range files {
-		if path.Ext(file) != "" {
-			continue
-		}
 		source, err := readFile(file)
 		if err != nil {
 			return nil, fmt.Errorf("read possible script %s: %w", file, err)
