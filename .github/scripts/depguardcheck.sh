@@ -324,19 +324,15 @@ run_case operation-allow internal/urloperation/example.go \
 run_case operation-reject internal/urloperation/example.go \
   celestia.research/celestia/internal/operation/other reject \
   'operation roots import only their own declared subpackages'
-run_case attempt-allow internal/attemptstore/example.go \
+run_case attempt-allow internal/operation/urlreference/attempt/example.go \
   celestia.research/celestia/internal/operation/urlreference/protocol pass ''
-run_case attempt-reject internal/attemptstore/example.go \
-  celestia.research/celestia/internal/execution/supervision reject \
-  'attempt evidence imports only lower URL-reference owners'
-run_case final-attempt-reject \
-  internal/operation/urlreference/attempt/example.go \
+run_case attempt-reject internal/operation/urlreference/attempt/example.go \
   celestia.research/celestia/internal/execution/supervision reject \
   'attempt evidence imports only lower URL-reference owners'
 run_case admission-allow internal/operation/urlreference/admission/example.go \
   celestia.research/celestia/internal/operation/urlreference/protocol pass ''
 run_case admission-reject internal/operation/urlreference/admission/example.go \
-  celestia.research/celestia/internal/attemptstore reject \
+  celestia.research/celestia/internal/operation/urlreference/attempt reject \
   'admission imports only protocol and transformation'
 run_case protocol-allow internal/operation/urlreference/protocol/example.go \
   celestia.research/celestia/internal/operation/urlreference/transform pass ''

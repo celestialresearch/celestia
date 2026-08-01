@@ -63,7 +63,6 @@ linters:
             - "celestia.research/celestia/internal/operation/urlreference/attempt"
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
-            - "celestia.research/celestia/internal/attemptstore"
             - "celestia.research/celestia/internal/execution/supervision"
           deny:
             - pkg: "celestia.research/celestia/internal/operation"
@@ -73,8 +72,6 @@ linters:
           files:
             - "**/internal/operation/urlreference/attempt/*.go"
             - "**/internal/operation/urlreference/attempt/**/*.go"
-            - "**/internal/attemptstore/*.go"
-            - "**/internal/attemptstore/**/*.go"
           allow:
             - "celestia.research/celestia/internal/operation/urlreference/admission"
             - "celestia.research/celestia/internal/operation/urlreference/protocol"

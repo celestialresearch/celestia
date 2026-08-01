@@ -53,12 +53,10 @@ exact module and package prefixes.
 
 ## Migration Registry
 The temporary registry contains exactly:
-- `internal/attemptstore` to `internal/operation/urlreference/attempt` in
-  `CEL-STRUCT-004D`;
 - `internal/urloperation` to `internal/operation/urlreference` in
   `CEL-STRUCT-004E`.
 
-The paths retired through `CEL-STRUCT-003` to `CEL-STRUCT-004C` cannot be
+The paths retired through `CEL-STRUCT-003` to `CEL-STRUCT-004D` cannot be
 recreated. They have no forwarding or compatibility surface.
 
 Each entry binds the exact base commit, file count and canonical inventory

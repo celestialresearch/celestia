@@ -92,7 +92,7 @@ jobs:
         run: |
           go build ./...
           go test -c -o "$RUNNER_TEMP/attemptstore-plan9.test" \
-            ./internal/attemptstore
+            ./internal/operation/urlreference/attempt
 
   bsd-bootstrap:
     name: ${{ matrix.name }} ${{ matrix.version }} Guest Bootstrap
