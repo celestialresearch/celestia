@@ -521,6 +521,7 @@ EOF
     "$root/tools/sourcepolicy/goinspect.go" \
     "$root/tools/sourcepolicy/goskip.go" \
     "$root/tools/sourcepolicy/main.go" \
+    "$root/tools/sourcepolicy/manifest.go" \
     "$root/tools/sourcepolicy/module_replacement.go" \
     "$root/tools/sourcepolicy/replacement_path.go" \
     "$root/tools/sourcepolicy/replacement_path_other.go" \
@@ -532,6 +533,7 @@ EOF
     "$root/tools/sourcepolicy/testinventory.go" \
     "$work_dir/tools/sourcepolicy/"
   cp "$root/docs/contracts/governed_url_reference_v1.json" \
+    "$root/docs/contracts/cel_struct_001.json" \
     "$work_dir/docs/contracts/"
 
   architecture_dir="$work_dir/architecture-repo"
@@ -640,23 +642,40 @@ EOF
     printf 'policy check rejected the reviewed governed manifest\n' >&2
     return 1
   }
-  printf '\n' >>"$work_dir/docs/contracts/governed_url_reference_v1.json"
-  set +e
-  output=$(cd "$work_dir" &&
-    bash .github/scripts/policycheck.sh manifest 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted changed governed-manifest bytes\n' >&2
-    return 1
-  }
-  grep -Fq 'governed manifest differs from its reviewed form' <<<"$output" || {
-    printf 'policy output omitted governed-manifest drift:\n%s\n' \
-      "$output" >&2
-    return 1
-  }
-  cp "$root/docs/contracts/governed_url_reference_v1.json" \
-    "$work_dir/docs/contracts/"
+  mkdir -p "$work_dir/config-bin"
+  (
+    cd "$work_dir"
+    go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
+  )
+  for manifest in governed_url_reference_v1.json cel_struct_001.json; do
+    printf '\n' >>"$work_dir/docs/contracts/$manifest"
+    set +e
+    output=$(cd "$work_dir" &&
+      "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'policy check accepted changed manifest %s\n' "$manifest" >&2
+      return 1
+    }
+    grep -Fq 'governed manifest differs from its reviewed form' <<<"$output" || {
+      printf 'policy output omitted manifest drift for %s:\n%s\n' \
+        "$manifest" "$output" >&2
+      return 1
+    }
+    cp "$root/docs/contracts/$manifest" "$work_dir/docs/contracts/"
+    rm -- "$work_dir/docs/contracts/$manifest"
+    set +e
+    output=$(cd "$work_dir" &&
+      "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
+    status=$?
+    set -e
+    [[ "$status" -ne 0 ]] || {
+      printf 'policy check accepted missing manifest %s\n' "$manifest" >&2
+      return 1
+    }
+    cp "$root/docs/contracts/$manifest" "$work_dir/docs/contracts/"
+  done
   cat >"$work_dir/.git/info/exclude" <<'EOF'
 /config-bin/
 /lint-*/
@@ -668,11 +687,6 @@ EOF
 EOF
   if [[ "$(go env GOOS)" != windows ]] &&
     command -v mkfifo >/dev/null 2>&1; then
-    mkdir -p "$work_dir/config-bin"
-    (
-      cd "$work_dir"
-      go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
-    )
     printf '%s\n' 'package fixture' >"$work_dir/fifo.go"
     git -C "$work_dir" add -- fifo.go
     rm -- "$work_dir/fifo.go"
