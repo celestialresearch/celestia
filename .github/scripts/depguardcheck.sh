@@ -309,7 +309,7 @@ run_case execution-test-reject internal/execution/supervision/rogue_test.go \
   'execution packages must not import operation packages'
 run_case execution-integration-allow \
   internal/execution/supervision/supervisor_windows_test.go \
-  celestia.research/celestia/internal/urladmission pass ''
+  celestia.research/celestia/internal/operation/urlreference/admission pass ''
 run_case execution-integration-reject \
   internal/execution/supervision/supervisor_windows_test.go \
   celestia.research/celestia/internal/urloperation reject \
@@ -320,7 +320,7 @@ run_case command-reject cmd/example/main.go \
   celestia.research/celestia/internal/operation/urlreference/transform reject \
   'commands import declared operation roots only'
 run_case operation-allow internal/urloperation/example.go \
-  celestia.research/celestia/internal/urladmission pass ''
+  celestia.research/celestia/internal/operation/urlreference/admission pass ''
 run_case operation-reject internal/urloperation/example.go \
   celestia.research/celestia/internal/operation/other reject \
   'operation roots import only their own declared subpackages'
@@ -333,20 +333,16 @@ run_case final-attempt-reject \
   internal/operation/urlreference/attempt/example.go \
   celestia.research/celestia/internal/execution/supervision reject \
   'attempt evidence imports only lower URL-reference owners'
-run_case admission-allow internal/urladmission/example.go \
+run_case admission-allow internal/operation/urlreference/admission/example.go \
   celestia.research/celestia/internal/operation/urlreference/protocol pass ''
-run_case admission-reject internal/urladmission/example.go \
-  celestia.research/celestia/internal/attemptstore reject \
-  'admission imports only protocol and transformation'
-run_case final-admission-reject \
-  internal/operation/urlreference/admission/example.go \
+run_case admission-reject internal/operation/urlreference/admission/example.go \
   celestia.research/celestia/internal/attemptstore reject \
   'admission imports only protocol and transformation'
 run_case protocol-allow internal/operation/urlreference/protocol/example.go \
   celestia.research/celestia/internal/operation/urlreference/transform pass ''
 run_case protocol-reject \
   internal/operation/urlreference/protocol/example.go \
-  celestia.research/celestia/internal/urladmission reject \
+  celestia.research/celestia/internal/operation/urlreference/admission reject \
   'protocol imports only transformation'
 run_case transform-allow internal/operation/urlreference/transform/example.go fmt pass ''
 run_case transform-reject internal/operation/urlreference/transform/example.go \

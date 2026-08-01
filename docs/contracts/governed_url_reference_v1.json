@@ -44,7 +44,7 @@
   "authorities": [
     {
       "id": "CEL-AUTH-ADMISSION-001",
-      "owner": "internal/urladmission",
+      "owner": "internal/operation/urlreference/admission",
       "grant": "Accept one bounded URL reference matching the v1 grammar",
       "refusal": "Reject malformed, ambiguous, unsupported or oversized input before execution"
     },
@@ -71,7 +71,7 @@
     {
       "id": "CEL-TRUST-INPUT-001",
       "source": "operator input",
-      "target": "internal/urladmission",
+      "target": "internal/operation/urlreference/admission",
       "treatment": "Bound bytes and validate the complete grammar before execution"
     },
     {
@@ -104,7 +104,7 @@
     {
       "id": "CEL-RESOURCE-INPUT-001",
       "kind": "input",
-      "owner": "internal/urladmission",
+      "owner": "internal/operation/urlreference/admission",
       "acquisition": "Caller supplies one inert URL reference",
       "bound": "4096 bytes",
       "release": "Return from admission",
@@ -574,7 +574,7 @@
     {
       "id": "CEL-URL-INV-001",
       "statement": "An invalid or unsupported request never reaches worker execution",
-      "owner": "internal/urladmission",
+      "owner": "internal/operation/urlreference/admission",
       "severity": "critical",
       "boundary": "operator input to admission",
       "falsifier": "Observe the worker for an input rejected by the v1 grammar",
@@ -687,7 +687,7 @@
   "production_controls": [
     {
       "id": "CEL-URL-PROD-001",
-      "owner": "internal/urladmission and internal/urloperation tests"
+      "owner": "internal/operation/urlreference/admission and internal/urloperation tests"
     },
     {
       "id": "CEL-URL-PROD-002",

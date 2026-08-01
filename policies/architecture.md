@@ -55,10 +55,11 @@ exact module and package prefixes.
 The temporary registry contains exactly:
 - `internal/attemptstore` to `internal/operation/urlreference/attempt` in
   `CEL-STRUCT-004D`;
-- `internal/urladmission` to `internal/operation/urlreference/admission` in
-  `CEL-STRUCT-004C`;
 - `internal/urloperation` to `internal/operation/urlreference` in
   `CEL-STRUCT-004E`.
+
+The paths retired through `CEL-STRUCT-003` to `CEL-STRUCT-004C` cannot be
+recreated. They have no forwarding or compatibility surface.
 
 Each entry binds the exact base commit, file count and canonical inventory
 digest. Existing files may be corrected, moved or deleted. A new tracked file

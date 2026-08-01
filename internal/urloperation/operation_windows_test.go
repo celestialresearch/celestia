@@ -28,9 +28,9 @@ import (
 
 	"celestia.research/celestia/internal/attemptstore"
 	"celestia.research/celestia/internal/execution/supervision"
-	"celestia.research/celestia/internal/operation/urlreference/transform"
-	"celestia.research/celestia/internal/urladmission"
+	"celestia.research/celestia/internal/operation/urlreference/admission"
 	"celestia.research/celestia/internal/operation/urlreference/protocol"
+	"celestia.research/celestia/internal/operation/urlreference/transform"
 	"golang.org/x/sys/windows"
 )
 

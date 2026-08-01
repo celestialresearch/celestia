@@ -134,7 +134,7 @@ main() {
     internal/attemptstore/store.go \
     internal/execution/supervision/supervisor_windows.go \
     internal/operation/urlreference/protocol/protocol.go \
-    internal/urladmission/admission.go \
+    internal/operation/urlreference/admission/admission.go \
     internal/urloperation/operation_windows.go \
     worker/url-reference/src/main.rs \
     worker/url-reference/tests/process.rs \

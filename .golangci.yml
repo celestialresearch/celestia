@@ -38,7 +38,7 @@ linters:
             - "**/internal/execution/supervision/supervisor_windows_test.go"
           allow:
             - "celestia.research/celestia/internal/execution/supervision"
-            - "celestia.research/celestia/internal/urladmission"
+            - "celestia.research/celestia/internal/operation/urlreference/admission"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
           deny:
@@ -65,7 +65,6 @@ linters:
             - "celestia.research/celestia/internal/operation/urlreference/transform"
             - "celestia.research/celestia/internal/attemptstore"
             - "celestia.research/celestia/internal/execution/supervision"
-            - "celestia.research/celestia/internal/urladmission"
           deny:
             - pkg: "celestia.research/celestia/internal/operation"
               desc: operation roots import only their own declared subpackages
@@ -80,7 +79,6 @@ linters:
             - "celestia.research/celestia/internal/operation/urlreference/admission"
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
-            - "celestia.research/celestia/internal/urladmission"
           deny:
             - pkg: "celestia.research/celestia/internal"
               desc: attempt evidence imports only lower URL-reference owners
@@ -89,8 +87,6 @@ linters:
           files:
             - "**/internal/operation/urlreference/admission/*.go"
             - "**/internal/operation/urlreference/admission/**/*.go"
-            - "**/internal/urladmission/*.go"
-            - "**/internal/urladmission/**/*.go"
           allow:
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"

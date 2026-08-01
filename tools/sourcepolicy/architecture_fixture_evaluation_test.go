@@ -158,6 +158,10 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 		return hasArchitecturePathFinding([]string{"internal/protocol/protocol.go"}, policy)
 	},
 	"worker-protocol-recreated": workerProtocolRecreated,
+	"admission-outside-operation": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"internal/admission/admission.go"}, policy)
+	},
+	"url-admission-recreated": urlAdmissionRecreated,
 }
 
 func processSupervisionRecreated(policy architecturePolicy) bool {
@@ -203,6 +207,13 @@ func workerProtocolRecreated(policy architecturePolicy) bool {
 	)
 	return hasArchitecturePathFinding(
 		[]string{"internal/workerprotocolv1/protocol.go"}, policy,
+	)
+}
+
+func urlAdmissionRecreated(policy architecturePolicy) bool {
+	policy.RetiredMigration = append(policy.RetiredMigration, "internal/urladmission")
+	return hasArchitecturePathFinding(
+		[]string{"internal/urladmission/admission.go"}, policy,
 	)
 }
 

@@ -29,9 +29,9 @@ import (
 	"testing"
 	"time"
 
-	"celestia.research/celestia/internal/operation/urlreference/transform"
-	"celestia.research/celestia/internal/urladmission"
+	"celestia.research/celestia/internal/operation/urlreference/admission"
 	"celestia.research/celestia/internal/operation/urlreference/protocol"
+	"celestia.research/celestia/internal/operation/urlreference/transform"
 )
 
 const (
