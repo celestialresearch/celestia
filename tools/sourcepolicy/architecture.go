@@ -362,6 +362,14 @@ func architectureFindings(
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
+	shebangs, err := architectureShebangFindings(files, policy.Scripts, readFile)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, shebangs...)
+	if architectureFindingsFull(findings) {
+		return boundedArchitectureFindings(findings), nil
+	}
 	imports, err := architectureImportFindings(files, readFile)
 	if err != nil {
 		return nil, err
