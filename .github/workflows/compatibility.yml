@@ -174,8 +174,11 @@ jobs:
           fi
           if ! command -v git >/dev/null 2>&1; then
             case "$(uname -s)" in
-              FreeBSD|DragonFly)
+              FreeBSD)
                 sudo pkg install -y git
+                ;;
+              DragonFly)
+                bash ./.github/scripts/dragonfly-bootstrap.sh
                 ;;
               NetBSD)
                 sudo pkgin -y install git

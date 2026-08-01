@@ -137,6 +137,11 @@ main() (
     printf 'DragonFly trusted CA handoff is missing\n' >&2
     return 1
   }
+  grep -Fq 'pkg install -y go git' \
+    "$root/.github/scripts/dragonfly-bootstrap.sh" || {
+    printf 'DragonFly Git bootstrap is outside the trusted package path\n' >&2
+    return 1
+  }
   grep -Fq '.github/generated/dragonfly-ca.pem' \
     "$root/.github/workflows/compatibility.yml" || {
     printf 'DragonFly CA bundle staging is missing\n' >&2
