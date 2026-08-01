@@ -30,7 +30,7 @@ func TestArchitectureImportsInspectTestCustody(t *testing.T) {
 			findings, err := architectureImportFindings(
 				[]string{"internal/example/example_test.go"},
 				func(string) ([]byte, error) {
-					return []byte(fmt.Sprintf("package example\nimport _ %q\n", imported)), nil
+					return fmt.Appendf(nil, "package example\nimport _ %q\n", imported), nil
 				},
 			)
 			if err != nil || len(findings) != 1 {
