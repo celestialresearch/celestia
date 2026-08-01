@@ -101,6 +101,7 @@ check_manifest() {
 
 check_architecture() {
   go run ./tools/sourcepolicy architecture || status=1
+  bash ./.github/scripts/depguardcheck.sh || status=1
 }
 
 is_generated_source() {

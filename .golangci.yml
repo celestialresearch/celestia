@@ -9,6 +9,84 @@ linters:
     cyclop:
       max-complexity: 12
       package-average: 0.0
+    depguard:
+      rules:
+        production-boundaries:
+          list-mode: lax
+          files:
+            - "!$test"
+          deny:
+            - pkg: "celestia.research/assurance"
+              desc: Production must not import Assurance
+            - pkg: "celestia.research/celestia/tools"
+              desc: Production runtime must not import repository tools
+            - pkg: "celestia.research/celestia/worker"
+              desc: Production runtime must not import worker source
+        execution-boundary:
+          list-mode: lax
+          files:
+            - "internal/execution/**/*.go"
+          deny:
+            - pkg: "celestia.research/celestia/internal/operation"
+              desc: execution packages must not import operations
+        command-boundary:
+          list-mode: lax
+          files:
+            - "cmd/**/*.go"
+          allow:
+            - "celestia.research/celestia/internal/operation/urlreference$"
+          deny:
+            - pkg: "celestia.research/celestia/internal/operation"
+              desc: commands import declared operation roots only
+        url-reference-operation:
+          list-mode: lax
+          files:
+            - "internal/operation/urlreference/*.go"
+          allow:
+            - "celestia.research/celestia/internal/operation/urlreference/admission"
+            - "celestia.research/celestia/internal/operation/urlreference/attempt"
+            - "celestia.research/celestia/internal/operation/urlreference/protocol"
+            - "celestia.research/celestia/internal/operation/urlreference/transform"
+          deny:
+            - pkg: "celestia.research/celestia/internal/operation"
+              desc: operation roots import only their own declared subpackages
+        url-reference-attempt:
+          list-mode: lax
+          files:
+            - "internal/operation/urlreference/attempt/**/*.go"
+          allow:
+            - "celestia.research/celestia/internal/operation/urlreference/admission"
+            - "celestia.research/celestia/internal/operation/urlreference/protocol"
+            - "celestia.research/celestia/internal/operation/urlreference/transform"
+          deny:
+            - pkg: "celestia.research/celestia/internal/operation"
+              desc: attempt evidence imports only lower URL-reference owners
+        url-reference-admission:
+          list-mode: lax
+          files:
+            - "internal/operation/urlreference/admission/**/*.go"
+          allow:
+            - "celestia.research/celestia/internal/operation/urlreference/protocol"
+            - "celestia.research/celestia/internal/operation/urlreference/transform"
+          deny:
+            - pkg: "celestia.research/celestia/internal/operation"
+              desc: admission imports only protocol and transformation
+        url-reference-protocol:
+          list-mode: lax
+          files:
+            - "internal/operation/urlreference/protocol/**/*.go"
+          allow:
+            - "celestia.research/celestia/internal/operation/urlreference/transform"
+          deny:
+            - pkg: "celestia.research/celestia/internal/operation"
+              desc: protocol imports only transformation
+        url-reference-transform:
+          list-mode: lax
+          files:
+            - "internal/operation/urlreference/transform/**/*.go"
+          deny:
+            - pkg: "celestia.research/celestia/internal"
+              desc: transformation must not import other Production internals
     errcheck:
       check-blank: true
       check-type-assertions: true
@@ -35,6 +113,7 @@ linters:
     - contextcheck
     - cyclop
     - durationcheck
+    - depguard
     - errorlint
     - errchkjson
     - exhaustive
