@@ -25,7 +25,7 @@ const (
 	structureManifestPath = "docs/contracts/cel_struct_001.json"
 	structureManifestSHA  = "e062137f91713d0a9176d1af20720b20bf7c4ebfbc88ee0bf70a4d6316c490cc"
 	executionManifestPath = "docs/contracts/cel_struct_003.json"
-	executionManifestSHA  = "2dc8126222fd440e8820b30276056a6c3fd68b14e77fc937c5ef61de35b81626"
+	executionManifestSHA  = "1c0d68f1d6ea11a29c04dffe4fa15978732bc39c136d2d1fb2992be6c32bafb5"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {
