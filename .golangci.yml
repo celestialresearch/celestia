@@ -23,14 +23,20 @@ linters:
         execution-boundary:
           list-mode: lax
           files:
-            - "internal/execution/**/*.go"
+            - "**/internal/execution/**/*.go"
+            - "**/internal/processsupervision/*.go"
+            - "**/internal/processsupervision/**/*.go"
+            - "!$test"
           deny:
             - pkg: "celestia.research/celestia/internal/operation"
               desc: execution packages must not import operations
+            - pkg: "celestia.research/celestia/internal/urloperation"
+              desc: execution packages must not import legacy operations
         command-boundary:
           list-mode: lax
           files:
-            - "cmd/**/*.go"
+            - "**/cmd/**/*.go"
+            - "!$test"
           allow:
             - "celestia.research/celestia/internal/operation/urlreference$"
           deny:
@@ -39,49 +45,74 @@ linters:
         url-reference-operation:
           list-mode: lax
           files:
-            - "internal/operation/urlreference/*.go"
+            - "**/internal/operation/urlreference/*.go"
+            - "**/internal/urloperation/*.go"
+            - "!$test"
           allow:
             - "celestia.research/celestia/internal/operation/urlreference/admission"
             - "celestia.research/celestia/internal/operation/urlreference/attempt"
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
+            - "celestia.research/celestia/internal/attemptstore"
+            - "celestia.research/celestia/internal/processsupervision"
+            - "celestia.research/celestia/internal/urladmission"
+            - "celestia.research/celestia/internal/urlreferencev1"
+            - "celestia.research/celestia/internal/workerprotocolv1"
           deny:
             - pkg: "celestia.research/celestia/internal/operation"
               desc: operation roots import only their own declared subpackages
         url-reference-attempt:
           list-mode: lax
           files:
-            - "internal/operation/urlreference/attempt/**/*.go"
+            - "**/internal/operation/urlreference/attempt/**/*.go"
+            - "**/internal/attemptstore/*.go"
+            - "**/internal/attemptstore/**/*.go"
+            - "!$test"
           allow:
             - "celestia.research/celestia/internal/operation/urlreference/admission"
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
+            - "celestia.research/celestia/internal/urladmission"
+            - "celestia.research/celestia/internal/urlreferencev1"
+            - "celestia.research/celestia/internal/workerprotocolv1"
           deny:
-            - pkg: "celestia.research/celestia/internal/operation"
+            - pkg: "celestia.research/celestia/internal"
               desc: attempt evidence imports only lower URL-reference owners
         url-reference-admission:
           list-mode: lax
           files:
-            - "internal/operation/urlreference/admission/**/*.go"
+            - "**/internal/operation/urlreference/admission/**/*.go"
+            - "**/internal/urladmission/*.go"
+            - "**/internal/urladmission/**/*.go"
+            - "!$test"
           allow:
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
+            - "celestia.research/celestia/internal/urlreferencev1"
+            - "celestia.research/celestia/internal/workerprotocolv1"
           deny:
-            - pkg: "celestia.research/celestia/internal/operation"
+            - pkg: "celestia.research/celestia/internal"
               desc: admission imports only protocol and transformation
         url-reference-protocol:
           list-mode: lax
           files:
-            - "internal/operation/urlreference/protocol/**/*.go"
+            - "**/internal/operation/urlreference/protocol/**/*.go"
+            - "**/internal/workerprotocolv1/*.go"
+            - "**/internal/workerprotocolv1/**/*.go"
+            - "!$test"
           allow:
             - "celestia.research/celestia/internal/operation/urlreference/transform"
+            - "celestia.research/celestia/internal/urlreferencev1"
           deny:
-            - pkg: "celestia.research/celestia/internal/operation"
+            - pkg: "celestia.research/celestia/internal"
               desc: protocol imports only transformation
         url-reference-transform:
           list-mode: lax
           files:
-            - "internal/operation/urlreference/transform/**/*.go"
+            - "**/internal/operation/urlreference/transform/**/*.go"
+            - "**/internal/urlreferencev1/*.go"
+            - "**/internal/urlreferencev1/**/*.go"
+            - "!$test"
           deny:
             - pkg: "celestia.research/celestia/internal"
               desc: transformation must not import other Production internals

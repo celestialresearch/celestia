@@ -19,33 +19,80 @@ trap 'rm -rf -- "$work"' EXIT
 
 lint=$(cd "$root" && go tool -n golangci-lint)
 go_version=$(awk '$1 == "go" { print $2; exit }' "$root/go.mod")
-mkdir -p "$work/internal/execution/example" "$work/internal/operation/example"
-printf 'module celestia.research/celestia\n\ngo %s\n' "$go_version" >"$work/go.mod"
-printf 'package example\n' >"$work/internal/operation/example/example.go"
 
-awk '
-  !changed && $0 == "            - \"internal/execution/**/*.go\"" {
-    print "            - \"$all\""
-    changed=1
-    next
-  }
-  { print }
-  END { if (!changed) exit 1 }
-' "$root/.golangci.yml" >"$work/.golangci.yml"
+run_case() {
+  name=$1
+  importer=$2
+  imported=$3
+  want=$4
+  message=$5
+  case_root="$work/$name"
+  mkdir -p "$case_root/$(dirname -- "$importer")"
+  cp "$root/.golangci.yml" "$case_root/.golangci.yml"
+  printf 'module celestia.research/celestia\n\ngo %s\n' "$go_version" >"$case_root/go.mod"
 
-(cd "$work" && "$lint" run --enable-only=depguard --config .golangci.yml ./...)
-cat >"$work/internal/execution/example/example.go" <<'EOF'
-package example
+  case "$imported" in
+    celestia.research/celestia/*)
+      target=${imported#celestia.research/celestia/}
+      mkdir -p "$case_root/$target"
+      printf 'package target\n' >"$case_root/$target/target.go"
+      ;;
+  esac
+  cat >"$case_root/$importer" <<EOF
+package fixture
 
-import _ "celestia.research/celestia/internal/operation/example"
+import _ "$imported"
 EOF
 
-set +e
-output=$(cd "$work" && "$lint" run --enable-only=depguard --config .golangci.yml ./... 2>&1)
-status=$?
-set -e
-if [[ "$status" -eq 0 ]] ||
-  [[ "$output" != *"execution packages must not import operations"* ]]; then
-  printf 'depguard accepted a forbidden execution import:\n%s\n' "$output" >&2
-  exit 1
-fi
+  set +e
+  output=$(cd "$case_root" && "$lint" run --enable-only=depguard --config .golangci.yml ./... 2>&1)
+  status=$?
+  set -e
+  if [[ "$want" == pass && "$status" -ne 0 ]]; then
+    printf '%s rejected an allowed import:\n%s\n' "$name" "$output" >&2
+    exit 1
+  fi
+  if [[ "$want" == reject ]] &&
+    { [[ "$status" -eq 0 ]] || [[ "$output" != *"$message"* ]]; }; then
+    printf '%s accepted a forbidden import:\n%s\n' "$name" "$output" >&2
+    exit 1
+  fi
+}
+
+run_case production-allow internal/example/example.go fmt pass ''
+run_case production-reject internal/example/example.go \
+  celestia.research/celestia/tools/sourcepolicy reject \
+  'Production runtime must not import repository tools'
+run_case execution-allow internal/processsupervision/example.go fmt pass ''
+run_case execution-reject internal/processsupervision/example.go \
+  celestia.research/celestia/internal/urloperation reject \
+  'execution packages must not import legacy operations'
+run_case command-allow cmd/example/main.go \
+  celestia.research/celestia/internal/operation/urlreference pass ''
+run_case command-reject cmd/example/main.go \
+  celestia.research/celestia/internal/operation/urlreference/transform reject \
+  'commands import declared operation roots only'
+run_case operation-allow internal/urloperation/example.go \
+  celestia.research/celestia/internal/urladmission pass ''
+run_case operation-reject internal/urloperation/example.go \
+  celestia.research/celestia/internal/operation/other reject \
+  'operation roots import only their own declared subpackages'
+run_case attempt-allow internal/attemptstore/example.go \
+  celestia.research/celestia/internal/workerprotocolv1 pass ''
+run_case attempt-reject internal/attemptstore/example.go \
+  celestia.research/celestia/internal/processsupervision reject \
+  'attempt evidence imports only lower URL-reference owners'
+run_case admission-allow internal/urladmission/example.go \
+  celestia.research/celestia/internal/workerprotocolv1 pass ''
+run_case admission-reject internal/urladmission/example.go \
+  celestia.research/celestia/internal/attemptstore reject \
+  'admission imports only protocol and transformation'
+run_case protocol-allow internal/workerprotocolv1/example.go \
+  celestia.research/celestia/internal/urlreferencev1 pass ''
+run_case protocol-reject internal/workerprotocolv1/example.go \
+  celestia.research/celestia/internal/urladmission reject \
+  'protocol imports only transformation'
+run_case transform-allow internal/urlreferencev1/example.go fmt pass ''
+run_case transform-reject internal/urlreferencev1/example.go \
+  celestia.research/celestia/internal/processsupervision reject \
+  'transformation must not import other Production internals'
