@@ -51,6 +51,7 @@ type architecturePolicy struct {
 	RootFiles        []string                    `json:"allowed_root_files"`
 	Prohibited       []string                    `json:"prohibited_segments"`
 	Packages         []string                    `json:"declared_packages"`
+	RustPackages     []string                    `json:"declared_rust_packages"`
 	Commands         []string                    `json:"declared_commands"`
 	FileExceptions   []architectureExcept        `json:"file_exceptions"`
 	ImportRules      []string                    `json:"forbidden_import_rules"`
@@ -230,6 +231,7 @@ func validArchitectureLists(policy architecturePolicy) bool {
 		equalStrings(policy.RootFiles, expectedRootFiles()) &&
 		equalStrings(policy.Prohibited, expectedProhibitedSegments()) &&
 		equalStrings(policy.Packages, expectedPackages()) &&
+		equalStrings(policy.RustPackages, expectedRustPackages()) &&
 		len(policy.Commands) == 0 && len(policy.FileExceptions) == 0 &&
 		len(policy.RetiredMigration) == 0 &&
 		equalStrings(policy.ImportRules, expectedImportRules())
@@ -339,12 +341,14 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 	roots := stringSet(policy.RootDirectories)
 	rootFiles := stringSet(policy.RootFiles)
 	packages := stringSet(policy.Packages)
+	rustPackages := stringSet(policy.RustPackages)
 	prohibited := stringSet(policy.Prohibited)
 	retired := stringSet(policy.RetiredMigration)
 	var findings []string
 	for _, file := range files {
 		findings = append(findings, architectureFileFindings(
-			file, roots, rootFiles, packages, stringSet(policy.Commands), prohibited, retired,
+			file, roots, rootFiles, packages, rustPackages,
+			stringSet(policy.Commands), prohibited, retired,
 		)...)
 		if architectureFindingsFull(findings) {
 			return boundedArchitectureFindings(findings)
@@ -355,7 +359,7 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 
 func architectureFileFindings(
 	file string,
-	roots, rootFiles, packages, commands, prohibited, retired map[string]struct{},
+	roots, rootFiles, packages, rustPackages, commands, prohibited, retired map[string]struct{},
 ) []string {
 	if path.Clean(file) != file || !fs.ValidPath(file) {
 		return []string{file + ": invalid tracked path"}
@@ -376,9 +380,27 @@ func architectureFileFindings(
 		return []string{file + ": unapproved root directory"}
 	}
 	findings := prohibitedPathFindings(file, segments, prohibited)
-	return append(findings, architectureGoPathFindings(
+	findings = append(findings, architectureGoPathFindings(
 		file, segments[0], packages, commands,
 	)...)
+	return append(findings, architectureRustPathFindings(file, rustPackages)...)
+}
+
+func architectureRustPathFindings(file string, packages map[string]struct{}) []string {
+	if file != "Cargo.toml" && path.Base(file) != "Cargo.toml" &&
+		!strings.HasSuffix(file, ".rs") {
+		return nil
+	}
+	for directory := range packages {
+		if file == directory+"/Cargo.toml" ||
+			strings.HasPrefix(file, directory+"/") && strings.HasSuffix(file, ".rs") {
+			return nil
+		}
+	}
+	if file == "Cargo.toml" {
+		return nil
+	}
+	return []string{file + ": Rust package is not declared"}
 }
 
 func architectureGoPathFindings(

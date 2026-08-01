@@ -68,6 +68,10 @@
     "tools/actionpolicy",
     "tools/sourcepolicy"
   ],
+  "declared_rust_packages": [
+    "worker/qualification-fixtures",
+    "worker/url-reference"
+  ],
   "declared_commands": [],
   "file_exceptions": [],
   "forbidden_import_rules": [

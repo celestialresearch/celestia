@@ -120,6 +120,11 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"unregistered-testdata-package": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"tools/sourcepolicy/testdata/rogue/main.go"}, policy)
 	},
+	"unregistered-rust-package": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{
+			"worker/rogue/Cargo.toml", "worker/rogue/src/main.rs",
+		}, policy)
+	},
 	"migration-wildcard-entry": func(policy architecturePolicy) bool {
 		policy.MigrationRoots[0].Path = "internal/*"
 		return validateArchitecturePolicy(policy) != nil

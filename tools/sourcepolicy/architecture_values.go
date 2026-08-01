@@ -40,6 +40,10 @@ func expectedPackages() []string {
 	}
 }
 
+func expectedRustPackages() []string {
+	return []string{"worker/qualification-fixtures", "worker/url-reference"}
+}
+
 func expectedImportRules() []string {
 	return []string{
 		"command-imports-operation-subpackage", "execution-imports-operation",
