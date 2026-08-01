@@ -133,7 +133,7 @@ main() {
   for path in \
     internal/attemptstore/store.go \
     internal/execution/supervision/supervisor_windows.go \
-    internal/workerprotocolv1/protocol.go \
+    internal/operation/urlreference/protocol/protocol.go \
     internal/urladmission/admission.go \
     internal/urloperation/operation_windows.go \
     worker/url-reference/src/main.rs \
@@ -194,9 +194,9 @@ main() {
   assert_value true go "$output"
   assert_value true full "$output"
 
-  commit_file "$fixture_repo" internal/workerprotocolv1/deleted.go
+  commit_file "$fixture_repo" internal/operation/urlreference/protocol/deleted.go
   base=$(git -C "$fixture_repo" rev-parse HEAD)
-  git -C "$fixture_repo" rm -q internal/workerprotocolv1/deleted.go
+  git -C "$fixture_repo" rm -q internal/operation/urlreference/protocol/deleted.go
   git -C "$fixture_repo" commit -q -m deletion
   output=$(
     cd "$fixture_repo"

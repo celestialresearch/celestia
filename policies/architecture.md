@@ -58,17 +58,15 @@ The temporary registry contains exactly:
 - `internal/urladmission` to `internal/operation/urlreference/admission` in
   `CEL-STRUCT-004C`;
 - `internal/urloperation` to `internal/operation/urlreference` in
-  `CEL-STRUCT-004E`;
-- `internal/workerprotocolv1` to
-  `internal/operation/urlreference/protocol` in `CEL-STRUCT-004B`.
+  `CEL-STRUCT-004E`.
 
 Each entry binds the exact base commit, file count and canonical inventory
 digest. Existing files may be corrected, moved or deleted. A new tracked file
 beneath a migration root is rejected. Wildcards, parent roots, expired entries and
-recreated migrated paths are rejected. `internal/processsupervision` and
-`internal/urlreferencev1` are retired and cannot be recreated. Each migration
-slice removes its entry
-when it moves the package; `CEL-STRUCT-005` reconciles the registry to empty.
+recreated migrated paths are rejected. `internal/processsupervision`,
+`internal/urlreferencev1` and `internal/workerprotocolv1` are retired and cannot
+be recreated. Each migration slice removes its entry when it moves the package;
+`CEL-STRUCT-005` reconciles the registry to empty.
 
 ## Exceptions
 Architecture exceptions are exact path records with an owner, reason, removal

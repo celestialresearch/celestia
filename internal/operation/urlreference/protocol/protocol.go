@@ -9,7 +9,6 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-// Package workerprotocol validates the URL-reference worker protocol.
 package workerprotocol
 
 import (
