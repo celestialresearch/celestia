@@ -22,7 +22,7 @@ func TestArchitecturePolicyAcceptsRepository(t *testing.T) {
 	t.Chdir("../..")
 	var stderr bytes.Buffer
 	if status := runArchitecturePolicy(
-		&stderr, sourceFiles, readSource, gitBaseInventory,
+		&stderr, sourceFiles, readSource,
 	); status != 0 {
 		t.Fatalf("runArchitecturePolicy() = %d: %s", status, stderr.String())
 	}
@@ -34,7 +34,6 @@ func TestArchitecturePolicyRejectsInfrastructureFailures(t *testing.T) {
 	tests := map[string]struct {
 		inventory    func() ([]string, error)
 		read         func(string) ([]byte, error)
-		base         baseInventoryFunc
 		wantFragment string
 	}{
 		"inventory": {
@@ -52,7 +51,7 @@ func TestArchitecturePolicyRejectsInfrastructureFailures(t *testing.T) {
 			t.Parallel()
 			var stderr bytes.Buffer
 			if status := runArchitecturePolicy(
-				&stderr, test.inventory, test.read, test.base,
+				&stderr, test.inventory, test.read,
 			); status == 0 || !bytes.Contains(stderr.Bytes(), []byte(test.wantFragment)) {
 				t.Fatalf("status = %d, stderr = %q", status, stderr.String())
 			}

@@ -13,7 +13,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -22,12 +21,10 @@ import (
 	"go/token"
 	"io"
 	"io/fs"
-	"os/exec"
 	"path"
 	"slices"
 	"sort"
 	"strings"
-	"time"
 
 	"golang.org/x/mod/modfile"
 )
@@ -55,6 +52,7 @@ type architecturePolicy struct {
 	Commands        []string             `json:"declared_commands"`
 	FileExceptions  []architectureExcept `json:"file_exceptions"`
 	ImportRules     []string             `json:"forbidden_import_rules"`
+	RetiredLegacy   []string             `json:"retired_legacy_paths"`
 	Legacy          []architectureLegacy `json:"legacy_packages"`
 }
 
@@ -67,23 +65,21 @@ type architectureExcept struct {
 }
 
 type architectureLegacy struct {
-	Path          string `json:"path"`
-	Count         int    `json:"inventory_count"`
-	Digest        string `json:"inventory_sha256"`
-	Destination   string `json:"destination"`
-	Slice         string `json:"migration_slice"`
-	Reason        string `json:"reason"`
-	Expiry        string `json:"expires_at_completion"`
-	AllowNewFiles bool   `json:"allow_new_files"`
+	Path          string   `json:"path"`
+	Count         int      `json:"inventory_count"`
+	Digest        string   `json:"inventory_sha256"`
+	Destination   string   `json:"destination"`
+	Slice         string   `json:"migration_slice"`
+	Reason        string   `json:"reason"`
+	Expiry        string   `json:"expires_at_completion"`
+	AllowNewFiles bool     `json:"allow_new_files"`
+	Inventory     []string `json:"inventory_paths"`
 }
-
-type baseInventoryFunc func(string, string) ([]string, error)
 
 func runArchitecturePolicy(
 	stderr io.Writer,
 	inventory func() ([]string, error),
 	readFile func(string) ([]byte, error),
-	baseInventory baseInventoryFunc,
 ) int {
 	files, err := inventory()
 	if err != nil {
@@ -97,7 +93,7 @@ func runArchitecturePolicy(
 	if err != nil {
 		return writeArchitectureError(stderr, err)
 	}
-	findings, err := architectureFindings(files, policy, readFile, baseInventory)
+	findings, err := architectureFindings(files, policy, readFile)
 	if err != nil {
 		return writeArchitectureError(stderr, err)
 	}
@@ -229,6 +225,7 @@ func validArchitectureLists(policy architecturePolicy) bool {
 		equalStrings(policy.Prohibited, expectedProhibitedSegments()) &&
 		equalStrings(policy.Packages, expectedPackages()) &&
 		len(policy.Commands) == 0 && len(policy.FileExceptions) == 0 &&
+		len(policy.RetiredLegacy) == 0 &&
 		equalStrings(policy.ImportRules, expectedImportRules())
 }
 
@@ -238,22 +235,41 @@ func validateLegacyPolicy(legacy []architectureLegacy) error {
 		return errors.New("architecture policy must contain six legacy packages")
 	}
 	for index, entry := range legacy {
-		want := expected[index]
-		if entry.Path != want.Path || entry.Count != want.Count ||
-			entry.Digest != want.Digest || entry.Destination != want.Destination ||
-			entry.Slice != want.Slice || entry.Expiry != want.Expiry ||
-			entry.AllowNewFiles || strings.TrimSpace(entry.Reason) == "" {
+		if !validLegacyEntry(entry, expected[index]) {
 			return fmt.Errorf("invalid legacy package %q", entry.Path)
 		}
 	}
 	return nil
 }
 
+func validLegacyEntry(entry, expected architectureLegacy) bool {
+	return entry.Path == expected.Path && entry.Count == expected.Count &&
+		entry.Digest == expected.Digest && entry.Destination == expected.Destination &&
+		entry.Slice == expected.Slice && entry.Expiry == expected.Expiry &&
+		!entry.AllowNewFiles && strings.TrimSpace(entry.Reason) != "" &&
+		len(entry.Inventory) == entry.Count &&
+		inventoryDigest(entry.Inventory) == entry.Digest &&
+		validLegacyInventory(entry.Path, entry.Inventory)
+}
+
+func validLegacyInventory(root string, files []string) bool {
+	if !slices.IsSorted(files) {
+		return false
+	}
+	prefix := root + "/"
+	for index, file := range files {
+		if !strings.HasPrefix(file, prefix) ||
+			(index > 0 && file == files[index-1]) {
+			return false
+		}
+	}
+	return true
+}
+
 func architectureFindings(
 	files []string,
 	policy architecturePolicy,
 	readFile func(string) ([]byte, error),
-	baseInventory baseInventoryFunc,
 ) ([]string, error) {
 	if err := validateCurrentModule(readFile, policy.ModulePath); err != nil {
 		return nil, err
@@ -264,10 +280,7 @@ func architectureFindings(
 		return nil, err
 	}
 	findings = append(findings, imports...)
-	legacyFindings, err := architectureLegacyFindings(files, policy, baseInventory)
-	if err != nil {
-		return nil, err
-	}
+	legacyFindings := architectureLegacyFindings(files, policy)
 	findings = append(findings, legacyFindings...)
 	documentation, err := packageDocumentationFindings(files, policy, readFile)
 	if err != nil {
@@ -298,10 +311,11 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 	rootFiles := stringSet(policy.RootFiles)
 	packages := stringSet(policy.Packages)
 	prohibited := stringSet(policy.Prohibited)
+	retired := stringSet(policy.RetiredLegacy)
 	var findings []string
 	for _, file := range files {
 		findings = append(findings, architectureFileFindings(
-			file, roots, rootFiles, packages, stringSet(policy.Commands), prohibited,
+			file, roots, rootFiles, packages, stringSet(policy.Commands), prohibited, retired,
 		)...)
 	}
 	return findings
@@ -309,12 +323,17 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 
 func architectureFileFindings(
 	file string,
-	roots, rootFiles, packages, commands, prohibited map[string]struct{},
+	roots, rootFiles, packages, commands, prohibited, retired map[string]struct{},
 ) []string {
 	if path.Clean(file) != file || !fs.ValidPath(file) {
 		return []string{file + ": invalid tracked path"}
 	}
 	segments := strings.Split(file, "/")
+	for root := range retired {
+		if file == root || strings.HasPrefix(file, root+"/") {
+			return []string{file + ": retired package path was recreated"}
+		}
+	}
 	if len(segments) == 1 {
 		if _, allowed := rootFiles[file]; !allowed {
 			return []string{file + ": undeclared root file"}
@@ -371,18 +390,10 @@ func prohibitedPathFindings(
 func architectureLegacyFindings(
 	files []string,
 	policy architecturePolicy,
-	baseInventory baseInventoryFunc,
-) ([]string, error) {
+) []string {
 	var findings []string
 	for _, entry := range policy.Legacy {
-		base, err := baseInventory(policy.BaseCommit, entry.Path)
-		if err != nil {
-			return nil, fmt.Errorf("inventory legacy package %s: %w", entry.Path, err)
-		}
-		if len(base) != entry.Count || inventoryDigest(base) != entry.Digest {
-			return nil, fmt.Errorf("legacy package %s does not match its base inventory", entry.Path)
-		}
-		allowed := stringSet(base)
+		allowed := stringSet(entry.Inventory)
 		prefix := entry.Path + "/"
 		for _, file := range files {
 			if !strings.HasPrefix(file, prefix) {
@@ -393,7 +404,7 @@ func architectureLegacyFindings(
 			}
 		}
 	}
-	return findings, nil
+	return findings
 }
 
 func packageDocumentationFindings(
@@ -441,20 +452,6 @@ func observePackageDocumentation(
 		documented[directory] = true
 	}
 	return nil
-}
-
-func gitBaseInventory(_ string, root string) ([]string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, "git", "ls-tree", "-r", "-z", "--name-only", architectureBaseCommit)
-	files, err := inventorySourceFiles(command, cancel)
-	if err != nil {
-		return nil, err
-	}
-	prefix := root + "/"
-	return slices.DeleteFunc(files, func(file string) bool {
-		return !strings.HasPrefix(file, prefix)
-	}), nil
 }
 
 func inventoryDigest(files []string) string {

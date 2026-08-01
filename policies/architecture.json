@@ -87,7 +87,57 @@
       "migration_slice": "CEL-STRUCT-004D",
       "reason": "Attempt evidence remains at its pre-constitution path until its path-only move",
       "expires_at_completion": "CEL-STRUCT-004D",
-      "allow_new_files": false
+      "allow_new_files": false,
+      "inventory_paths": [
+        "internal/attemptstore/acl_windows_test.go",
+        "internal/attemptstore/admitted_binding_test.go",
+        "internal/attemptstore/contract.go",
+        "internal/attemptstore/decision_invariants_test.go",
+        "internal/attemptstore/fail_closed_test.go",
+        "internal/attemptstore/identity_test.go",
+        "internal/attemptstore/inspect.go",
+        "internal/attemptstore/inspect_integrity_test.go",
+        "internal/attemptstore/inspection_concurrency_test.go",
+        "internal/attemptstore/lock.go",
+        "internal/attemptstore/lock_fail_closed_test.go",
+        "internal/attemptstore/lock_fault_injection_windows_test.go",
+        "internal/attemptstore/lock_test.go",
+        "internal/attemptstore/lock_windows.go",
+        "internal/attemptstore/lock_windows_test.go",
+        "internal/attemptstore/paths.go",
+        "internal/attemptstore/paths_fault_test.go",
+        "internal/attemptstore/platform.go",
+        "internal/attemptstore/publication_test.go",
+        "internal/attemptstore/publish_fault_windows_test.go",
+        "internal/attemptstore/publish_result_test.go",
+        "internal/attemptstore/publish_windows.go",
+        "internal/attemptstore/publish_windows_test.go",
+        "internal/attemptstore/record_fault_windows_test.go",
+        "internal/attemptstore/record_fuzz_test.go",
+        "internal/attemptstore/record_io.go",
+        "internal/attemptstore/record_io_test.go",
+        "internal/attemptstore/record_name.go",
+        "internal/attemptstore/record_name_test.go",
+        "internal/attemptstore/record_recovery_windows_test.go",
+        "internal/attemptstore/record_windows.go",
+        "internal/attemptstore/records.go",
+        "internal/attemptstore/records_transition_test.go",
+        "internal/attemptstore/recovery_cleanup_test.go",
+        "internal/attemptstore/request_v1.go",
+        "internal/attemptstore/request_v1_test.go",
+        "internal/attemptstore/root.go",
+        "internal/attemptstore/root_fault_test.go",
+        "internal/attemptstore/root_parent_windows.go",
+        "internal/attemptstore/root_path_windows.go",
+        "internal/attemptstore/root_path_windows_test.go",
+        "internal/attemptstore/staging_fault_windows_test.go",
+        "internal/attemptstore/staging_test.go",
+        "internal/attemptstore/store.go",
+        "internal/attemptstore/store_fault_test.go",
+        "internal/attemptstore/store_test.go",
+        "internal/attemptstore/store_unsupported.go",
+        "internal/attemptstore/store_unsupported_test.go"
+      ]
     },
     {
       "path": "internal/processsupervision",
@@ -97,7 +147,28 @@
       "migration_slice": "CEL-STRUCT-003",
       "reason": "Process supervision remains at its pre-constitution path until its path-only move",
       "expires_at_completion": "CEL-STRUCT-003",
-      "allow_new_files": false
+      "allow_new_files": false,
+      "inventory_paths": [
+        "internal/processsupervision/container_fault_windows_test.go",
+        "internal/processsupervision/image_windows.go",
+        "internal/processsupervision/image_windows_test.go",
+        "internal/processsupervision/launch_fault_windows_test.go",
+        "internal/processsupervision/native_errors_windows_test.go",
+        "internal/processsupervision/native_fault_windows_test.go",
+        "internal/processsupervision/native_pointer_windows.go",
+        "internal/processsupervision/native_test_helpers_windows_test.go",
+        "internal/processsupervision/native_windows.go",
+        "internal/processsupervision/observation_windows.go",
+        "internal/processsupervision/observation_windows_test.go",
+        "internal/processsupervision/runtime_windows.go",
+        "internal/processsupervision/stream_windows.go",
+        "internal/processsupervision/supervisor.go",
+        "internal/processsupervision/supervisor_unsupported.go",
+        "internal/processsupervision/supervisor_unsupported_test.go",
+        "internal/processsupervision/supervisor_windows.go",
+        "internal/processsupervision/supervisor_windows_test.go",
+        "internal/processsupervision/timing_windows.go"
+      ]
     },
     {
       "path": "internal/urladmission",
@@ -107,7 +178,11 @@
       "migration_slice": "CEL-STRUCT-004C",
       "reason": "URL admission remains at its pre-constitution path until its path-only move",
       "expires_at_completion": "CEL-STRUCT-004C",
-      "allow_new_files": false
+      "allow_new_files": false,
+      "inventory_paths": [
+        "internal/urladmission/admission.go",
+        "internal/urladmission/admission_test.go"
+      ]
     },
     {
       "path": "internal/urloperation",
@@ -117,7 +192,14 @@
       "migration_slice": "CEL-STRUCT-004E",
       "reason": "URL operation remains at its pre-constitution path until its path-only move",
       "expires_at_completion": "CEL-STRUCT-004E",
-      "allow_new_files": false
+      "allow_new_files": false,
+      "inventory_paths": [
+        "internal/urloperation/operation.go",
+        "internal/urloperation/operation_unsupported.go",
+        "internal/urloperation/operation_unsupported_test.go",
+        "internal/urloperation/operation_windows.go",
+        "internal/urloperation/operation_windows_test.go"
+      ]
     },
     {
       "path": "internal/urlreferencev1",
@@ -127,7 +209,14 @@
       "migration_slice": "CEL-STRUCT-004A",
       "reason": "URL transformation remains at its pre-constitution path until its path-only move",
       "expires_at_completion": "CEL-STRUCT-004A",
-      "allow_new_files": false
+      "allow_new_files": false,
+      "inventory_paths": [
+        "internal/urlreferencev1/benchmark_test.go",
+        "internal/urlreferencev1/conformance_test.go",
+        "internal/urlreferencev1/hex_test.go",
+        "internal/urlreferencev1/urlreference.go",
+        "internal/urlreferencev1/urlreference_test.go"
+      ]
     },
     {
       "path": "internal/workerprotocolv1",
@@ -137,7 +226,13 @@
       "migration_slice": "CEL-STRUCT-004B",
       "reason": "Worker protocol remains at its pre-constitution path until its path-only move",
       "expires_at_completion": "CEL-STRUCT-004B",
-      "allow_new_files": false
+      "allow_new_files": false,
+      "inventory_paths": [
+        "internal/workerprotocolv1/benchmark_test.go",
+        "internal/workerprotocolv1/protocol.go",
+        "internal/workerprotocolv1/protocol_test.go"
+      ]
     }
-  ]
+  ],
+  "retired_legacy_paths": []
 }

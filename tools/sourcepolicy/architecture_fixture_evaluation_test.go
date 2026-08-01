@@ -13,6 +13,7 @@ package main
 
 import (
 	"errors"
+	"os"
 	"slices"
 )
 
@@ -82,7 +83,7 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"missing-policy": func(architecturePolicy) bool {
 		return runArchitecturePolicy(
 			discardArchitectureFixtureWriter{}, func() ([]string, error) { return nil, nil },
-			func(string) ([]byte, error) { return nil, errors.New("missing") }, nil,
+			func(string) ([]byte, error) { return nil, errors.New("missing") },
 		) != 0
 	},
 	"malformed-policy": func(architecturePolicy) bool {
@@ -128,7 +129,9 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 		return validateArchitecturePolicy(policy) != nil
 	},
 	"migrated-path-recreated": func(architecturePolicy) bool {
-		return retiredPathRecreated([]string{"internal/attemptstore/store.go"}, "internal/attemptstore")
+		policy := validArchitectureFixturePolicy()
+		policy.RetiredLegacy = []string{"internal/attemptstore"}
+		return hasArchitecturePathFinding([]string{"internal/attemptstore/store.go"}, policy)
 	},
 }
 
@@ -152,23 +155,15 @@ func hasArchitecturePathFinding(files []string, policy architecturePolicy) bool 
 }
 
 func validArchitectureFixturePolicy() architecturePolicy {
-	legacy := expectedLegacy()
-	for index := range legacy {
-		legacy[index].Reason = "bounded migration"
+	data, err := os.ReadFile("../../policies/architecture.json")
+	if err != nil {
+		panic(err)
 	}
-	return architecturePolicy{
-		Schema:          architectureSchema,
-		CurrentSlice:    architectureCurrentSlice,
-		BaseCommit:      architectureBaseCommit,
-		ModulePath:      architectureModule,
-		InventoryFormat: architectureInventory,
-		RootDirectories: expectedRootDirectories(),
-		RootFiles:       expectedRootFiles(),
-		Prohibited:      expectedProhibitedSegments(),
-		Packages:        expectedPackages(),
-		ImportRules:     expectedImportRules(),
-		Legacy:          legacy,
+	policy, err := decodeArchitecturePolicy(data)
+	if err != nil {
+		panic(err)
 	}
+	return policy
 }
 
 func legacyInventoryExpanded(current []string, root string, base []string) bool {
@@ -179,16 +174,6 @@ func legacyInventoryExpanded(current []string, root string, base []string) bool 
 			if _, exists := allowed[file]; !exists {
 				return true
 			}
-		}
-	}
-	return false
-}
-
-func retiredPathRecreated(files []string, retired string) bool {
-	prefix := retired + "/"
-	for _, file := range files {
-		if stringsHasPrefix(file, prefix) {
-			return true
 		}
 	}
 	return false

@@ -51,7 +51,7 @@ const (
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == modeArchitecture {
-		os.Exit(runArchitecturePolicy(os.Stderr, sourceFiles, readSource, gitBaseInventory))
+		os.Exit(runArchitecturePolicy(os.Stderr, sourceFiles, readSource))
 	}
 	if len(os.Args) == 2 && os.Args[1] == modeManifest {
 		os.Exit(runManifestPolicy(os.Stderr, readSource))
