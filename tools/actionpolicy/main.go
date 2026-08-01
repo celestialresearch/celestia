@@ -9,7 +9,6 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-// Package main implements the repository's GitHub Actions policy checker.
 package main
 
 import (

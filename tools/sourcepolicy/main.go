@@ -9,7 +9,6 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-// Package main implements bounded repository source-policy checks.
 package main
 
 import (

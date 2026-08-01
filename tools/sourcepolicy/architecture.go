@@ -458,8 +458,14 @@ func packageDocumentationFindings(
 	readFile func(string) ([]byte, error),
 ) ([]string, error) {
 	documented := make(map[string]bool, len(policy.Packages))
+	legacy := make(map[string]struct{}, len(policy.Legacy))
+	for _, entry := range policy.Legacy {
+		legacy[entry.Path] = struct{}{}
+	}
 	for _, file := range files {
-		if err := observePackageDocumentation(file, policy.Packages, documented, readFile); err != nil {
+		if err := observePackageDocumentation(
+			file, policy.Packages, legacy, documented, readFile,
+		); err != nil {
 			return nil, err
 		}
 	}
@@ -478,6 +484,7 @@ func packageDocumentationFindings(
 func observePackageDocumentation(
 	file string,
 	packages []string,
+	legacy map[string]struct{},
 	documented map[string]bool,
 	readFile func(string) ([]byte, error),
 ) error {
@@ -486,6 +493,9 @@ func observePackageDocumentation(
 	}
 	directory := path.Dir(file)
 	if documented[directory] || !slices.Contains(packages, directory) {
+		return nil
+	}
+	if _, temporary := legacy[directory]; !temporary && path.Base(file) != "doc.go" {
 		return nil
 	}
 	source, err := readFile(file)
