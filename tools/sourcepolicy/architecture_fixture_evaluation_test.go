@@ -14,7 +14,6 @@ package main
 import (
 	"errors"
 	"os"
-	"slices"
 )
 
 func evaluateArchitectureFixture(mutation string) string {
@@ -109,9 +108,11 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"worker-private-key-path": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"worker/example/private-key.pem"}, policy)
 	},
-	"migration-additional-file": func(architecturePolicy) bool {
-		base := []string{"internal/example/original.go"}
-		return migrationInventoryExpanded([]string{base[0], "internal/example/new.go"}, "internal/example", base)
+	"migration-additional-file": func(policy architecturePolicy) bool {
+		entry := policy.MigrationRoots[0]
+		files := append([]string(nil), entry.Inventory...)
+		files = append(files, entry.Path+"/unexpected.go")
+		return len(architectureMigrationFindings(files, policy)) != 0
 	},
 	"unregistered-flat-package": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"internal/newpackage/file.go"}, policy)
@@ -167,21 +168,4 @@ func validArchitectureFixturePolicy() architecturePolicy {
 		panic(err)
 	}
 	return policy
-}
-
-func migrationInventoryExpanded(current []string, root string, base []string) bool {
-	allowed := stringSet(base)
-	prefix := root + "/"
-	for _, file := range current {
-		if stringsHasPrefix(file, prefix) && !slices.Contains(base, file) {
-			if _, exists := allowed[file]; !exists {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func stringsHasPrefix(value, prefix string) bool {
-	return len(value) >= len(prefix) && value[:len(prefix)] == prefix
 }
