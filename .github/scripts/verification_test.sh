@@ -2431,6 +2431,7 @@ EOF
       return 1
     }
     rm -- "$licence_dir/fixture.$extension"
+    git -C "$licence_dir" rm --cached -q -- "fixture.$extension"
   done
 
   rust_dir="$work_dir/rust"
