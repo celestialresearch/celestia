@@ -24,17 +24,20 @@ func TestArchitectureSourceOwnership(t *testing.T) {
 		file string
 		want bool
 	}{
-		"declared internal": {file: "internal/attemptstore/native.c"},
-		"declared Java":     {file: "tools/sourcepolicy/Main.java"},
-		"declared worker":   {file: "worker/url-reference/data.bin"},
-		"command data":      {file: "cmd/rogue/data.json", want: true},
-		"native source":     {file: "tools/rogue/main.c", want: true},
-		"nested native":     {file: "tools/sourcepolicy/rogue/main.c", want: true},
-		"nested Java":       {file: "tools/sourcepolicy/rogue/Main.java", want: true},
-		"worker Rust":       {file: "worker/url-reference/src/main.rs"},
-		"worker Java":       {file: "worker/url-reference/rogue/Main.java", want: true},
-		"script data":       {file: ".github/scripts/rogue.txt", want: true},
-		"worker data":       {file: "worker/rogue/data.bin", want: true},
+		"declared internal":   {file: "internal/attemptstore/native.c"},
+		"declared Java":       {file: "tools/sourcepolicy/Main.java"},
+		"declared worker":     {file: "worker/url-reference/data.bin"},
+		"command data":        {file: "cmd/rogue/data.json", want: true},
+		"native source":       {file: "tools/rogue/main.c", want: true},
+		"nested native":       {file: "tools/sourcepolicy/rogue/main.c", want: true},
+		"nested Java":         {file: "tools/sourcepolicy/rogue/Main.java", want: true},
+		"worker Rust":         {file: "worker/url-reference/src/main.rs"},
+		"worker Java":         {file: "worker/url-reference/rogue/Main.java", want: true},
+		"documentation Go":    {file: "docs/example.go", want: true},
+		"workflow JavaScript": {file: ".github/workflows/action.js", want: true},
+		"root fixture Go":     {file: "testdata/fixture.go", want: true},
+		"script data":         {file: ".github/scripts/rogue.txt", want: true},
+		"worker data":         {file: "worker/rogue/data.bin", want: true},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

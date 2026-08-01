@@ -491,7 +491,7 @@ func architectureOwnerPathFindings(
 	switch root {
 	case ".github":
 		if !strings.HasPrefix(file, ".github/scripts/") {
-			return nil
+			return undeclaredRootSourceFinding(file)
 		}
 		if _, declared := scripts[file]; declared {
 			return nil
@@ -504,12 +504,19 @@ func architectureOwnerPathFindings(
 	case "worker":
 		owners = rustPackages
 	default:
-		return nil
+		return undeclaredRootSourceFinding(file)
 	}
 	for owner := range owners {
 		if architectureOwnerAccepts(file, root, owner) {
 			return nil
 		}
+	}
+	return []string{file + ": source owner is not declared"}
+}
+
+func undeclaredRootSourceFinding(file string) []string {
+	if !architectureMaintainedSource(file) {
+		return nil
 	}
 	return []string{file + ": source owner is not declared"}
 }
