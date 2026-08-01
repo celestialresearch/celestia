@@ -74,6 +74,7 @@ linters:
         url-reference-attempt:
           list-mode: lax
           files:
+            - "**/internal/operation/urlreference/attempt/*.go"
             - "**/internal/operation/urlreference/attempt/**/*.go"
             - "**/internal/attemptstore/*.go"
             - "**/internal/attemptstore/**/*.go"
@@ -90,6 +91,7 @@ linters:
         url-reference-admission:
           list-mode: lax
           files:
+            - "**/internal/operation/urlreference/admission/*.go"
             - "**/internal/operation/urlreference/admission/**/*.go"
             - "**/internal/urladmission/*.go"
             - "**/internal/urladmission/**/*.go"
@@ -104,6 +106,7 @@ linters:
         url-reference-protocol:
           list-mode: lax
           files:
+            - "**/internal/operation/urlreference/protocol/*.go"
             - "**/internal/operation/urlreference/protocol/**/*.go"
             - "**/internal/workerprotocolv1/*.go"
             - "**/internal/workerprotocolv1/**/*.go"
@@ -116,6 +119,7 @@ linters:
         url-reference-transform:
           list-mode: lax
           files:
+            - "**/internal/operation/urlreference/transform/*.go"
             - "**/internal/operation/urlreference/transform/**/*.go"
             - "**/internal/urlreferencev1/*.go"
             - "**/internal/urlreferencev1/**/*.go"

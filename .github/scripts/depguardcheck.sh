@@ -101,9 +101,17 @@ run_case attempt-allow internal/attemptstore/example.go \
 run_case attempt-reject internal/attemptstore/example.go \
   celestia.research/celestia/internal/processsupervision reject \
   'attempt evidence imports only lower URL-reference owners'
+run_case final-attempt-reject \
+  internal/operation/urlreference/attempt/example.go \
+  celestia.research/celestia/internal/processsupervision reject \
+  'attempt evidence imports only lower URL-reference owners'
 run_case admission-allow internal/urladmission/example.go \
   celestia.research/celestia/internal/workerprotocolv1 pass ''
 run_case admission-reject internal/urladmission/example.go \
+  celestia.research/celestia/internal/attemptstore reject \
+  'admission imports only protocol and transformation'
+run_case final-admission-reject \
+  internal/operation/urlreference/admission/example.go \
   celestia.research/celestia/internal/attemptstore reject \
   'admission imports only protocol and transformation'
 run_case protocol-allow internal/workerprotocolv1/example.go \
@@ -111,7 +119,15 @@ run_case protocol-allow internal/workerprotocolv1/example.go \
 run_case protocol-reject internal/workerprotocolv1/example.go \
   celestia.research/celestia/internal/urladmission reject \
   'protocol imports only transformation'
+run_case final-protocol-reject \
+  internal/operation/urlreference/protocol/example.go \
+  celestia.research/celestia/internal/urladmission reject \
+  'protocol imports only transformation'
 run_case transform-allow internal/urlreferencev1/example.go fmt pass ''
 run_case transform-reject internal/urlreferencev1/example.go \
+  celestia.research/celestia/internal/processsupervision reject \
+  'transformation must not import other Production internals'
+run_case final-transform-reject \
+  internal/operation/urlreference/transform/example.go \
   celestia.research/celestia/internal/processsupervision reject \
   'transformation must not import other Production internals'
