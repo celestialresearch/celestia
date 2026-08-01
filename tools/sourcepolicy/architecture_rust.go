@@ -58,7 +58,7 @@ func architectureRustTargetFindings(
 		if err != nil {
 			return nil, fmt.Errorf("read Rust package %s: %w", expected.manifest, err)
 		}
-		actual, err := decodeArchitectureRustPackage(source, expected)
+		actual, err := decodeArchitectureRustPackage(source)
 		if err != nil {
 			return nil, fmt.Errorf("decode Rust package %s: %w", expected.manifest, err)
 		}
@@ -73,10 +73,7 @@ func architectureRustTargetFindings(
 	return findings, nil
 }
 
-func decodeArchitectureRustPackage(
-	source []byte,
-	expected architectureRustPackage,
-) (architectureRustPackage, error) {
+func decodeArchitectureRustPackage(source []byte) (architectureRustPackage, error) {
 	var document map[string]any
 	if _, err := toml.Decode(string(source), &document); err != nil {
 		return architectureRustPackage{}, err
