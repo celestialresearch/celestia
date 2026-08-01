@@ -53,6 +53,7 @@ type architecturePolicy struct {
 	Prohibited       []string                    `json:"prohibited_segments"`
 	Packages         []string                    `json:"declared_packages"`
 	RustPackages     []string                    `json:"declared_rust_packages"`
+	Scripts          []string                    `json:"declared_scripts"`
 	Commands         []string                    `json:"declared_commands"`
 	FileExceptions   []architectureExcept        `json:"file_exceptions"`
 	ImportRules      []string                    `json:"forbidden_import_rules"`
@@ -237,6 +238,7 @@ func validArchitectureLists(policy architecturePolicy) bool {
 		equalStrings(policy.Prohibited, expectedProhibitedSegments()) &&
 		equalStrings(policy.Packages, expectedPackages()) &&
 		equalStrings(policy.RustPackages, expectedRustPackages()) &&
+		equalStrings(policy.Scripts, expectedScripts()) &&
 		len(policy.Commands) == 0 && len(policy.FileExceptions) == 0 &&
 		len(policy.RetiredMigration) == 0 &&
 		equalStrings(policy.ImportRules, expectedImportRules())
@@ -347,12 +349,13 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 	rootFiles := stringSet(policy.RootFiles)
 	packages := stringSet(policy.Packages)
 	rustPackages := stringSet(policy.RustPackages)
+	scripts := stringSet(policy.Scripts)
 	prohibited := stringSet(policy.Prohibited)
 	retired := stringSet(policy.RetiredMigration)
 	var findings []string
 	for _, file := range files {
 		findings = append(findings, architectureFileFindings(
-			file, roots, rootFiles, packages, rustPackages,
+			file, roots, rootFiles, packages, rustPackages, scripts,
 			stringSet(policy.Commands), prohibited, retired,
 		)...)
 		if architectureFindingsFull(findings) {
@@ -364,7 +367,7 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 
 func architectureFileFindings(
 	file string,
-	roots, rootFiles, packages, rustPackages, commands, prohibited, retired map[string]struct{},
+	roots, rootFiles, packages, rustPackages, scripts, commands, prohibited, retired map[string]struct{},
 ) []string {
 	if path.Clean(file) != file || !fs.ValidPath(file) {
 		return []string{file + ": invalid tracked path"}
@@ -388,7 +391,19 @@ func architectureFileFindings(
 	findings = append(findings, architectureGoPathFindings(
 		file, segments[0], packages, commands,
 	)...)
+	findings = append(findings, architectureScriptPathFindings(file, scripts)...)
 	return append(findings, architectureRustPathFindings(file, rustPackages)...)
+}
+
+func architectureScriptPathFindings(file string, scripts map[string]struct{}) []string {
+	extension := strings.ToLower(path.Ext(file))
+	if extension != ".sh" && extension != ".ps1" && extension != ".cmd" {
+		return nil
+	}
+	if _, declared := scripts[file]; declared {
+		return nil
+	}
+	return []string{file + ": script is not declared"}
 }
 
 func architectureRustPathFindings(file string, packages map[string]struct{}) []string {

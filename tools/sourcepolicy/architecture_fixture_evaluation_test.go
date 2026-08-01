@@ -125,6 +125,9 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 			"worker/rogue/Cargo.toml", "worker/rogue/src/main.rs",
 		}, policy)
 	},
+	"unregistered-script": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"tools/rogue/run.sh"}, policy)
+	},
 	"migration-wildcard-entry": func(policy architecturePolicy) bool {
 		policy.MigrationRoots[0].Path = "internal/*"
 		return validateArchitecturePolicy(policy) != nil
