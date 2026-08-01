@@ -66,3 +66,22 @@ build = "build.rs"
 		})
 	}
 }
+
+func TestArchitectureRejectsRootRustPackage(t *testing.T) {
+	t.Chdir("../..")
+
+	read := func(path string) ([]byte, error) {
+		if path == "Cargo.toml" {
+			return []byte("[workspace]\n\n[package]\nname = \"rogue\"\n"), nil
+		}
+		return readSource(path)
+	}
+	findings, err := architectureRustTargetFindings(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 || findings[0] !=
+		"Cargo.toml: workspace root package is prohibited" {
+		t.Fatalf("findings = %v", findings)
+	}
+}

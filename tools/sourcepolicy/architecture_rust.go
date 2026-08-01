@@ -53,6 +53,17 @@ func architectureRustTargetFindings(
 	readFile func(string) ([]byte, error),
 ) ([]string, error) {
 	var findings []string
+	workspace, err := readFile("Cargo.toml")
+	if err != nil {
+		return nil, fmt.Errorf("read Rust workspace: %w", err)
+	}
+	var workspaceDocument map[string]any
+	if _, err := toml.Decode(string(workspace), &workspaceDocument); err != nil {
+		return nil, fmt.Errorf("decode Rust workspace: %w", err)
+	}
+	if _, exists := workspaceDocument["package"]; exists {
+		findings = append(findings, "Cargo.toml: workspace root package is prohibited")
+	}
 	for _, expected := range expectedArchitectureRustPackages() {
 		source, err := readFile(expected.manifest)
 		if err != nil {
