@@ -25,6 +25,7 @@ type architectureRustPackage struct {
 }
 
 type architectureRustTarget struct {
+	kind string
 	name string
 	path string
 }
@@ -35,15 +36,16 @@ func expectedArchitectureRustPackages() []architectureRustPackage {
 			manifest: "worker/url-reference/Cargo.toml",
 			name:     "celestia-url-reference",
 			targets: []architectureRustTarget{
-				{name: "celestia-url-reference", path: "src/main.rs"},
+				{kind: "bin", name: "celestia-url-reference", path: "src/main.rs"},
+				{kind: "test", name: "process", path: "tests/process.rs"},
 			},
 		},
 		{
 			manifest: "worker/qualification-fixtures/Cargo.toml",
 			name:     "celestia-qualification-fixtures",
 			targets: []architectureRustTarget{
-				{name: "celestia-blocked-input-worker", path: "src/bin/blocked_input.rs"},
-				{name: "celestia-hostile-worker", path: "src/bin/hostile.rs"},
+				{kind: "bin", name: "celestia-blocked-input-worker", path: "src/bin/blocked_input.rs"},
+				{kind: "bin", name: "celestia-hostile-worker", path: "src/bin/hostile.rs"},
 			},
 		},
 	}
@@ -90,12 +92,24 @@ func decodeArchitectureRustPackage(source []byte) (architectureRustPackage, erro
 		return architectureRustPackage{}, err
 	}
 	name := architectureRustPackageName(document)
-	targets, valid := architectureRustTargets(document["bin"])
-	if !valid || architectureRustAutobins(document) ||
+	var targets []architectureRustTarget
+	valid := true
+	for _, kind := range []string{"bin", "test"} {
+		decoded, decodedOK := architectureRustTargets(document[kind], kind)
+		targets = append(targets, decoded...)
+		valid = valid && decodedOK
+	}
+	if !valid || architectureRustAutomaticTargets(document) ||
 		architectureRustHasExtraTargets(document) || architectureRustHasBuildScript(document) {
 		return architectureRustPackage{name: name}, nil
 	}
 	slices.SortFunc(targets, func(left, right architectureRustTarget) int {
+		if left.kind != right.kind {
+			if left.kind < right.kind {
+				return -1
+			}
+			return 1
+		}
 		if left.name != right.name {
 			if left.name < right.name {
 				return -1
@@ -118,9 +132,15 @@ func architectureRustHasBuildScript(document map[string]any) bool {
 	return exists
 }
 
-func architectureRustAutobins(document map[string]any) bool {
-	value, exists := nestedTable(document, "package")["autobins"]
-	return !exists || value != false
+func architectureRustAutomaticTargets(document map[string]any) bool {
+	pack := nestedTable(document, "package")
+	for _, setting := range []string{"autobins", "autotests"} {
+		value, exists := pack[setting]
+		if !exists || value != false {
+			return true
+		}
+	}
+	return false
 }
 
 func architectureRustPackageName(document map[string]any) string {
@@ -132,7 +152,7 @@ func architectureRustPackageName(document map[string]any) string {
 }
 
 func architectureRustHasExtraTargets(document map[string]any) bool {
-	for _, target := range []string{"lib", "example", "test", "bench"} {
+	for _, target := range []string{"lib", "example", "bench"} {
 		if len(cargoTargetTables(document[target])) != 0 {
 			return true
 		}
@@ -140,7 +160,7 @@ func architectureRustHasExtraTargets(document map[string]any) bool {
 	return false
 }
 
-func architectureRustTargets(value any) ([]architectureRustTarget, bool) {
+func architectureRustTargets(value any, kind string) ([]architectureRustTarget, bool) {
 	if value == nil {
 		return nil, true
 	}
@@ -155,7 +175,7 @@ func architectureRustTargets(value any) ([]architectureRustTarget, bool) {
 		if !nameOK || !pathOK {
 			return nil, false
 		}
-		targets = append(targets, architectureRustTarget{name: name, path: path})
+		targets = append(targets, architectureRustTarget{kind: kind, name: name, path: path})
 	}
 	return targets, true
 }

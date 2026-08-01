@@ -40,6 +40,18 @@ autobins = true
 name = "celestia-url-reference"
 path = "src/main.rs"
 		`,
+		"enabled automatic tests": `[package]
+name = "celestia-url-reference"
+autobins = false
+
+[[bin]]
+name = "celestia-url-reference"
+path = "src/main.rs"
+
+[[test]]
+name = "process"
+path = "tests/process.rs"
+		`,
 		"malformed targets": `bin = "invalid"
 [package]
 name = "celestia-url-reference"

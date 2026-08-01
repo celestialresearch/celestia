@@ -348,7 +348,6 @@ func cargoTestDiscoveryFindings(
 		for _, setting := range []string{
 			"autolib",
 			"autoexamples",
-			"autotests",
 			"autobenches",
 		} {
 			if enabled, exists := packageTable[setting]; exists &&

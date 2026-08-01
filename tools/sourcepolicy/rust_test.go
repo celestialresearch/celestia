@@ -47,9 +47,9 @@ var cargoLintCases = []struct {
 	{"deny", "[workspace.lints.clippy]\nall = \"deny\"\n", 0},
 	{"workspace inheritance", "[lints]\nworkspace = true\n", 0},
 	{
-		"automatic tests disabled",
+		"explicit tests",
 		"[package]\nname = \"fixture\"\nautotests = false\n",
-		1,
+		0,
 	},
 	{
 		"automatic library disabled",

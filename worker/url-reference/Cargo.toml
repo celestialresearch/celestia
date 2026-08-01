@@ -6,10 +6,15 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 autobins = false
+autotests = false
 
 [[bin]]
 name = "celestia-url-reference"
 path = "src/main.rs"
+
+[[test]]
+name = "process"
+path = "tests/process.rs"
 
 [lints]
 workspace = true

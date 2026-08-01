@@ -8,6 +8,7 @@ license = "LicenseRef-Celestia-Proprietary"
 rust-version = "1.97.1"
 publish = false
 autobins = false
+autotests = false
 
 [lints.rust]
 non_ascii_idents = "deny"
