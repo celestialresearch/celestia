@@ -66,6 +66,7 @@ func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
 	for _, target := range []string{
 		governedManifestPath, structureManifestPath, executionManifestPath,
 		transformManifestPath, protocolManifestPath,
+		admissionManifestPath,
 	} {
 		for _, missing := range []bool{false, true} {
 			read := func(name string) ([]byte, error) {
@@ -86,6 +87,8 @@ func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
 					return os.ReadFile(transformManifestPath)
 				case protocolManifestPath:
 					return os.ReadFile(protocolManifestPath)
+				case admissionManifestPath:
+					return os.ReadFile(admissionManifestPath)
 				default:
 					return nil, errors.New("unexpected manifest")
 				}

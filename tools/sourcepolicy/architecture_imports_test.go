@@ -77,7 +77,7 @@ func TestArchitectureImportsRejectTestDirectionBypass(t *testing.T) {
 		t.Fatalf("qualification test bypass accepted: %v, %v", findings, err)
 	}
 	readFile = func(string) ([]byte, error) {
-		return []byte("package example\nimport _ \"celestia.research/celestia/internal/urladmission\"\n"), nil
+		return []byte("package example\nimport _ \"celestia.research/celestia/internal/operation/urlreference/admission\"\n"), nil
 	}
 	findings, err = architectureImportFindings(
 		[]string{supervisionQualificationTest}, readFile,

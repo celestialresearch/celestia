@@ -34,9 +34,10 @@ func expectedProhibitedSegments() []string {
 
 func expectedPackages() []string {
 	return []string{
-		"internal/attemptstore", "internal/execution/supervision", "internal/urladmission",
-		"internal/urloperation", "internal/operation/urlreference/protocol",
+		"internal/attemptstore", "internal/execution/supervision",
+		"internal/operation/urlreference/admission", "internal/operation/urlreference/protocol",
 		"internal/operation/urlreference/transform",
+		"internal/urloperation",
 		"tools/actionpolicy", "tools/sourcepolicy",
 	}
 }
@@ -71,7 +72,6 @@ func expectedImportRules() []string {
 func expectedMigrationRoots() []architectureMigrationRoot {
 	return []architectureMigrationRoot{
 		{Path: "internal/attemptstore", Count: 48, Digest: "b33f419cd6d54a697c18f95cb23c156debc5a8cc1facc2acbe6d3d7541d73a54", Destination: "internal/operation/urlreference/attempt", Slice: "CEL-STRUCT-004D", Reason: "Attempt evidence remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-004D"},
-		{Path: "internal/urladmission", Count: 2, Digest: "7f3df87edbfd1b3f0a79f8778bf495b45ec31a806b73a9c9f34280131e00bbf5", Destination: "internal/operation/urlreference/admission", Slice: "CEL-STRUCT-004C", Reason: "URL admission remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-004C"},
 		{Path: "internal/urloperation", Count: 5, Digest: "9ea53ceaa57bb11f17df5e1da4d30f9d174e0d9cb38eef41ebd22cf7779d0755", Destination: "internal/operation/urlreference", Slice: "CEL-STRUCT-004E", Reason: "URL operation remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-004E"},
 	}
 }
@@ -79,5 +79,6 @@ func expectedMigrationRoots() []architectureMigrationRoot {
 func expectedRetiredMigration() []string {
 	return []string{
 		"internal/processsupervision", "internal/urlreferencev1", "internal/workerprotocolv1",
+		"internal/urladmission",
 	}
 }

@@ -9,7 +9,6 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-// Package urladmission decides whether a URL-reference request may execute.
 package urladmission
 
 import (
@@ -22,8 +21,8 @@ import (
 	"io"
 	"time"
 
-	"celestia.research/celestia/internal/operation/urlreference/transform"
 	"celestia.research/celestia/internal/operation/urlreference/protocol"
+	"celestia.research/celestia/internal/operation/urlreference/transform"
 )
 
 const identityBytes = 32

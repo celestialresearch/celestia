@@ -21,7 +21,7 @@ import (
 
 const (
 	governedManifestPath  = "docs/contracts/governed_url_reference_v1.json"
-	governedManifestSHA   = "82578d1c4a71e3ea2d523ae93f967476c854a0e55a0d77dfbd6fea936a2fa3ac"
+	governedManifestSHA   = "d8bf9eeeeecfabc884ccf7944c1fb91ef7dc80c3330304c7f0b00f5f9730caa0"
 	structureManifestPath = "docs/contracts/cel_struct_001.json"
 	structureManifestSHA  = "e062137f91713d0a9176d1af20720b20bf7c4ebfbc88ee0bf70a4d6316c490cc"
 	executionManifestPath = "docs/contracts/cel_struct_003.json"
@@ -30,6 +30,8 @@ const (
 	transformManifestSHA  = "b380bc3c6734ad11146ebda494a4c35318b3f521150ebf6283d7a933f53e8039"
 	protocolManifestPath  = "docs/contracts/cel_struct_004b.json"
 	protocolManifestSHA   = "ab13200a42669cb82115d2def997bcc1d55b4f62e031e6eb8a5de96ab291228d"
+	admissionManifestPath = "docs/contracts/cel_struct_004c.json"
+	admissionManifestSHA  = "1c5d5545097ecd0ff1f46b7c7a007f684006e18ad5cc724be76f0f53bae69206"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {
@@ -42,6 +44,7 @@ func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) 
 		{executionManifestPath, executionManifestSHA},
 		{transformManifestPath, transformManifestSHA},
 		{protocolManifestPath, protocolManifestSHA},
+		{admissionManifestPath, admissionManifestSHA},
 	}
 	for _, manifest := range manifests {
 		if manifestPolicyStatus(stderr, readFile, manifest.path, manifest.digest) != 0 {

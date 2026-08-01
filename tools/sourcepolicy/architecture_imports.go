@@ -70,7 +70,7 @@ func forbiddenSupervisionQualificationImport(imported string) string {
 	}
 	allowed := []string{
 		architectureModule + "/internal/execution/supervision",
-		architectureModule + "/internal/urladmission",
+		architectureModule + "/internal/operation/urlreference/admission",
 		architectureModule + "/internal/operation/urlreference/transform",
 		architectureModule + "/internal/operation/urlreference/protocol",
 	}

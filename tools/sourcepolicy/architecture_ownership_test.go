@@ -34,6 +34,23 @@ func TestArchitectureOwnsProtocolAtFinalPath(t *testing.T) {
 	}
 }
 
+func TestArchitectureOwnsAdmissionAtFinalPath(t *testing.T) {
+	t.Parallel()
+
+	policy := validArchitectureFixturePolicy()
+	if !slices.Contains(policy.Packages, "internal/operation/urlreference/admission") {
+		t.Fatal("final admission package is not governed")
+	}
+	for _, root := range policy.MigrationRoots {
+		if root.Path == "internal/urladmission" {
+			t.Fatal("retired admission package remains registered for migration")
+		}
+	}
+	if !slices.Contains(policy.RetiredMigration, "internal/urladmission") {
+		t.Fatal("retired admission package can be recreated")
+	}
+}
+
 func TestArchitectureSourceOwnership(t *testing.T) {
 	t.Parallel()
 

@@ -1,0 +1,381 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-struct-004c",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "URL-reference admission has one final operation-owned path and the obsolete package path is rejected",
+  "owner": "internal/operation/urlreference/admission",
+  "inputs": [
+    {
+      "id": "CEL-STRUCT-INPUT-001",
+      "media_type": "application/vnd.celestia.tracked-source",
+      "maximum_bytes": 16777216,
+      "validation": "Bounded tracked paths, Go modules, packages, imports and architecture policy"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-STRUCT-OUTPUT-001",
+      "media_type": "application/vnd.celestia.policy-result",
+      "maximum_bytes": 1048576,
+      "validation": "Deterministic acceptance or rejection with a bounded diagnostic"
+    }
+  ],
+  "canonical_state": [
+    "The two-file URL-reference admission inventory moves once to internal/operation/urlreference/admission"
+  ],
+  "derived_state": [
+    "Updated Product imports, architecture verdict and independent Assurance verdict"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-STRUCT-004C-EFFECT-001",
+      "kind": "repository verification result",
+      "authority": "CEL-STRUCT-004C-AUTH-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-STRUCT-004C-AUTH-001",
+      "owner": "tools/sourcepolicy",
+      "grant": "Accept only the final operation-owned admission package and declared dependency direction",
+      "refusal": "Reject the retired URL-reference package or a admission package outside an operation"
+    },
+    {
+      "id": "CEL-STRUCT-004C-AUTH-002",
+      "owner": "internal/architecturecheck",
+      "grant": "Independently enforce the final admission path and dependency direction",
+      "refusal": "Reject a weaker Production policy or recreated retired path"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-STRUCT-004C-TRUST-001",
+      "source": "tracked repository content",
+      "target": "tools/sourcepolicy",
+      "treatment": "Compare the tracked tree and Go imports with the final architecture policy"
+    },
+    {
+      "id": "CEL-STRUCT-004C-TRUST-002",
+      "source": "Production architecture policy",
+      "target": "internal/architecturecheck",
+      "treatment": "Compare bounded Production policy data with independently compiled final-path rules"
+    }
+  ],
+  "bounds": {
+    "processes": 1,
+    "memory_bytes": 67108864,
+    "output_bytes": 1048576,
+    "worker_time_milliseconds": 30000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-STRUCT-004C-RESOURCE-001",
+      "kind": "tracked_inventory",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
+      "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds",
+      "release": "Release inventory and parsed syntax when policy evaluation returns",
+      "cleanup_failure": "Return an infrastructure error without accepting the tree"
+    },
+    {
+      "id": "CEL-STRUCT-004C-RESOURCE-002",
+      "kind": "policy_document",
+      "owner": "internal/architecturecheck",
+      "acquisition": "Read one bounded strict architecture policy document",
+      "bound": "At most 1048576 bytes and the declared two migration entries",
+      "release": "Release decoded policy when independent evaluation returns",
+      "cleanup_failure": "Return an assurance error without accepting the tree"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native Production and Assurance policy execution"
+    }
+  ],
+  "states": [
+    {
+      "id": "proposed",
+      "kind": "intermediate"
+    },
+    {
+      "id": "accepted",
+      "kind": "success"
+    },
+    {
+      "id": "rejected",
+      "kind": "refusal"
+    },
+    {
+      "id": "failed",
+      "kind": "failure"
+    },
+    {
+      "id": "cancelled",
+      "kind": "cancellation"
+    },
+    {
+      "id": "indeterminate",
+      "kind": "indeterminate"
+    }
+  ],
+  "allowed_transitions": [
+    {
+      "from": "proposed",
+      "to": "accepted"
+    },
+    {
+      "from": "proposed",
+      "to": "rejected"
+    },
+    {
+      "from": "proposed",
+      "to": "failed"
+    },
+    {
+      "from": "proposed",
+      "to": "cancelled"
+    },
+    {
+      "from": "proposed",
+      "to": "indeterminate"
+    }
+  ],
+  "prohibited_transitions": [
+    {
+      "from": "accepted",
+      "to": "proposed"
+    },
+    {
+      "from": "accepted",
+      "to": "rejected"
+    },
+    {
+      "from": "accepted",
+      "to": "failed"
+    },
+    {
+      "from": "accepted",
+      "to": "cancelled"
+    },
+    {
+      "from": "accepted",
+      "to": "indeterminate"
+    },
+    {
+      "from": "rejected",
+      "to": "proposed"
+    },
+    {
+      "from": "rejected",
+      "to": "accepted"
+    },
+    {
+      "from": "rejected",
+      "to": "failed"
+    },
+    {
+      "from": "rejected",
+      "to": "cancelled"
+    },
+    {
+      "from": "rejected",
+      "to": "indeterminate"
+    },
+    {
+      "from": "failed",
+      "to": "proposed"
+    },
+    {
+      "from": "failed",
+      "to": "accepted"
+    },
+    {
+      "from": "failed",
+      "to": "rejected"
+    },
+    {
+      "from": "failed",
+      "to": "cancelled"
+    },
+    {
+      "from": "failed",
+      "to": "indeterminate"
+    },
+    {
+      "from": "cancelled",
+      "to": "proposed"
+    },
+    {
+      "from": "cancelled",
+      "to": "accepted"
+    },
+    {
+      "from": "cancelled",
+      "to": "rejected"
+    },
+    {
+      "from": "cancelled",
+      "to": "failed"
+    },
+    {
+      "from": "cancelled",
+      "to": "indeterminate"
+    },
+    {
+      "from": "indeterminate",
+      "to": "proposed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "accepted"
+    },
+    {
+      "from": "indeterminate",
+      "to": "rejected"
+    },
+    {
+      "from": "indeterminate",
+      "to": "failed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "cancelled"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-STRUCT-004C-INV-001",
+      "statement": "An admission package exists only beneath its owning operation",
+      "owner": "depguard",
+      "severity": "high",
+      "boundary": "Go package import to authority owner",
+      "falsifier": "An admission package outside internal/operation passes policy",
+      "production_controls": [
+        {
+          "id": "CEL-STRUCT-004C-PROD-001",
+          "owner": "depguard and architecture fixture"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-STRUCT-004C-ASSURE-001",
+          "owner": "independent import graph"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Dynamic loading is outside this static import boundary"
+    },
+    {
+      "id": "CEL-STRUCT-004C-INV-002",
+      "statement": "The obsolete internal/urladmission path is absent and rejected after its move",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "migration tracked path to migration exception",
+      "falsifier": "A maintained file recreates the retired path or policy still registers it as a migration root",
+      "production_controls": [
+        {
+          "id": "CEL-STRUCT-004C-PROD-002",
+          "owner": "source-policy retired-path fixture"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-STRUCT-004C-ASSURE-002",
+          "owner": "compiled retired-path constitution"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "The registry is temporary until CEL-STRUCT-005 removes every entry"
+    },
+    {
+      "id": "CEL-STRUCT-004C-INV-003",
+      "statement": "The move preserves refusal before execution and exact request, identity, nonce, input, mode, deadline and limit binding",
+      "owner": "internal/architecturecheck",
+      "severity": "high",
+      "boundary": "Production policy to independent rulepack",
+      "falsifier": "An invalid request reaches execution or an admitted field differs from its exact encoded request",
+      "production_controls": [
+        {
+          "id": "CEL-STRUCT-004C-PROD-003",
+          "owner": "strict architecture policy validation"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-STRUCT-004C-ASSURE-003",
+          "owner": "compiled policy comparison"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Execution and persistence authority remain outside admission and are checked at their own boundaries"
+    }
+  ],
+  "success_semantics": "Accepted means the final admission package exists, the old package is absent and admission authority and request binding remain unchanged",
+  "refusal_semantics": "An outside-operation admission or retired path returns a bounded rejection",
+  "failure_semantics": "Malformed policy, parse failure or unavailable required tooling fails the gate",
+  "cancellation_semantics": "Cancellation stops evaluation and cannot produce acceptance",
+  "indeterminate_semantics": "Missing or contradictory evidence cannot produce acceptance",
+  "recovery_semantics": "Rerun from the unchanged tracked inventory; no partial policy result is canonical",
+  "compatibility_or_reset_policy": "The unused pre-release package is removed outright; no forwarding package, alias, shim or dual implementation is retained",
+  "falsifiers": [
+    "An admission package outside an operation passes policy",
+    "The retired package path is recreated without rejection",
+    "Refusal timing or admitted request binding changes"
+  ],
+  "production_controls": [
+    {
+      "id": "CEL-STRUCT-004C-PROD-001",
+      "owner": "depguard and architecture fixture"
+    },
+    {
+      "id": "CEL-STRUCT-004C-PROD-002",
+      "owner": "source-policy retired-path fixture"
+    },
+    {
+      "id": "CEL-STRUCT-004C-PROD-003",
+      "owner": "strict architecture policy validation"
+    }
+  ],
+  "assurance_controls": [
+    {
+      "id": "CEL-STRUCT-004C-ASSURE-001",
+      "owner": "independent import graph"
+    },
+    {
+      "id": "CEL-STRUCT-004C-ASSURE-002",
+      "owner": "compiled retired-path constitution"
+    },
+    {
+      "id": "CEL-STRUCT-004C-ASSURE-003",
+      "owner": "compiled policy comparison"
+    }
+  ],
+  "residual_limitations": [
+    "This path-only move does not establish new admission correctness",
+    "Execution and persistence remain separately governed",
+    "Exact-pair sign-off requires committed clean Product and Assurance candidates"
+  ],
+  "non_goals": [
+    "Change admission authority, refusal timing or request binding",
+    "Create a forwarding package, alias, shim or dual implementation",
+    "Move another package",
+    "Change transformation, protocol, persistence, supervision or worker behaviour"
+  ],
+  "deletion_criteria": [
+    "Delete this slice contract only when a later reviewed contract explicitly supersedes its final-path rule"
+  ]
+}
