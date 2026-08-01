@@ -103,28 +103,28 @@ func decodeArchitectureRustPackage(source []byte) (architectureRustPackage, erro
 		architectureRustHasExtraTargets(document) || architectureRustHasBuildScript(document) {
 		return architectureRustPackage{name: name}, nil
 	}
-	slices.SortFunc(targets, func(left, right architectureRustTarget) int {
-		if left.kind != right.kind {
-			if left.kind < right.kind {
-				return -1
-			}
-			return 1
-		}
-		if left.name != right.name {
-			if left.name < right.name {
-				return -1
-			}
-			return 1
-		}
-		if left.path < right.path {
-			return -1
-		}
-		if left.path > right.path {
-			return 1
-		}
-		return 0
-	})
+	slices.SortFunc(targets, compareArchitectureRustTargets)
 	return architectureRustPackage{name: name, targets: targets}, nil
+}
+
+func compareArchitectureRustTargets(left, right architectureRustTarget) int {
+	if result := compareArchitectureRustTargetField(left.kind, right.kind); result != 0 {
+		return result
+	}
+	if result := compareArchitectureRustTargetField(left.name, right.name); result != 0 {
+		return result
+	}
+	return compareArchitectureRustTargetField(left.path, right.path)
+}
+
+func compareArchitectureRustTargetField(left, right string) int {
+	if left < right {
+		return -1
+	}
+	if left > right {
+		return 1
+	}
+	return 0
 }
 
 func architectureRustHasBuildScript(document map[string]any) bool {
