@@ -1,0 +1,268 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-struct-001",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Repository ownership and dependency violations are rejected before product paths move",
+  "owner": "tools/sourcepolicy",
+  "inputs": [
+    {
+      "id": "CEL-STRUCT-INPUT-001",
+      "media_type": "application/vnd.celestia.tracked-source",
+      "maximum_bytes": 16777216,
+      "validation": "Bounded tracked paths, Go modules, packages, imports and architecture policy"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-STRUCT-OUTPUT-001",
+      "media_type": "application/vnd.celestia.policy-result",
+      "maximum_bytes": 1048576,
+      "validation": "Deterministic acceptance or rejection with a bounded diagnostic"
+    }
+  ],
+  "canonical_state": [
+    "Architecture policy and six-entry migration registry bound to Production ea8f840aa230f0498f82f3cd00dca22760cf6020"
+  ],
+  "derived_state": [
+    "Production source-policy verdict, depguard verdict and independent Assurance verdict"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-STRUCT-EFFECT-001",
+      "kind": "repository verification result",
+      "authority": "CEL-STRUCT-AUTH-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-STRUCT-AUTH-001",
+      "owner": "tools/sourcepolicy",
+      "grant": "Accept only a tracked tree satisfying the architecture constitution",
+      "refusal": "Reject missing, malformed, incomplete, expired or violated architecture policy"
+    },
+    {
+      "id": "CEL-STRUCT-AUTH-002",
+      "owner": "internal/architecturecheck",
+      "grant": "Independently accept only the compiled constitutional boundary",
+      "refusal": "Reject Production policy that weakens or contradicts the compiled rulepack"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-STRUCT-TRUST-001",
+      "source": "tracked repository content",
+      "target": "tools/sourcepolicy",
+      "treatment": "Inventory with bounded Git output then parse policy and Go syntax fail closed"
+    },
+    {
+      "id": "CEL-STRUCT-TRUST-002",
+      "source": "Production architecture policy",
+      "target": "internal/architecturecheck",
+      "treatment": "Compare bounded policy data with independently compiled constitutional rules"
+    }
+  ],
+  "bounds": {
+    "processes": 1,
+    "memory_bytes": 67108864,
+    "output_bytes": 1048576,
+    "worker_time_milliseconds": 30000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-STRUCT-RESOURCE-001",
+      "kind": "tracked_inventory",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
+      "bound": "At most 100000 paths and 16777216 source bytes per file",
+      "release": "Release inventory and parsed syntax when policy evaluation returns",
+      "cleanup_failure": "Return an infrastructure error without accepting the tree"
+    },
+    {
+      "id": "CEL-STRUCT-RESOURCE-002",
+      "kind": "policy_document",
+      "owner": "internal/architecturecheck",
+      "acquisition": "Read one bounded strict architecture policy document",
+      "bound": "At most 1048576 bytes and the declared six migration entries",
+      "release": "Release decoded policy when independent evaluation returns",
+      "cleanup_failure": "Return an assurance error without accepting the tree"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native Production and Assurance policy execution"
+    }
+  ],
+  "states": [
+    {
+      "id": "proposed",
+      "kind": "intermediate"
+    },
+    {
+      "id": "accepted",
+      "kind": "success"
+    },
+    {
+      "id": "rejected",
+      "kind": "refusal"
+    },
+    {
+      "id": "failed",
+      "kind": "failure"
+    },
+    {
+      "id": "cancelled",
+      "kind": "cancellation"
+    },
+    {
+      "id": "indeterminate",
+      "kind": "indeterminate"
+    }
+  ],
+  "allowed_transitions": [
+    {"from": "proposed", "to": "accepted"},
+    {"from": "proposed", "to": "rejected"},
+    {"from": "proposed", "to": "failed"},
+    {"from": "proposed", "to": "cancelled"},
+    {"from": "proposed", "to": "indeterminate"}
+  ],
+  "prohibited_transitions": [
+    {"from": "accepted", "to": "proposed"},
+    {"from": "accepted", "to": "rejected"},
+    {"from": "accepted", "to": "failed"},
+    {"from": "accepted", "to": "cancelled"},
+    {"from": "accepted", "to": "indeterminate"},
+    {"from": "rejected", "to": "proposed"},
+    {"from": "rejected", "to": "accepted"},
+    {"from": "rejected", "to": "failed"},
+    {"from": "rejected", "to": "cancelled"},
+    {"from": "rejected", "to": "indeterminate"},
+    {"from": "failed", "to": "proposed"},
+    {"from": "failed", "to": "accepted"},
+    {"from": "failed", "to": "rejected"},
+    {"from": "failed", "to": "cancelled"},
+    {"from": "failed", "to": "indeterminate"},
+    {"from": "cancelled", "to": "proposed"},
+    {"from": "cancelled", "to": "accepted"},
+    {"from": "cancelled", "to": "rejected"},
+    {"from": "cancelled", "to": "failed"},
+    {"from": "cancelled", "to": "indeterminate"},
+    {"from": "indeterminate", "to": "proposed"},
+    {"from": "indeterminate", "to": "accepted"},
+    {"from": "indeterminate", "to": "rejected"},
+    {"from": "indeterminate", "to": "failed"},
+    {"from": "indeterminate", "to": "cancelled"}
+  ],
+  "invariants": [
+    {
+      "id": "CEL-STRUCT-INV-001",
+      "statement": "Tracked source exists only beneath declared ownership paths",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "tracked path to architecture class",
+      "falsifier": "An undeclared root, command, flat package or vague directory passes policy",
+      "production_controls": [
+        {"id": "CEL-STRUCT-PROD-001", "owner": "source-policy architecture fixtures"}
+      ],
+      "assurance_controls": [
+        {"id": "CEL-STRUCT-ASSURE-001", "owner": "independent topology rules"}
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Git and the checked-out filesystem remain trusted inputs"
+    },
+    {
+      "id": "CEL-STRUCT-INV-002",
+      "statement": "Go imports follow the declared operation and execution dependency direction",
+      "owner": "depguard",
+      "severity": "high",
+      "boundary": "Go package import to authority owner",
+      "falsifier": "A forbidden operation, execution, command, tools, worker or Assurance edge passes lint",
+      "production_controls": [
+        {"id": "CEL-STRUCT-PROD-002", "owner": "depguard fixtures"}
+      ],
+      "assurance_controls": [
+        {"id": "CEL-STRUCT-ASSURE-002", "owner": "independent import graph"}
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Dynamic loading is outside this static import boundary"
+    },
+    {
+      "id": "CEL-STRUCT-INV-003",
+      "statement": "The migration registry admits only the frozen six legacy inventories and cannot expand them",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "legacy tracked path to migration exception",
+      "falsifier": "A new file, wildcard, parent exception, expired entry or recreated migrated path passes policy",
+      "production_controls": [
+        {"id": "CEL-STRUCT-PROD-003", "owner": "migration registry fixtures"}
+      ],
+      "assurance_controls": [
+        {"id": "CEL-STRUCT-ASSURE-003", "owner": "compiled migration inventory"}
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "The registry is temporary until CEL-STRUCT-005 removes every entry"
+    },
+    {
+      "id": "CEL-STRUCT-INV-004",
+      "statement": "Production policy cannot weaken a forbidden boundary compiled into Assurance",
+      "owner": "internal/architecturecheck",
+      "severity": "high",
+      "boundary": "Production policy to independent rulepack",
+      "falsifier": "A Production policy permitting a compiled forbidden edge receives an Assurance pass",
+      "production_controls": [
+        {"id": "CEL-STRUCT-PROD-004", "owner": "strict architecture policy validation"}
+      ],
+      "assurance_controls": [
+        {"id": "CEL-STRUCT-ASSURE-004", "owner": "compiled policy comparison"}
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Both implementations still depend on review of the declared constitution"
+    }
+  ],
+  "success_semantics": "Accepted means both repository-local controls and independent Assurance establish the declared static boundary",
+  "refusal_semantics": "A constitutional violation returns a bounded rejection and does not become an infrastructure skip",
+  "failure_semantics": "Malformed policy, parse failure or unavailable required tooling fails the gate",
+  "cancellation_semantics": "Cancellation stops evaluation and cannot produce acceptance",
+  "indeterminate_semantics": "Missing or contradictory evidence cannot produce acceptance",
+  "recovery_semantics": "Rerun from the unchanged tracked inventory; no partial policy result is canonical",
+  "compatibility_or_reset_policy": "The unused internal module identity resets to celestia.research/celestia without forwarding compatibility; product paths, protocol, persistence and runtime behaviour remain unchanged",
+  "falsifiers": [
+    "Undeclared ownership path passes Production policy",
+    "Forbidden import passes depguard",
+    "Legacy inventory expands without rejection",
+    "Weakened Production policy passes independent Assurance"
+  ],
+  "production_controls": [
+    {"id": "CEL-STRUCT-PROD-001", "owner": "source-policy architecture fixtures"},
+    {"id": "CEL-STRUCT-PROD-002", "owner": "depguard fixtures"},
+    {"id": "CEL-STRUCT-PROD-003", "owner": "migration registry fixtures"},
+    {"id": "CEL-STRUCT-PROD-004", "owner": "strict architecture policy validation"}
+  ],
+  "assurance_controls": [
+    {"id": "CEL-STRUCT-ASSURE-001", "owner": "independent topology rules"},
+    {"id": "CEL-STRUCT-ASSURE-002", "owner": "independent import graph"},
+    {"id": "CEL-STRUCT-ASSURE-003", "owner": "compiled migration inventory"},
+    {"id": "CEL-STRUCT-ASSURE-004", "owner": "compiled policy comparison"}
+  ],
+  "residual_limitations": [
+    "Static policy does not prove runtime behaviour",
+    "The migration registry remains until the assigned path-move slices",
+    "Exact-pair sign-off requires committed clean Production and Assurance candidates"
+  ],
+  "non_goals": [
+    "Move or rename Production packages",
+    "Change product, protocol, persistence or worker behaviour",
+    "Create a generic architecture framework",
+    "Begin CEL-STRUCT-002 or a later slice"
+  ],
+  "deletion_criteria": [
+    "Remove the temporary migration registry through its assigned path slices and reconcile it to zero entries in CEL-STRUCT-005"
+  ]
+}

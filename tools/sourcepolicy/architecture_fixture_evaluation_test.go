@@ -1,0 +1,199 @@
+// Copyright © 2026 @sudocelestia. All rights reserved.
+//
+// PROPRIETARY AND CONFIDENTIAL SOURCE CODE.
+//
+// No licence, permission or authorisation is granted to use, copy, modify,
+// compile, execute, distribute, publish, sublicense or otherwise exploit this
+// file, except to the limited extent unavoidably permitted by applicable law
+// or GitHub's Terms of Service.
+//
+// See the LICENSE file at the repository root for the complete terms.
+
+package main
+
+import (
+	"errors"
+	"slices"
+)
+
+func evaluateArchitectureFixture(mutation string) string {
+	if architectureFixtureRejected(mutation) {
+		return "reject"
+	}
+	return "accept"
+}
+
+func architectureFixtureRejected(mutation string) bool {
+	check, exists := architectureFixtureChecks[mutation]
+	if !exists {
+		return false
+	}
+	return check(validArchitectureFixturePolicy())
+}
+
+var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
+	"none": func(architecturePolicy) bool { return false },
+	"operation-imports-operation": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport("internal/operation/alpha", architectureModule+"/internal/operation/beta") != ""
+	},
+	"subpackage-imports-root": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport("internal/operation/alpha/transform", architectureModule+"/internal/operation/alpha") != ""
+	},
+	"execution-imports-operation": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport("internal/execution/supervision", architectureModule+"/internal/operation/alpha") != ""
+	},
+	"production-imports-assurance": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport("internal/operation/alpha", "celestia.research/assurance/check") != ""
+	},
+	"runtime-imports-tools": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport("internal/operation/alpha", architectureModule+"/tools/sourcepolicy") != ""
+	},
+	"runtime-imports-worker": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport("internal/operation/alpha", architectureModule+"/worker/url-reference") != ""
+	},
+	"command-imports-subpackage": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport("cmd/celestia", architectureModule+"/internal/operation/alpha/transform") != ""
+	},
+	"undeclared-command": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"cmd/example/main.go"}, policy)
+	},
+	"vague-platform-directory": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"internal/platform/file.go"}, policy)
+	},
+	"vague-platforms-directory": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"internal/platforms/file.go"}, policy)
+	},
+	"unapproved-root": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"application/file.go"}, policy)
+	},
+	"missing-package-comment": missingPackageCommentRejected,
+	"stale-module": func(architecturePolicy) bool {
+		return validateCurrentModule(func(string) ([]byte, error) {
+			return []byte("module obsolete.example/module\n"), nil
+		}, architectureModule) != nil
+	},
+	"forwarding-obsolete-package": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"internal/obsolete/forward.go"}, policy)
+	},
+	"undeclared-file-exception": func(policy architecturePolicy) bool {
+		policy.FileExceptions = []architectureExcept{{Path: "internal/example.go"}}
+		return validateArchitecturePolicy(policy) != nil
+	},
+	"missing-policy": func(architecturePolicy) bool {
+		return runArchitecturePolicy(
+			discardArchitectureFixtureWriter{}, func() ([]string, error) { return nil, nil },
+			func(string) ([]byte, error) { return nil, errors.New("missing") }, nil,
+		) != 0
+	},
+	"malformed-policy": func(architecturePolicy) bool {
+		_, err := decodeArchitecturePolicy([]byte("{"))
+		return err != nil
+	},
+	"policy-permits-forbidden-edge": func(policy architecturePolicy) bool {
+		policy.ImportRules = policy.ImportRules[:len(policy.ImportRules)-1]
+		return validateArchitecturePolicy(policy) != nil
+	},
+	"root-common-helper": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"common/file.go"}, policy)
+	},
+	"internal-utils": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"internal/utils/file.go"}, policy)
+	},
+	"root-services": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"services/file.go"}, policy)
+	},
+	"root-src": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"src/file.go"}, policy)
+	},
+	"worker-private-key-path": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"worker/example/private-key.pem"}, policy)
+	},
+	"legacy-additional-file": func(architecturePolicy) bool {
+		base := []string{"internal/example/original.go"}
+		return legacyInventoryExpanded([]string{base[0], "internal/example/new.go"}, "internal/example", base)
+	},
+	"unregistered-flat-package": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"internal/newpackage/file.go"}, policy)
+	},
+	"legacy-wildcard-entry": func(policy architecturePolicy) bool {
+		policy.Legacy[0].Path = "internal/*"
+		return validateArchitecturePolicy(policy) != nil
+	},
+	"legacy-parent-entry": func(policy architecturePolicy) bool {
+		policy.Legacy[0].Path = "internal"
+		return validateArchitecturePolicy(policy) != nil
+	},
+	"legacy-expired-entry": func(policy architecturePolicy) bool {
+		policy.Legacy[0].Expiry = "CEL-STRUCT-001"
+		return validateArchitecturePolicy(policy) != nil
+	},
+	"migrated-path-recreated": func(architecturePolicy) bool {
+		return retiredPathRecreated([]string{"internal/attemptstore/store.go"}, "internal/attemptstore")
+	},
+}
+
+func missingPackageCommentRejected(policy architecturePolicy) bool {
+	policy.Packages = []string{"internal/example"}
+	findings, err := packageDocumentationFindings(
+		[]string{"internal/example/example.go"}, policy,
+		func(string) ([]byte, error) { return []byte("package example\n"), nil },
+	)
+	return err == nil && len(findings) != 0
+}
+
+type discardArchitectureFixtureWriter struct{}
+
+func (discardArchitectureFixtureWriter) Write(value []byte) (int, error) {
+	return len(value), nil
+}
+
+func hasArchitecturePathFinding(files []string, policy architecturePolicy) bool {
+	return len(architecturePathFindings(files, policy)) != 0
+}
+
+func validArchitectureFixturePolicy() architecturePolicy {
+	legacy := expectedLegacy()
+	for index := range legacy {
+		legacy[index].Reason = "bounded migration"
+	}
+	return architecturePolicy{
+		Schema:          architectureSchema,
+		CurrentSlice:    architectureCurrentSlice,
+		BaseCommit:      architectureBaseCommit,
+		ModulePath:      architectureModule,
+		InventoryFormat: architectureInventory,
+		RootDirectories: expectedRootDirectories(),
+		RootFiles:       expectedRootFiles(),
+		Prohibited:      expectedProhibitedSegments(),
+		Packages:        expectedPackages(),
+		ImportRules:     expectedImportRules(),
+		Legacy:          legacy,
+	}
+}
+
+func legacyInventoryExpanded(current []string, root string, base []string) bool {
+	allowed := stringSet(base)
+	prefix := root + "/"
+	for _, file := range current {
+		if stringsHasPrefix(file, prefix) && !slices.Contains(base, file) {
+			if _, exists := allowed[file]; !exists {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func retiredPathRecreated(files []string, retired string) bool {
+	prefix := retired + "/"
+	for _, file := range files {
+		if stringsHasPrefix(file, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func stringsHasPrefix(value, prefix string) bool {
+	return len(value) >= len(prefix) && value[:len(prefix)] == prefix
+}

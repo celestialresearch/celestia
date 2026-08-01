@@ -9,6 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+// Package urloperation coordinates the governed URL-reference use case.
 package urloperation
 
 import (

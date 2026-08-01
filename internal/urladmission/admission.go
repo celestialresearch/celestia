@@ -9,6 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+// Package urladmission decides whether a URL-reference request may execute.
 package urladmission
 
 import (

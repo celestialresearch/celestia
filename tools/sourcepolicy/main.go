@@ -9,6 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
+// Package main implements bounded repository source-policy checks.
 package main
 
 import (
@@ -35,6 +36,7 @@ const (
 	modeSuppressions      = "suppressions"
 	modeTestSkips         = "test-skips"
 	modeManifest          = "manifest"
+	modeArchitecture      = "architecture"
 	maxSourceBytes        = 1 << 20
 	maxInventoryBytes     = 16 << 20
 	maxInventoryPaths     = 100_000
@@ -48,6 +50,9 @@ const (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == modeArchitecture {
+		os.Exit(runArchitecturePolicy(os.Stderr, sourceFiles, readSource, gitBaseInventory))
+	}
 	if len(os.Args) == 2 && os.Args[1] == modeManifest {
 		os.Exit(runManifestPolicy(os.Stderr, readSource))
 	}
@@ -71,7 +76,7 @@ func run(
 	if len(args) != 1 ||
 		(args[0] != modeSuppressions && args[0] != modeTestSkips) {
 		if _, err := fmt.Fprintln(
-			stderr, "usage: sourcepolicy [manifest|suppressions|test-skips]",
+			stderr, "usage: sourcepolicy [architecture|manifest|suppressions|test-skips]",
 		); err != nil {
 			return 1
 		}

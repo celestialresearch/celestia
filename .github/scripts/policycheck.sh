@@ -99,6 +99,10 @@ check_manifest() {
   go run ./tools/sourcepolicy manifest || status=1
 }
 
+check_architecture() {
+  go run ./tools/sourcepolicy architecture || status=1
+}
+
 is_generated_source() {
   local count=0
   local file=$1
@@ -172,6 +176,7 @@ fi
 
 case "${1:-all}" in
 all)
+  check_architecture
   check_module
   check_workspace_files
   check_markers
@@ -193,6 +198,9 @@ suppressions)
 manifest)
   check_manifest
   ;;
+architecture)
+  check_architecture
+  ;;
 workspace)
   check_workspace_files
   ;;
@@ -200,7 +208,7 @@ test-skips)
   check_test_skips
   ;;
 *)
-  printf 'Usage: %s [all|manifest|markers|source-files|suppressions|test-skips|workspace]\n' \
+  printf 'Usage: %s [all|architecture|manifest|markers|source-files|suppressions|test-skips|workspace]\n' \
     "${0##*/}" >&2
   exit 2
   ;;

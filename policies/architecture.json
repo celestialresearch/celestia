@@ -1,0 +1,143 @@
+{
+  "schema_version": "celestia.production.architecture.v1",
+  "current_slice": "CEL-STRUCT-001",
+  "base_commit": "ea8f840aa230f0498f82f3cd00dca22760cf6020",
+  "module_path": "celestia.research/celestia",
+  "inventory_format": "sha256-lf-paths-v1",
+  "allowed_root_directories": [
+    ".cargo",
+    ".github",
+    "cmd",
+    "docs",
+    "internal",
+    "policies",
+    "testdata",
+    "tools",
+    "worker"
+  ],
+  "allowed_root_files": [
+    ".editorconfig",
+    ".gitattributes",
+    ".gitignore",
+    ".golangci.yml",
+    "AGENTS.md",
+    "Cargo.lock",
+    "Cargo.toml",
+    "LICENSE",
+    "README.md",
+    "deny.toml",
+    "go.mod",
+    "go.sum",
+    "rust-toolchain.toml"
+  ],
+  "prohibited_segments": [
+    "base",
+    "common",
+    "component",
+    "components",
+    "core",
+    "extra",
+    "extended",
+    "framework",
+    "general",
+    "helper",
+    "helpers",
+    "legacy",
+    "manager",
+    "misc",
+    "module",
+    "modules",
+    "platform",
+    "platforms",
+    "service",
+    "services",
+    "shared",
+    "temp",
+    "temporary",
+    "util",
+    "utils"
+  ],
+  "declared_packages": [
+    "internal/attemptstore",
+    "internal/processsupervision",
+    "internal/urladmission",
+    "internal/urloperation",
+    "internal/urlreferencev1",
+    "internal/workerprotocolv1",
+    "tools/actionpolicy",
+    "tools/sourcepolicy"
+  ],
+  "declared_commands": [],
+  "file_exceptions": [],
+  "forbidden_import_rules": [
+    "command-imports-operation-subpackage",
+    "execution-imports-operation",
+    "operation-imports-operation",
+    "operation-subpackage-imports-root",
+    "production-imports-assurance",
+    "runtime-imports-tools",
+    "runtime-imports-worker"
+  ],
+  "legacy_packages": [
+    {
+      "path": "internal/attemptstore",
+      "inventory_count": 48,
+      "inventory_sha256": "b33f419cd6d54a697c18f95cb23c156debc5a8cc1facc2acbe6d3d7541d73a54",
+      "destination": "internal/operation/urlreference/attempt",
+      "migration_slice": "CEL-STRUCT-004D",
+      "reason": "Attempt evidence remains at its pre-constitution path until its path-only move",
+      "expires_at_completion": "CEL-STRUCT-004D",
+      "allow_new_files": false
+    },
+    {
+      "path": "internal/processsupervision",
+      "inventory_count": 19,
+      "inventory_sha256": "6f3533b58c7efd95e2948ebaf8f6fa956b81454204f15ac29520086cecc87fe8",
+      "destination": "internal/execution/supervision",
+      "migration_slice": "CEL-STRUCT-003",
+      "reason": "Process supervision remains at its pre-constitution path until its path-only move",
+      "expires_at_completion": "CEL-STRUCT-003",
+      "allow_new_files": false
+    },
+    {
+      "path": "internal/urladmission",
+      "inventory_count": 2,
+      "inventory_sha256": "7f3df87edbfd1b3f0a79f8778bf495b45ec31a806b73a9c9f34280131e00bbf5",
+      "destination": "internal/operation/urlreference/admission",
+      "migration_slice": "CEL-STRUCT-004C",
+      "reason": "URL admission remains at its pre-constitution path until its path-only move",
+      "expires_at_completion": "CEL-STRUCT-004C",
+      "allow_new_files": false
+    },
+    {
+      "path": "internal/urloperation",
+      "inventory_count": 5,
+      "inventory_sha256": "9ea53ceaa57bb11f17df5e1da4d30f9d174e0d9cb38eef41ebd22cf7779d0755",
+      "destination": "internal/operation/urlreference",
+      "migration_slice": "CEL-STRUCT-004E",
+      "reason": "URL operation remains at its pre-constitution path until its path-only move",
+      "expires_at_completion": "CEL-STRUCT-004E",
+      "allow_new_files": false
+    },
+    {
+      "path": "internal/urlreferencev1",
+      "inventory_count": 5,
+      "inventory_sha256": "1e87214904512a3f9f63d81335271504eb2cbaba583fa5d1d86aee41177f35bd",
+      "destination": "internal/operation/urlreference/transform",
+      "migration_slice": "CEL-STRUCT-004A",
+      "reason": "URL transformation remains at its pre-constitution path until its path-only move",
+      "expires_at_completion": "CEL-STRUCT-004A",
+      "allow_new_files": false
+    },
+    {
+      "path": "internal/workerprotocolv1",
+      "inventory_count": 3,
+      "inventory_sha256": "bb6d19a43ceb0e953687c4713eae36b70e7bb328a685a9381fec0f4c43154859",
+      "destination": "internal/operation/urlreference/protocol",
+      "migration_slice": "CEL-STRUCT-004B",
+      "reason": "Worker protocol remains at its pre-constitution path until its path-only move",
+      "expires_at_completion": "CEL-STRUCT-004B",
+      "allow_new_files": false
+    }
+  ]
+}
