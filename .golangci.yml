@@ -13,8 +13,6 @@ linters:
       rules:
         production-boundaries:
           list-mode: lax
-          files:
-            - "!$test"
           deny:
             - pkg: "celestia.research/assurance"
               desc: Production must not import Assurance

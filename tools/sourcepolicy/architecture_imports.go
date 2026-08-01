@@ -26,7 +26,7 @@ func architectureImportFindings(
 ) ([]string, error) {
 	var findings []string
 	for _, file := range files {
-		if !strings.HasSuffix(file, ".go") || strings.HasSuffix(file, "_test.go") {
+		if !strings.HasSuffix(file, ".go") {
 			continue
 		}
 		source, err := readFile(file)
@@ -42,7 +42,11 @@ func architectureImportFindings(
 			if err != nil {
 				return nil, fmt.Errorf("parse import path %s: %w", file, err)
 			}
-			if reason := forbiddenArchitectureImport(path.Dir(file), imported); reason != "" {
+			reason := forbiddenArchitectureImport(path.Dir(file), imported)
+			if strings.HasSuffix(file, "_test.go") {
+				reason = forbiddenExternalArchitectureImport(imported)
+			}
+			if reason != "" {
 				findings = append(findings, file+": "+reason)
 			}
 		}
@@ -58,6 +62,8 @@ func forbiddenArchitectureImport(importer, imported string) string {
 	if relative == imported {
 		return ""
 	}
+	importer = normaliseArchitecturePath(importer)
+	relative = normaliseArchitecturePath(relative)
 	if strings.HasPrefix(importer, "internal/execution/") &&
 		strings.HasPrefix(relative, "internal/operation/") {
 		return "execution packages must not import operations"
@@ -66,6 +72,18 @@ func forbiddenArchitectureImport(importer, imported string) string {
 		return reason
 	}
 	return forbiddenOperationImport(importer, relative)
+}
+
+func normaliseArchitecturePath(value string) string {
+	for _, legacy := range expectedLegacy() {
+		if value == legacy.Path {
+			return legacy.Destination
+		}
+		if strings.HasPrefix(value, legacy.Path+"/") {
+			return legacy.Destination + strings.TrimPrefix(value, legacy.Path)
+		}
+	}
+	return value
 }
 
 func forbiddenCommandImport(importer, imported string) string {
@@ -80,6 +98,9 @@ func forbiddenCommandImport(importer, imported string) string {
 }
 
 func forbiddenOperationImport(importer, imported string) string {
+	if reason := forbiddenURLReferenceImport(importer, imported); reason != "" {
+		return reason
+	}
 	operation := operationPath(importer)
 	importedOperation := operationPath(imported)
 	if operation == "" || importedOperation == "" {
@@ -92,6 +113,26 @@ func forbiddenOperationImport(importer, imported string) string {
 		return "operation subpackages must not import their orchestration root"
 	}
 	return ""
+}
+
+func forbiddenURLReferenceImport(importer, imported string) string {
+	const root = "internal/operation/urlreference"
+	if importer == root || !strings.HasPrefix(importer, root+"/") ||
+		!strings.HasPrefix(imported, "internal/") {
+		return ""
+	}
+	allowed := map[string][]string{
+		root + "/attempt":   {root + "/admission", root + "/protocol", root + "/transform"},
+		root + "/admission": {root + "/protocol", root + "/transform"},
+		root + "/protocol":  {root + "/transform"},
+		root + "/transform": {},
+	}
+	for _, dependency := range allowed[importer] {
+		if imported == dependency || strings.HasPrefix(imported, dependency+"/") {
+			return ""
+		}
+	}
+	return "URL-reference subpackage imports a forbidden Production owner"
 }
 
 func forbiddenExternalArchitectureImport(imported string) string {
