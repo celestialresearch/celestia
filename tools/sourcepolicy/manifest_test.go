@@ -72,7 +72,14 @@ func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
 					}
 					return []byte(`{"schema_version":"changed"}`), nil
 				}
-				return os.ReadFile(name)
+				switch name {
+				case governedManifestPath:
+					return os.ReadFile(governedManifestPath)
+				case structureManifestPath:
+					return os.ReadFile(structureManifestPath)
+				default:
+					return nil, errors.New("unexpected manifest")
+				}
 			}
 			stderr.Reset()
 			if runManifestPolicy(&stderr, read) == 0 {
