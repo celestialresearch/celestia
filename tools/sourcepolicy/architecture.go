@@ -360,6 +360,14 @@ func architectureFindings(
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
+	binaries, err := architectureWindowsBinaryFindings(files, readFile)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, binaries...)
+	if architectureFindingsFull(findings) {
+		return boundedArchitectureFindings(findings), nil
+	}
 	shebangs, err := architectureShebangFindings(files, policy.Scripts, readFile)
 	if err != nil {
 		return nil, err
