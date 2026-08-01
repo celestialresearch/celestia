@@ -257,6 +257,13 @@ func TestRustPolicyAttributes(t *testing.T) {
 			modeTestSkips,
 			1,
 		},
+		{
+			"include identifier forwarding",
+			`macro_rules! load { ($macro_name:ident) => { $macro_name!("owned.rs") } }
+			load!(include);`,
+			modeTestSkips,
+			1,
+		},
 		{"path module", `#[path = "skipped.inc"] mod skipped;`, modeTestSkips, 1},
 		{
 			"conditional path",

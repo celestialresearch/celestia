@@ -57,8 +57,19 @@ func rustExpansionFinding(path string, source []byte, mode string) string {
 
 func rustIncludeLine(tokens []rustPolicyToken) (int, bool) {
 	inUse := false
+	var macroDepth []bool
 	for index, token := range tokens {
 		switch token.text {
+		case "(", "[", "{":
+			inMacro := index > 0 && tokens[index-1].text == "!"
+			if len(macroDepth) > 0 && macroDepth[len(macroDepth)-1] {
+				inMacro = true
+			}
+			macroDepth = append(macroDepth, inMacro)
+		case ")", "]", "}":
+			if len(macroDepth) > 0 {
+				macroDepth = macroDepth[:len(macroDepth)-1]
+			}
 		case "use":
 			inUse = true
 		case ";":
@@ -66,7 +77,8 @@ func rustIncludeLine(tokens []rustPolicyToken) (int, bool) {
 		case "include":
 			alias := index > 0 && tokens[index-1].text == "as"
 			if (inUse && !alias) ||
-				index+1 < len(tokens) && tokens[index+1].text == "!" {
+				index+1 < len(tokens) && tokens[index+1].text == "!" ||
+				len(macroDepth) > 0 && macroDepth[len(macroDepth)-1] {
 				return token.line, true
 			}
 		}
