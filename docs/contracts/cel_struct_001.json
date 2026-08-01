@@ -77,7 +77,7 @@
       "kind": "tracked_inventory",
       "owner": "tools/sourcepolicy",
       "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
-      "bound": "At most 100000 paths and 16777216 source bytes per file",
+      "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds",
       "release": "Release inventory and parsed syntax when policy evaluation returns",
       "cleanup_failure": "Return an infrastructure error without accepting the tree"
     },

@@ -25,6 +25,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/mod/modfile"
 )
@@ -84,11 +85,12 @@ func runArchitecturePolicy(
 	inventory func() ([]string, error),
 	readFile func(string) ([]byte, error),
 ) int {
+	budget := newArchitectureReadBudget(readFile, time.Now)
 	files, err := inventory()
 	if err != nil {
 		return writeArchitectureError(stderr, fmt.Errorf("inventory architecture: %w", err))
 	}
-	policyData, err := readFile(architecturePolicyPath)
+	policyData, err := budget.readFile(architecturePolicyPath)
 	if err != nil {
 		return writeArchitectureError(stderr, fmt.Errorf("read architecture policy: %w", err))
 	}
@@ -96,8 +98,11 @@ func runArchitecturePolicy(
 	if err != nil {
 		return writeArchitectureError(stderr, err)
 	}
-	findings, err := architectureFindings(files, policy, readFile)
+	findings, err := architectureFindings(files, policy, budget.readFile)
 	if err != nil {
+		return writeArchitectureError(stderr, err)
+	}
+	if err := budget.checkDeadline(); err != nil {
 		return writeArchitectureError(stderr, err)
 	}
 	if len(findings) == 0 {
