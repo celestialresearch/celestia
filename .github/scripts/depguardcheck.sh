@@ -13,6 +13,99 @@
 set -euo pipefail
 export GOWORK=off
 
+deadline_seconds=30
+if [[ "${CELESTIA_DEPGUARD_DEADLINE_FIXTURE:-}" == 1 ]]; then
+  deadline_seconds=1
+fi
+
+terminate_tree() {
+  local child
+  local native_pid
+  local pid=$1
+
+  if command -v taskkill.exe >/dev/null 2>&1; then
+    native_pid=$(ps -W 2>/dev/null | awk -v pid="$pid" \
+      '$1 == pid { print $4; exit }')
+    [[ "$native_pid" =~ ^[0-9]+$ ]] || {
+      printf 'depguard deadline could not resolve the native process\n' >&2
+      return 1
+    }
+    if ! taskkill.exe //PID "$native_pid" //T //F >/dev/null 2>&1; then
+      kill -KILL "$pid" 2>/dev/null || true
+      return 1
+    fi
+    return 0
+  fi
+  command -v pgrep >/dev/null 2>&1 || {
+    printf 'depguard deadline cannot own the process tree\n' >&2
+    return 1
+  }
+  for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+    terminate_tree "$child"
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+  sleep 1
+  kill -KILL "$pid" 2>/dev/null || true
+}
+
+run_bounded() {
+  local child
+  local deadline_root
+  local status
+  local watchdog
+  local watchdog_status=0
+
+  if ! command -v taskkill.exe >/dev/null 2>&1 &&
+    ! command -v pgrep >/dev/null 2>&1; then
+    printf 'depguard deadline cannot own the process tree\n' >&2
+    return 125
+  fi
+
+  deadline_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-depguard-deadline.XXXXXX")
+  (
+    trap 'printf "%s" "done" >"$deadline_root/done"' EXIT
+    CELESTIA_DEPGUARD_BOUNDED=1 bash "$0" "$@"
+  ) &
+  child=$!
+  (
+    sleep "$deadline_seconds"
+    [[ -f "$deadline_root/done" ]] && exit 0
+    printf expired >"$deadline_root/expired"
+    terminate_tree "$child"
+  ) &
+  watchdog=$!
+
+  set +e
+  wait "$child"
+  status=$?
+  set -e
+  printf '%s' "done" >"$deadline_root/done"
+  if [[ -f "$deadline_root/expired" ]]; then
+    wait "$watchdog" 2>/dev/null || watchdog_status=$?
+    rm -rf -- "$deadline_root"
+    if [[ "$watchdog_status" -ne 0 ]]; then
+      printf 'depguard deadline process cleanup failed\n' >&2
+      return 125
+    fi
+    printf 'depguard qualification exceeded %s seconds\n' "$deadline_seconds" >&2
+    return 124
+  fi
+  kill "$watchdog" 2>/dev/null || true
+  wait "$watchdog" 2>/dev/null || true
+  rm -rf -- "$deadline_root"
+  return "$status"
+}
+
+if [[ "${CELESTIA_DEPGUARD_BOUNDED:-}" != 1 ]]; then
+  run_bounded "$@"
+  exit $?
+fi
+
+if [[ "${CELESTIA_DEPGUARD_DEADLINE_FIXTURE:-}" == 1 ]]; then
+  sleep 60
+  exit 0
+fi
+
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 work=$(mktemp -d "${TMPDIR:-/tmp}/celestia-depguard.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT

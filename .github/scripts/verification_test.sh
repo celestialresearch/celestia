@@ -550,6 +550,15 @@ EOF
     printf 'policy check rejected the governed architecture\n' >&2
     return 1
   }
+  set +e
+  CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
+    bash "$architecture_dir/.github/scripts/depguardcheck.sh"
+  status=$?
+  set -e
+  [[ "$status" -eq 124 ]] || {
+    printf 'depguard deadline fixture returned %s, expected 124\n' "$status" >&2
+    return 1
+  }
   mkdir -p "$architecture_dir/worker/rogue"
   printf 'package rogue\n' >"$architecture_dir/worker/rogue/main.go"
   git -C "$architecture_dir" add worker/rogue/main.go
