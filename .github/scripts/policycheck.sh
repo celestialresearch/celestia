@@ -100,8 +100,11 @@ check_manifest() {
 }
 
 check_architecture() {
-  go run ./tools/sourcepolicy architecture || status=1
-  bash ./.github/scripts/depguardcheck.sh || status=1
+	if ! go run ./tools/sourcepolicy architecture; then
+		status=1
+		return
+	fi
+	bash ./.github/scripts/depguardcheck.sh || status=1
 }
 
 is_generated_source() {

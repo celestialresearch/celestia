@@ -65,6 +65,7 @@ main() (
   local work_dir
   local workspace_file
   local action_pid=
+  local architecture_dir
   local change_pid=
   local currency_pid=
   local fifo_pid=
@@ -531,6 +532,40 @@ EOF
     "$work_dir/tools/sourcepolicy/"
   cp "$root/docs/contracts/governed_url_reference_v1.json" \
     "$work_dir/docs/contracts/"
+
+  architecture_dir="$work_dir/architecture-repo"
+  mkdir -p "$architecture_dir"
+  git -C "$root" archive HEAD | tar -xf - -C "$architecture_dir"
+  cp "$root/.golangci.yml" "$architecture_dir/.golangci.yml"
+  cp "$root/.github/scripts/depguardcheck.sh" \
+    "$root/.github/scripts/policycheck.sh" \
+    "$architecture_dir/.github/scripts/"
+  git -C "$architecture_dir" init -q
+  git -C "$architecture_dir" add .
+  (
+    cd "$architecture_dir"
+    bash .github/scripts/policycheck.sh architecture
+  ) || {
+    printf 'policy check rejected the governed architecture\n' >&2
+    return 1
+  }
+  mkdir -p "$architecture_dir/worker/rogue"
+  printf 'package rogue\n' >"$architecture_dir/worker/rogue/main.go"
+  git -C "$architecture_dir" add worker/rogue/main.go
+  set +e
+  output=$(cd "$architecture_dir" &&
+    bash .github/scripts/policycheck.sh architecture 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted an undeclared worker package\n' >&2
+    return 1
+  }
+  grep -Fq 'worker/rogue/main.go: Go package is not declared' <<<"$output" || {
+    printf 'policy output omitted the architecture diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
   printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
     >"$work_dir/.github/.coverage"
   cat >"$work_dir/go.mod" <<'EOF'
