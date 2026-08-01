@@ -55,8 +55,17 @@ func TestArchitectureImportsRejectTestDirectionBypass(t *testing.T) {
 	findings, err = architectureImportFindings(
 		[]string{legacySupervisionIntegrationTest}, readFile,
 	)
+	if err != nil || len(findings) != 1 {
+		t.Fatalf("legacy integration test bypass accepted: %v, %v", findings, err)
+	}
+	readFile = func(string) ([]byte, error) {
+		return []byte("package example\nimport _ \"celestia.research/celestia/internal/urladmission\"\n"), nil
+	}
+	findings, err = architectureImportFindings(
+		[]string{legacySupervisionIntegrationTest}, readFile,
+	)
 	if err != nil || len(findings) != 0 {
-		t.Fatalf("legacy integration test rejected: %v, %v", findings, err)
+		t.Fatalf("legacy integration dependency rejected: %v, %v", findings, err)
 	}
 }
 

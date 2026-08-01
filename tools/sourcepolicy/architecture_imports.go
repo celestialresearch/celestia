@@ -16,6 +16,7 @@ import (
 	"go/parser"
 	"go/token"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -46,7 +47,7 @@ func architectureImportFindings(
 			}
 			reason := forbiddenArchitectureImport(path.Dir(file), imported)
 			if file == legacySupervisionIntegrationTest {
-				reason = forbiddenExternalArchitectureImport(imported)
+				reason = forbiddenLegacySupervisionTestImport(imported)
 			}
 			if reason != "" {
 				findings = append(findings, file+": "+reason)
@@ -57,6 +58,23 @@ func architectureImportFindings(
 		}
 	}
 	return findings, nil
+}
+
+func forbiddenLegacySupervisionTestImport(imported string) string {
+	if reason := forbiddenExternalArchitectureImport(imported); reason != "" {
+		return reason
+	}
+	allowed := []string{
+		architectureModule + "/internal/processsupervision",
+		architectureModule + "/internal/urladmission",
+		architectureModule + "/internal/urlreferencev1",
+		architectureModule + "/internal/workerprotocolv1",
+	}
+	if slices.Contains(allowed, imported) ||
+		!strings.HasPrefix(imported, architectureModule+"/internal/") {
+		return ""
+	}
+	return "legacy supervision integration test imports an undeclared Production owner"
 }
 
 func forbiddenArchitectureImport(importer, imported string) string {

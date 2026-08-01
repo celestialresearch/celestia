@@ -32,6 +32,18 @@ linters:
               desc: execution packages must not import operations
             - pkg: "celestia.research/celestia/internal/urloperation"
               desc: execution packages must not import legacy operations
+        execution-integration:
+          list-mode: lax
+          files:
+            - "**/internal/processsupervision/supervisor_windows_test.go"
+          allow:
+            - "celestia.research/celestia/internal/processsupervision"
+            - "celestia.research/celestia/internal/urladmission"
+            - "celestia.research/celestia/internal/urlreferencev1"
+            - "celestia.research/celestia/internal/workerprotocolv1"
+          deny:
+            - pkg: "celestia.research/celestia/internal"
+              desc: legacy supervision integration test imports only declared dependencies
         command-boundary:
           list-mode: lax
           files:

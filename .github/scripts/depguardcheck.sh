@@ -72,7 +72,11 @@ run_case execution-test-reject internal/processsupervision/rogue_test.go \
   'execution packages must not import legacy operations'
 run_case execution-integration-allow \
   internal/processsupervision/supervisor_windows_test.go \
-  celestia.research/celestia/internal/urloperation pass ''
+  celestia.research/celestia/internal/urladmission pass ''
+run_case execution-integration-reject \
+  internal/processsupervision/supervisor_windows_test.go \
+  celestia.research/celestia/internal/urloperation reject \
+  'legacy supervision integration test imports only declared dependencies'
 run_case command-allow cmd/example/main.go \
   celestia.research/celestia/internal/operation/urlreference pass ''
 run_case command-reject cmd/example/main.go \
