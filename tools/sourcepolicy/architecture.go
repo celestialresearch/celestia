@@ -506,15 +506,18 @@ func architectureOwnerAccepts(file, root, owner string) bool {
 	if !strings.HasPrefix(file, owner+"/") {
 		return false
 	}
-	return !architectureNativeSource(file) || root == "worker" || path.Dir(file) == owner
+	return !architectureMaintainedSource(file) || root == "worker" || path.Dir(file) == owner
 }
 
-func architectureNativeSource(file string) bool {
+func architectureMaintainedSource(file string) bool {
 	switch strings.ToLower(path.Ext(file)) {
-	case ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx":
+	case ".c", ".cc", ".cpp", ".cxx", ".go", ".h", ".hh", ".hpp", ".hxx",
+		".java", ".js", ".jsx", ".kt", ".kts", ".proto", ".rs", ".sql",
+		".swift", ".ts", ".tsx", ".zig":
 		return true
 	default:
-		return false
+		base := path.Base(file)
+		return base == "Dockerfile" || base == "Makefile"
 	}
 }
 

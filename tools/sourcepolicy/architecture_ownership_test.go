@@ -22,10 +22,12 @@ func TestArchitectureSourceOwnership(t *testing.T) {
 		want bool
 	}{
 		"declared internal": {file: "internal/attemptstore/native.c"},
+		"declared Java":     {file: "tools/sourcepolicy/Main.java"},
 		"declared worker":   {file: "worker/url-reference/data.bin"},
 		"command data":      {file: "cmd/rogue/data.json", want: true},
 		"native source":     {file: "tools/rogue/main.c", want: true},
 		"nested native":     {file: "tools/sourcepolicy/rogue/main.c", want: true},
+		"nested Java":       {file: "tools/sourcepolicy/rogue/Main.java", want: true},
 		"script data":       {file: ".github/scripts/rogue.txt", want: true},
 		"worker data":       {file: "worker/rogue/data.bin", want: true},
 	}
