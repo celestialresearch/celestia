@@ -69,6 +69,7 @@ func TestRejectExternalModuleReplacements(t *testing.T) {
 			paths: []string{"go.mod"},
 			read: moduleFixture("module fixture.invalid/root\n\ngo 1.26.5\n\n" +
 				"replace fixture.invalid/a => fixture.invalid/b v1.0.0\n"),
+			wantErr: "escapes the repository",
 		},
 		{
 			name:  "missing local replacement",
@@ -124,6 +125,7 @@ func TestModuleReplacementContainment(t *testing.T) {
 		{
 			name:        "module version",
 			replacement: "fixture.invalid/b v1.0.0",
+			wantEscape:  true,
 		},
 		{
 			name:        "relative inside",
