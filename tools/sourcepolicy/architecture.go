@@ -87,47 +87,104 @@ func runArchitecturePolicy(
 	executableInventory func([]string) ([]string, error),
 	readFile func(string) ([]byte, error),
 ) int {
-	budget := newArchitectureReadBudget(readFile, time.Now)
+	return runArchitecturePolicyWithin(
+		stderr, inventory, executableInventory, readFile,
+		maxArchitectureDuration,
+	)
+}
+
+type architectureEvaluation struct {
+	findings []string
+	err      error
+}
+
+func runArchitecturePolicyWithin(
+	stderr io.Writer,
+	inventory func() ([]string, error),
+	executableInventory func([]string) ([]string, error),
+	readFile func(string) ([]byte, error),
+	duration time.Duration,
+) int {
+	result := make(chan architectureEvaluation, 1)
+	go func() {
+		findings, err := evaluateArchitecture(
+			inventory, executableInventory, readFile,
+		)
+		result <- architectureEvaluation{findings: findings, err: err}
+	}()
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case evaluation := <-result:
+		return architectureEvaluationStatus(stderr, evaluation)
+	case <-timer.C:
+		select {
+		case evaluation := <-result:
+			return architectureEvaluationStatus(stderr, evaluation)
+		default:
+		}
+		writeArchitectureError(
+			stderr, errors.New("architecture evaluation deadline exceeded"),
+		)
+		return 1
+	}
+}
+
+func architectureEvaluationStatus(
+	stderr io.Writer, evaluation architectureEvaluation,
+) int {
+	if evaluation.err != nil {
+		writeArchitectureError(stderr, evaluation.err)
+		return 1
+	}
+	if len(evaluation.findings) == 0 {
+		return 0
+	}
+	writeArchitectureError(
+		stderr, errors.New(strings.Join(evaluation.findings, "\n")),
+	)
+	return 1
+}
+
+func evaluateArchitecture(
+	inventory func() ([]string, error),
+	executableInventory func([]string) ([]string, error),
+	readFile func(string) ([]byte, error),
+) ([]string, error) {
+	budget := newArchitectureReadBudget(readFile)
 	files, err := inventory()
 	if err != nil {
-		return writeArchitectureError(stderr, fmt.Errorf("inventory architecture: %w", err))
+		return nil, fmt.Errorf("inventory architecture: %w", err)
 	}
 	executables, err := executableInventory(files)
 	if err != nil {
-		return writeArchitectureError(stderr, fmt.Errorf("inventory executable sources: %w", err))
+		return nil, fmt.Errorf("inventory executable sources: %w", err)
 	}
 	policyData, err := budget.readFile(architecturePolicyPath)
 	if err != nil {
-		return writeArchitectureError(stderr, fmt.Errorf("read architecture policy: %w", err))
+		return nil, fmt.Errorf("read architecture policy: %w", err)
 	}
 	policy, err := decodeArchitecturePolicy(policyData)
 	if err != nil {
-		return writeArchitectureError(stderr, err)
+		return nil, err
 	}
 	findings, err := architectureFindings(
 		files, stringSet(executables), policy, budget.readFile,
 	)
 	if err != nil {
-		return writeArchitectureError(stderr, err)
+		return nil, err
 	}
-	if err := budget.checkDeadline(); err != nil {
-		return writeArchitectureError(stderr, err)
-	}
-	if len(findings) == 0 {
-		return 0
-	}
-	return writeArchitectureError(stderr, errors.New(strings.Join(findings, "\n")))
+	return findings, nil
 }
 
-func writeArchitectureError(stderr io.Writer, err error) int {
+func writeArchitectureError(stderr io.Writer, err error) {
 	message := err.Error()
 	if len(message)+1 > maxSourceBytes {
 		message = "architecture diagnostic exceeded its output bound"
 	}
 	if _, writeErr := fmt.Fprintln(stderr, message); writeErr != nil {
-		return 1
+		return
 	}
-	return 1
 }
 
 func decodeArchitecturePolicy(data []byte) (architecturePolicy, error) {

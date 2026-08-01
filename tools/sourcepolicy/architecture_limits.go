@@ -23,25 +23,16 @@ const (
 
 type architectureReadBudget struct {
 	read      func(string) ([]byte, error)
-	now       func() time.Time
-	deadline  time.Time
 	remaining int
 }
 
-func newArchitectureReadBudget(
-	read func(string) ([]byte, error),
-	now func() time.Time,
-) *architectureReadBudget {
+func newArchitectureReadBudget(read func(string) ([]byte, error)) *architectureReadBudget {
 	return &architectureReadBudget{
-		read: read, now: now, deadline: now().Add(maxArchitectureDuration),
-		remaining: maxArchitectureInputBytes,
+		read: read, remaining: maxArchitectureInputBytes,
 	}
 }
 
 func (budget *architectureReadBudget) readFile(name string) ([]byte, error) {
-	if err := budget.checkDeadline(); err != nil {
-		return nil, err
-	}
 	data, err := budget.read(name)
 	if err != nil {
 		return nil, err
@@ -50,15 +41,5 @@ func (budget *architectureReadBudget) readFile(name string) ([]byte, error) {
 		return nil, errors.New("architecture input exceeds its aggregate size bound")
 	}
 	budget.remaining -= len(data)
-	if err := budget.checkDeadline(); err != nil {
-		return nil, err
-	}
 	return data, nil
-}
-
-func (budget *architectureReadBudget) checkDeadline() error {
-	if !budget.now().Before(budget.deadline) {
-		return errors.New("architecture evaluation deadline exceeded")
-	}
-	return nil
 }
