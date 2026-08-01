@@ -255,6 +255,27 @@ func TestModuleReplacementPathErrors(t *testing.T) {
 	}
 }
 
+func TestVersionedModuleReplacementIsExternal(t *testing.T) {
+	t.Parallel()
+
+	module, err := modfile.Parse(
+		"go.mod",
+		[]byte("module fixture.invalid/root\n\ngo 1.26.5\n\n"+
+			"replace mirror.invalid/assurance v1.0.0 => celestia.research/assurance v1.0.0\n"),
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	escapes, err := moduleReplacementEscapes("go.mod", module.Replace[0], t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !escapes {
+		t.Fatal("versioned module replacement was accepted")
+	}
+}
+
 func replacementTestOperations(target string) replacementPathOperations {
 	return replacementPathOperations{
 		absolute: func(string) (string, error) { return target, nil },

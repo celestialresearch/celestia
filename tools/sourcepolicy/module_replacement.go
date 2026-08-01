@@ -97,7 +97,10 @@ func moduleReplacementEscapesWith(
 	repositoryRoot string,
 	operations replacementPathOperations,
 ) (bool, error) {
-	if replacement.New.Version != "" || replacement.New.Path == "" {
+	if replacement.New.Version != "" {
+		return true, nil
+	}
+	if replacement.New.Path == "" {
 		return false, nil
 	}
 	target := replacement.New.Path
