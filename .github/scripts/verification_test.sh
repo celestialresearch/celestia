@@ -2120,7 +2120,6 @@ EOF
 name = "fixture"
 version = "0.0.0"
 edition = "2024"
-autolib = false
 
 [lib]
 doctest = false
@@ -2187,7 +2186,6 @@ EOF
     'invalid ShellCheck suppression' \
     'invalid Clippy suppression' \
     'dynamic Rust attributes are prohibited' \
-    'Cargo automatic target discovery must remain enabled' \
     'Cargo library targets are prohibited' \
     'optional Cargo dependencies require an explicit test matrix' \
     'Cargo profile overrides are prohibited' \

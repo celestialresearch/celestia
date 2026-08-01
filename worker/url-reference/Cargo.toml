@@ -5,8 +5,11 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 publish = false
+autolib = false
 autobins = false
+autoexamples = false
 autotests = false
+autobenches = false
 
 [[bin]]
 name = "celestia-url-reference"

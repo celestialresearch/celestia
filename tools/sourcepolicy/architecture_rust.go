@@ -134,7 +134,9 @@ func architectureRustHasBuildScript(document map[string]any) bool {
 
 func architectureRustAutomaticTargets(document map[string]any) bool {
 	pack := nestedTable(document, "package")
-	for _, setting := range []string{"autobins", "autotests"} {
+	for _, setting := range []string{
+		"autolib", "autobins", "autoexamples", "autotests", "autobenches",
+	} {
 		value, exists := pack[setting]
 		if !exists || value != false {
 			return true

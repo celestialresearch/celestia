@@ -344,21 +344,6 @@ func cargoTestDiscoveryFindings(
 			"%s: Cargo profile overrides are prohibited", path,
 		))
 	}
-	if packageTable := nestedTable(document, "package"); packageTable != nil {
-		for _, setting := range []string{
-			"autolib",
-			"autoexamples",
-			"autobenches",
-		} {
-			if enabled, exists := packageTable[setting]; exists &&
-				enabled != true {
-				findings = append(findings, fmt.Sprintf(
-					"%s: Cargo automatic target discovery must remain enabled",
-					path,
-				))
-			}
-		}
-	}
 	if document["lib"] != nil {
 		findings = append(findings, fmt.Sprintf(
 			"%s: Cargo library targets are prohibited", path,

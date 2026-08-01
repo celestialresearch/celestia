@@ -54,7 +54,7 @@ var cargoLintCases = []struct {
 	{
 		"automatic library disabled",
 		"[package]\nname = \"fixture\"\nautolib = false\n",
-		1,
+		0,
 	},
 	{
 		"explicit binaries",
@@ -64,12 +64,12 @@ var cargoLintCases = []struct {
 	{
 		"automatic examples disabled",
 		"[package]\nname = \"fixture\"\nautoexamples = false\n",
-		1,
+		0,
 	},
 	{
 		"automatic benches disabled",
 		"[package]\nname = \"fixture\"\nautobenches = false\n",
-		1,
+		0,
 	},
 	{"target tests disabled", "[[bin]]\nname = \"fixture\"\ntest = false\n", 1},
 	{"doctests disabled", "[lib]\ndoctest = false\n", 1},
