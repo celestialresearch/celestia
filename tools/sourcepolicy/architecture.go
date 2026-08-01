@@ -518,7 +518,9 @@ func architectureOwnerAccepts(file, root, owner string) bool {
 	if !strings.HasPrefix(file, owner+"/") {
 		return false
 	}
-	return !architectureMaintainedSource(file) || root == "worker" || path.Dir(file) == owner
+	return !architectureMaintainedSource(file) ||
+		(root == "worker" && strings.EqualFold(path.Ext(file), ".rs")) ||
+		path.Dir(file) == owner
 }
 
 func architectureMaintainedSource(file string) bool {

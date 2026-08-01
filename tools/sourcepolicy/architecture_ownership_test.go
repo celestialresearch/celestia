@@ -31,6 +31,8 @@ func TestArchitectureSourceOwnership(t *testing.T) {
 		"native source":     {file: "tools/rogue/main.c", want: true},
 		"nested native":     {file: "tools/sourcepolicy/rogue/main.c", want: true},
 		"nested Java":       {file: "tools/sourcepolicy/rogue/Main.java", want: true},
+		"worker Rust":       {file: "worker/url-reference/src/main.rs"},
+		"worker Java":       {file: "worker/url-reference/rogue/Main.java", want: true},
 		"script data":       {file: ".github/scripts/rogue.txt", want: true},
 		"worker data":       {file: "worker/rogue/data.bin", want: true},
 	}
