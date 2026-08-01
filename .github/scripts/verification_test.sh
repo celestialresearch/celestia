@@ -517,6 +517,7 @@ EOF
     "$root/tools/sourcepolicy/architecture_limits.go" \
     "$root/tools/sourcepolicy/architecture_imports.go" \
     "$root/tools/sourcepolicy/architecture_values.go" \
+    "$root/tools/sourcepolicy/executable_inventory.go" \
     "$root/tools/sourcepolicy/gobuildtags.go" \
     "$root/tools/sourcepolicy/goinspect.go" \
     "$root/tools/sourcepolicy/goskip.go" \
@@ -577,6 +578,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/mod v0.38.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/tools v0.48.0
 	mvdan.cc/sh/v3 v3.13.1
 )
@@ -600,6 +602,8 @@ EOF
       ($2 == "v0.38.0" || $2 == "v0.38.0/go.mod") ||
     $1 == "golang.org/x/sync" &&
       ($2 == "v0.22.0" || $2 == "v0.22.0/go.mod") ||
+    $1 == "golang.org/x/sys" &&
+      ($2 == "v0.47.0" || $2 == "v0.47.0/go.mod") ||
     $1 == "golang.org/x/tools" &&
       ($2 == "v0.48.0" || $2 == "v0.48.0/go.mod") ||
     $1 == "go.yaml.in/yaml/v3" &&
@@ -609,6 +613,24 @@ EOF
   ' "$root/go.sum" >"$work_dir/go.sum"
   LC_ALL=C sort "$work_dir/go.sum" >"$work_dir/go.sum.sorted"
   mv "$work_dir/go.sum.sorted" "$work_dir/go.sum"
+  cat >"$work_dir/xsys_fixture_windows.go" <<'EOF'
+// Copyright © 2026 @sudocelestia. All rights reserved.
+//
+// PROPRIETARY AND CONFIDENTIAL SOURCE CODE.
+//
+// No licence, permission or authorisation is granted to use, copy, modify,
+// compile, execute, distribute, publish, sublicense or otherwise exploit this
+// file, except to the limited extent unavoidably permitted by applicable law
+// or GitHub's Terms of Service.
+//
+// See the LICENSE file at the repository root for the complete terms.
+
+//go:build windows
+
+package fixture
+
+import _ "golang.org/x/sys/windows"
+EOF
   git -C "$work_dir" init -q
   for workspace_file in go.work go.work.sum; do
     printf 'fixture\n' >"$work_dir/$workspace_file"
