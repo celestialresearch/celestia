@@ -26,6 +26,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/mod/modfile"
 )
@@ -440,8 +442,8 @@ func architectureFileFindings(
 	file string, executable bool,
 	roots, rootFiles, packages, rustPackages, scripts, commands, prohibited, retired map[string]struct{},
 ) []string {
-	if path.Clean(file) != file || !fs.ValidPath(file) {
-		return []string{file + ": invalid tracked path"}
+	if !validArchitecturePath(file) {
+		return []string{fmt.Sprintf("%q: invalid tracked path", file)}
 	}
 	segments := strings.Split(file, "/")
 	for root := range retired {
@@ -469,6 +471,16 @@ func architectureFileFindings(
 		file, executable, scripts,
 	)...)
 	return append(findings, architectureRustPathFindings(file, rustPackages)...)
+}
+
+func validArchitecturePath(file string) bool {
+	if path.Clean(file) != file || !fs.ValidPath(file) || !utf8.ValidString(file) {
+		return false
+	}
+	return strings.IndexFunc(file, func(character rune) bool {
+		return unicode.IsControl(character) || unicode.Is(unicode.Cf, character) ||
+			unicode.Is(unicode.Zl, character) || unicode.Is(unicode.Zp, character)
+	}) == -1
 }
 
 func architectureOwnerPathFindings(

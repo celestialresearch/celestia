@@ -11,7 +11,10 @@
 
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestArchitectureSourceOwnership(t *testing.T) {
 	t.Parallel()
@@ -40,5 +43,22 @@ func TestArchitectureSourceOwnership(t *testing.T) {
 				t.Fatalf("findings = %v, want rejection %t", findings, test.want)
 			}
 		})
+	}
+}
+
+func TestArchitectureEscapesInvalidPaths(t *testing.T) {
+	t.Parallel()
+
+	for _, file := range []string{
+		"tools/sourcepolicy/rogue\nforged.go",
+		"tools/sourcepolicy/rogue\x1b[2J.go",
+		"tools/sourcepolicy/rogue\u2028forged.go",
+	} {
+		findings := architecturePathFindings(
+			[]string{file}, nil, validArchitectureFixturePolicy(),
+		)
+		if len(findings) != 1 || strings.ContainsAny(findings[0], "\n\r\x1b\u2028") {
+			t.Fatalf("unsafe diagnostic = %q", findings)
+		}
 	}
 }
