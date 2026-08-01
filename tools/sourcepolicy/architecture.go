@@ -13,7 +13,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -784,23 +783,4 @@ func portablePackageDocumentation(source []byte) bool {
 		}
 	}
 	return false
-}
-
-func inventoryDigest(files []string) string {
-	values := slices.Clone(files)
-	sort.Strings(values)
-	digest := sha256.Sum256([]byte(strings.Join(values, "\n") + "\n"))
-	return fmt.Sprintf("%x", digest)
-}
-
-func equalStrings(actual, expected []string) bool {
-	return slices.Equal(actual, expected)
-}
-
-func stringSet(values []string) map[string]struct{} {
-	set := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		set[value] = struct{}{}
-	}
-	return set
 }
