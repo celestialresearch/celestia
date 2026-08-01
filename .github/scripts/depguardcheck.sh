@@ -134,6 +134,16 @@ run_case() {
   printf 'module celestia.research/celestia\n\ngo %s\n' "$go_version" >"$case_root/go.mod"
 
   case "$imported" in
+    celestia.research/assurance)
+      mkdir -p "$case_root/assurance"
+      printf 'module celestia.research/assurance\n\ngo %s\n' "$go_version" \
+        >"$case_root/assurance/go.mod"
+      printf 'package assurance\n' >"$case_root/assurance/assurance.go"
+      printf '\nrequire celestia.research/assurance v0.0.0\n' \
+        >>"$case_root/go.mod"
+      printf 'replace celestia.research/assurance => ./assurance\n' \
+        >>"$case_root/go.mod"
+      ;;
     celestia.research/celestia/*)
       target=${imported#celestia.research/celestia/}
       mkdir -p "$case_root/$target"
@@ -174,6 +184,12 @@ run_case production-allow internal/example/example.go fmt pass ''
 run_case production-reject internal/example/example.go \
   celestia.research/celestia/tools/sourcepolicy reject \
   'Production runtime must not import repository tools'
+run_case production-assurance-reject internal/example/example.go \
+  celestia.research/assurance reject \
+  'Production must not import Assurance'
+run_case production-worker-reject internal/example/example.go \
+  celestia.research/celestia/worker/url-reference reject \
+  'Production runtime must not import worker source'
 run_case execution-allow internal/processsupervision/example.go fmt pass ''
 run_case execution-reject internal/processsupervision/example.go \
   celestia.research/celestia/internal/urloperation reject \
