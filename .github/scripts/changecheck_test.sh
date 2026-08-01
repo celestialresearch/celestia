@@ -135,7 +135,7 @@ main() {
     internal/execution/supervision/supervisor_windows.go \
     internal/operation/urlreference/protocol/protocol.go \
     internal/operation/urlreference/admission/admission.go \
-    internal/urloperation/operation_windows.go \
+    internal/operation/urlreference/operation_windows.go \
     worker/url-reference/src/main.rs \
     worker/url-reference/tests/process.rs \
     .github/scripts/devcheck.sh \

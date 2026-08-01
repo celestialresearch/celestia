@@ -6,7 +6,7 @@
     "class": "initial"
   },
   "operator_visible_outcome": "Transform one admitted URL reference and report its durable governed outcome",
-  "owner": "internal/urloperation",
+  "owner": "internal/operation/urlreference",
   "inputs": [
     {
       "id": "CEL-INPUT-URL-001",
@@ -50,13 +50,13 @@
     },
     {
       "id": "CEL-AUTH-EXECUTION-001",
-      "owner": "internal/urloperation",
+      "owner": "internal/operation/urlreference",
       "grant": "Run the fixed configured worker only after admission and durable staging",
       "refusal": "Refuse unavailable containment, invalid configuration or failed staging"
     },
     {
       "id": "CEL-AUTH-VERIFICATION-001",
-      "owner": "internal/urloperation",
+      "owner": "internal/operation/urlreference",
       "grant": "Assign verified only after independent Go postcondition evaluation",
       "refusal": "Treat worker claims, protocol rejection and semantic mismatch as non-verified"
     },
@@ -83,7 +83,7 @@
     {
       "id": "CEL-TRUST-VERIFY-001",
       "source": "protocol-valid worker response",
-      "target": "internal/urloperation",
+      "target": "internal/operation/urlreference",
       "treatment": "Recompute the expected transformation independently before verification"
     },
     {
@@ -598,7 +598,7 @@
     {
       "id": "CEL-URL-INV-002",
       "statement": "The worker cannot grant authority or verify its own output",
-      "owner": "internal/urloperation",
+      "owner": "internal/operation/urlreference",
       "severity": "critical",
       "boundary": "protocol-valid response to terminal outcome",
       "falsifier": "A protocol-valid semantic lie reaches verified",
@@ -687,7 +687,7 @@
   "production_controls": [
     {
       "id": "CEL-URL-PROD-001",
-      "owner": "internal/operation/urlreference/admission and internal/urloperation tests"
+      "owner": "internal/operation/urlreference/admission and internal/operation/urlreference tests"
     },
     {
       "id": "CEL-URL-PROD-002",

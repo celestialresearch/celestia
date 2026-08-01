@@ -30,7 +30,7 @@ linters:
           deny:
             - pkg: "celestia.research/celestia/internal/operation"
               desc: execution packages must not import operations
-            - pkg: "celestia.research/celestia/internal/urloperation"
+            - pkg: "celestia.research/celestia/internal/operation/urlreference"
               desc: execution packages must not import operation packages
         execution-integration:
           list-mode: lax
@@ -57,7 +57,6 @@ linters:
           list-mode: lax
           files:
             - "**/internal/operation/urlreference/*.go"
-            - "**/internal/urloperation/*.go"
           allow:
             - "celestia.research/celestia/internal/operation/urlreference/admission"
             - "celestia.research/celestia/internal/operation/urlreference/attempt"

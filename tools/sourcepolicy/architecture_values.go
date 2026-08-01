@@ -35,9 +35,9 @@ func expectedProhibitedSegments() []string {
 func expectedPackages() []string {
 	return []string{
 		"internal/execution/supervision",
+		"internal/operation/urlreference",
 		"internal/operation/urlreference/admission", "internal/operation/urlreference/attempt",
 		"internal/operation/urlreference/protocol", "internal/operation/urlreference/transform",
-		"internal/urloperation",
 		"tools/actionpolicy", "tools/sourcepolicy",
 	}
 }
@@ -70,14 +70,12 @@ func expectedImportRules() []string {
 }
 
 func expectedMigrationRoots() []architectureMigrationRoot {
-	return []architectureMigrationRoot{
-		{Path: "internal/urloperation", Count: 5, Digest: "9ea53ceaa57bb11f17df5e1da4d30f9d174e0d9cb38eef41ebd22cf7779d0755", Destination: "internal/operation/urlreference", Slice: "CEL-STRUCT-004E", Reason: "URL operation remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-004E"},
-	}
+	return nil
 }
 
 func expectedRetiredMigration() []string {
 	return []string{
 		"internal/processsupervision", "internal/urlreferencev1", "internal/workerprotocolv1",
-		"internal/urladmission", "internal/attemptstore",
+		"internal/urladmission", "internal/attemptstore", "internal/urloperation",
 	}
 }

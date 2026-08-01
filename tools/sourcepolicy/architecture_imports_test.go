@@ -62,7 +62,7 @@ func TestArchitectureImportsRejectTestDirectionBypass(t *testing.T) {
 	t.Parallel()
 
 	readFile := func(string) ([]byte, error) {
-		return []byte("package example\nimport _ \"celestia.research/celestia/internal/urloperation\"\n"), nil
+		return []byte("package example\nimport _ \"celestia.research/celestia/internal/operation/urlreference\"\n"), nil
 	}
 	findings, err := architectureImportFindings(
 		[]string{"internal/execution/supervision/rogue_test.go"}, readFile,

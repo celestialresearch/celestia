@@ -302,26 +302,26 @@ run_case production-worker-reject internal/example/example.go \
   'Production runtime must not import worker source'
 run_case execution-allow internal/execution/supervision/example.go fmt pass ''
 run_case execution-reject internal/execution/supervision/example.go \
-  celestia.research/celestia/internal/urloperation reject \
+  celestia.research/celestia/internal/operation/urlreference reject \
   'execution packages must not import operation packages'
 run_case execution-test-reject internal/execution/supervision/rogue_test.go \
-  celestia.research/celestia/internal/urloperation reject \
+  celestia.research/celestia/internal/operation/urlreference reject \
   'execution packages must not import operation packages'
 run_case execution-integration-allow \
   internal/execution/supervision/supervisor_windows_test.go \
   celestia.research/celestia/internal/operation/urlreference/admission pass ''
 run_case execution-integration-reject \
   internal/execution/supervision/supervisor_windows_test.go \
-  celestia.research/celestia/internal/urloperation reject \
+  celestia.research/celestia/internal/operation/urlreference reject \
   'supervision qualification test imports only declared dependencies'
 run_case command-allow cmd/example/main.go \
   celestia.research/celestia/internal/operation/urlreference pass ''
 run_case command-reject cmd/example/main.go \
   celestia.research/celestia/internal/operation/urlreference/transform reject \
   'commands import declared operation roots only'
-run_case operation-allow internal/urloperation/example.go \
+run_case operation-allow internal/operation/urlreference/example.go \
   celestia.research/celestia/internal/operation/urlreference/admission pass ''
-run_case operation-reject internal/urloperation/example.go \
+run_case operation-reject internal/operation/urlreference/example.go \
   celestia.research/celestia/internal/operation/other reject \
   'operation roots import only their own declared subpackages'
 run_case attempt-allow internal/operation/urlreference/attempt/example.go \

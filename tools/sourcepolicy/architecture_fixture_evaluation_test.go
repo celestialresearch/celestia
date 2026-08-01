@@ -113,6 +113,7 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 		return hasArchitecturePathFinding([]string{"worker/example/private-key.pem"}, policy)
 	},
 	"migration-additional-file": func(policy architecturePolicy) bool {
+		policy.MigrationRoots = []architectureMigrationRoot{architectureMigrationTestEntry()}
 		entry := policy.MigrationRoots[0]
 		files := append([]string(nil), entry.Inventory...)
 		files = append(files, entry.Path+"/unexpected.go")
@@ -133,14 +134,17 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 		return hasArchitecturePathFinding([]string{"tools/rogue/run.sh"}, policy)
 	},
 	"migration-wildcard-entry": func(policy architecturePolicy) bool {
+		policy.MigrationRoots = []architectureMigrationRoot{architectureMigrationTestEntry()}
 		policy.MigrationRoots[0].Path = "internal/*"
 		return validateArchitecturePolicy(policy) != nil
 	},
 	"migration-parent-entry": func(policy architecturePolicy) bool {
+		policy.MigrationRoots = []architectureMigrationRoot{architectureMigrationTestEntry()}
 		policy.MigrationRoots[0].Path = "internal"
 		return validateArchitecturePolicy(policy) != nil
 	},
 	"migration-expired-entry": func(policy architecturePolicy) bool {
+		policy.MigrationRoots = []architectureMigrationRoot{architectureMigrationTestEntry()}
 		policy.MigrationRoots[0].Expiry = "CEL-STRUCT-001"
 		return validateArchitecturePolicy(policy) != nil
 	},
@@ -166,49 +170,34 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 		return hasArchitecturePathFinding([]string{"internal/attempt/attempt.go"}, policy)
 	},
 	"attempt-store-recreated": attemptStoreRecreated,
+	"outside-operation-root": func(policy architecturePolicy) bool {
+		return hasArchitecturePathFinding([]string{"internal/operation/other/operation.go"}, policy)
+	},
+	"url-operation-recreated": urlOperationRecreated,
+}
+
+func architectureMigrationTestEntry() architectureMigrationRoot {
+	return architectureMigrationRoot{
+		Path: "internal/example", Count: 1, Digest: inventoryDigest([]string{"internal/example/example.go"}),
+		Destination: "internal/operation/example", Slice: "CEL-STRUCT-TEST",
+		Reason: "Bounded test entry", Expiry: "CEL-STRUCT-TEST",
+		Inventory: []string{"internal/example/example.go"},
+	}
 }
 
 func processSupervisionRecreated(policy architecturePolicy) bool {
-	roots := make([]architectureMigrationRoot, 0, len(policy.MigrationRoots)-1)
-	for _, root := range policy.MigrationRoots {
-		if root.Path != "internal/processsupervision" {
-			roots = append(roots, root)
-		}
-	}
-	policy.MigrationRoots = roots
-	policy.RetiredMigration = []string{"internal/processsupervision"}
 	return hasArchitecturePathFinding(
 		[]string{"internal/processsupervision/supervisor.go"}, policy,
 	)
 }
 
 func urlReferenceTransformRecreated(policy architecturePolicy) bool {
-	roots := make([]architectureMigrationRoot, 0, len(policy.MigrationRoots)-1)
-	for _, root := range policy.MigrationRoots {
-		if root.Path != "internal/urlreferencev1" {
-			roots = append(roots, root)
-		}
-	}
-	policy.MigrationRoots = roots
-	policy.RetiredMigration = append(
-		policy.RetiredMigration, "internal/urlreferencev1",
-	)
 	return hasArchitecturePathFinding(
 		[]string{"internal/urlreferencev1/urlreference.go"}, policy,
 	)
 }
 
 func workerProtocolRecreated(policy architecturePolicy) bool {
-	roots := make([]architectureMigrationRoot, 0, len(policy.MigrationRoots)-1)
-	for _, root := range policy.MigrationRoots {
-		if root.Path != "internal/workerprotocolv1" {
-			roots = append(roots, root)
-		}
-	}
-	policy.MigrationRoots = roots
-	policy.RetiredMigration = append(
-		policy.RetiredMigration, "internal/workerprotocolv1",
-	)
 	return hasArchitecturePathFinding(
 		[]string{"internal/workerprotocolv1/protocol.go"}, policy,
 	)
@@ -225,6 +214,13 @@ func attemptStoreRecreated(policy architecturePolicy) bool {
 	policy.RetiredMigration = append(policy.RetiredMigration, "internal/attemptstore")
 	return hasArchitecturePathFinding(
 		[]string{"internal/attemptstore/store.go"}, policy,
+	)
+}
+
+func urlOperationRecreated(policy architecturePolicy) bool {
+	policy.RetiredMigration = append(policy.RetiredMigration, "internal/urloperation")
+	return hasArchitecturePathFinding(
+		[]string{"internal/urloperation/operation.go"}, policy,
 	)
 }
 
