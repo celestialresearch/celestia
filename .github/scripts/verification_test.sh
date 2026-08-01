@@ -519,6 +519,7 @@ EOF
   cp \
     "$root/tools/sourcepolicy/gofallback.go" \
     "$root/tools/sourcepolicy/architecture.go" \
+    "$root/tools/sourcepolicy/architecture_binary.go" \
     "$root/tools/sourcepolicy/architecture_inventory.go" \
     "$root/tools/sourcepolicy/architecture_limits.go" \
     "$root/tools/sourcepolicy/architecture_imports.go" \
