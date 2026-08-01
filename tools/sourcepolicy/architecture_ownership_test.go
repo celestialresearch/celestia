@@ -24,13 +24,8 @@ func TestArchitectureOwnsProtocolAtFinalPath(t *testing.T) {
 	if !slices.Contains(policy.Packages, "internal/operation/urlreference/protocol") {
 		t.Fatal("final protocol package is not governed")
 	}
-	for _, root := range policy.MigrationRoots {
-		if root.Path == "internal/workerprotocolv1" {
-			t.Fatal("retired protocol package remains registered for migration")
-		}
-	}
-	if !slices.Contains(policy.RetiredMigration, "internal/workerprotocolv1") {
-		t.Fatal("retired protocol package can be recreated")
+	if !slices.Contains(policy.ProhibitedPaths, "internal/workerprotocolv1") {
+		t.Fatal("obsolete protocol package can be recreated")
 	}
 }
 
@@ -41,13 +36,8 @@ func TestArchitectureOwnsAdmissionAtFinalPath(t *testing.T) {
 	if !slices.Contains(policy.Packages, "internal/operation/urlreference/admission") {
 		t.Fatal("final admission package is not governed")
 	}
-	for _, root := range policy.MigrationRoots {
-		if root.Path == "internal/urladmission" {
-			t.Fatal("retired admission package remains registered for migration")
-		}
-	}
-	if !slices.Contains(policy.RetiredMigration, "internal/urladmission") {
-		t.Fatal("retired admission package can be recreated")
+	if !slices.Contains(policy.ProhibitedPaths, "internal/urladmission") {
+		t.Fatal("obsolete admission package can be recreated")
 	}
 }
 
@@ -58,13 +48,8 @@ func TestArchitectureOwnsAttemptAtFinalPath(t *testing.T) {
 	if !slices.Contains(policy.Packages, "internal/operation/urlreference/attempt") {
 		t.Fatal("final attempt-evidence package is not governed")
 	}
-	for _, root := range policy.MigrationRoots {
-		if root.Path == "internal/attemptstore" {
-			t.Fatal("retired attempt-evidence package remains registered for migration")
-		}
-	}
-	if !slices.Contains(policy.RetiredMigration, "internal/attemptstore") {
-		t.Fatal("retired attempt-evidence package can be recreated")
+	if !slices.Contains(policy.ProhibitedPaths, "internal/attemptstore") {
+		t.Fatal("obsolete attempt-evidence package can be recreated")
 	}
 }
 
@@ -75,11 +60,8 @@ func TestArchitectureOwnsOperationAtFinalPath(t *testing.T) {
 	if !slices.Contains(policy.Packages, "internal/operation/urlreference") {
 		t.Fatal("final URL-reference operation root is not governed")
 	}
-	if len(policy.MigrationRoots) != 0 {
-		t.Fatal("completed operation move leaves migration state")
-	}
-	if !slices.Contains(policy.RetiredMigration, "internal/urloperation") {
-		t.Fatal("retired URL-reference operation can be recreated")
+	if !slices.Contains(policy.ProhibitedPaths, "internal/urloperation") {
+		t.Fatal("obsolete URL-reference operation can be recreated")
 	}
 }
 

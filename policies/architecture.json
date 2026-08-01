@@ -1,6 +1,6 @@
 {
   "schema_version": "celestia.production.architecture.v1",
-  "current_slice": "CEL-STRUCT-004E",
+  "current_slice": "CEL-STRUCT-005",
   "base_commit": "ea8f840aa230f0498f82f3cd00dca22760cf6020",
   "module_path": "celestia.research/celestia",
   "inventory_format": "sha256-lf-paths-v1",
@@ -104,8 +104,7 @@
     "runtime-imports-tools",
     "runtime-imports-worker"
   ],
-  "migration_roots": [],
-  "retired_migration_paths": [
+  "prohibited_paths": [
     "internal/processsupervision",
     "internal/urlreferencev1",
     "internal/workerprotocolv1",

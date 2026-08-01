@@ -2,7 +2,7 @@
 
 This policy owns Production directory, package, module and import structure.
 `policies/architecture.json` is its machine-readable form. Source policy owns
-paths, package declarations, documentation and migration exceptions. Depguard
+paths, package declarations and documentation. Depguard
 owns Go import direction. Assurance independently compiles the forbidden
 boundary and rejects a weaker Production policy.
 
@@ -28,9 +28,7 @@ unregistered flat package, forwarding package or duplicate implementation is
 rejected.
 
 Every package requires one concise package comment describing its present
-owner and authority. A package at its final path must use `doc.go`. A package
-beneath one of the four migration roots may place the comment in an existing
-file until its assigned move because its frozen inventory cannot gain a file.
+owner and authority in `doc.go`.
 
 ## Dependency Direction
 The governed URL-reference operation may depend on attempt evidence, admission,
@@ -51,19 +49,10 @@ The following directions are always rejected:
 Tests and platform files receive no broad exception. Imports are checked by
 exact module and package prefixes.
 
-## Migration Registry
-The temporary registry is empty.
-
-The paths retired through `CEL-STRUCT-003` to `CEL-STRUCT-004E` cannot be
-recreated. They have no forwarding or compatibility surface.
-
-Each entry binds the exact base commit, file count and canonical inventory
-digest. Existing files may be corrected, moved or deleted. A new tracked file
-beneath a migration root is rejected. Wildcards, parent roots, expired entries and
-recreated migrated paths are rejected. `internal/processsupervision`,
-`internal/urlreferencev1` and `internal/workerprotocolv1` are retired and cannot
-be recreated. Each migration slice removes its entry when it moves the package;
-`CEL-STRUCT-005` reconciles the registry to empty.
+## Prohibited Paths
+The six obsolete package roots cannot be recreated. They have no forwarding,
+compatibility or migration surface. The machine policy declares each exact
+path and source policy rejects every file at or beneath it.
 
 ## Exceptions
 Architecture exceptions are exact path records with an owner, reason, removal

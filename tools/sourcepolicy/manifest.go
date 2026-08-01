@@ -36,6 +36,8 @@ const (
 	attemptManifestSHA    = "3f9066e3b143ec71f6575665be4c05bd0510e6623dcb3aaf72f2cdc460c73ab6"
 	operationManifestPath = "docs/contracts/cel_struct_004e.json"
 	operationManifestSHA  = "448e55e1a22b942e7dd3bd4e96432ed4b299b90ef553ae9a3e029be53c618265"
+	layoutManifestPath    = "docs/contracts/cel_struct_005.json"
+	layoutManifestSHA     = "58b4e70d9b47d907f8b5cbdde163204c82d6633692ac3d7b610f9cd8ff4a8097"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {
@@ -51,6 +53,7 @@ func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) 
 		{admissionManifestPath, admissionManifestSHA},
 		{attemptManifestPath, attemptManifestSHA},
 		{operationManifestPath, operationManifestSHA},
+		{layoutManifestPath, layoutManifestSHA},
 	}
 	for _, manifest := range manifests {
 		if manifestPolicyStatus(stderr, readFile, manifest.path, manifest.digest) != 0 {

@@ -69,11 +69,7 @@ func expectedImportRules() []string {
 	}
 }
 
-func expectedMigrationRoots() []architectureMigrationRoot {
-	return nil
-}
-
-func expectedRetiredMigration() []string {
+func expectedProhibitedPaths() []string {
 	return []string{
 		"internal/processsupervision", "internal/urlreferencev1", "internal/workerprotocolv1",
 		"internal/urladmission", "internal/attemptstore", "internal/urloperation",
