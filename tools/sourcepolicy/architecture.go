@@ -492,11 +492,27 @@ func architectureOwnerPathFindings(
 		return nil
 	}
 	for owner := range owners {
-		if strings.HasPrefix(file, owner+"/") {
+		if architectureOwnerAccepts(file, root, owner) {
 			return nil
 		}
 	}
 	return []string{file + ": source owner is not declared"}
+}
+
+func architectureOwnerAccepts(file, root, owner string) bool {
+	if !strings.HasPrefix(file, owner+"/") {
+		return false
+	}
+	return !architectureNativeSource(file) || root == "worker" || path.Dir(file) == owner
+}
+
+func architectureNativeSource(file string) bool {
+	switch strings.ToLower(path.Ext(file)) {
+	case ".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx":
+		return true
+	default:
+		return false
+	}
 }
 
 func architectureScriptPathFindings(
