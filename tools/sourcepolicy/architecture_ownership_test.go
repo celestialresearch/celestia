@@ -92,6 +92,8 @@ func TestArchitectureRejectsWindowsInvalidPaths(t *testing.T) {
 		"tools/sourcepolicy/trailing /file.go",
 		"tools/sourcepolicy/aux.go",
 		"tools/sourcepolicy/COM1.txt",
+		"docs/COM¹.txt",
+		"docs/LPT².txt",
 		"tools/sourcepolicy/bad:name.go",
 	} {
 		findings := architecturePathFindings(

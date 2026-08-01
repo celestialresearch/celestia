@@ -548,10 +548,16 @@ func windowsReservedName(segment string) bool {
 		name == "CONIN$" || name == "CONOUT$" {
 		return true
 	}
-	if len(name) != 4 || (name[:3] != "COM" && name[:3] != "LPT") {
+	if !strings.HasPrefix(name, "COM") && !strings.HasPrefix(name, "LPT") {
 		return false
 	}
-	return name[3] >= '1' && name[3] <= '9'
+	suffix := strings.TrimPrefix(strings.TrimPrefix(name, "COM"), "LPT")
+	if len([]rune(suffix)) != 1 {
+		return false
+	}
+	character, _ := utf8.DecodeRuneInString(suffix)
+	return character >= '1' && character <= '9' ||
+		character == '¹' || character == '²' || character == '³'
 }
 
 func architectureOwnerPathFindings(
