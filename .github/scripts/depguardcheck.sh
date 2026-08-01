@@ -99,6 +99,7 @@ run_bounded() {
   trap 'cancel_bounded 129' HUP
   trap 'cancel_bounded 130' INT
   trap 'cancel_bounded 143' TERM
+  trap 'cancel_bounded $?' EXIT
   deadline_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-depguard-deadline.XXXXXX")
   bash "$0" --celestia-depguard-bounded "$@" &
   child=$!
@@ -129,7 +130,7 @@ run_bounded() {
     watchdog=
     rm -rf -- "$deadline_root"
     deadline_root=
-    trap - HUP INT TERM
+    trap - EXIT HUP INT TERM
     if [[ "$watchdog_status" -ne 0 ]]; then
       printf 'depguard deadline process cleanup failed\n' >&2
       return 125
@@ -141,7 +142,7 @@ run_bounded() {
   watchdog=
   rm -rf -- "$deadline_root"
   deadline_root=
-  trap - HUP INT TERM
+  trap - EXIT HUP INT TERM
   return "$status"
 }
 
