@@ -82,6 +82,7 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"missing-policy": func(architecturePolicy) bool {
 		return runArchitecturePolicy(
 			discardArchitectureFixtureWriter{}, func() ([]string, error) { return nil, nil },
+			noExecutableSources,
 			func(string) ([]byte, error) { return nil, errors.New("missing") },
 		) != 0
 	},
@@ -163,7 +164,7 @@ func (discardArchitectureFixtureWriter) Write(value []byte) (int, error) {
 }
 
 func hasArchitecturePathFinding(files []string, policy architecturePolicy) bool {
-	return len(architecturePathFindings(files, policy)) != 0
+	return len(architecturePathFindings(files, nil, policy)) != 0
 }
 
 func validArchitectureFixturePolicy() architecturePolicy {

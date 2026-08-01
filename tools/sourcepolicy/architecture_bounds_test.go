@@ -27,7 +27,7 @@ func TestArchitectureFindingsAreBounded(t *testing.T) {
 		files[index] = "unapproved" + strconv.Itoa(index) + "/" +
 			strings.Repeat("a", maxInventoryPathBytes-64) + ".go"
 	}
-	findings := architecturePathFindings(files, policy)
+	findings := architecturePathFindings(files, nil, policy)
 	if len(findings) != maxArchitectureFindings+1 ||
 		findings[len(findings)-1] != architectureTruncated {
 		t.Fatalf("architecturePathFindings() returned %d unbounded findings", len(findings))
@@ -46,6 +46,7 @@ func TestArchitectureErrorsAreBounded(t *testing.T) {
 	status := runArchitecturePolicy(
 		&stderr,
 		func() ([]string, error) { return []string{"go.mod"}, nil },
+		noExecutableSources,
 		func(string) ([]byte, error) { return policy, nil },
 	)
 	if status != 1 || stderr.Len() > maxSourceBytes {

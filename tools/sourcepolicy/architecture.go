@@ -84,12 +84,17 @@ type architectureMigrationRoot struct {
 func runArchitecturePolicy(
 	stderr io.Writer,
 	inventory func() ([]string, error),
+	executableInventory func([]string) ([]string, error),
 	readFile func(string) ([]byte, error),
 ) int {
 	budget := newArchitectureReadBudget(readFile, time.Now)
 	files, err := inventory()
 	if err != nil {
 		return writeArchitectureError(stderr, fmt.Errorf("inventory architecture: %w", err))
+	}
+	executables, err := executableInventory(files)
+	if err != nil {
+		return writeArchitectureError(stderr, fmt.Errorf("inventory executable sources: %w", err))
 	}
 	policyData, err := budget.readFile(architecturePolicyPath)
 	if err != nil {
@@ -99,7 +104,9 @@ func runArchitecturePolicy(
 	if err != nil {
 		return writeArchitectureError(stderr, err)
 	}
-	findings, err := architectureFindings(files, policy, budget.readFile)
+	findings, err := architectureFindings(
+		files, stringSet(executables), policy, budget.readFile,
+	)
 	if err != nil {
 		return writeArchitectureError(stderr, err)
 	}
@@ -283,13 +290,14 @@ func validMigrationInventory(root string, files []string) bool {
 
 func architectureFindings(
 	files []string,
+	executables map[string]struct{},
 	policy architecturePolicy,
 	readFile func(string) ([]byte, error),
 ) ([]string, error) {
 	if err := validateCurrentModule(readFile, policy.ModulePath); err != nil {
 		return nil, err
 	}
-	findings := architecturePathFindings(files, policy)
+	findings := architecturePathFindings(files, executables, policy)
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
@@ -344,7 +352,9 @@ func validateCurrentModule(
 	return nil
 }
 
-func architecturePathFindings(files []string, policy architecturePolicy) []string {
+func architecturePathFindings(
+	files []string, executables map[string]struct{}, policy architecturePolicy,
+) []string {
 	roots := stringSet(policy.RootDirectories)
 	rootFiles := stringSet(policy.RootFiles)
 	packages := stringSet(policy.Packages)
@@ -354,8 +364,9 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 	retired := stringSet(policy.RetiredMigration)
 	var findings []string
 	for _, file := range files {
+		_, executable := executables[file]
 		findings = append(findings, architectureFileFindings(
-			file, roots, rootFiles, packages, rustPackages, scripts,
+			file, executable, roots, rootFiles, packages, rustPackages, scripts,
 			stringSet(policy.Commands), prohibited, retired,
 		)...)
 		if architectureFindingsFull(findings) {
@@ -366,7 +377,7 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 }
 
 func architectureFileFindings(
-	file string,
+	file string, executable bool,
 	roots, rootFiles, packages, rustPackages, scripts, commands, prohibited, retired map[string]struct{},
 ) []string {
 	if path.Clean(file) != file || !fs.ValidPath(file) {
@@ -391,19 +402,32 @@ func architectureFileFindings(
 	findings = append(findings, architectureGoPathFindings(
 		file, segments[0], packages, commands,
 	)...)
-	findings = append(findings, architectureScriptPathFindings(file, scripts)...)
+	findings = append(findings, architectureScriptPathFindings(
+		file, executable, scripts,
+	)...)
 	return append(findings, architectureRustPathFindings(file, rustPackages)...)
 }
 
-func architectureScriptPathFindings(file string, scripts map[string]struct{}) []string {
+func architectureScriptPathFindings(
+	file string, executable bool, scripts map[string]struct{},
+) []string {
 	extension := strings.ToLower(path.Ext(file))
-	if extension != ".sh" && extension != ".ps1" && extension != ".cmd" {
+	if !executable && !architectureScriptExtension(extension) {
 		return nil
 	}
 	if _, declared := scripts[file]; declared {
 		return nil
 	}
 	return []string{file + ": script is not declared"}
+}
+
+func architectureScriptExtension(extension string) bool {
+	switch extension {
+	case ".bash", ".bat", ".cmd", ".pl", ".ps1", ".py", ".rb", ".sh":
+		return true
+	default:
+		return false
+	}
 }
 
 func architectureRustPathFindings(file string, packages map[string]struct{}) []string {

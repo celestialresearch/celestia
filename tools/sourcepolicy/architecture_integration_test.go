@@ -22,7 +22,7 @@ func TestArchitecturePolicyAcceptsRepository(t *testing.T) {
 	t.Chdir("../..")
 	var stderr bytes.Buffer
 	if status := runArchitecturePolicy(
-		&stderr, sourceFiles, readSource,
+		&stderr, sourceFiles, sourceExecutables, readSource,
 	); status != 0 {
 		t.Fatalf("runArchitecturePolicy() = %d: %s", status, stderr.String())
 	}
@@ -51,12 +51,16 @@ func TestArchitecturePolicyRejectsInfrastructureFailures(t *testing.T) {
 			t.Parallel()
 			var stderr bytes.Buffer
 			if status := runArchitecturePolicy(
-				&stderr, test.inventory, test.read,
+				&stderr, test.inventory, noExecutableSources, test.read,
 			); status == 0 || !bytes.Contains(stderr.Bytes(), []byte(test.wantFragment)) {
 				t.Fatalf("status = %d, stderr = %q", status, stderr.String())
 			}
 		})
 	}
+}
+
+func noExecutableSources([]string) ([]string, error) {
+	return nil, nil
 }
 
 func TestArchitecturePolicyRejectsJSONBoundaries(t *testing.T) {
