@@ -2120,7 +2120,7 @@ EOF
 name = "fixture"
 version = "0.0.0"
 edition = "2024"
-autotests = false
+autolib = false
 
 [lib]
 doctest = false
