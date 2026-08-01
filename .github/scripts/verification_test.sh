@@ -2370,6 +2370,22 @@ EOF
     return 1
   }
 
+  printf 'TEXT\n' >"$licence_dir/fixture.s"
+  git -C "$licence_dir" add fixture.s
+  set +e
+  output=$(cd "$licence_dir" &&
+    bash .github/scripts/licencecheck.sh verify 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'licence check accepted Go assembly without a header\n' >&2
+    return 1
+  }
+  grep -Fq 'fixture.s: missing or incorrect proprietary header' <<<"$output" || {
+    printf 'licence check omitted the Go assembly diagnostic\n' >&2
+    return 1
+  }
+
   rust_dir="$work_dir/rust"
   rust_bin="$rust_dir/bin"
   mkdir -p "$rust_bin"

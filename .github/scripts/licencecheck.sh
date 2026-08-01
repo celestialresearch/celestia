@@ -49,7 +49,7 @@ build_eligible_inventory() {
 
 style_for() {
   case "$1" in
-  *.go | *.rs | *.c | *.cc | *.cpp | *.cxx | *.h | *.hh | *.hpp | *.hxx | \
+  *.go | *.rs | *.s | *.c | *.cc | *.cpp | *.cxx | *.h | *.hh | *.hpp | *.hxx | \
     *.java | *.js | *.jsx | *.ts | *.tsx | *.swift | *.kt | *.kts | \
     *.proto | *.zig)
     printf 'slash\n'
