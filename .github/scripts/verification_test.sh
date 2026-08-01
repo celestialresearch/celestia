@@ -523,9 +523,6 @@ EOF
     "$root/tools/sourcepolicy/main.go" \
     "$root/tools/sourcepolicy/manifest.go" \
     "$root/tools/sourcepolicy/module_replacement.go" \
-    "$root/tools/sourcepolicy/replacement_path.go" \
-    "$root/tools/sourcepolicy/replacement_path_other.go" \
-    "$root/tools/sourcepolicy/replacement_path_windows.go" \
     "$root/tools/sourcepolicy/rustpolicy.go" \
     "$root/tools/sourcepolicy/source_open_other.go" \
     "$root/tools/sourcepolicy/source_open_unix.go" \
@@ -580,7 +577,6 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	go.yaml.in/yaml/v3 v3.0.5
 	golang.org/x/mod v0.38.0
-	golang.org/x/sys v0.47.0
 	golang.org/x/tools v0.48.0
 	mvdan.cc/sh/v3 v3.13.1
 )
@@ -604,8 +600,6 @@ EOF
       ($2 == "v0.38.0" || $2 == "v0.38.0/go.mod") ||
     $1 == "golang.org/x/sync" &&
       ($2 == "v0.22.0" || $2 == "v0.22.0/go.mod") ||
-    $1 == "golang.org/x/sys" &&
-      ($2 == "v0.47.0" || $2 == "v0.47.0/go.mod") ||
     $1 == "golang.org/x/tools" &&
       ($2 == "v0.48.0" || $2 == "v0.48.0/go.mod") ||
     $1 == "go.yaml.in/yaml/v3" &&
