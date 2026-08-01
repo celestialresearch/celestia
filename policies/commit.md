@@ -7,6 +7,7 @@ guide.
 
 Each commit must:
 - represent one coherent change;
+- contain one independently describable fix or capability;
 - leave the repository buildable and its applicable checks passing;
 - include required tests, fixtures and documentation;
 - exclude unrelated formatting, generated output, caches and local files;
@@ -17,6 +18,12 @@ Each commit must:
 Do not commit partial fixes, debugging residue, commented-out code, unexplained
 suppressions or speculative scaffolding. Do not use `WIP`, `fixup!` or
 `squash!` commits in protected history.
+
+Different issues may be implemented and verified concurrently. When their
+ownership, failure class or revert reason differs, commit them separately. Do
+not combine, fold, reorder or otherwise rewrite coherent commits merely to
+reduce commit count. Tests and documentation required to establish a fix belong
+with that fix.
 
 ## Commit Names
 
@@ -47,6 +54,7 @@ maintained system boundary.
 The summary must:
 - begin with a lowercase imperative verb;
 - describe the observable change;
+- explain the commit without relying on neighbouring commits or branch context;
 - contain no trailing full stop;
 - remain at or below 72 characters;
 - use `implement` rather than `add` for a new capability;
