@@ -40,6 +40,26 @@ func TestArchitectureImportsInspectTestCustody(t *testing.T) {
 	}
 }
 
+func TestArchitectureImportsRejectTestDirectionBypass(t *testing.T) {
+	t.Parallel()
+
+	readFile := func(string) ([]byte, error) {
+		return []byte("package example\nimport _ \"celestia.research/celestia/internal/urloperation\"\n"), nil
+	}
+	findings, err := architectureImportFindings(
+		[]string{"internal/processsupervision/rogue_test.go"}, readFile,
+	)
+	if err != nil || len(findings) != 1 {
+		t.Fatalf("architectureImportFindings() = %v, %v", findings, err)
+	}
+	findings, err = architectureImportFindings(
+		[]string{legacySupervisionIntegrationTest}, readFile,
+	)
+	if err != nil || len(findings) != 0 {
+		t.Fatalf("legacy integration test rejected: %v, %v", findings, err)
+	}
+}
+
 func TestArchitectureImportsNormaliseLegacyOwners(t *testing.T) {
 	t.Parallel()
 

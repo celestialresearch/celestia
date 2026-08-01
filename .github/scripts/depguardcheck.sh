@@ -67,6 +67,12 @@ run_case execution-allow internal/processsupervision/example.go fmt pass ''
 run_case execution-reject internal/processsupervision/example.go \
   celestia.research/celestia/internal/urloperation reject \
   'execution packages must not import legacy operations'
+run_case execution-test-reject internal/processsupervision/rogue_test.go \
+  celestia.research/celestia/internal/urloperation reject \
+  'execution packages must not import legacy operations'
+run_case execution-integration-allow \
+  internal/processsupervision/supervisor_windows_test.go \
+  celestia.research/celestia/internal/urloperation pass ''
 run_case command-allow cmd/example/main.go \
   celestia.research/celestia/internal/operation/urlreference pass ''
 run_case command-reject cmd/example/main.go \

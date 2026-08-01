@@ -20,6 +20,8 @@ import (
 	"strings"
 )
 
+const legacySupervisionIntegrationTest = "internal/processsupervision/supervisor_windows_test.go"
+
 func architectureImportFindings(
 	files []string,
 	readFile func(string) ([]byte, error),
@@ -43,7 +45,7 @@ func architectureImportFindings(
 				return nil, fmt.Errorf("parse import path %s: %w", file, err)
 			}
 			reason := forbiddenArchitectureImport(path.Dir(file), imported)
-			if strings.HasSuffix(file, "_test.go") {
+			if file == legacySupervisionIntegrationTest {
 				reason = forbiddenExternalArchitectureImport(imported)
 			}
 			if reason != "" {
