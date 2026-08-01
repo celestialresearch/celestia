@@ -43,6 +43,7 @@
     "helper",
     "helpers",
     "legacy",
+    "migration",
     "manager",
     "misc",
     "module",
@@ -78,7 +79,7 @@
     "runtime-imports-tools",
     "runtime-imports-worker"
   ],
-  "legacy_packages": [
+  "migration_roots": [
     {
       "path": "internal/attemptstore",
       "inventory_count": 48,
@@ -234,5 +235,5 @@
       ]
     }
   ],
-  "retired_legacy_paths": []
+  "retired_migration_paths": []
 }

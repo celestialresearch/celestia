@@ -26,7 +26,7 @@ func expectedRootFiles() []string {
 func expectedProhibitedSegments() []string {
 	return []string{
 		"base", "common", "component", "components", "core", "extra",
-		"extended", "framework", "general", "helper", "helpers", "legacy",
+		"extended", "framework", "general", "helper", "helpers", "legacy", "migration",
 		"manager", "misc", "module", "modules", "platform", "platforms",
 		"service", "services", "shared", "temp", "temporary", "util", "utils",
 	}
@@ -48,8 +48,8 @@ func expectedImportRules() []string {
 	}
 }
 
-func expectedLegacy() []architectureLegacy {
-	return []architectureLegacy{
+func expectedMigrationRoots() []architectureMigrationRoot {
+	return []architectureMigrationRoot{
 		{Path: "internal/attemptstore", Count: 48, Digest: "b33f419cd6d54a697c18f95cb23c156debc5a8cc1facc2acbe6d3d7541d73a54", Destination: "internal/operation/urlreference/attempt", Slice: "CEL-STRUCT-004D", Expiry: "CEL-STRUCT-004D"},
 		{Path: "internal/processsupervision", Count: 19, Digest: "6f3533b58c7efd95e2948ebaf8f6fa956b81454204f15ac29520086cecc87fe8", Destination: "internal/execution/supervision", Slice: "CEL-STRUCT-003", Expiry: "CEL-STRUCT-003"},
 		{Path: "internal/urladmission", Count: 2, Digest: "7f3df87edbfd1b3f0a79f8778bf495b45ec31a806b73a9c9f34280131e00bbf5", Destination: "internal/operation/urlreference/admission", Slice: "CEL-STRUCT-004C", Expiry: "CEL-STRUCT-004C"},

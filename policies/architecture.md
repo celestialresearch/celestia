@@ -28,9 +28,9 @@ unregistered flat package, forwarding package or duplicate implementation is
 rejected.
 
 Every package requires one concise package comment describing its present
-owner and authority. A package at its final path must use `doc.go`. The six
-frozen legacy packages may place the comment in an existing file until their
-assigned move because their migration inventories cannot gain a new file.
+owner and authority. A package at its final path must use `doc.go`. A package
+beneath one of the six migration roots may place the comment in an existing
+file until its assigned move because its frozen inventory cannot gain a file.
 
 ## Dependency Direction
 The governed URL-reference operation may depend on attempt evidence, admission,
@@ -68,7 +68,7 @@ The temporary registry contains exactly:
 
 Each entry binds the exact base commit, file count and canonical inventory
 digest. Existing files may be corrected, moved or deleted. A new tracked file
-beneath a legacy root is rejected. Wildcards, parent roots, expired entries and
+beneath a migration root is rejected. Wildcards, parent roots, expired entries and
 recreated migrated paths are rejected. Each migration slice removes its entry
 when it moves the package; `CEL-STRUCT-005` reconciles the registry to empty.
 

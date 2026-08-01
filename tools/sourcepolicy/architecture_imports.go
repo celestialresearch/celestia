@@ -21,7 +21,7 @@ import (
 	"strings"
 )
 
-const legacySupervisionIntegrationTest = "internal/processsupervision/supervisor_windows_test.go"
+const supervisionQualificationTest = "internal/processsupervision/supervisor_windows_test.go"
 
 func architectureImportFindings(
 	files []string,
@@ -46,8 +46,8 @@ func architectureImportFindings(
 				return nil, fmt.Errorf("parse import path %s: %w", file, err)
 			}
 			reason := forbiddenArchitectureImport(path.Dir(file), imported)
-			if file == legacySupervisionIntegrationTest {
-				reason = forbiddenLegacySupervisionTestImport(imported)
+			if file == supervisionQualificationTest {
+				reason = forbiddenSupervisionQualificationImport(imported)
 			}
 			if reason != "" {
 				findings = append(findings, file+": "+reason)
@@ -60,7 +60,7 @@ func architectureImportFindings(
 	return findings, nil
 }
 
-func forbiddenLegacySupervisionTestImport(imported string) string {
+func forbiddenSupervisionQualificationImport(imported string) string {
 	if reason := forbiddenExternalArchitectureImport(imported); reason != "" {
 		return reason
 	}
@@ -74,7 +74,7 @@ func forbiddenLegacySupervisionTestImport(imported string) string {
 		!strings.HasPrefix(imported, architectureModule+"/internal/") {
 		return ""
 	}
-	return "legacy supervision integration test imports an undeclared Production owner"
+	return "supervision qualification test imports an undeclared Production owner"
 }
 
 func forbiddenArchitectureImport(importer, imported string) string {
@@ -98,12 +98,12 @@ func forbiddenArchitectureImport(importer, imported string) string {
 }
 
 func normaliseArchitecturePath(value string) string {
-	for _, legacy := range expectedLegacy() {
-		if value == legacy.Path {
-			return legacy.Destination
+	for _, migration := range expectedMigrationRoots() {
+		if value == migration.Path {
+			return migration.Destination
 		}
-		if strings.HasPrefix(value, legacy.Path+"/") {
-			return legacy.Destination + strings.TrimPrefix(value, legacy.Path)
+		if strings.HasPrefix(value, migration.Path+"/") {
+			return migration.Destination + strings.TrimPrefix(value, migration.Path)
 		}
 	}
 	return value

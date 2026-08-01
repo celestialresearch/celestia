@@ -53,23 +53,23 @@ func TestArchitectureImportsRejectTestDirectionBypass(t *testing.T) {
 		t.Fatalf("architectureImportFindings() = %v, %v", findings, err)
 	}
 	findings, err = architectureImportFindings(
-		[]string{legacySupervisionIntegrationTest}, readFile,
+		[]string{supervisionQualificationTest}, readFile,
 	)
 	if err != nil || len(findings) != 1 {
-		t.Fatalf("legacy integration test bypass accepted: %v, %v", findings, err)
+		t.Fatalf("qualification test bypass accepted: %v, %v", findings, err)
 	}
 	readFile = func(string) ([]byte, error) {
 		return []byte("package example\nimport _ \"celestia.research/celestia/internal/urladmission\"\n"), nil
 	}
 	findings, err = architectureImportFindings(
-		[]string{legacySupervisionIntegrationTest}, readFile,
+		[]string{supervisionQualificationTest}, readFile,
 	)
 	if err != nil || len(findings) != 0 {
-		t.Fatalf("legacy integration dependency rejected: %v, %v", findings, err)
+		t.Fatalf("qualification test dependency rejected: %v, %v", findings, err)
 	}
 }
 
-func TestArchitectureImportsNormaliseLegacyOwners(t *testing.T) {
+func TestArchitectureImportsNormaliseMigrationOwners(t *testing.T) {
 	t.Parallel()
 
 	reason := forbiddenArchitectureImport(
@@ -77,7 +77,7 @@ func TestArchitectureImportsNormaliseLegacyOwners(t *testing.T) {
 		architectureModule+"/internal/processsupervision",
 	)
 	if reason == "" {
-		t.Fatal("legacy transformation import of execution accepted")
+		t.Fatal("migration transformation import of execution accepted")
 	}
 }
 

@@ -25,11 +25,11 @@
     {"name": "root-services", "mutation": "root-services", "rule": "approved-root", "expected": "reject"},
     {"name": "root-src", "mutation": "root-src", "rule": "approved-root", "expected": "reject"},
     {"name": "worker-private-key-path", "mutation": "worker-private-key-path", "rule": "composed-private-key-policy", "expected": "reject"},
-    {"name": "legacy-additional-file", "mutation": "legacy-additional-file", "rule": "legacy-inventory", "expected": "reject"},
+    {"name": "migration-additional-file", "mutation": "migration-additional-file", "rule": "migration-inventory", "expected": "reject"},
     {"name": "unregistered-flat-package", "mutation": "unregistered-flat-package", "rule": "package-declaration", "expected": "reject"},
-    {"name": "legacy-wildcard-entry", "mutation": "legacy-wildcard-entry", "rule": "legacy-exact-path", "expected": "reject"},
-    {"name": "legacy-parent-entry", "mutation": "legacy-parent-entry", "rule": "legacy-exact-path", "expected": "reject"},
-    {"name": "legacy-expired-entry", "mutation": "legacy-expired-entry", "rule": "legacy-expiry", "expected": "reject"},
-    {"name": "migrated-path-recreated", "mutation": "migrated-path-recreated", "rule": "legacy-recreation", "expected": "reject"}
+    {"name": "migration-wildcard-entry", "mutation": "migration-wildcard-entry", "rule": "migration-exact-path", "expected": "reject"},
+    {"name": "migration-parent-entry", "mutation": "migration-parent-entry", "rule": "migration-exact-path", "expected": "reject"},
+    {"name": "migration-expired-entry", "mutation": "migration-expired-entry", "rule": "migration-expiry", "expected": "reject"},
+    {"name": "migrated-path-recreated", "mutation": "migrated-path-recreated", "rule": "migration-recreation", "expected": "reject"}
   ]
 }

@@ -42,20 +42,20 @@ const (
 )
 
 type architecturePolicy struct {
-	Schema          string               `json:"schema_version"`
-	CurrentSlice    string               `json:"current_slice"`
-	BaseCommit      string               `json:"base_commit"`
-	ModulePath      string               `json:"module_path"`
-	InventoryFormat string               `json:"inventory_format"`
-	RootDirectories []string             `json:"allowed_root_directories"`
-	RootFiles       []string             `json:"allowed_root_files"`
-	Prohibited      []string             `json:"prohibited_segments"`
-	Packages        []string             `json:"declared_packages"`
-	Commands        []string             `json:"declared_commands"`
-	FileExceptions  []architectureExcept `json:"file_exceptions"`
-	ImportRules     []string             `json:"forbidden_import_rules"`
-	RetiredLegacy   []string             `json:"retired_legacy_paths"`
-	Legacy          []architectureLegacy `json:"legacy_packages"`
+	Schema           string                      `json:"schema_version"`
+	CurrentSlice     string                      `json:"current_slice"`
+	BaseCommit       string                      `json:"base_commit"`
+	ModulePath       string                      `json:"module_path"`
+	InventoryFormat  string                      `json:"inventory_format"`
+	RootDirectories  []string                    `json:"allowed_root_directories"`
+	RootFiles        []string                    `json:"allowed_root_files"`
+	Prohibited       []string                    `json:"prohibited_segments"`
+	Packages         []string                    `json:"declared_packages"`
+	Commands         []string                    `json:"declared_commands"`
+	FileExceptions   []architectureExcept        `json:"file_exceptions"`
+	ImportRules      []string                    `json:"forbidden_import_rules"`
+	RetiredMigration []string                    `json:"retired_migration_paths"`
+	MigrationRoots   []architectureMigrationRoot `json:"migration_roots"`
 }
 
 type architectureExcept struct {
@@ -66,7 +66,7 @@ type architectureExcept struct {
 	Expiry  string `json:"expires_at_completion"`
 }
 
-type architectureLegacy struct {
+type architectureMigrationRoot struct {
 	Path          string   `json:"path"`
 	Count         int      `json:"inventory_count"`
 	Digest        string   `json:"inventory_sha256"`
@@ -210,7 +210,7 @@ func validateArchitecturePolicy(policy architecturePolicy) error {
 	if !validArchitectureIdentity(policy) || !validArchitectureLists(policy) {
 		return errors.New("architecture policy contradicts the compiled constitution")
 	}
-	return validateLegacyPolicy(policy.Legacy)
+	return validateMigrationRoots(policy.MigrationRoots)
 }
 
 func validArchitectureIdentity(policy architecturePolicy) bool {
@@ -227,34 +227,34 @@ func validArchitectureLists(policy architecturePolicy) bool {
 		equalStrings(policy.Prohibited, expectedProhibitedSegments()) &&
 		equalStrings(policy.Packages, expectedPackages()) &&
 		len(policy.Commands) == 0 && len(policy.FileExceptions) == 0 &&
-		len(policy.RetiredLegacy) == 0 &&
+		len(policy.RetiredMigration) == 0 &&
 		equalStrings(policy.ImportRules, expectedImportRules())
 }
 
-func validateLegacyPolicy(legacy []architectureLegacy) error {
-	expected := expectedLegacy()
-	if len(legacy) != len(expected) {
-		return errors.New("architecture policy must contain six legacy packages")
+func validateMigrationRoots(migration []architectureMigrationRoot) error {
+	expected := expectedMigrationRoots()
+	if len(migration) != len(expected) {
+		return errors.New("architecture policy must contain six migration roots")
 	}
-	for index, entry := range legacy {
-		if !validLegacyEntry(entry, expected[index]) {
-			return fmt.Errorf("invalid legacy package %q", entry.Path)
+	for index, entry := range migration {
+		if !validMigrationEntry(entry, expected[index]) {
+			return fmt.Errorf("invalid migration root %q", entry.Path)
 		}
 	}
 	return nil
 }
 
-func validLegacyEntry(entry, expected architectureLegacy) bool {
+func validMigrationEntry(entry, expected architectureMigrationRoot) bool {
 	return entry.Path == expected.Path && entry.Count == expected.Count &&
 		entry.Digest == expected.Digest && entry.Destination == expected.Destination &&
 		entry.Slice == expected.Slice && entry.Expiry == expected.Expiry &&
 		!entry.AllowNewFiles && strings.TrimSpace(entry.Reason) != "" &&
 		len(entry.Inventory) == entry.Count &&
 		inventoryDigest(entry.Inventory) == entry.Digest &&
-		validLegacyInventory(entry.Path, entry.Inventory)
+		validMigrationInventory(entry.Path, entry.Inventory)
 }
 
-func validLegacyInventory(root string, files []string) bool {
+func validMigrationInventory(root string, files []string) bool {
 	if !slices.IsSorted(files) {
 		return false
 	}
@@ -288,8 +288,8 @@ func architectureFindings(
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
-	legacyFindings := architectureLegacyFindings(files, policy)
-	findings = append(findings, legacyFindings...)
+	migrationFindings := architectureMigrationFindings(files, policy)
+	findings = append(findings, migrationFindings...)
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
@@ -336,7 +336,7 @@ func architecturePathFindings(files []string, policy architecturePolicy) []strin
 	rootFiles := stringSet(policy.RootFiles)
 	packages := stringSet(policy.Packages)
 	prohibited := stringSet(policy.Prohibited)
-	retired := stringSet(policy.RetiredLegacy)
+	retired := stringSet(policy.RetiredMigration)
 	var findings []string
 	for _, file := range files {
 		findings = append(findings, architectureFileFindings(
@@ -429,12 +429,12 @@ func prohibitedPathFindings(
 	return findings
 }
 
-func architectureLegacyFindings(
+func architectureMigrationFindings(
 	files []string,
 	policy architecturePolicy,
 ) []string {
 	var findings []string
-	for _, entry := range policy.Legacy {
+	for _, entry := range policy.MigrationRoots {
 		allowed := stringSet(entry.Inventory)
 		prefix := entry.Path + "/"
 		for _, file := range files {
@@ -442,7 +442,7 @@ func architectureLegacyFindings(
 				continue
 			}
 			if _, exists := allowed[file]; !exists {
-				findings = append(findings, file+": legacy package inventory expanded")
+				findings = append(findings, file+": migration root inventory expanded")
 				if architectureFindingsFull(findings) {
 					return boundedArchitectureFindings(findings)
 				}
@@ -458,13 +458,13 @@ func packageDocumentationFindings(
 	readFile func(string) ([]byte, error),
 ) ([]string, error) {
 	documented := make(map[string]bool, len(policy.Packages))
-	legacy := make(map[string]struct{}, len(policy.Legacy))
-	for _, entry := range policy.Legacy {
-		legacy[entry.Path] = struct{}{}
+	migration := make(map[string]struct{}, len(policy.MigrationRoots))
+	for _, entry := range policy.MigrationRoots {
+		migration[entry.Path] = struct{}{}
 	}
 	for _, file := range files {
 		if err := observePackageDocumentation(
-			file, policy.Packages, legacy, documented, readFile,
+			file, policy.Packages, migration, documented, readFile,
 		); err != nil {
 			return nil, err
 		}
@@ -484,7 +484,7 @@ func packageDocumentationFindings(
 func observePackageDocumentation(
 	file string,
 	packages []string,
-	legacy map[string]struct{},
+	migration map[string]struct{},
 	documented map[string]bool,
 	readFile func(string) ([]byte, error),
 ) error {
@@ -495,7 +495,7 @@ func observePackageDocumentation(
 	if documented[directory] || !slices.Contains(packages, directory) {
 		return nil
 	}
-	if _, temporary := legacy[directory]; !temporary && path.Base(file) != "doc.go" {
+	if _, temporary := migration[directory]; !temporary && path.Base(file) != "doc.go" {
 		return nil
 	}
 	source, err := readFile(file)

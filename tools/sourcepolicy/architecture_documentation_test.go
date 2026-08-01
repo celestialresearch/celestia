@@ -18,7 +18,7 @@ func TestFinalPackageRequiresDocFile(t *testing.T) {
 
 	policy := validArchitectureFixturePolicy()
 	policy.Packages = []string{"tools/example"}
-	policy.Legacy = nil
+	policy.MigrationRoots = nil
 	read := func(string) ([]byte, error) {
 		return []byte("// Package example owns the fixture.\npackage example\n"), nil
 	}

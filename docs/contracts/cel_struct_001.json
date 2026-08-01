@@ -195,10 +195,10 @@
     },
     {
       "id": "CEL-STRUCT-INV-003",
-      "statement": "The migration registry admits only the frozen six legacy inventories and cannot expand them",
+      "statement": "The migration registry admits only the frozen six migration inventories and cannot expand them",
       "owner": "tools/sourcepolicy",
       "severity": "high",
-      "boundary": "legacy tracked path to migration exception",
+      "boundary": "migration tracked path to migration exception",
       "falsifier": "A new file, wildcard, parent exception, expired entry or recreated migrated path passes policy",
       "production_controls": [
         {"id": "CEL-STRUCT-PROD-003", "owner": "migration registry fixtures"}
@@ -236,7 +236,7 @@
   "falsifiers": [
     "Undeclared ownership path passes Production policy",
     "Forbidden import passes depguard",
-    "Legacy inventory expands without rejection",
+    "Migration inventory expands without rejection",
     "Weakened Production policy passes independent Assurance"
   ],
   "production_controls": [

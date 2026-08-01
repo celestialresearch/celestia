@@ -109,28 +109,28 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"worker-private-key-path": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"worker/example/private-key.pem"}, policy)
 	},
-	"legacy-additional-file": func(architecturePolicy) bool {
+	"migration-additional-file": func(architecturePolicy) bool {
 		base := []string{"internal/example/original.go"}
-		return legacyInventoryExpanded([]string{base[0], "internal/example/new.go"}, "internal/example", base)
+		return migrationInventoryExpanded([]string{base[0], "internal/example/new.go"}, "internal/example", base)
 	},
 	"unregistered-flat-package": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"internal/newpackage/file.go"}, policy)
 	},
-	"legacy-wildcard-entry": func(policy architecturePolicy) bool {
-		policy.Legacy[0].Path = "internal/*"
+	"migration-wildcard-entry": func(policy architecturePolicy) bool {
+		policy.MigrationRoots[0].Path = "internal/*"
 		return validateArchitecturePolicy(policy) != nil
 	},
-	"legacy-parent-entry": func(policy architecturePolicy) bool {
-		policy.Legacy[0].Path = "internal"
+	"migration-parent-entry": func(policy architecturePolicy) bool {
+		policy.MigrationRoots[0].Path = "internal"
 		return validateArchitecturePolicy(policy) != nil
 	},
-	"legacy-expired-entry": func(policy architecturePolicy) bool {
-		policy.Legacy[0].Expiry = "CEL-STRUCT-001"
+	"migration-expired-entry": func(policy architecturePolicy) bool {
+		policy.MigrationRoots[0].Expiry = "CEL-STRUCT-001"
 		return validateArchitecturePolicy(policy) != nil
 	},
 	"migrated-path-recreated": func(architecturePolicy) bool {
 		policy := validArchitectureFixturePolicy()
-		policy.RetiredLegacy = []string{"internal/attemptstore"}
+		policy.RetiredMigration = []string{"internal/attemptstore"}
 		return hasArchitecturePathFinding([]string{"internal/attemptstore/store.go"}, policy)
 	},
 }
@@ -166,7 +166,7 @@ func validArchitectureFixturePolicy() architecturePolicy {
 	return policy
 }
 
-func legacyInventoryExpanded(current []string, root string, base []string) bool {
+func migrationInventoryExpanded(current []string, root string, base []string) bool {
 	allowed := stringSet(base)
 	prefix := root + "/"
 	for _, file := range current {
