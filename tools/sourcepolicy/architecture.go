@@ -551,10 +551,10 @@ func windowsReservedName(segment string) bool {
 		return true
 	}
 	suffix := ""
-	if strings.HasPrefix(name, "COM") {
-		suffix = strings.TrimPrefix(name, "COM")
-	} else if strings.HasPrefix(name, "LPT") {
-		suffix = strings.TrimPrefix(name, "LPT")
+	if after, ok := strings.CutPrefix(name, "COM"); ok {
+		suffix = after
+	} else if after, ok := strings.CutPrefix(name, "LPT"); ok {
+		suffix = after
 	} else {
 		return false
 	}
