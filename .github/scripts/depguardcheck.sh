@@ -45,7 +45,16 @@ import _ "$imported"
 EOF
 
   set +e
-  output=$(cd "$case_root" && "$lint" run --enable-only=depguard --config .golangci.yml ./... 2>&1)
+  case "$importer" in
+    *_windows_test.go)
+      output=$(cd "$case_root" && GOOS=windows GOARCH=amd64 \
+        "$lint" run --enable-only=depguard --config .golangci.yml ./... 2>&1)
+      ;;
+    *)
+      output=$(cd "$case_root" && \
+        "$lint" run --enable-only=depguard --config .golangci.yml ./... 2>&1)
+      ;;
+  esac
   status=$?
   set -e
   if [[ "$want" == pass && "$status" -ne 0 ]]; then
