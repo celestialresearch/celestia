@@ -106,7 +106,11 @@ func runArchitecturePolicy(
 }
 
 func writeArchitectureError(stderr io.Writer, err error) int {
-	if _, writeErr := fmt.Fprintln(stderr, err); writeErr != nil {
+	message := err.Error()
+	if len(message)+1 > maxSourceBytes {
+		message = "architecture diagnostic exceeded its output bound"
+	}
+	if _, writeErr := fmt.Fprintln(stderr, message); writeErr != nil {
 		return 1
 	}
 	return 1

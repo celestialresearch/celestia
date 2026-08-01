@@ -12,6 +12,7 @@
 package main
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 	"testing"
@@ -33,5 +34,24 @@ func TestArchitectureFindingsAreBounded(t *testing.T) {
 	}
 	if len(strings.Join(findings, "\n"))+1 > maxSourceBytes {
 		t.Fatal("bounded architecture diagnostics exceed the output contract")
+	}
+}
+
+func TestArchitectureErrorsAreBounded(t *testing.T) {
+	t.Parallel()
+
+	unknown := strings.Repeat("x", maxSourceBytes-6)
+	policy := []byte(`{"` + unknown + `":0}`)
+	var stderr bytes.Buffer
+	status := runArchitecturePolicy(
+		&stderr,
+		func() ([]string, error) { return []string{"go.mod"}, nil },
+		func(string) ([]byte, error) { return policy, nil },
+	)
+	if status != 1 || stderr.Len() > maxSourceBytes {
+		t.Fatalf("status = %d, diagnostic bytes = %d", status, stderr.Len())
+	}
+	if stderr.String() != "architecture diagnostic exceeded its output bound\n" {
+		t.Fatalf("diagnostic = %q", stderr.String())
 	}
 }
