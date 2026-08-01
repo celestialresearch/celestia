@@ -20,7 +20,7 @@ import (
 func TestArchitectureRejectsWindowsBinaries(t *testing.T) {
 	t.Parallel()
 
-	files := []string{"tools/sourcepolicy/rogue.exe"}
+	files := []string{"tools/sourcepolicy/rogue.bin"}
 	findings, err := architectureWindowsBinaryFindings(files, func(string) ([]byte, error) {
 		return append([]byte{'M', 'Z'}, make([]byte, 1022)...), nil
 	})

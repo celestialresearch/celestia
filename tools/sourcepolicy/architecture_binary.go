@@ -21,15 +21,16 @@ func architectureWindowsBinaryFindings(
 ) ([]string, error) {
 	var findings []string
 	for _, file := range files {
-		if !architectureWindowsBinaryExtension(path.Ext(file)) {
-			continue
-		}
 		data, err := readFile(file)
 		if err != nil {
 			return nil, err
 		}
+		portableExecutable := len(data) >= 2 && data[0] == 'M' && data[1] == 'Z'
+		if !portableExecutable && !architectureWindowsBinaryExtension(path.Ext(file)) {
+			continue
+		}
 		detail := "Windows executable artefact is not declared"
-		if len(data) >= 2 && data[0] == 'M' && data[1] == 'Z' {
+		if portableExecutable {
 			detail = "PE executable artefact is not declared"
 		}
 		findings = append(findings, file+": "+detail)
