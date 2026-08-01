@@ -13,8 +13,26 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 )
+
+func TestArchitectureImportsRejectCgo(t *testing.T) {
+	t.Parallel()
+
+	findings, err := architectureImportFindings(
+		[]string{"tools/sourcepolicy/cgo.go"},
+		func(string) ([]byte, error) {
+			return []byte("package main\n/* #include \"../actionpolicy/cross_owner.h\" */\nimport \"C\"\n"), nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("architectureImportFindings() error = %v", err)
+	}
+	if len(findings) != 1 || !strings.Contains(findings[0], "Cgo is not declared") {
+		t.Fatalf("architectureImportFindings() = %v, want Cgo finding", findings)
+	}
+}
 
 func TestArchitectureImportsInspectTestCustody(t *testing.T) {
 	t.Parallel()

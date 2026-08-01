@@ -45,6 +45,10 @@ func architectureImportFindings(
 			if err != nil {
 				return nil, fmt.Errorf("parse import path %s: %w", file, err)
 			}
+			if imported == "C" {
+				findings = append(findings, file+": Cgo is not declared by the architecture constitution")
+				continue
+			}
 			reason := forbiddenArchitectureImport(path.Dir(file), imported)
 			if file == supervisionQualificationTest {
 				reason = forbiddenSupervisionQualificationImport(imported)
