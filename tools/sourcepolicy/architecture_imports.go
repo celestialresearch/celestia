@@ -72,7 +72,7 @@ func forbiddenSupervisionQualificationImport(imported string) string {
 		architectureModule + "/internal/execution/supervision",
 		architectureModule + "/internal/urladmission",
 		architectureModule + "/internal/operation/urlreference/transform",
-		architectureModule + "/internal/workerprotocolv1",
+		architectureModule + "/internal/operation/urlreference/protocol",
 	}
 	if slices.Contains(allowed, imported) ||
 		!strings.HasPrefix(imported, architectureModule+"/internal/") {

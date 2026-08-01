@@ -37,6 +37,8 @@
     {"name": "migrated-path-recreated", "mutation": "migrated-path-recreated", "rule": "migration-recreation", "expected": "reject"},
     {"name": "process-supervision-recreated", "mutation": "process-supervision-recreated", "rule": "migration-recreation", "expected": "reject"},
     {"name": "transform-outside-operation", "mutation": "transform-outside-operation", "rule": "operation-package-ownership", "expected": "reject"},
-    {"name": "url-reference-transform-recreated", "mutation": "url-reference-transform-recreated", "rule": "migration-recreation", "expected": "reject"}
+    {"name": "url-reference-transform-recreated", "mutation": "url-reference-transform-recreated", "rule": "migration-recreation", "expected": "reject"},
+    {"name": "protocol-outside-operation", "mutation": "protocol-outside-operation", "rule": "operation-package-ownership", "expected": "reject"},
+    {"name": "worker-protocol-recreated", "mutation": "worker-protocol-recreated", "rule": "migration-recreation", "expected": "reject"}
   ]
 }

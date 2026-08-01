@@ -19,7 +19,7 @@ The complete bundle is moved to `<root>/attempts/<attempt-id>/` before its
 publication marker is written.
 
 `admitted.json` retains the original input and exact request frame.
-Inspection uses the versioned `workerprotocolv1` frame semantics. It requires
+Inspection uses the versioned `protocol` frame semantics. It requires
 the request attempt identity and input to match the duplicated admitted fields
 then enforces the deadline, input length, input hash, mode and fixed operation
 limits. It does not rerun admission, the URL grammar, the transformation or
@@ -75,8 +75,8 @@ durable terminal outcome.
   surrounding whitespace and are limited to 512 bytes.
 - A persistence failure cannot produce `verified`.
 
-v1 is the first supported evidence format. `workerprotocolv1` defines
-immutable v1 frame semantics. The `transform` package defines the admission and
+v1 is the first supported evidence format. The `protocol` package defines v1
+frame semantics. The `transform` package defines the admission and
 publication semantics but inspection does not replay them. Incompatible
 changes require a new evidence version.
 

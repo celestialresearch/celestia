@@ -40,7 +40,7 @@ linters:
             - "celestia.research/celestia/internal/execution/supervision"
             - "celestia.research/celestia/internal/urladmission"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
-            - "celestia.research/celestia/internal/workerprotocolv1"
+            - "celestia.research/celestia/internal/operation/urlreference/protocol"
           deny:
             - pkg: "celestia.research/celestia/internal"
               desc: supervision qualification test imports only declared dependencies
@@ -66,8 +66,6 @@ linters:
             - "celestia.research/celestia/internal/attemptstore"
             - "celestia.research/celestia/internal/execution/supervision"
             - "celestia.research/celestia/internal/urladmission"
-            - "celestia.research/celestia/internal/operation/urlreference/transform"
-            - "celestia.research/celestia/internal/workerprotocolv1"
           deny:
             - pkg: "celestia.research/celestia/internal/operation"
               desc: operation roots import only their own declared subpackages
@@ -83,8 +81,6 @@ linters:
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
             - "celestia.research/celestia/internal/urladmission"
-            - "celestia.research/celestia/internal/operation/urlreference/transform"
-            - "celestia.research/celestia/internal/workerprotocolv1"
           deny:
             - pkg: "celestia.research/celestia/internal"
               desc: attempt evidence imports only lower URL-reference owners
@@ -98,8 +94,6 @@ linters:
           allow:
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
-            - "celestia.research/celestia/internal/operation/urlreference/transform"
-            - "celestia.research/celestia/internal/workerprotocolv1"
           deny:
             - pkg: "celestia.research/celestia/internal"
               desc: admission imports only protocol and transformation
@@ -108,10 +102,7 @@ linters:
           files:
             - "**/internal/operation/urlreference/protocol/*.go"
             - "**/internal/operation/urlreference/protocol/**/*.go"
-            - "**/internal/workerprotocolv1/*.go"
-            - "**/internal/workerprotocolv1/**/*.go"
           allow:
-            - "celestia.research/celestia/internal/operation/urlreference/transform"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
           deny:
             - pkg: "celestia.research/celestia/internal"
@@ -119,8 +110,6 @@ linters:
         url-reference-transform:
           list-mode: lax
           files:
-            - "**/internal/operation/urlreference/transform/*.go"
-            - "**/internal/operation/urlreference/transform/**/*.go"
             - "**/internal/operation/urlreference/transform/*.go"
             - "**/internal/operation/urlreference/transform/**/*.go"
           deny:

@@ -1,6 +1,6 @@
 {
   "schema_version": "celestia.production.architecture.v1",
-  "current_slice": "CEL-STRUCT-004A",
+  "current_slice": "CEL-STRUCT-004B",
   "base_commit": "ea8f840aa230f0498f82f3cd00dca22760cf6020",
   "module_path": "celestia.research/celestia",
   "inventory_format": "sha256-lf-paths-v1",
@@ -63,8 +63,8 @@
     "internal/execution/supervision",
     "internal/urladmission",
     "internal/urloperation",
+    "internal/operation/urlreference/protocol",
     "internal/operation/urlreference/transform",
-    "internal/workerprotocolv1",
     "tools/actionpolicy",
     "tools/sourcepolicy"
   ],
@@ -195,25 +195,11 @@
         "internal/urloperation/operation_windows.go",
         "internal/urloperation/operation_windows_test.go"
       ]
-    },
-    {
-      "path": "internal/workerprotocolv1",
-      "inventory_count": 3,
-      "inventory_sha256": "bb6d19a43ceb0e953687c4713eae36b70e7bb328a685a9381fec0f4c43154859",
-      "destination": "internal/operation/urlreference/protocol",
-      "migration_slice": "CEL-STRUCT-004B",
-      "reason": "Worker protocol remains at its pre-constitution path until its path-only move",
-      "expires_at_completion": "CEL-STRUCT-004B",
-      "allow_new_files": false,
-      "inventory_paths": [
-        "internal/workerprotocolv1/benchmark_test.go",
-        "internal/workerprotocolv1/protocol.go",
-        "internal/workerprotocolv1/protocol_test.go"
-      ]
     }
   ],
   "retired_migration_paths": [
     "internal/processsupervision",
-    "internal/urlreferencev1"
+    "internal/urlreferencev1",
+    "internal/workerprotocolv1"
   ]
 }

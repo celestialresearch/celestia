@@ -33,7 +33,7 @@ import (
 	"celestia.research/celestia/internal/execution/supervision"
 	"celestia.research/celestia/internal/operation/urlreference/transform"
 	"celestia.research/celestia/internal/urladmission"
-	"celestia.research/celestia/internal/workerprotocolv1"
+	"celestia.research/celestia/internal/operation/urlreference/protocol"
 	"golang.org/x/sys/windows"
 )
 

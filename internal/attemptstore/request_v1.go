@@ -26,7 +26,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"celestia.research/celestia/internal/workerprotocolv1"
+	"celestia.research/celestia/internal/operation/urlreference/protocol"
 )
 
 const (

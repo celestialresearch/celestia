@@ -77,7 +77,7 @@
     {
       "id": "CEL-TRUST-WORKER-001",
       "source": "Rust worker output",
-      "target": "internal/workerprotocolv1",
+      "target": "internal/operation/urlreference/protocol",
       "treatment": "Bound raw streams and reject malformed, mismatched or unsupported protocol"
     },
     {
@@ -691,7 +691,7 @@
     },
     {
       "id": "CEL-URL-PROD-002",
-      "owner": "internal/workerprotocolv1 and semantic-lie tests"
+      "owner": "internal/operation/urlreference/protocol and semantic-lie tests"
     },
     {
       "id": "CEL-URL-PROD-003",

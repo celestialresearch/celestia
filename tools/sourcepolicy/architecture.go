@@ -34,7 +34,7 @@ const (
 	architectureSchema       = "celestia.production.architecture.v1"
 	architectureBaseCommit   = "ea8f840aa230f0498f82f3cd00dca22760cf6020"
 	architectureModule       = "celestia.research/celestia"
-	architectureCurrentSlice = "CEL-STRUCT-004A"
+	architectureCurrentSlice = "CEL-STRUCT-004B"
 	architectureInventory    = "sha256-lf-paths-v1"
 	maxArchitectureDepth     = 64
 	maxArchitectureFindings  = 16

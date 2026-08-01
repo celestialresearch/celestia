@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"celestia.research/celestia/internal/workerprotocolv1"
+	"celestia.research/celestia/internal/operation/urlreference/protocol"
 )
 
 func TestBundleRejectsUnexpectedRegularEntry(t *testing.T) {

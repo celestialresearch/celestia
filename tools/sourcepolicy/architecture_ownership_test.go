@@ -12,9 +12,27 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestArchitectureOwnsProtocolAtFinalPath(t *testing.T) {
+	t.Parallel()
+
+	policy := validArchitectureFixturePolicy()
+	if !slices.Contains(policy.Packages, "internal/operation/urlreference/protocol") {
+		t.Fatal("final protocol package is not governed")
+	}
+	for _, root := range policy.MigrationRoots {
+		if root.Path == "internal/workerprotocolv1" {
+			t.Fatal("retired protocol package remains registered for migration")
+		}
+	}
+	if !slices.Contains(policy.RetiredMigration, "internal/workerprotocolv1") {
+		t.Fatal("retired protocol package can be recreated")
+	}
+}
 
 func TestArchitectureSourceOwnership(t *testing.T) {
 	t.Parallel()

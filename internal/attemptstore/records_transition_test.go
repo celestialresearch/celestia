@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"celestia.research/celestia/internal/workerprotocolv1"
+	"celestia.research/celestia/internal/operation/urlreference/protocol"
 )
 
 func TestObservationEvidenceRejectsContradictions(t *testing.T) {
