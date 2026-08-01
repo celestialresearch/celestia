@@ -651,6 +651,9 @@ func architectureRustPathFindings(file string, packages map[string]struct{}) []s
 func architectureGoPathFindings(
 	file, root string, packages, commands map[string]struct{},
 ) []string {
+	if strings.EqualFold(path.Ext(file), ".syso") {
+		return []string{file + ": Go object files are prohibited"}
+	}
 	if !strings.HasSuffix(file, ".go") {
 		return nil
 	}
