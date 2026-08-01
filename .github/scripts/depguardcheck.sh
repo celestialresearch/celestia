@@ -17,6 +17,15 @@ deadline_seconds=30
 if [[ "${CELESTIA_DEPGUARD_DEADLINE_FIXTURE:-}" == 1 ]]; then
   deadline_seconds=1
 fi
+bounded=0
+if [[ "${1:-}" == --celestia-depguard-bounded ]]; then
+  [[ "$#" -eq 1 ]] || {
+    printf 'invalid depguard bounded invocation\n' >&2
+    exit 2
+  }
+  bounded=1
+  shift
+fi
 
 terminate_tree() {
   local child
@@ -64,7 +73,7 @@ run_bounded() {
   deadline_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-depguard-deadline.XXXXXX")
   (
     trap 'printf "%s" "done" >"$deadline_root/done"' EXIT
-    CELESTIA_DEPGUARD_BOUNDED=1 bash "$0" "$@"
+    bash "$0" --celestia-depguard-bounded "$@"
   ) &
   child=$!
   (
@@ -96,7 +105,7 @@ run_bounded() {
   return "$status"
 }
 
-if [[ "${CELESTIA_DEPGUARD_BOUNDED:-}" != 1 ]]; then
+if [[ "$bounded" -ne 1 ]]; then
   run_bounded "$@"
   exit $?
 fi

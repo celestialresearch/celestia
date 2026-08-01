@@ -556,7 +556,7 @@ EOF
     return 1
   }
   set +e
-  CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
+  CELESTIA_DEPGUARD_BOUNDED=1 CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
     bash "$architecture_dir/.github/scripts/depguardcheck.sh"
   status=$?
   set -e
