@@ -35,6 +35,10 @@ autobins = false
 [package]
 name = "celestia-url-reference"
 		`,
+		"custom build target": `[package]
+name = "celestia-url-reference"
+build = "build.rs"
+		`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			read := func(path string) ([]byte, error) {

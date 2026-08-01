@@ -629,6 +629,9 @@ func architectureScriptExtension(extension string) bool {
 }
 
 func architectureRustPathFindings(file string, packages map[string]struct{}) []string {
+	if path.Base(file) == "build.rs" {
+		return []string{file + ": Cargo build scripts are prohibited"}
+	}
 	if file != "Cargo.toml" && path.Base(file) != "Cargo.toml" &&
 		!strings.HasSuffix(file, ".rs") {
 		return nil

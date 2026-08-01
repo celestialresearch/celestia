@@ -85,7 +85,7 @@ func decodeArchitectureRustPackage(
 	}
 	name := architectureRustPackageName(document)
 	targets, valid := architectureRustTargets(document["bin"])
-	if !valid || architectureRustHasExtraTargets(document) {
+	if !valid || architectureRustHasExtraTargets(document) || architectureRustHasBuildScript(document) {
 		return architectureRustPackage{name: name}, nil
 	}
 	if len(targets) == 0 && expected.implicitTarget && architectureRustAutobins(document) {
@@ -107,6 +107,11 @@ func decodeArchitectureRustPackage(
 		return 0
 	})
 	return architectureRustPackage{name: name, targets: targets}, nil
+}
+
+func architectureRustHasBuildScript(document map[string]any) bool {
+	_, exists := nestedTable(document, "package")["build"]
+	return exists
 }
 
 func architectureRustAutobins(document map[string]any) bool {
