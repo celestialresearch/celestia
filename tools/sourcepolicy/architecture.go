@@ -376,6 +376,14 @@ func architectureFindings(
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
+	rustTargets, err := architectureRustTargetFindings(readFile)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, rustTargets...)
+	if architectureFindingsFull(findings) {
+		return boundedArchitectureFindings(findings), nil
+	}
 	documentation, err := packageDocumentationFindings(files, policy, readFile)
 	if err != nil {
 		return nil, err
