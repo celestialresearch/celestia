@@ -456,6 +456,9 @@ func architectureFileFindings(
 		return []string{file + ": unapproved root directory"}
 	}
 	findings := prohibitedPathFindings(file, segments, prohibited)
+	findings = append(findings, architectureOwnerPathFindings(
+		file, segments[0], packages, rustPackages, scripts, commands,
+	)...)
 	findings = append(findings, architectureGoPathFindings(
 		file, segments[0], packages, commands,
 	)...)
@@ -463,6 +466,37 @@ func architectureFileFindings(
 		file, executable, scripts,
 	)...)
 	return append(findings, architectureRustPathFindings(file, rustPackages)...)
+}
+
+func architectureOwnerPathFindings(
+	file, root string,
+	packages, rustPackages, scripts, commands map[string]struct{},
+) []string {
+	var owners map[string]struct{}
+	switch root {
+	case ".github":
+		if !strings.HasPrefix(file, ".github/scripts/") {
+			return nil
+		}
+		if _, declared := scripts[file]; declared {
+			return nil
+		}
+		return []string{file + ": script is not declared"}
+	case "cmd":
+		owners = commands
+	case "internal", "tools":
+		owners = packages
+	case "worker":
+		owners = rustPackages
+	default:
+		return nil
+	}
+	for owner := range owners {
+		if strings.HasPrefix(file, owner+"/") {
+			return nil
+		}
+	}
+	return []string{file + ": source owner is not declared"}
 }
 
 func architectureScriptPathFindings(
