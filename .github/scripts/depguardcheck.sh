@@ -121,7 +121,7 @@ trap 'rm -rf -- "$work"' EXIT
 lint=$(cd "$root" && go tool -n golangci-lint)
 go_version=$(awk '$1 == "go" { print $2; exit }' "$root/go.mod")
 
-run_case() {
+check_case() {
   name=$1
   importer=$2
   imported=$3
@@ -159,11 +159,13 @@ EOF
   case "$importer" in
     *_windows_test.go)
       output=$(cd "$case_root" && GOOS=windows GOARCH=amd64 \
-        "$lint" run --enable-only=depguard --config .golangci.yml ./... 2>&1)
+        "$lint" run --allow-parallel-runners --enable-only=depguard \
+        --config .golangci.yml ./... 2>&1)
       ;;
     *)
       output=$(cd "$case_root" && \
-        "$lint" run --enable-only=depguard --config .golangci.yml ./... 2>&1)
+        "$lint" run --allow-parallel-runners --enable-only=depguard \
+        --config .golangci.yml ./... 2>&1)
       ;;
   esac
   status=$?
@@ -176,6 +178,32 @@ EOF
     { [[ "$status" -eq 0 ]] || [[ "$output" != *"$message"* ]]; }; then
     printf '%s accepted a forbidden import:\n%s\n' "$name" "$output" >&2
     exit 1
+  fi
+}
+
+case_pids=
+case_count=0
+
+wait_cases() {
+  local pid
+  local result=0
+
+  for pid in $case_pids; do
+    if ! wait "$pid"; then
+      result=1
+    fi
+  done
+  case_pids=
+  case_count=0
+  return "$result"
+}
+
+run_case() {
+  check_case "$@" &
+  case_pids="$case_pids $!"
+  case_count=$((case_count + 1))
+  if [[ "$case_count" -ge 12 ]]; then
+    wait_cases
   fi
 }
 
@@ -248,3 +276,5 @@ run_case final-transform-reject \
   internal/operation/urlreference/transform/example.go \
   celestia.research/celestia/internal/processsupervision reject \
   'transformation must not import other Production internals'
+
+wait_cases
