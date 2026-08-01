@@ -634,6 +634,23 @@ EOF
     printf 'cancelled depguard wrapper retained deadline state\n' >&2
     return 1
   }
+  if ! command -v taskkill.exe >/dev/null 2>&1; then
+    depguard_descendants="$work_dir/depguard-descendants"
+    status=0
+    CELESTIA_DEPGUARD_BOUNDED=1 CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
+      CELESTIA_DEPGUARD_DESCENDANT_FILE="$depguard_descendants" \
+      bash "$architecture_dir/.github/scripts/depguardcheck.sh" >/dev/null 2>&1 || status=$?
+    [[ "$status" -eq 124 ]] || {
+      printf 'depguard descendant fixture returned %s, expected 124\n' "$status" >&2
+      return 1
+    }
+    while IFS= read -r pid; do
+      if kill -0 "$pid" 2>/dev/null; then
+        printf 'depguard deadline left descendant %s alive\n' "$pid" >&2
+        return 1
+      fi
+    done <"$depguard_descendants"
+  fi
   mkdir -p "$architecture_dir/worker/rogue"
   printf 'package rogue\n' >"$architecture_dir/worker/rogue/main.go"
   git -C "$architecture_dir" add worker/rogue/main.go

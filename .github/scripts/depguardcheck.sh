@@ -57,6 +57,18 @@ terminate_tree() {
   kill -KILL "$pid" 2>/dev/null || true
 }
 
+terminate_owned() {
+  local pid=$1
+
+  if command -v taskkill.exe >/dev/null 2>&1; then
+    terminate_tree "$pid"
+    return
+  fi
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  sleep 1
+  kill -KILL -- "-$pid" 2>/dev/null || true
+}
+
 cancel_bounded() {
   local owned
   local status=$1
@@ -68,7 +80,7 @@ cancel_bounded() {
     watchdog=
   fi
   if [[ -n "${child:-}" ]]; then
-    terminate_tree "$child" 2>/dev/null || true
+    terminate_owned "$child" 2>/dev/null || true
     wait "$child" 2>/dev/null || true
     child=
   fi
@@ -101,7 +113,13 @@ run_bounded() {
   trap 'cancel_bounded 143' TERM
   trap 'cancel_bounded $?' EXIT
   deadline_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-depguard-deadline.XXXXXX")
-  bash "$0" --celestia-depguard-bounded "$@" &
+  if command -v taskkill.exe >/dev/null 2>&1; then
+    bash "$0" --celestia-depguard-bounded "$@" &
+  else
+    set -m
+    bash "$0" --celestia-depguard-bounded "$@" &
+    set +m
+  fi
   child=$!
   (
     elapsed=0
@@ -111,7 +129,7 @@ run_bounded() {
       elapsed=$((elapsed + 1))
     done
     printf expired >"$deadline_root/expired"
-    terminate_tree "$child"
+    terminate_owned "$child"
   ) &
   watchdog=$!
   if [[ "${CELESTIA_DEPGUARD_DEADLINE_FIXTURE:-}" == 1 ]]; then
@@ -152,6 +170,18 @@ if [[ "$bounded" -ne 1 ]]; then
 fi
 
 if [[ "${CELESTIA_DEPGUARD_DEADLINE_FIXTURE:-}" == 1 ]]; then
+  if [[ -n "${CELESTIA_DEPGUARD_DESCENDANT_FILE:-}" ]]; then
+    (
+      sleep 1.2
+      sleep 60 &
+      printf '%s\n' "$!" >>"$CELESTIA_DEPGUARD_DESCENDANT_FILE"
+      wait
+    ) &
+    printf '%s\n' "$!" >>"$CELESTIA_DEPGUARD_DESCENDANT_FILE"
+    sleep 60 &
+    printf '%s\n' "$!" >>"$CELESTIA_DEPGUARD_DESCENDANT_FILE"
+    wait
+  fi
   exec sleep 60
 fi
 
