@@ -1,6 +1,6 @@
 {
   "schema_version": "celestia.production.architecture.v1",
-  "current_slice": "CEL-STRUCT-003",
+  "current_slice": "CEL-STRUCT-004A",
   "base_commit": "ea8f840aa230f0498f82f3cd00dca22760cf6020",
   "module_path": "celestia.research/celestia",
   "inventory_format": "sha256-lf-paths-v1",
@@ -63,7 +63,7 @@
     "internal/execution/supervision",
     "internal/urladmission",
     "internal/urloperation",
-    "internal/urlreferencev1",
+    "internal/operation/urlreference/transform",
     "internal/workerprotocolv1",
     "tools/actionpolicy",
     "tools/sourcepolicy"
@@ -197,23 +197,6 @@
       ]
     },
     {
-      "path": "internal/urlreferencev1",
-      "inventory_count": 5,
-      "inventory_sha256": "1e87214904512a3f9f63d81335271504eb2cbaba583fa5d1d86aee41177f35bd",
-      "destination": "internal/operation/urlreference/transform",
-      "migration_slice": "CEL-STRUCT-004A",
-      "reason": "URL transformation remains at its pre-constitution path until its path-only move",
-      "expires_at_completion": "CEL-STRUCT-004A",
-      "allow_new_files": false,
-      "inventory_paths": [
-        "internal/urlreferencev1/benchmark_test.go",
-        "internal/urlreferencev1/conformance_test.go",
-        "internal/urlreferencev1/hex_test.go",
-        "internal/urlreferencev1/urlreference.go",
-        "internal/urlreferencev1/urlreference_test.go"
-      ]
-    },
-    {
       "path": "internal/workerprotocolv1",
       "inventory_count": 3,
       "inventory_sha256": "bb6d19a43ceb0e953687c4713eae36b70e7bb328a685a9381fec0f4c43154859",
@@ -230,6 +213,7 @@
     }
   ],
   "retired_migration_paths": [
-    "internal/processsupervision"
+    "internal/processsupervision",
+    "internal/urlreferencev1"
   ]
 }

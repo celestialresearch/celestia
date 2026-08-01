@@ -111,7 +111,7 @@ main() {
   assert_value true dependencies "$output"
   assert_value true full "$output"
 
-  output=$(classify_path_directly internal/urlreferencev1/urlreference.go)
+  output=$(classify_path_directly internal/operation/urlreference/transform/urlreference.go)
   assert_value true go "$output"
   assert_value true full "$output"
 
@@ -162,7 +162,7 @@ main() {
   assert_value true full "$output"
   base=$(git -C "$fixture_repo" rev-parse HEAD)
   commit_file "$fixture_repo" docs/mixed.md
-  commit_file "$fixture_repo" internal/urlreferencev1/mixed.go
+  commit_file "$fixture_repo" internal/operation/urlreference/transform/mixed.go
   output=$(
     cd "$fixture_repo"
     bash "$root/.github/scripts/changecheck.sh" "$base" HEAD
@@ -180,10 +180,10 @@ main() {
   )
   assert_value true full "$output"
 
-  commit_file "$fixture_repo" internal/urlreferencev1/renamed.go
+  commit_file "$fixture_repo" internal/operation/urlreference/transform/renamed.go
   base=$(git -C "$fixture_repo" rev-parse HEAD)
   git -C "$fixture_repo" mv \
-    internal/urlreferencev1/renamed.go \
+    internal/operation/urlreference/transform/renamed.go \
     docs/renamed.md
   git -C "$fixture_repo" commit -q -m production-rename
   output=$(

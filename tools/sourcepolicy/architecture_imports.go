@@ -71,7 +71,7 @@ func forbiddenSupervisionQualificationImport(imported string) string {
 	allowed := []string{
 		architectureModule + "/internal/execution/supervision",
 		architectureModule + "/internal/urladmission",
-		architectureModule + "/internal/urlreferencev1",
+		architectureModule + "/internal/operation/urlreference/transform",
 		architectureModule + "/internal/workerprotocolv1",
 	}
 	if slices.Contains(allowed, imported) ||

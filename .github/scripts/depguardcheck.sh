@@ -343,7 +343,7 @@ run_case final-admission-reject \
   celestia.research/celestia/internal/attemptstore reject \
   'admission imports only protocol and transformation'
 run_case protocol-allow internal/workerprotocolv1/example.go \
-  celestia.research/celestia/internal/urlreferencev1 pass ''
+  celestia.research/celestia/internal/operation/urlreference/transform pass ''
 run_case protocol-reject internal/workerprotocolv1/example.go \
   celestia.research/celestia/internal/urladmission reject \
   'protocol imports only transformation'
@@ -351,8 +351,8 @@ run_case final-protocol-reject \
   internal/operation/urlreference/protocol/example.go \
   celestia.research/celestia/internal/urladmission reject \
   'protocol imports only transformation'
-run_case transform-allow internal/urlreferencev1/example.go fmt pass ''
-run_case transform-reject internal/urlreferencev1/example.go \
+run_case transform-allow internal/operation/urlreference/transform/example.go fmt pass ''
+run_case transform-reject internal/operation/urlreference/transform/example.go \
   celestia.research/celestia/internal/execution/supervision reject \
   'transformation must not import other Production internals'
 run_case final-transform-reject \

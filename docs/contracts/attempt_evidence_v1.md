@@ -76,7 +76,7 @@ durable terminal outcome.
 - A persistence failure cannot produce `verified`.
 
 v1 is the first supported evidence format. `workerprotocolv1` defines
-immutable v1 frame semantics. `urlreferencev1` defines the admission and
+immutable v1 frame semantics. The `transform` package defines the admission and
 publication semantics but inspection does not replay them. Incompatible
 changes require a new evidence version.
 
