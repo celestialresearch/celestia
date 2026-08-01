@@ -33,7 +33,7 @@ terminate_tree() {
   local pid=$1
 
   if command -v taskkill.exe >/dev/null 2>&1; then
-    native_pid=$(ps -W 2>/dev/null | awk -v pid="$pid" \
+    native_pid=$(ps 2>/dev/null | awk -v pid="$pid" \
       '$1 == pid { print $4; exit }')
     [[ "$native_pid" =~ ^[0-9]+$ ]] || {
       printf 'depguard deadline could not resolve the native process\n' >&2
@@ -71,14 +71,15 @@ run_bounded() {
   fi
 
   deadline_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-depguard-deadline.XXXXXX")
-  (
-    trap 'printf "%s" "done" >"$deadline_root/done"' EXIT
-    bash "$0" --celestia-depguard-bounded "$@"
-  ) &
+  bash "$0" --celestia-depguard-bounded "$@" &
   child=$!
   (
-    sleep "$deadline_seconds"
-    [[ -f "$deadline_root/done" ]] && exit 0
+    elapsed=0
+    while [[ "$elapsed" -lt "$deadline_seconds" ]]; do
+      sleep 1
+      [[ -f "$deadline_root/done" ]] && exit 0
+      elapsed=$((elapsed + 1))
+    done
     printf expired >"$deadline_root/expired"
     terminate_tree "$child"
   ) &
@@ -99,7 +100,6 @@ run_bounded() {
     printf 'depguard qualification exceeded %s seconds\n' "$deadline_seconds" >&2
     return 124
   fi
-  kill "$watchdog" 2>/dev/null || true
   wait "$watchdog" 2>/dev/null || true
   rm -rf -- "$deadline_root"
   return "$status"
@@ -111,8 +111,7 @@ if [[ "$bounded" -ne 1 ]]; then
 fi
 
 if [[ "${CELESTIA_DEPGUARD_DEADLINE_FIXTURE:-}" == 1 ]]; then
-  sleep 60
-  exit 0
+  exec sleep 60
 fi
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
