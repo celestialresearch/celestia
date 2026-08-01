@@ -737,14 +737,21 @@ func observePackageDocumentation(
 	if err != nil {
 		return fmt.Errorf("parse package documentation %s: %w", file, err)
 	}
-	if portablePackageDocumentation(source) && parsed.Doc != nil &&
+	if portablePackageDocumentation(file, source) && parsed.Doc != nil &&
 		strings.HasPrefix(parsed.Doc.Text(), "Package "+parsed.Name.Name+" ") {
 		documented[directory] = true
 	}
 	return nil
 }
 
-func portablePackageDocumentation(source []byte) bool {
+func portablePackageDocumentation(file string, source []byte) bool {
+	name := strings.TrimSuffix(path.Base(file), ".go")
+	for _, target := range policyBuildTargets {
+		if strings.HasSuffix(name, "_"+target.goos) ||
+			strings.HasSuffix(name, "_"+target.goarch) {
+			return false
+		}
+	}
 	for line := range bytes.SplitSeq(source, []byte{'\n'}) {
 		trimmed := bytes.TrimSpace(line)
 		if bytes.HasPrefix(trimmed, []byte("package ")) {

@@ -52,3 +52,24 @@ func TestMigrationDocumentationMustBePortable(t *testing.T) {
 		t.Fatalf("platform documentation = %v, %v", findings, err)
 	}
 }
+
+func TestMigrationDocumentationRejectsTargetFilename(t *testing.T) {
+	t.Parallel()
+
+	policy := validArchitectureFixturePolicy()
+	policy.Packages = []string{"internal/example"}
+	policy.MigrationRoots[0].Path = "internal/example"
+	read := func(string) ([]byte, error) {
+		return []byte("// Package example owns the fixture.\npackage example\n"), nil
+	}
+	for _, file := range []string{
+		"internal/example/example_windows.go",
+		"internal/example/example_amd64.go",
+		"internal/example/example_windows_amd64.go",
+	} {
+		findings, err := packageDocumentationFindings([]string{file}, policy, read)
+		if err != nil || len(findings) != 1 {
+			t.Fatalf("%s documentation = %v, %v", file, findings, err)
+		}
+	}
+}
