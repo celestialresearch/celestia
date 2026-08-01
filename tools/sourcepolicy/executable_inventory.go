@@ -19,6 +19,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -47,12 +48,15 @@ func sourceExecutables(files []string) ([]string, error) {
 	if waitErr != nil {
 		return nil, waitErr
 	}
-	return supplementExecutableInventory(files, executables, os.Lstat)
+	return supplementExecutableInventory(
+		files, executables, os.Lstat, windowsExecutableFile,
+	)
 }
 
 func supplementExecutableInventory(
 	files, executables []string,
 	lstat func(string) (os.FileInfo, error),
+	windowsExecutable func(string) (bool, error),
 ) ([]string, error) {
 	declared := stringSet(executables)
 	for _, file := range files {
@@ -63,12 +67,38 @@ func supplementExecutableInventory(
 		if !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("inspect source %s: source is not a regular file", file)
 		}
+		windows, err := windowsExecutable(file)
+		if err != nil {
+			return nil, fmt.Errorf("inspect source %s: %w", file, err)
+		}
 		_, alreadyExecutable := declared[file]
-		if !alreadyExecutable && info.Mode().Perm()&0o111 != 0 {
+		if !alreadyExecutable && (info.Mode().Perm()&0o111 != 0 || windows) {
 			executables = append(executables, file)
 		}
 	}
 	return executables, nil
+}
+
+func windowsExecutableFile(file string) (bool, error) {
+	source, err := readSource(file)
+	if err != nil {
+		return false, err
+	}
+	return windowsExecutableData(file, source), nil
+}
+
+func windowsExecutableData(file string, source []byte) bool {
+	return len(source) >= 2 && source[0] == 'M' && source[1] == 'Z' ||
+		architectureWindowsBinaryExtension(file)
+}
+
+func architectureWindowsBinaryExtension(file string) bool {
+	switch strings.ToLower(filepath.Ext(file)) {
+	case ".com", ".cpl", ".dll", ".exe", ".ocx", ".pif", ".scr", ".sys":
+		return true
+	default:
+		return false
+	}
 }
 
 func readExecutableInventory(source io.Reader) ([]string, error) {

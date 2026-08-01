@@ -44,9 +44,31 @@ func TestExecutableInventoryRejectsInvalidFiles(t *testing.T) {
 	for _, file := range []string{directory, filepath.Join(root, "missing")} {
 		if _, err := supplementExecutableInventory(
 			[]string{file}, nil, os.Lstat,
+			func(string) (bool, error) { return false, nil },
 		); err == nil {
 			t.Fatalf("invalid source %s accepted", file)
 		}
+	}
+}
+
+func TestExecutableInventoryFindsWindowsBinaries(t *testing.T) {
+	t.Parallel()
+
+	file := filepath.Join(t.TempDir(), "rogue.bin")
+	if err := os.WriteFile(file, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files, err := supplementExecutableInventory(
+		[]string{file}, nil, os.Lstat,
+		func(name string) (bool, error) {
+			return windowsExecutableData(name, []byte{'M', 'Z'}), nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0] != file {
+		t.Fatalf("executables = %v, want %s", files, file)
 	}
 }
 
