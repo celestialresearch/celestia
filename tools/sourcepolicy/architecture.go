@@ -488,7 +488,7 @@ func validArchitecturePath(file string) bool {
 }
 
 func validWindowsArchitecturePath(file string) bool {
-	for _, segment := range strings.Split(file, "/") {
+	for segment := range strings.SplitSeq(file, "/") {
 		if strings.ContainsAny(segment, `<>:"\|?*`) ||
 			strings.HasSuffix(segment, ".") || strings.HasSuffix(segment, " ") ||
 			windowsReservedName(segment) {
