@@ -34,7 +34,7 @@ const (
 	architectureSchema       = "celestia.production.architecture.v1"
 	architectureBaseCommit   = "ea8f840aa230f0498f82f3cd00dca22760cf6020"
 	architectureModule       = "celestia.research/celestia"
-	architectureCurrentSlice = "CEL-STRUCT-001"
+	architectureCurrentSlice = "CEL-STRUCT-003"
 	architectureInventory    = "sha256-lf-paths-v1"
 	maxArchitectureDepth     = 64
 	maxArchitectureFindings  = 16
@@ -306,14 +306,14 @@ func validArchitectureLists(policy architecturePolicy) bool {
 		equalStrings(policy.RustPackages, expectedRustPackages()) &&
 		equalStrings(policy.Scripts, expectedScripts()) &&
 		len(policy.Commands) == 0 && len(policy.FileExceptions) == 0 &&
-		len(policy.RetiredMigration) == 0 &&
+		equalStrings(policy.RetiredMigration, expectedRetiredMigration()) &&
 		equalStrings(policy.ImportRules, expectedImportRules())
 }
 
 func validateMigrationRoots(migration []architectureMigrationRoot) error {
 	expected := expectedMigrationRoots()
 	if len(migration) != len(expected) {
-		return errors.New("architecture policy must contain six migration roots")
+		return errors.New("architecture policy has an invalid migration root count")
 	}
 	for index, entry := range migration {
 		if !validMigrationEntry(entry, expected[index]) {

@@ -34,7 +34,7 @@ func expectedProhibitedSegments() []string {
 
 func expectedPackages() []string {
 	return []string{
-		"internal/attemptstore", "internal/processsupervision", "internal/urladmission",
+		"internal/attemptstore", "internal/execution/supervision", "internal/urladmission",
 		"internal/urloperation", "internal/urlreferencev1", "internal/workerprotocolv1",
 		"tools/actionpolicy", "tools/sourcepolicy",
 	}
@@ -70,10 +70,13 @@ func expectedImportRules() []string {
 func expectedMigrationRoots() []architectureMigrationRoot {
 	return []architectureMigrationRoot{
 		{Path: "internal/attemptstore", Count: 48, Digest: "b33f419cd6d54a697c18f95cb23c156debc5a8cc1facc2acbe6d3d7541d73a54", Destination: "internal/operation/urlreference/attempt", Slice: "CEL-STRUCT-004D", Reason: "Attempt evidence remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-004D"},
-		{Path: "internal/processsupervision", Count: 19, Digest: "6f3533b58c7efd95e2948ebaf8f6fa956b81454204f15ac29520086cecc87fe8", Destination: "internal/execution/supervision", Slice: "CEL-STRUCT-003", Reason: "Process supervision remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-003"},
 		{Path: "internal/urladmission", Count: 2, Digest: "7f3df87edbfd1b3f0a79f8778bf495b45ec31a806b73a9c9f34280131e00bbf5", Destination: "internal/operation/urlreference/admission", Slice: "CEL-STRUCT-004C", Reason: "URL admission remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-004C"},
 		{Path: "internal/urloperation", Count: 5, Digest: "9ea53ceaa57bb11f17df5e1da4d30f9d174e0d9cb38eef41ebd22cf7779d0755", Destination: "internal/operation/urlreference", Slice: "CEL-STRUCT-004E", Reason: "URL operation remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-004E"},
 		{Path: "internal/urlreferencev1", Count: 5, Digest: "1e87214904512a3f9f63d81335271504eb2cbaba583fa5d1d86aee41177f35bd", Destination: "internal/operation/urlreference/transform", Slice: "CEL-STRUCT-004A", Reason: "URL transformation remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-004A"},
 		{Path: "internal/workerprotocolv1", Count: 3, Digest: "bb6d19a43ceb0e953687c4713eae36b70e7bb328a685a9381fec0f4c43154859", Destination: "internal/operation/urlreference/protocol", Slice: "CEL-STRUCT-004B", Reason: "Worker protocol remains at its pre-constitution path until its path-only move", Expiry: "CEL-STRUCT-004B"},
 	}
+}
+
+func expectedRetiredMigration() []string {
+	return []string{"internal/processsupervision"}
 }

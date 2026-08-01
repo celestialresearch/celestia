@@ -24,9 +24,9 @@ linters:
           list-mode: lax
           files:
             - "**/internal/execution/**/*.go"
-            - "**/internal/processsupervision/*.go"
-            - "**/internal/processsupervision/**/*.go"
-            - "!**/internal/processsupervision/supervisor_windows_test.go"
+            - "**/internal/execution/supervision/*.go"
+            - "**/internal/execution/supervision/**/*.go"
+            - "!**/internal/execution/supervision/supervisor_windows_test.go"
           deny:
             - pkg: "celestia.research/celestia/internal/operation"
               desc: execution packages must not import operations
@@ -35,9 +35,9 @@ linters:
         execution-integration:
           list-mode: lax
           files:
-            - "**/internal/processsupervision/supervisor_windows_test.go"
+            - "**/internal/execution/supervision/supervisor_windows_test.go"
           allow:
-            - "celestia.research/celestia/internal/processsupervision"
+            - "celestia.research/celestia/internal/execution/supervision"
             - "celestia.research/celestia/internal/urladmission"
             - "celestia.research/celestia/internal/urlreferencev1"
             - "celestia.research/celestia/internal/workerprotocolv1"
@@ -64,7 +64,7 @@ linters:
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
             - "celestia.research/celestia/internal/attemptstore"
-            - "celestia.research/celestia/internal/processsupervision"
+            - "celestia.research/celestia/internal/execution/supervision"
             - "celestia.research/celestia/internal/urladmission"
             - "celestia.research/celestia/internal/urlreferencev1"
             - "celestia.research/celestia/internal/workerprotocolv1"

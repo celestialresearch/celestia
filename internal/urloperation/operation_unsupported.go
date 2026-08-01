@@ -17,7 +17,7 @@ import (
 	"context"
 	"fmt"
 
-	"celestia.research/celestia/internal/processsupervision"
+	"celestia.research/celestia/internal/execution/supervision"
 	"celestia.research/celestia/internal/urlreferencev1"
 )
 
@@ -29,13 +29,13 @@ func New(
 ) (*Operation, error) {
 	return nil, fmt.Errorf(
 		"configure URL operation: %w",
-		processsupervision.ErrUnavailable,
+		supervision.ErrUnavailable,
 	)
 }
 
 func (*Operation) Execute(context.Context, string, urlreference.Mode) Result {
 	return Result{
 		Status: Failed,
-		Err:    processsupervision.ErrUnavailable,
+		Err:    supervision.ErrUnavailable,
 	}
 }

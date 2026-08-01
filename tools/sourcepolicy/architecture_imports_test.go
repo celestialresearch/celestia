@@ -65,7 +65,7 @@ func TestArchitectureImportsRejectTestDirectionBypass(t *testing.T) {
 		return []byte("package example\nimport _ \"celestia.research/celestia/internal/urloperation\"\n"), nil
 	}
 	findings, err := architectureImportFindings(
-		[]string{"internal/processsupervision/rogue_test.go"}, readFile,
+		[]string{"internal/execution/supervision/rogue_test.go"}, readFile,
 	)
 	if err != nil || len(findings) != 1 {
 		t.Fatalf("architectureImportFindings() = %v, %v", findings, err)
@@ -92,7 +92,7 @@ func TestArchitectureImportsNormaliseMigrationOwners(t *testing.T) {
 
 	reason := forbiddenArchitectureImport(
 		"internal/urlreferencev1",
-		architectureModule+"/internal/processsupervision",
+		architectureModule+"/internal/execution/supervision",
 	)
 	if reason == "" {
 		t.Fatal("migration transformation import of execution accepted")

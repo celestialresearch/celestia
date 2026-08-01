@@ -18,14 +18,14 @@ import (
 	"errors"
 	"testing"
 
-	"celestia.research/celestia/internal/processsupervision"
+	"celestia.research/celestia/internal/execution/supervision"
 	"celestia.research/celestia/internal/urlreferencev1"
 )
 
 func TestOperationFailsClosed(t *testing.T) {
 	if _, err := New("/worker", "/evidence"); !errors.Is(
 		err,
-		processsupervision.ErrUnavailable,
+		supervision.ErrUnavailable,
 	) {
 		t.Fatalf("constructor error=%v", err)
 	}
@@ -35,7 +35,7 @@ func TestOperationFailsClosed(t *testing.T) {
 		urlreference.Defang,
 	)
 	if result.Status != Failed ||
-		!errors.Is(result.Err, processsupervision.ErrUnavailable) {
+		!errors.Is(result.Err, supervision.ErrUnavailable) {
 		t.Fatalf("result=%+v", result)
 	}
 }

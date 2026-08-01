@@ -63,7 +63,9 @@ func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
 	if runManifestPolicy(&stderr, os.ReadFile) != 0 {
 		t.Fatalf("reviewed manifests rejected: %s", stderr.String())
 	}
-	for _, target := range []string{governedManifestPath, structureManifestPath} {
+	for _, target := range []string{
+		governedManifestPath, structureManifestPath, executionManifestPath,
+	} {
 		for _, missing := range []bool{false, true} {
 			read := func(name string) ([]byte, error) {
 				if name == target {
@@ -77,6 +79,8 @@ func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
 					return os.ReadFile(governedManifestPath)
 				case structureManifestPath:
 					return os.ReadFile(structureManifestPath)
+				case executionManifestPath:
+					return os.ReadFile(executionManifestPath)
 				default:
 					return nil, errors.New("unexpected manifest")
 				}

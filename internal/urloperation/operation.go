@@ -16,7 +16,7 @@ import (
 	"errors"
 
 	"celestia.research/celestia/internal/attemptstore"
-	"celestia.research/celestia/internal/processsupervision"
+	"celestia.research/celestia/internal/execution/supervision"
 	"celestia.research/celestia/internal/workerprotocolv1"
 )
 
@@ -60,7 +60,7 @@ type Diagnostic struct {
 
 type Result struct {
 	Status       Status
-	Process      processsupervision.Outcome
+	Process      supervision.Outcome
 	Response     *workerprotocol.Response
 	Diagnostics  []Diagnostic
 	Verification Verification
