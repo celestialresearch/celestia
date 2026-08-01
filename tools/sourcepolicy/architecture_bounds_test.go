@@ -47,7 +47,12 @@ func TestArchitectureErrorsAreBounded(t *testing.T) {
 		&stderr,
 		func() ([]string, error) { return []string{"go.mod"}, nil },
 		noExecutableSources,
-		func(string) ([]byte, error) { return policy, nil },
+		func(path string) ([]byte, error) {
+			if path == "go.mod" {
+				return []byte("module celestia.research/celestia\n\ngo 1.26.5\n"), nil
+			}
+			return policy, nil
+		},
 	)
 	if status != 1 || stderr.Len() > maxSourceBytes {
 		t.Fatalf("status = %d, diagnostic bytes = %d", status, stderr.Len())
