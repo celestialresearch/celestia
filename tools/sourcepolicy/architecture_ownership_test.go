@@ -80,3 +80,23 @@ func TestArchitectureRejectsExecutableRootFile(t *testing.T) {
 		t.Fatalf("findings = %v", findings)
 	}
 }
+
+func TestArchitectureRejectsWindowsInvalidPaths(t *testing.T) {
+	t.Parallel()
+
+	for _, file := range []string{
+		`tools/sourcepolicy/rogue\file.go`,
+		"tools/sourcepolicy/trailing./file.go",
+		"tools/sourcepolicy/trailing /file.go",
+		"tools/sourcepolicy/aux.go",
+		"tools/sourcepolicy/COM1.txt",
+		"tools/sourcepolicy/bad:name.go",
+	} {
+		findings := architecturePathFindings(
+			[]string{file}, nil, validArchitectureFixturePolicy(),
+		)
+		if len(findings) != 1 || !strings.Contains(findings[0], "invalid tracked path") {
+			t.Fatalf("%q findings = %v", file, findings)
+		}
+	}
+}

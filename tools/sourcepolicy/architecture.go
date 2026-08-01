@@ -477,13 +477,37 @@ func architectureFileFindings(
 }
 
 func validArchitecturePath(file string) bool {
-	if path.Clean(file) != file || !fs.ValidPath(file) || !utf8.ValidString(file) {
+	if path.Clean(file) != file || !fs.ValidPath(file) || !utf8.ValidString(file) ||
+		!validWindowsArchitecturePath(file) {
 		return false
 	}
 	return strings.IndexFunc(file, func(character rune) bool {
 		return unicode.IsControl(character) || unicode.Is(unicode.Cf, character) ||
 			unicode.Is(unicode.Zl, character) || unicode.Is(unicode.Zp, character)
 	}) == -1
+}
+
+func validWindowsArchitecturePath(file string) bool {
+	for _, segment := range strings.Split(file, "/") {
+		if strings.ContainsAny(segment, `<>:"\|?*`) ||
+			strings.HasSuffix(segment, ".") || strings.HasSuffix(segment, " ") ||
+			windowsReservedName(segment) {
+			return false
+		}
+	}
+	return true
+}
+
+func windowsReservedName(segment string) bool {
+	name := strings.ToUpper(strings.SplitN(segment, ".", 2)[0])
+	if name == "CON" || name == "PRN" || name == "AUX" || name == "NUL" ||
+		name == "CONIN$" || name == "CONOUT$" {
+		return true
+	}
+	if len(name) != 4 || (name[:3] != "COM" && name[:3] != "LPT") {
+		return false
+	}
+	return name[3] >= '1' && name[3] <= '9'
 }
 
 func architectureOwnerPathFindings(
