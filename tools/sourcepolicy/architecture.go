@@ -452,6 +452,9 @@ func architectureFileFindings(
 		}
 	}
 	if len(segments) == 1 {
+		if findings := architectureScriptPathFindings(file, executable, scripts); len(findings) != 0 {
+			return findings
+		}
 		if _, allowed := rootFiles[file]; !allowed {
 			return []string{file + ": undeclared root file"}
 		}

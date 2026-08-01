@@ -67,3 +67,16 @@ func TestArchitectureEscapesInvalidPaths(t *testing.T) {
 		}
 	}
 }
+
+func TestArchitectureRejectsExecutableRootFile(t *testing.T) {
+	t.Parallel()
+
+	findings := architecturePathFindings(
+		[]string{"README.md"},
+		map[string]struct{}{"README.md": {}},
+		validArchitectureFixturePolicy(),
+	)
+	if len(findings) != 1 || findings[0] != "README.md: script is not declared" {
+		t.Fatalf("findings = %v", findings)
+	}
+}
