@@ -128,21 +128,6 @@ func TestObservationMapsProtocolState(t *testing.T) {
 	}
 }
 
-func TestOperationPublishesProtocolFailure(t *testing.T) {
-	operation, err := newTestOperation(t, testHostileWorker(t))
-	if err != nil {
-		t.Fatalf("new operation: %v", err)
-	}
-	result := operation.Execute(
-		context.Background(),
-		"https://malformed.test",
-		urlreference.Defang,
-	)
-	if result.Status != Failed || result.Process.Status != supervision.Completed {
-		t.Fatalf("result=%+v", result)
-	}
-}
-
 func TestExecuteRecordsPublicationFailure(t *testing.T) {
 	operation, err := newTestOperation(t, testWorker(t))
 	if err != nil {

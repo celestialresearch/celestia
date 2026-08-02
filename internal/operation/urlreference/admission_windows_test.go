@@ -25,6 +25,10 @@ import (
 	"time"
 )
 
+func nilContext() context.Context {
+	return nil
+}
+
 func TestOperationRejectsBeforeExecution(t *testing.T) {
 	root := testEvidenceRoot(t)
 	operation, err := New(testWorker(t), root)

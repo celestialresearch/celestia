@@ -127,10 +127,6 @@ func TestTerminalStatusPreservesPrimaryOutcomeDuringCleanupFailure(t *testing.T)
 	}
 }
 
-func nilContext() context.Context {
-	return nil
-}
-
 func TestCancellationRacingPublicationPreservesOutcome(t *testing.T) {
 	operation, err := newTestOperation(t, testWorker(t))
 	if err != nil {
