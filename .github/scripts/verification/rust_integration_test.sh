@@ -19,9 +19,9 @@ source "$script_dir/fixture.sh"
 
 main() (
 root=$(cd -- "$script_dir/../../.." && pwd)
-work_dir=$(new_verification_work verification-rust-config)
+work_dir=$(new_verification_work verification-rust-integration)
 trap 'cleanup_verification "$work_dir"' EXIT
-trap '[[ $- != *e* ]] || printf "verification-rust-config failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
+trap '[[ $- != *e* ]] || printf "verification-rust-integration failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 trap 'exit 1' HUP INT TERM
 output=
 status=0
