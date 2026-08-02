@@ -76,6 +76,66 @@ if ! cmp -s <(printf '%s\n' "$source_policy_scripts") "$source_policy_log"; then
   exit 1
 fi
 
+replacement_marker="$work/replacement-ran"
+cat >"$source_policy_dir/setup.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$(basename -- "$0")" >>"$CELESTIA_SOURCE_POLICY_LOG"
+cat >"$CELESTIA_SOURCE_POLICY_REPLACED" <<'SCRIPT'
+#!/usr/bin/env bash
+: >"$CELESTIA_SOURCE_POLICY_REPLACEMENT_MARKER"
+SCRIPT
+chmod +x "$CELESTIA_SOURCE_POLICY_REPLACED"
+EOF
+chmod +x "$source_policy_dir/setup.sh"
+rm -f -- "$source_policy_log" "$replacement_marker"
+CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_REPLACED="$source_policy_dir/architecture.sh" \
+  CELESTIA_SOURCE_POLICY_REPLACEMENT_MARKER="$replacement_marker" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null
+if [[ -e "$replacement_marker" ]] ||
+  ! cmp -s <(printf '%s\n' "$source_policy_scripts") "$source_policy_log"; then
+  printf 'source-policy driver executed a replaced script\n' >&2
+  exit 1
+fi
+git -C "$source_policy_repo" checkout -- \
+  source-policy/setup.sh source-policy/architecture.sh
+
+cat >"$work/symlink-target.sh" <<'EOF'
+#!/usr/bin/env bash
+: >"$CELESTIA_SOURCE_POLICY_REPLACEMENT_MARKER"
+EOF
+chmod +x "$work/symlink-target.sh"
+cat >"$source_policy_dir/setup.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$(basename -- "$0")" >>"$CELESTIA_SOURCE_POLICY_LOG"
+rm -- "$CELESTIA_SOURCE_POLICY_REPLACED"
+ln -s "$CELESTIA_SOURCE_POLICY_REPLACEMENT" \
+  "$CELESTIA_SOURCE_POLICY_REPLACED"
+EOF
+chmod +x "$source_policy_dir/setup.sh"
+rm -f -- "$source_policy_log" "$replacement_marker"
+CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_REPLACED="$source_policy_dir/architecture.sh" \
+  CELESTIA_SOURCE_POLICY_REPLACEMENT="$work/symlink-target.sh" \
+  CELESTIA_SOURCE_POLICY_REPLACEMENT_MARKER="$replacement_marker" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null
+if [[ -e "$replacement_marker" ]] ||
+  ! cmp -s <(printf '%s\n' "$source_policy_scripts") "$source_policy_log"; then
+  printf 'source-policy driver executed a symlinked replacement\n' >&2
+  exit 1
+fi
+rm -- "$source_policy_dir/architecture.sh"
+git -C "$source_policy_repo" checkout -- \
+  source-policy/setup.sh source-policy/architecture.sh
+
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
   >"$source_policy_dir/unexpected.sh"
 chmod +x "$source_policy_dir/unexpected.sh"

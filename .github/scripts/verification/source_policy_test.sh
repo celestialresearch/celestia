@@ -175,11 +175,31 @@ reject_extra_contract() (
   }
 )
 
+bind_script() {
+  local bound
+  local bound_size
+  local file_size
+  local path=$1
+
+  bound=$(cat -- "$path"; printf '\034') || return 1
+  bound_size=$(printf '%s' "$bound" | wc -c) || return 1
+  file_size=$(wc -c <"$path") || return 1
+  [[ "$bound_size" -eq "$((file_size + 1))" ]] || return 1
+  printf '%s' "$bound"
+}
+
 main() {
+  local bound
   local executed
+  local fixture_bound
+  local fixture_path
+  local index
   local mode
   local path
   local script
+  local snapshot
+  local snapshot_dir
+  local -a snapshot_bounds=()
   local work_dir
 
   work_dir=$(new_verification_work verification-source-policy)
@@ -233,6 +253,17 @@ main() {
     reject_extra_source
     reject_extra_contract
   fi
+  snapshot_dir="$work_dir/driver"
+  mkdir -p -- "$snapshot_dir/source_policy"
+  fixture_path="$script_dir/fixture.sh"
+  if [[ -L "$fixture_path" || ! -f "$fixture_path" ]] ||
+    ! cat -- "$fixture_path" >"$snapshot_dir/fixture.sh" ||
+    [[ -L "$fixture_path" || ! -f "$fixture_path" ]] ||
+    ! cmp -s -- "$fixture_path" "$snapshot_dir/fixture.sh" ||
+    ! fixture_bound=$(bind_script "$snapshot_dir/fixture.sh"); then
+    printf 'source-policy fixture changed during snapshot\n' >&2
+    return 1
+  fi
   for script in "${scripts[@]}"; do
     path="$script_dir_path/$script"
     mode=$(git -C "$script_repo" ls-files --stage -- "$script_prefix/$script")
@@ -240,8 +271,34 @@ main() {
       printf 'source-policy script is unavailable: %s\n' "$script" >&2
       return 1
     fi
-    run_source_policy_script "$path" "$work_dir"
+    snapshot="$snapshot_dir/source_policy/$script"
+    if ! cat -- "$path" >"$snapshot" ||
+      [[ -L "$path" || ! -f "$path" ]] ||
+      ! cmp -s -- "$path" "$snapshot" ||
+      ! chmod 700 -- "$snapshot"; then
+      printf 'source-policy script changed during snapshot: %s\n' "$script" >&2
+      return 1
+    fi
+    if ! bound=$(bind_script "$snapshot"); then
+      printf 'source-policy script cannot be bound: %s\n' "$script" >&2
+      return 1
+    fi
+    snapshot_bounds+=("$bound")
+  done
+  index=0
+  for script in "${scripts[@]}"; do
+    snapshot="$snapshot_dir/source_policy/$script"
+    if [[ -L "$snapshot" || ! -f "$snapshot" ]] ||
+      ! bound=$(bind_script "$snapshot") ||
+      [[ "$bound" != "${snapshot_bounds[$index]}" ]] ||
+      ! bound=$(bind_script "$snapshot_dir/fixture.sh") ||
+      [[ "$bound" != "$fixture_bound" ]]; then
+      printf 'source-policy script changed before execution: %s\n' "$script" >&2
+      return 1
+    fi
+    run_source_policy_script "$snapshot" "$work_dir"
     printf '%s\n' "$script" >>"$executed"
+    index=$((index + 1))
   done
   if ! diff -u <(printf '%s\n' "${scripts[@]}") "$executed"; then
     printf 'source-policy scripts lacked ordered execution\n' >&2
