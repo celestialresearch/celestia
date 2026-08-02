@@ -15,7 +15,15 @@ export GOWORK=off
 
 require_stopped_descendant() {
   local pid=$1
+  local state
 
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  if state=$(ps -o stat= -p "$pid" 2>/dev/null); then
+    state=${state//[[:space:]]/}
+    [[ "$state" == Z* ]] && return 0
+  fi
   if kill -0 "$pid" 2>/dev/null; then
     printf 'depguard deadline left descendant %s alive\n' "$pid" >&2
     return 1
@@ -108,7 +116,7 @@ set -e
   return 1
 }
 for pid in "$depguard_child" "$depguard_watchdog"; do
-  if kill -0 "$pid" 2>/dev/null; then
+  if ! require_stopped_descendant "$pid" >/dev/null 2>&1; then
     printf 'cancelled depguard wrapper left process %s alive\n' "$pid" >&2
     return 1
   fi

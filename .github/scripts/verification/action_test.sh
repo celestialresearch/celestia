@@ -93,7 +93,7 @@ kill -TERM "$action_driver_pid"
 wait "$action_driver_pid" 2>/dev/null || true
 action_driver_pid=
 for pid in "$action_family_pid" "$action_descendant_pid"; do
-  if kill -0 "$pid" 2>/dev/null; then
+  if verification_process_running "$pid"; then
     printf 'action cancellation retained process %s\n' "$pid" >&2
     kill "$pid" 2>/dev/null || true
     return 1

@@ -14,6 +14,8 @@ set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/verification-driver.XXXXXX")
+# shellcheck source=.github/scripts/verification/fixture.sh
+source "$root/.github/scripts/verification/fixture.sh"
 
 cleanup() {
   rm -rf -- "$work"
@@ -85,7 +87,7 @@ descendant_pid=$(cat "$work/descendant.pid")
 kill -TERM "$verification_pid"
 wait "$verification_pid" 2>/dev/null || true
 for pid in "$family_pid" "$descendant_pid"; do
-  if kill -0 "$pid" 2>/dev/null; then
+  if verification_process_running "$pid"; then
     printf 'verification cancellation retained process %s\n' "$pid" >&2
     kill "$pid" 2>/dev/null || true
     exit 1

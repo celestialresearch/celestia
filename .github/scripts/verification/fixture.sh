@@ -14,6 +14,18 @@ set -euo pipefail
 
 verification_temp_root=${CELESTIA_VERIFICATION_TMPDIR:-${TMPDIR:-/tmp}}
 
+verification_process_running() {
+  local pid=$1
+  local state
+
+  kill -0 "$pid" 2>/dev/null || return 1
+  if state=$(ps -o stat= -p "$pid" 2>/dev/null); then
+    state=${state//[[:space:]]/}
+    [[ "$state" == Z* ]] && return 1
+  fi
+  return 0
+}
+
 require_empty_verification_directory() {
   local contents
   local directory=$1
