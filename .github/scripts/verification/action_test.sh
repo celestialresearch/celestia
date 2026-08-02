@@ -64,6 +64,7 @@ printf '%s\n' "$$" >"$CELESTIA_ACTION_FAMILY_PID"
 sleep 60 &
 descendant_pid=$!
 printf '%s\n' "$descendant_pid" >"$CELESTIA_ACTION_DESCENDANT_PID"
+kill -STOP "$descendant_pid"
 wait "$descendant_pid"
 EOF
 chmod +x "$family_dir/remote_release_test.sh"
@@ -78,7 +79,7 @@ CELESTIA_ACTION_DESCENDANT_PID="$work_dir/action-descendant.pid" \
   CELESTIA_ACTION_FAMILY_PREFIX=families \
   TMPDIR="$work_dir/action-cancellation-temp" \
   bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
-  >/dev/null 2>&1 &
+  >"$work_dir/action-cancellation-output" 2>&1 &
 action_driver_pid=$!
 for _ in {1..50}; do
   [[ -s "$work_dir/action-descendant.pid" ]] && break
@@ -98,6 +99,7 @@ status=$?
 set -e
 action_driver_pid=
 if [[ "$status" -ne 143 ]]; then
+  cat "$work_dir/action-cancellation-output" >&2
   printf 'action cancellation returned status %d, want 143\n' "$status" >&2
   return 1
 fi
@@ -110,6 +112,266 @@ for pid in "$action_family_pid" "$action_descendant_pid"; do
 done
 require_empty_verification_directory "$work_dir/action-cancellation-temp" \
   'action cancellation temporary'
+mkdir -- "$work_dir/action-cleanup-failure-temp"
+CELESTIA_ACTION_CLEANUP_FAILURE=1 \
+  CELESTIA_ACTION_DESCENDANT_PID="$work_dir/action-failed-descendant.pid" \
+  CELESTIA_ACTION_FAMILY_PID="$work_dir/action-failed-family.pid" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  TMPDIR="$work_dir/action-cleanup-failure-temp" \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >"$work_dir/action-cleanup-failure-output" 2>&1 &
+action_driver_pid=$!
+for _ in {1..50}; do
+  [[ -s "$work_dir/action-failed-descendant.pid" ]] && break
+  sleep 0.1
+done
+[[ -s "$work_dir/action-failed-family.pid" &&
+  -s "$work_dir/action-failed-descendant.pid" ]] || {
+  printf 'action cleanup failure fixture did not start\n' >&2
+  return 1
+}
+action_family_pid=$(cat "$work_dir/action-failed-family.pid")
+action_descendant_pid=$(cat "$work_dir/action-failed-descendant.pid")
+kill -TERM "$action_driver_pid"
+set +e
+wait "$action_driver_pid" 2>/dev/null
+status=$?
+set -e
+action_driver_pid=
+if [[ "$status" -ne 1 ]]; then
+  printf 'action cleanup failure returned status %d, want 1\n' \
+    "$status" >&2
+  return 1
+fi
+if ! grep -Fq 'cancellation cleanup failed' \
+  "$work_dir/action-cleanup-failure-output"; then
+  printf 'action cleanup failure lost its diagnostic\n' >&2
+  return 1
+fi
+for pid in "$action_family_pid" "$action_descendant_pid"; do
+  if verification_process_running "$pid"; then
+    printf 'action cleanup failure retained process %s\n' "$pid" >&2
+    kill "$pid" 2>/dev/null || true
+    return 1
+  fi
+done
+require_empty_verification_directory "$work_dir/action-cleanup-failure-temp" \
+  'action cleanup failure temporary'
+mkdir -- "$work_dir/action-pre-wait-temp"
+CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  CELESTIA_ACTION_PREWAIT_CHECKPOINT_READY="$work_dir/action-pre-wait-ready" \
+  CELESTIA_ACTION_PREWAIT_CHECKPOINT_RELEASE="$work_dir/action-pre-wait-release" \
+  TMPDIR="$work_dir/action-pre-wait-temp" \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1 &
+action_driver_pid=$!
+for _ in {1..500}; do
+  [[ -e "$work_dir/action-pre-wait-ready" ]] && break
+  sleep 0.01
+done
+if [[ ! -e "$work_dir/action-pre-wait-ready" ]]; then
+  printf 'action pre-wait checkpoint was not reached\n' >&2
+  return 1
+fi
+kill -TERM "$action_driver_pid"
+: >"$work_dir/action-pre-wait-release"
+set +e
+wait "$action_driver_pid" 2>/dev/null
+status=$?
+set -e
+action_driver_pid=
+if [[ "$status" -ne 143 ]]; then
+  printf 'pre-wait action cancellation returned status %d, want 143\n' \
+    "$status" >&2
+  return 1
+fi
+require_empty_verification_directory "$work_dir/action-pre-wait-temp" \
+  'action pre-wait temporary'
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+: >"$CELESTIA_ACTION_PRELAUNCH_FAMILY_MARKER"
+EOF
+chmod +x "$family_dir/remote_release_test.sh"
+git -C "$family_repo" add families/remote_release_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/remote_release_test.sh
+mkdir -- "$work_dir/action-pre-launch-temp"
+CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  CELESTIA_ACTION_LAUNCH_CHECKPOINT_READY="$work_dir/action-launch-ready" \
+  CELESTIA_ACTION_LAUNCH_CHECKPOINT_RELEASE="$work_dir/action-launch-release" \
+  CELESTIA_ACTION_MAIN_MARKER="$work_dir/action-main-started" \
+  CELESTIA_ACTION_PRELAUNCH_FAMILY_MARKER="$work_dir/action-family-started" \
+  TMPDIR="$work_dir/action-pre-launch-temp" \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1 &
+action_driver_pid=$!
+for _ in {1..500}; do
+  [[ -e "$work_dir/action-launch-ready" ]] && break
+  sleep 0.01
+done
+if [[ ! -e "$work_dir/action-launch-ready" ]]; then
+  printf 'action launch checkpoint was not reached\n' >&2
+  return 1
+fi
+kill -TERM "$action_driver_pid"
+: >"$work_dir/action-launch-release"
+set +e
+wait "$action_driver_pid" 2>/dev/null
+status=$?
+set -e
+action_driver_pid=
+if [[ "$status" -ne 143 ]]; then
+  printf 'pre-launch action cancellation returned status %d, want 143\n' \
+    "$status" >&2
+  return 1
+fi
+if [[ -e "$work_dir/action-main-started" ||
+  -e "$work_dir/action-family-started" ]]; then
+  printf 'pre-launch action cancellation started governed work\n' >&2
+  return 1
+fi
+require_empty_verification_directory "$work_dir/action-pre-launch-temp" \
+  'action pre-launch temporary'
+mkdir -- "$work_dir/action-pre-release-temp"
+CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  CELESTIA_ACTION_MAIN_MARKER="$work_dir/action-released-main" \
+  CELESTIA_ACTION_PRELAUNCH_FAMILY_MARKER="$work_dir/action-released-family" \
+  CELESTIA_ACTION_CANCEL_CHECKPOINT_READY="$work_dir/action-cancel-ready" \
+  CELESTIA_ACTION_CANCEL_CHECKPOINT_RELEASE="$work_dir/action-cancel-release" \
+  CELESTIA_ACTION_RELEASE_CHECKPOINT_READY="$work_dir/action-release-ready" \
+  CELESTIA_ACTION_RELEASE_CHECKPOINT_RELEASE="$work_dir/action-release-release" \
+  TMPDIR="$work_dir/action-pre-release-temp" \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1 &
+action_driver_pid=$!
+for _ in {1..500}; do
+  [[ -e "$work_dir/action-release-ready" ]] && break
+  sleep 0.01
+done
+if [[ ! -e "$work_dir/action-release-ready" ]]; then
+  printf 'action release checkpoint was not reached\n' >&2
+  return 1
+fi
+kill -TERM "$action_driver_pid"
+: >"$work_dir/action-release-release"
+for _ in {1..500}; do
+  [[ -e "$work_dir/action-cancel-ready" ]] && break
+  sleep 0.01
+done
+if [[ ! -e "$work_dir/action-cancel-ready" ]]; then
+  printf 'action cancel checkpoint was not reached\n' >&2
+  return 1
+fi
+: >"$work_dir/action-cancel-release"
+set +e
+wait "$action_driver_pid" 2>/dev/null
+status=$?
+set -e
+action_driver_pid=
+if [[ "$status" -ne 143 ]]; then
+  printf 'pre-release action cancellation returned status %d, want 143\n' \
+    "$status" >&2
+  return 1
+fi
+if [[ -e "$work_dir/action-released-main" ||
+  -e "$work_dir/action-released-family" ]]; then
+  printf 'pre-release action cancellation started governed work\n' >&2
+  return 1
+fi
+require_empty_verification_directory "$work_dir/action-pre-release-temp" \
+  'action pre-release temporary'
+mkdir -- "$work_dir/action-release-failure-temp"
+set +e
+CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  CELESTIA_ACTION_MAIN_MARKER="$work_dir/action-failed-release-main" \
+  CELESTIA_ACTION_PRELAUNCH_FAMILY_MARKER="$work_dir/action-failed-release-family" \
+  CELESTIA_ACTION_RELEASE_FAILURE=1 \
+  TMPDIR="$work_dir/action-release-failure-temp" \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1
+status=$?
+set -e
+if [[ "$status" -ne 1 ]]; then
+  printf 'failed action release returned status %d, want 1\n' "$status" >&2
+  return 1
+fi
+if [[ -e "$work_dir/action-failed-release-main" ||
+  -e "$work_dir/action-failed-release-family" ]]; then
+  printf 'failed action release started governed work\n' >&2
+  return 1
+fi
+require_empty_verification_directory "$work_dir/action-release-failure-temp" \
+  'action release failure temporary'
+while IFS= read -r family; do
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$family_dir/$family"
+  chmod +x "$family_dir/$family"
+done <<<"$families"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+for status_path in "$TMPDIR"/celestia-action.*/main-status; do
+  if [[ -e "$status_path" ]]; then
+    exit 80
+  fi
+done
+if (: <&8) 2>/dev/null; then
+  exit 81
+fi
+if (: >&9) 2>/dev/null; then
+  exit 82
+fi
+EOF
+chmod +x "$family_dir/remote_release_test.sh"
+git -C "$family_repo" add -f families
+while IFS= read -r family; do
+  git -C "$family_repo" update-index --chmod=+x "families/$family"
+done <<<"$families"
+mkdir -- "$work_dir/action-completion-temp"
+CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  CELESTIA_ACTION_SIGNAL_MARKER="$work_dir/action-signal-attempted" \
+  CELESTIA_ACTION_WAIT_CHECKPOINT_READY="$work_dir/action-wait-ready" \
+  CELESTIA_ACTION_WAIT_CHECKPOINT_RELEASE="$work_dir/action-wait-release" \
+  TMPDIR="$work_dir/action-completion-temp" \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1 &
+action_driver_pid=$!
+for _ in {1..500}; do
+  [[ -e "$work_dir/action-wait-ready" ]] && break
+  sleep 0.01
+done
+if [[ ! -e "$work_dir/action-wait-ready" ]]; then
+  printf 'action completion checkpoint was not reached\n' >&2
+  return 1
+fi
+kill -TERM "$action_driver_pid"
+: >"$work_dir/action-wait-release"
+set +e
+wait "$action_driver_pid" 2>/dev/null
+status=$?
+set -e
+action_driver_pid=
+if [[ "$status" -ne 0 ]]; then
+  printf 'completed action driver returned status %d, want 0\n' \
+    "$status" >&2
+  return 1
+fi
+if [[ -e "$work_dir/action-signal-attempted" ]]; then
+  printf 'completed action driver attempted to signal its former group\n' >&2
+  return 1
+fi
+require_empty_verification_directory "$work_dir/action-completion-temp" \
+  'action completion temporary'
 snapshot_temp="$work_dir/action-snapshot-temp"
 mkdir -p "$snapshot_temp"
 printf 'tracked\n' >"$family_repo/missing-snapshot-input"
@@ -175,6 +437,143 @@ if [[ "$output" != *"master snapshot identity differs"* ]]; then
 fi
 git -C "$family_repo" checkout-index --force -- \
   families/remote_release_test.sh families/cache_test.sh
+
+watcher_bin="$work_dir/action-watcher-bin"
+watcher_done="$work_dir/action-watcher-done"
+watcher_marker="$work_dir/action-watcher-ran"
+watcher_pid_file="$work_dir/action-watcher-pid"
+watcher_ready="$work_dir/action-watcher-ready"
+watcher_target="$work_dir/action-watcher-target"
+mkdir -p "$watcher_bin"
+cat >"$watcher_bin/git" <<'EOF'
+#!/bin/sh
+last=
+for argument do
+  last=$argument
+done
+case "$last" in
+*/run.*/families/cache_test.sh)
+  output=$("$CELESTIA_REAL_GIT" "$@") || exit $?
+  printf '%s\n' "$last" >"$CELESTIA_ACTION_WATCHER_TARGET"
+  : >"$CELESTIA_ACTION_WATCHER_READY"
+  attempt=0
+  while [ ! -e "$CELESTIA_ACTION_WATCHER_DONE" ] && \
+    [ "$attempt" -lt 500 ]; do
+    sleep 0.01
+    attempt=$((attempt + 1))
+  done
+  [ -e "$CELESTIA_ACTION_WATCHER_DONE" ] || exit 98
+  printf '%s\n' "$output"
+  exit
+  ;;
+esac
+exec "$CELESTIA_REAL_GIT" "$@"
+EOF
+chmod +x "$watcher_bin/git"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+(
+  while [[ ! -e "$CELESTIA_ACTION_WATCHER_READY" ]]; do
+    sleep 0.01
+  done
+  target=$(cat "$CELESTIA_ACTION_WATCHER_TARGET")
+  cat >"$target" <<'SCRIPT'
+#!/usr/bin/env bash
+: >"$CELESTIA_ACTION_WATCHER_MARKER"
+SCRIPT
+  chmod +x "$target"
+  : >"$CELESTIA_ACTION_WATCHER_DONE"
+) >/dev/null 2>&1 &
+watcher_pid=$!
+printf '%s\n' "$watcher_pid" >"$CELESTIA_ACTION_WATCHER_PID_FILE"
+disown "$watcher_pid"
+EOF
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_dir/cache_test.sh"
+chmod +x "$family_dir/remote_release_test.sh" "$family_dir/cache_test.sh"
+git -C "$family_repo" add families/remote_release_test.sh \
+  families/cache_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/remote_release_test.sh families/cache_test.sh
+set +e
+output=$(CELESTIA_ACTION_WATCHER_DONE="$watcher_done" \
+  CELESTIA_ACTION_WATCHER_MARKER="$watcher_marker" \
+  CELESTIA_ACTION_WATCHER_PID_FILE="$watcher_pid_file" \
+  CELESTIA_ACTION_WATCHER_READY="$watcher_ready" \
+  CELESTIA_ACTION_WATCHER_TARGET="$watcher_target" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  CELESTIA_REAL_GIT="$(command -v git)" \
+  PATH="$watcher_bin:$PATH" \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture 2>&1)
+status=$?
+set -e
+if [[ -e "$watcher_marker" ]]; then
+  printf 'action driver executed a watcher-replaced family\n' >&2
+  return 1
+fi
+if [[ "$status" -eq 0 ]]; then
+  printf 'action driver accepted a retained family watcher\n' >&2
+  return 1
+fi
+if [[ "$output" != *"retained descendant processes"* ]]; then
+  printf 'action watcher rejection lost its diagnostic:\n%s\n' "$output" >&2
+  return 1
+fi
+if [[ ! -s "$watcher_pid_file" ]]; then
+  printf 'action watcher fixture did not start\n' >&2
+  return 1
+fi
+watcher_pid=$(cat "$watcher_pid_file")
+if verification_process_running "$watcher_pid"; then
+  printf 'action driver retained family watcher %s\n' "$watcher_pid" >&2
+  kill -KILL "$watcher_pid" 2>/dev/null || true
+  return 1
+fi
+git -C "$family_repo" checkout-index --force -- \
+  families/remote_release_test.sh families/cache_test.sh
+
+nonzero_pid_file="$work_dir/action-nonzero-descendant-pid"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+sleep 60 >/dev/null 2>&1 &
+descendant_pid=$!
+printf '%s\n' "$descendant_pid" >"$CELESTIA_ACTION_NONZERO_PID_FILE"
+disown "$descendant_pid"
+exit 9
+EOF
+chmod +x "$family_dir/remote_release_test.sh"
+git -C "$family_repo" add families/remote_release_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/remote_release_test.sh
+set +e
+CELESTIA_ACTION_NONZERO_PID_FILE="$nonzero_pid_file" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1
+status=$?
+set -e
+if [[ "$status" -ne 9 ]]; then
+  printf 'action descendant cleanup replaced family status %d\n' \
+    "$status" >&2
+  return 1
+fi
+if [[ ! -s "$nonzero_pid_file" ]]; then
+  printf 'action non-zero descendant fixture did not start\n' >&2
+  return 1
+fi
+nonzero_pid=$(cat "$nonzero_pid_file")
+if verification_process_running "$nonzero_pid"; then
+  printf 'action non-zero family retained descendant %s\n' \
+    "$nonzero_pid" >&2
+  kill -KILL "$nonzero_pid" 2>/dev/null || true
+  return 1
+fi
+git -C "$family_repo" checkout-index --force -- \
+  families/remote_release_test.sh
 
 race_marker="$work_dir/action-replacement-ran"
 cat >"$family_dir/remote_release_test.sh" <<'EOF'

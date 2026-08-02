@@ -25,14 +25,86 @@ if [[ "${1:-}" == --fixture ]]; then
   family_dir=${CELESTIA_ACTION_FAMILY_DIR:?}
   family_repo=${CELESTIA_ACTION_FAMILY_REPO:?}
   family_prefix=${CELESTIA_ACTION_FAMILY_PREFIX:?}
+  cleanup_failure=${CELESTIA_ACTION_CLEANUP_FAILURE:-0}
+  [[ "$cleanup_failure" == 0 || "$cleanup_failure" == 1 ]] || {
+    printf 'invalid action cleanup failure fixture\n' >&2
+    exit 2
+  }
+  launch_checkpoint_ready=${CELESTIA_ACTION_LAUNCH_CHECKPOINT_READY:-}
+  launch_checkpoint_release=${CELESTIA_ACTION_LAUNCH_CHECKPOINT_RELEASE:-}
+  cancel_checkpoint_ready=${CELESTIA_ACTION_CANCEL_CHECKPOINT_READY:-}
+  cancel_checkpoint_release=${CELESTIA_ACTION_CANCEL_CHECKPOINT_RELEASE:-}
+  main_marker=${CELESTIA_ACTION_MAIN_MARKER:-}
+  prewait_checkpoint_ready=${CELESTIA_ACTION_PREWAIT_CHECKPOINT_READY:-}
+  prewait_checkpoint_release=${CELESTIA_ACTION_PREWAIT_CHECKPOINT_RELEASE:-}
+  release_failure=${CELESTIA_ACTION_RELEASE_FAILURE:-0}
+  [[ "$release_failure" == 0 || "$release_failure" == 1 ]] || {
+    printf 'invalid action release failure fixture\n' >&2
+    exit 2
+  }
+  release_checkpoint_ready=${CELESTIA_ACTION_RELEASE_CHECKPOINT_READY:-}
+  release_checkpoint_release=${CELESTIA_ACTION_RELEASE_CHECKPOINT_RELEASE:-}
+  signal_marker=${CELESTIA_ACTION_SIGNAL_MARKER:-}
+  wait_checkpoint_ready=${CELESTIA_ACTION_WAIT_CHECKPOINT_READY:-}
+  wait_checkpoint_release=${CELESTIA_ACTION_WAIT_CHECKPOINT_RELEASE:-}
+  if [[ (-n "$launch_checkpoint_ready" &&
+    -z "$launch_checkpoint_release") ||
+    (-z "$launch_checkpoint_ready" &&
+    -n "$launch_checkpoint_release") ||
+    (-n "$cancel_checkpoint_ready" &&
+    -z "$cancel_checkpoint_release") ||
+    (-z "$cancel_checkpoint_ready" &&
+    -n "$cancel_checkpoint_release") ||
+    (-n "$prewait_checkpoint_ready" &&
+    -z "$prewait_checkpoint_release") ||
+    (-z "$prewait_checkpoint_ready" &&
+    -n "$prewait_checkpoint_release") ||
+    (-n "$release_checkpoint_ready" &&
+    -z "$release_checkpoint_release") ||
+    (-z "$release_checkpoint_ready" &&
+    -n "$release_checkpoint_release") ||
+    (-n "$wait_checkpoint_ready" && -z "$wait_checkpoint_release") ||
+    (-z "$wait_checkpoint_ready" && -n "$wait_checkpoint_release") ]]; then
+    printf 'incomplete action wait checkpoint fixture\n' >&2
+    exit 2
+  fi
 elif (($# != 0)); then
   printf 'Usage: %s [--fixture]\n' "${0##*/}" >&2
   exit 2
 elif [[ -n "${CELESTIA_ACTION_FAMILY_DIR:-}" ||
   -n "${CELESTIA_ACTION_FAMILY_REPO:-}" ||
-  -n "${CELESTIA_ACTION_FAMILY_PREFIX:-}" ]]; then
+  -n "${CELESTIA_ACTION_FAMILY_PREFIX:-}" ||
+  -n "${CELESTIA_ACTION_CLEANUP_FAILURE:-}" ||
+  -n "${CELESTIA_ACTION_CANCEL_CHECKPOINT_READY:-}" ||
+  -n "${CELESTIA_ACTION_CANCEL_CHECKPOINT_RELEASE:-}" ||
+  -n "${CELESTIA_ACTION_LAUNCH_CHECKPOINT_READY:-}" ||
+  -n "${CELESTIA_ACTION_LAUNCH_CHECKPOINT_RELEASE:-}" ||
+  -n "${CELESTIA_ACTION_MAIN_MARKER:-}" ||
+  -n "${CELESTIA_ACTION_PREWAIT_CHECKPOINT_READY:-}" ||
+  -n "${CELESTIA_ACTION_PREWAIT_CHECKPOINT_RELEASE:-}" ||
+  -n "${CELESTIA_ACTION_RELEASE_FAILURE:-}" ||
+  -n "${CELESTIA_ACTION_RELEASE_CHECKPOINT_READY:-}" ||
+  -n "${CELESTIA_ACTION_RELEASE_CHECKPOINT_RELEASE:-}" ||
+  -n "${CELESTIA_ACTION_SIGNAL_MARKER:-}" ||
+  -n "${CELESTIA_ACTION_WAIT_CHECKPOINT_READY:-}" ||
+  -n "${CELESTIA_ACTION_WAIT_CHECKPOINT_RELEASE:-}" ]]; then
   printf 'action family overrides require fixture mode\n' >&2
   exit 2
+else
+  cancel_checkpoint_ready=
+  cancel_checkpoint_release=
+  cleanup_failure=0
+  launch_checkpoint_ready=
+  launch_checkpoint_release=
+  main_marker=
+  prewait_checkpoint_ready=
+  prewait_checkpoint_release=
+  release_failure=0
+  release_checkpoint_ready=
+  release_checkpoint_release=
+  signal_marker=
+  wait_checkpoint_ready=
+  wait_checkpoint_release=
 fi
 
 families='remote_release_test.sh
@@ -90,43 +162,344 @@ snapshot_matches() {
   [[ "$identity" == "$expected_identity" ]]
 }
 
+action_family_group_running() {
+  kill -0 -- "-$active_family_pid" 2>/dev/null
+}
+
+stop_completed_action_family() {
+  local attempt
+
+  action_family_group_running || return 0
+  kill -KILL -- "-$active_family_pid" 2>/dev/null || true
+  attempt=0
+  while action_family_group_running && ((attempt < 20)); do
+    sleep 0.05
+    attempt=$((attempt + 1))
+  done
+  if action_family_group_running; then
+    printf 'action test family retained a live process group\n' >&2
+  fi
+  return 1
+}
+
+terminate_active_action_family() {
+  local attempt
+
+  kill -KILL -- "-$active_family_pid" 2>/dev/null ||
+    kill -KILL "$active_family_pid" 2>/dev/null || true
+  wait "$active_family_pid" 2>/dev/null || true
+  if action_family_group_running; then
+    kill -KILL -- "-$active_family_pid" 2>/dev/null || true
+    attempt=0
+    while action_family_group_running && ((attempt < 20)); do
+      sleep 0.05
+      attempt=$((attempt + 1))
+    done
+  fi
+  ! action_family_group_running && [[ "$cleanup_failure" == 0 ]]
+}
+
+stop_active_action_family() {
+  local signal_status=$1
+
+  if [[ -z "$active_family_pid" && -n "$starting_family" ]]; then
+    pending_family_signal=$signal_status
+    return
+  fi
+  trap - HUP INT TERM
+  if [[ -n "$active_family_pid" ]]; then
+    if terminate_active_action_family; then
+      active_family_pid=
+    else
+      printf 'action test family retained a live process group\n' >&2
+      exit 1
+    fi
+  fi
+  exit "$signal_status"
+}
+
+# shellcheck disable=SC2329 # Invoked by the registered exit trap.
+finish_action_main() {
+  local status=$1
+
+  trap - EXIT HUP INT TERM
+  if [[ -n "$active_family_pid" ]]; then
+    if terminate_active_action_family; then
+      active_family_pid=
+    else
+      printf 'action test family retained a live process group\n' >&2
+      status=1
+    fi
+  fi
+  if ! printf '%s\n' "$status" >&9; then
+    status=1
+  fi
+  exit "$status"
+}
+
+run_action_family() {
+  local cleanup_status
+  local family=$3
+  local path=$1
+  local result
+  local run_root=$2
+
+  starting_family=1
+  set -m
+  (
+    cd -- "$run_root"
+    bash "$path" 8<&- 9>&-
+  ) &
+  active_family_pid=$!
+  set +m
+  starting_family=
+  if [[ -n "$pending_family_signal" ]]; then
+    result=$pending_family_signal
+    pending_family_signal=
+    stop_active_action_family "$result"
+  fi
+  set +e
+  wait "$active_family_pid"
+  result=$?
+  stop_completed_action_family
+  cleanup_status=$?
+  set -e
+  if ! action_family_group_running; then
+    active_family_pid=
+  fi
+  if [[ "$cleanup_status" -ne 0 ]]; then
+    printf 'action test family retained descendant processes: %s\n' \
+      "$family" >&2
+    if [[ "$result" -eq 0 ]]; then
+      return 1
+    fi
+  fi
+  return "$result"
+}
+
 # shellcheck disable=SC2329 # Invoked by registered signal and exit traps.
 finish_action_driver() {
   local status=$1
 
-  trap - EXIT
-  trap '' HUP INT TERM
+  trap - EXIT HUP INT TERM
   if [[ -n "${driver_pid:-}" ]]; then
-    kill -TERM -- "-$driver_pid" 2>/dev/null || true
-    kill -KILL -- "-$driver_pid" 2>/dev/null || true
-    wait "$driver_pid" 2>/dev/null || true
+    if action_driver_owned; then
+      kill -KILL -- "-$driver_pid" 2>/dev/null || true
+    fi
+    wait "$driver_pid" 2>/dev/null
     driver_pid=
+    status=1
   fi
+  exec 8<&- 9>&-
   if ! rm -rf -- "$action_temp_root"; then
     status=1
   fi
   exit "$status"
 }
 
+action_driver_owned() {
+  [[ -n "${driver_job:-}" ]] &&
+    [[ "$(jobs -p "$driver_job" 2>/dev/null)" == "$driver_pid" ]]
+}
+
+signal_owned_action_driver() {
+  local signal_name=TERM
+
+  case "$pending_driver_status" in
+  129) signal_name=HUP ;;
+  130) signal_name=INT ;;
+  143) signal_name=TERM ;;
+  esac
+  action_driver_owned || return 1
+  if [[ -n "$signal_marker" ]]; then
+    : >"$signal_marker"
+  fi
+  kill -"$signal_name" -- "-$driver_pid" 2>/dev/null
+}
+
+# shellcheck disable=SC2329 # Invoked by registered signal traps.
+request_action_driver_stop() {
+  pending_driver_status=$1
+  if [[ -n "${gate_cancel_source:-}" ]]; then
+    ln "$gate_cancel_source" "$gate_decision" 2>/dev/null || true
+  fi
+  if [[ "${forwarding_driver_signal:-0}" -eq 0 &&
+    -n "${driver_pid:-}" ]]; then
+    forwarding_driver_signal=1
+    if signal_owned_action_driver; then
+      driver_signal_sent=1
+    fi
+    forwarding_driver_signal=0
+  fi
+}
+
+await_cancelled_action_driver() {
+  local initial_status=$1
+  local driver_signalled=$2
+  local gate_cancelled=$3
+  local attempt=0
+  local main_status
+  local reaped_status
+  local requested_status=$pending_driver_status
+  local status_received=0
+  local timed_out=0
+
+  reaped_status=$initial_status
+  if [[ "$gate_cancelled" -eq 1 ]]; then
+    set +e
+    wait "$driver_pid" 2>/dev/null
+    reaped_status=$?
+    set -e
+    if action_driver_owned; then
+      timed_out=1
+      if action_driver_owned; then
+        kill -KILL -- "-$driver_pid" 2>/dev/null || true
+      fi
+      set +e
+      wait "$driver_pid" 2>/dev/null
+      reaped_status=$?
+      set -e
+    fi
+    if ! wait_at_action_checkpoint "$cancel_checkpoint_ready" \
+      "$cancel_checkpoint_release"; then
+      timed_out=1
+    fi
+  elif [[ "$driver_signalled" -eq 1 ]]; then
+    while action_driver_owned && [[ "$attempt" -lt 300 ]]; do
+      if IFS= read -r main_status <&8; then
+        status_received=1
+        break
+      fi
+      sleep 0.01
+      attempt=$((attempt + 1))
+    done
+    if [[ "$status_received" -eq 0 ]] && action_driver_owned; then
+      timed_out=1
+      if action_driver_owned; then
+        kill -KILL -- "-$driver_pid" 2>/dev/null || true
+      fi
+    fi
+    set +e
+    wait "$driver_pid" 2>/dev/null
+    reaped_status=$?
+    set -e
+  fi
+  driver_pid=
+  driver_job=
+  if [[ "$gate_cancelled" -eq 0 && "$reaped_status" -eq 127 ]]; then
+    reaped_status=$initial_status
+  fi
+  if [[ "$status_received" -eq 0 ]] && IFS= read -r main_status <&8; then
+    status_received=1
+  fi
+  if [[ "$status_received" -eq 0 ]] ||
+    IFS= read -r _ <&8 ||
+    [[ ! "$main_status" =~ ^(0|[1-9][0-9]{0,2})$ ]] ||
+    ((main_status > 255)); then
+    main_status=1
+  fi
+  if [[ "$timed_out" -eq 1 ]]; then
+    printf 'action driver cancellation cleanup failed\n' >&2
+    return 1
+  fi
+  if [[ "$gate_cancelled" -eq 1 ]]; then
+    if [[ "$requested_status" != 129 && "$requested_status" != 130 &&
+      "$requested_status" != 143 ]] ||
+      [[ "$reaped_status" -ne 0 &&
+      "$reaped_status" -ne "$requested_status" ]] ||
+      [[ "$main_status" -ne 0 && "$main_status" -ne "$requested_status" ]]; then
+      printf 'action driver cancellation cleanup failed\n' >&2
+      return 1
+    fi
+    return "$requested_status"
+  fi
+  if [[ "$driver_signalled" -eq 0 ]]; then
+    return "$main_status"
+  fi
+  if [[ "$main_status" -ne 0 && "$main_status" -ne "$requested_status" ]]; then
+    printf 'action driver cancellation cleanup failed\n' >&2
+    return 1
+  fi
+  return "$requested_status"
+}
+
+wait_at_action_checkpoint() {
+  local ready=$1
+  local release=$2
+  local attempt=0
+
+  [[ -n "$ready" ]] || return 0
+  : >"$ready"
+  while [[ ! -e "$release" && attempt -lt 500 ]]; do
+    sleep 0.01
+    attempt=$((attempt + 1))
+  done
+  [[ -e "$release" ]]
+}
+
+await_action_release() {
+  local attempt=0
+  local decision
+
+  while [[ ! -e "$gate_decision" && attempt -lt 500 ]]; do
+    sleep 0.01
+    attempt=$((attempt + 1))
+  done
+  if [[ ! -f "$gate_decision" ]] ||
+    ! IFS= read -r decision <"$gate_decision"; then
+    return 1
+  fi
+  rm -f -- "$gate_cancel_source" "$gate_release_source" "$gate_decision" ||
+    return 1
+  case "$decision" in
+  release) return 0 ;;
+  cancel) return 2 ;;
+  *) return 1 ;;
+  esac
+}
+
 main() (
+  local active_family_pid
   local executed
   local family
   local family_index
+  local gate_status
   local identity
   local -a identities
   local planned
+  local pending_family_signal
   local run_root
   local snapshot
   local snapshot_identity
   local snapshot_path
   local snapshot_size_value
+  local starting_family
 
+  active_family_pid=
   executed="$action_temp_root/executed"
   planned="$action_temp_root/planned"
   snapshot="$action_temp_root/snapshot.tar"
   family_index=0
   identities=()
+  pending_family_signal=
   run_root=
+  starting_family=
+  trap 'finish_action_main $?' EXIT
+  set +e
+  await_action_release
+  gate_status=$?
+  set -e
+  case "$gate_status" in
+  0) ;;
+  2) return 0 ;;
+  *) return 1 ;;
+  esac
+  if [[ -n "$main_marker" ]]; then
+    : >"$main_marker"
+  fi
+  trap 'stop_active_action_family 129' HUP
+  trap 'stop_active_action_family 130' INT
+  trap 'stop_active_action_family 143' TERM
   printf '%s\n' "$families" >"$planned"
   bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$planned" \
     "$family_repo" "$family_prefix"
@@ -166,10 +539,7 @@ main() (
         "$family" >&2
       return 1
     fi
-    (
-      cd -- "$run_root"
-      bash "$snapshot_path"
-    )
+    run_action_family "$snapshot_path" "$run_root" "$family"
     rm -rf -- "$run_root"
     run_root=
     printf '%s\n' "$family" >>"$executed"
@@ -181,17 +551,86 @@ main() (
 )
 
 action_temp_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-action.XXXXXX")
+gate_cancel_source="$action_temp_root/start-cancel"
+gate_decision="$action_temp_root/start-decision"
+gate_release_source="$action_temp_root/start-release"
+printf 'cancel\n' >"$gate_cancel_source"
+printf 'release\n' >"$gate_release_source"
+: >"$action_temp_root/main-status"
+exec 8<"$action_temp_root/main-status"
+exec 9>"$action_temp_root/main-status"
+rm -- "$action_temp_root/main-status"
 driver_pid=
+driver_job=
+driver_signal_sent=0
+forwarding_driver_signal=0
+pending_driver_status=
 trap 'finish_action_driver $?' EXIT
-trap 'finish_action_driver 129' HUP
-trap 'finish_action_driver 130' INT
-trap 'finish_action_driver 143' TERM
+trap 'request_action_driver_stop 129' HUP
+trap 'request_action_driver_stop 130' INT
+trap 'request_action_driver_stop 143' TERM
+if ! wait_at_action_checkpoint "$launch_checkpoint_ready" \
+  "$launch_checkpoint_release"; then
+  exit 1
+fi
+if [[ -n "$pending_driver_status" ]]; then
+  exec 9>&-
+  exit "$pending_driver_status"
+fi
 set -m
-main &
+main 8<&- &
 set +m
 driver_pid=$!
-set +e
-wait "$driver_pid"
-status=$?
-set -e
+driver_job=%1
+exec 9>&-
+gate_cancelled=0
+release_selected=0
+if ! wait_at_action_checkpoint "$release_checkpoint_ready" \
+  "$release_checkpoint_release"; then
+  request_action_driver_stop 1
+fi
+if [[ -z "$pending_driver_status" ]]; then
+  if [[ "$release_failure" -eq 1 ]]; then
+    rm -- "$gate_release_source"
+  fi
+  if ln "$gate_release_source" "$gate_decision" 2>/dev/null; then
+    release_selected=1
+  elif [[ ! -e "$gate_decision" ]]; then
+    request_action_driver_stop 1
+  fi
+fi
+if [[ "$release_selected" -eq 0 ]]; then
+  gate_cancelled=1
+fi
+if ! wait_at_action_checkpoint "$prewait_checkpoint_ready" \
+  "$prewait_checkpoint_release"; then
+  request_action_driver_stop 1
+fi
+driver_signalled=$driver_signal_sent
+status=0
+if [[ -z "$pending_driver_status" ]]; then
+  set +e
+  wait "$driver_pid"
+  status=$?
+  set -e
+  if ! wait_at_action_checkpoint "$wait_checkpoint_ready" \
+    "$wait_checkpoint_release"; then
+    status=1
+  fi
+fi
+if [[ -n "$pending_driver_status" ]]; then
+  trap '' HUP INT TERM
+  if [[ "$gate_cancelled" -eq 0 && "$driver_signalled" -eq 0 ]] &&
+    signal_owned_action_driver; then
+    driver_signalled=1
+  fi
+  set +e
+  await_cancelled_action_driver "$status" "$driver_signalled" \
+    "$gate_cancelled"
+  status=$?
+  set -e
+else
+  driver_pid=
+  driver_job=
+fi
 exit "$status"
