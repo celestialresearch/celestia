@@ -13,6 +13,7 @@ package main
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -53,6 +54,22 @@ func TestArchitectureRejectsUndeclaredSplitSource(t *testing.T) {
 		"internal/operation/urlreference/protocol/duplicate.go",
 	)
 	assertSplitFinding(t, files, "undeclared split source")
+}
+
+func TestArchitectureSplitDiagnosticsQuotePaths(t *testing.T) {
+	t.Parallel()
+
+	file := "internal/operation/urlreference/protocol/hostile\nforged\r\t\x1b\x7f\u0085\u2028\u2029.go"
+	findings := splitSourcePathFindings([]string{file})
+	if len(findings) != 1 {
+		t.Fatalf("findings = %v, want one finding", findings)
+	}
+	if strings.ContainsAny(findings[0], "\n\r\t\x1b\x7f\u0085\u2028\u2029") {
+		t.Fatalf("finding contains a raw control character: %q", findings[0])
+	}
+	if !strings.Contains(findings[0], strconv.Quote(file)) {
+		t.Fatalf("finding = %q, want quoted path %q", findings[0], strconv.Quote(file))
+	}
 }
 
 func TestArchitectureRejectsObsoleteAttemptSource(t *testing.T) {
@@ -177,7 +194,11 @@ func TestArchitectureRejectsMovedPolicyOwner(t *testing.T) {
 	assertSplitFinding(t, files, "undeclared split source")
 	findings := missingSplitSourceFindings(files)
 	if !slices.ContainsFunc(findings, func(finding string) bool {
-		return strings.Contains(finding, "architecture_policy.go: required split source is missing")
+		return strings.Contains(
+			finding,
+			strconv.Quote("tools/sourcepolicy/architecture_policy.go")+
+				": required split source is missing",
+		)
 	}) {
 		t.Fatalf("findings = %v, want moved owner missing", findings)
 	}

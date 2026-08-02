@@ -13,6 +13,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -127,12 +128,12 @@ func splitSourcePathFindings(files []string) []string {
 	var findings []string
 	for _, file := range files {
 		if _, denied := obsolete[file]; denied {
-			findings = append(findings, file+": obsolete split source")
+			findings = append(findings, splitPathFinding(file, "obsolete split source"))
 			continue
 		}
 		if governedSplitPath(file) {
 			if _, declared := allowed[file]; !declared {
-				findings = append(findings, file+": undeclared split source")
+				findings = append(findings, splitPathFinding(file, "undeclared split source"))
 			}
 		}
 	}
@@ -144,7 +145,7 @@ func missingSplitSourceFindings(files []string) []string {
 	var findings []string
 	for file := range splitSourceSet() {
 		if _, exists := tracked[file]; !exists {
-			findings = append(findings, file+": required split source is missing")
+			findings = append(findings, splitPathFinding(file, "required split source is missing"))
 		}
 	}
 	return boundedArchitectureFindings(findings)
@@ -157,14 +158,18 @@ func splitDirectoryFindings(directories []splitDirectory) []string {
 		for _, file := range directory.files {
 			declared := directory.path + "/" + file
 			if _, exists := seen[declared]; exists {
-				findings = append(findings,
-					fmt.Sprintf("%s: split source is declared more than once", declared),
-				)
+				findings = append(findings, splitPathFinding(
+					declared, "split source is declared more than once",
+				))
 			}
 			seen[declared] = struct{}{}
 		}
 	}
 	return boundedArchitectureFindings(findings)
+}
+
+func splitPathFinding(file, message string) string {
+	return fmt.Sprintf("%s: %s", strconv.Quote(file), message)
 }
 
 func splitSourceSet() map[string]struct{} {
