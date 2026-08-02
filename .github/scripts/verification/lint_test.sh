@@ -27,10 +27,33 @@ output=
 status=0
 
 go_version=$(awk '$1 == "go" { print $2; exit }' "$root/go.mod")
+if [[ ! "$go_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  printf 'verification fixture requires a patch-level Go version\n' >&2
+  return 1
+fi
 change_pid=
 currency_pid=
 golangci_lint=$(cd "$root" && go tool -n golangci-lint)
 shellcheck_script="$root/.github/scripts/windows-shellcheck.ps1"
+
+mkdir -p "$work_dir/module-policy/.github/scripts"
+cp "$root/.github/scripts/policycheck.sh" \
+  "$work_dir/module-policy/.github/scripts/"
+printf 'module celestia.research/module-policy\n\ngo 1.26\n' \
+  >"$work_dir/module-policy/go.mod"
+git -C "$work_dir/module-policy" init -q
+git -C "$work_dir/module-policy" add -- go.mod
+if output=$(cd "$work_dir/module-policy" &&
+  bash .github/scripts/policycheck.sh module 2>&1); then
+  printf 'policy check accepted a Go directive without a patch version\n' >&2
+  return 1
+fi
+if [[ "$output" != 'go.mod: Go version must be pinned at patch level' ]]; then
+  printf 'policy check returned the wrong Go directive diagnostic:\n%s\n' \
+    "$output" >&2
+  return 1
+fi
+
 if grep -Fq '| head' "$shellcheck_script"; then
   printf 'Windows shell check uses an unowned output pipeline\n' >&2
   return 1

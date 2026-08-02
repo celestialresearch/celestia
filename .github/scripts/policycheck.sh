@@ -199,6 +199,9 @@ all)
   check_suppressions
   check_source_files
   ;;
+module)
+  check_module
+  ;;
 markers)
   check_markers
   ;;
@@ -221,7 +224,7 @@ test-skips)
   check_test_skips
   ;;
 *)
-  printf 'Usage: %s [all|architecture|manifest|markers|source-files|suppressions|test-skips|workspace]\n' \
+  printf 'Usage: %s [all|architecture|manifest|markers|module|source-files|suppressions|test-skips|workspace]\n' \
     "${0##*/}" >&2
   exit 2
   ;;
