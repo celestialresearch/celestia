@@ -16,6 +16,24 @@ export GOWORK=off
 main() (
 root=$1
 work_dir=$2
+governed_manifests=(
+  docs/contracts/governed_url_reference_v1.json
+  docs/contracts/cel_struct_001.json
+  docs/contracts/cel_struct_003.json
+  docs/contracts/cel_struct_004a.json
+  docs/contracts/cel_struct_004b.json
+  docs/contracts/cel_struct_004c.json
+  docs/contracts/cel_struct_004d.json
+  docs/contracts/cel_struct_004e.json
+  docs/contracts/cel_struct_005.json
+  docs/contracts/cel_split_001.json
+  docs/contracts/cel_split_002.json
+  docs/contracts/cel_split_003.json
+  docs/contracts/cel_split_004.json
+  docs/contracts/cel_split_005.json
+  docs/contracts/cel_split_006.json
+  docs/contracts/cel_split_007.json
+)
 source_policy_files=(
   tools/sourcepolicy/architecture_attempt_split.go
   tools/sourcepolicy/architecture_documentation.go
@@ -79,23 +97,22 @@ fi
 for source_policy_file in "${source_policy_files[@]}"; do
   cp -- "$root/$source_policy_file" "$work_dir/tools/sourcepolicy/"
 done
-cp "$root/docs/contracts/governed_url_reference_v1.json" \
-  "$root/docs/contracts/cel_struct_001.json" \
-  "$root/docs/contracts/cel_struct_003.json" \
-  "$root/docs/contracts/cel_struct_004a.json" \
-  "$root/docs/contracts/cel_struct_004b.json" \
-  "$root/docs/contracts/cel_struct_004c.json" \
-  "$root/docs/contracts/cel_struct_004d.json" \
-  "$root/docs/contracts/cel_struct_004e.json" \
-  "$root/docs/contracts/cel_struct_005.json" \
-  "$root/docs/contracts/cel_split_001.json" \
-  "$root/docs/contracts/cel_split_002.json" \
-  "$root/docs/contracts/cel_split_003.json" \
-  "$root/docs/contracts/cel_split_004.json" \
-  "$root/docs/contracts/cel_split_005.json" \
-  "$root/docs/contracts/cel_split_006.json" \
-  "$root/docs/contracts/cel_split_007.json" \
-  "$work_dir/docs/contracts/"
+printf '%s\n' "${governed_manifests[@]}" | LC_ALL=C sort \
+  >"$work_dir/governed-manifests"
+if ! git -C "$root" ls-files -- 'docs/contracts/*.json' \
+  | LC_ALL=C sort >"$work_dir/tracked-governed-manifests"; then
+  printf 'failed to inventory tracked governed manifests\n' >&2
+  return 1
+fi
+if ! diff -u "$work_dir/governed-manifests" \
+  "$work_dir/tracked-governed-manifests"; then
+  printf 'governed manifest fixture inventory differs from tracked contracts\n' >&2
+  return 1
+fi
+rm -- "$work_dir/tracked-governed-manifests"
+for manifest in "${governed_manifests[@]}"; do
+  cp -- "$root/$manifest" "$work_dir/$manifest"
+done
 
 )
 

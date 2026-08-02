@@ -52,6 +52,39 @@ fi
 # shellcheck source=.github/scripts/verification/fixture.sh
 source "$script_dir/fixture.sh"
 
+reject_extra_contract() (
+  local fixture_root
+  local fixture_work
+  local output
+  local probe
+  local status
+
+  probe=$(new_verification_work verification-manifest-inventory)
+  trap 'cleanup_verification "$probe"' EXIT
+  fixture_root="$probe/root"
+  fixture_work="$probe/work"
+  mkdir -p "$fixture_root" "$fixture_work"
+  git -C "$root" archive HEAD | tar -xf - -C "$fixture_root"
+  printf '{}\n' >"$fixture_root/docs/contracts/unreviewed.json"
+  git -C "$fixture_root" init -q
+  git -C "$fixture_root" add .
+  set +e
+  output=$("$script_dir_path/setup.sh" "$fixture_root" "$fixture_work" 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'source-policy setup accepted an unreviewed contract\n' >&2
+    return 1
+  }
+  grep -Fq \
+    'governed manifest fixture inventory differs from tracked contracts' \
+    <<<"$output" || {
+    printf 'source-policy setup omitted the contract inventory diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+)
+
 main() (
   local executed
   local mode
@@ -65,6 +98,7 @@ main() (
   trap '[[ $- != *e* ]] || printf "verification-source-policy failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
   trap 'exit 1' HUP INT TERM
 
+  reject_extra_contract
   for script in "${scripts[@]}"; do
     path="$script_dir_path/$script"
     mode=$(git -C "$script_repo" ls-files --stage -- "$script_prefix/$script")

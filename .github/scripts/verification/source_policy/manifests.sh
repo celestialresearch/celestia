@@ -137,13 +137,8 @@ for omission in \
     return 1
   }
 done
-for manifest in governed_url_reference_v1.json cel_struct_001.json \
-  cel_struct_003.json cel_struct_004a.json cel_struct_004b.json \
-  cel_struct_004c.json cel_struct_004d.json cel_struct_004e.json \
-  cel_struct_005.json cel_split_001.json cel_split_002.json \
-  cel_split_003.json cel_split_004.json cel_split_005.json \
-  cel_split_006.json cel_split_007.json; do
-  printf '\n' >>"$work_dir/docs/contracts/$manifest"
+while IFS= read -r manifest; do
+  printf '\n' >>"$work_dir/$manifest"
   set +e
   output=$(cd "$work_dir" &&
     "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
@@ -158,8 +153,8 @@ for manifest in governed_url_reference_v1.json cel_struct_001.json \
       "$manifest" "$output" >&2
     return 1
   }
-  cp "$root/docs/contracts/$manifest" "$work_dir/docs/contracts/"
-  rm -- "$work_dir/docs/contracts/$manifest"
+  cp -- "$root/$manifest" "$work_dir/$manifest"
+  rm -- "$work_dir/$manifest"
   set +e
   output=$(cd "$work_dir" &&
     "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
@@ -169,8 +164,8 @@ for manifest in governed_url_reference_v1.json cel_struct_001.json \
     printf 'policy check accepted missing manifest %s\n' "$manifest" >&2
     return 1
   }
-  cp "$root/docs/contracts/$manifest" "$work_dir/docs/contracts/"
-done
+  cp -- "$root/$manifest" "$work_dir/$manifest"
+done <"$work_dir/governed-manifests"
 )
 
 main "$@"
