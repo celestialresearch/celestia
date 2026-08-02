@@ -16,6 +16,7 @@ import (
 	"errors"
 	"go/parser"
 	"go/token"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -303,6 +304,36 @@ func TestAttemptSplitInventoryFailsClosed(t *testing.T) {
 			_, err := attemptSplitInventoryFor([]string{file}, read)
 			if err == nil || !strings.Contains(err.Error(), "attempt split") {
 				t.Fatalf("error = %v, want attempt split failure", err)
+			}
+		})
+	}
+}
+
+func TestAttemptSplitDiagnosticsQuotePaths(t *testing.T) {
+	t.Parallel()
+	file := attemptSplitDirectory + "hostile\n\t\r\x1b\x7f.go"
+	for name, fixture := range map[string]struct {
+		source []byte
+		err    error
+	}{
+		"read":    {err: errors.New("missing " + file)},
+		"source":  {source: []byte("package attemptstore\nfunc")},
+		"package": {source: []byte("package evidence\n")},
+		"build":   {source: []byte("//go:build (windows\n\npackage attemptstore\n")},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			read := func(string) ([]byte, error) { return fixture.source, fixture.err }
+			_, err := attemptSplitInventoryFor([]string{file}, read)
+			if err == nil {
+				t.Fatal("hostile path was accepted")
+			}
+			diagnostic := err.Error()
+			if strings.ContainsAny(diagnostic, "\n\r\t\x1b\x7f") {
+				t.Fatalf("diagnostic contains a raw control character: %q", diagnostic)
+			}
+			if !strings.Contains(diagnostic, strconv.Quote(file)) {
+				t.Fatalf("diagnostic = %q, want quoted path %q", diagnostic, strconv.Quote(file))
 			}
 		})
 	}

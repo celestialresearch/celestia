@@ -26,6 +26,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -41,6 +42,18 @@ type attemptSplitInventory struct {
 	packages string
 	sources  string
 	targets  string
+}
+
+type attemptDiagnosticError struct {
+	cause error
+}
+
+func (err attemptDiagnosticError) Error() string {
+	return strconv.Quote(err.cause.Error())
+}
+
+func (err attemptDiagnosticError) Unwrap() error {
+	return err.cause
 }
 
 func attemptSplitDeclarationFindings(
@@ -83,23 +96,25 @@ func attemptSplitInventoryFor(
 	for _, file := range goFiles {
 		source, err := readFile(file)
 		if err != nil {
-			return attemptSplitInventory{}, fmt.Errorf("read attempt split source %s: %w", file, err)
+			return attemptSplitInventory{}, fmt.Errorf(
+				"read attempt split source %q: %w", file, attemptDiagnosticError{cause: err},
+			)
 		}
 		total += len(source)
 		if total > maxAttemptSplitBytes {
 			return attemptSplitInventory{}, fmt.Errorf("attempt split source inventory exceeds bound")
 		}
 		positions := token.NewFileSet()
-		parsed, err := parser.ParseFile(positions, file, source, parser.ParseComments)
+		parsed, err := parser.ParseFile(positions, strconv.Quote(file), source, parser.ParseComments)
 		if err != nil {
-			return attemptSplitInventory{}, fmt.Errorf("parse attempt split source %s: %w", file, err)
+			return attemptSplitInventory{}, fmt.Errorf("parse attempt split source %q: %w", file, err)
 		}
 		if parsed.Name.Name != "attemptstore" {
-			return attemptSplitInventory{}, fmt.Errorf("attempt split source %s uses package %s", file, parsed.Name.Name)
+			return attemptSplitInventory{}, fmt.Errorf("attempt split source %q uses package %s", file, parsed.Name.Name)
 		}
 		build, err := goBuildConstraint(source, positions, parsed)
 		if err != nil {
-			return attemptSplitInventory{}, fmt.Errorf("parse attempt split build constraint %s: %w", file, err)
+			return attemptSplitInventory{}, fmt.Errorf("parse attempt split build constraint %q: %w", file, err)
 		}
 		packages = append(packages, inventoryRecord("package", file, parsed.Name.Name, build))
 		for _, declaration := range parsed.Decls {
@@ -175,12 +190,12 @@ func goSplitDeclarationInventory(file string, declaration ast.Decl) ([]string, s
 			var err error
 			receiver, err = renderGoNode(value.Recv.List[0].Type)
 			if err != nil {
-				return nil, "", fmt.Errorf("render receiver in %s: %w", file, err)
+				return nil, "", fmt.Errorf("render receiver in %q: %w", file, err)
 			}
 		}
 		signature, err := renderGoNode(value.Type)
 		if err != nil {
-			return nil, "", fmt.Errorf("render function signature in %s: %w", file, err)
+			return nil, "", fmt.Errorf("render function signature in %q: %w", file, err)
 		}
 		kind := "free-function"
 		if receiver != "" {
@@ -196,13 +211,13 @@ func goSplitDeclarationInventory(file string, declaration ast.Decl) ([]string, s
 		for _, specification := range value.Specs {
 			specRecords, err := goSplitSpecificationInventory(value.Tok.String(), specification)
 			if err != nil {
-				return nil, "", fmt.Errorf("render declaration in %s: %w", file, err)
+				return nil, "", fmt.Errorf("render declaration in %q: %w", file, err)
 			}
 			records = append(records, specRecords...)
 		}
 		return records, "", nil
 	default:
-		return nil, "", fmt.Errorf("unsupported declaration in %s", file)
+		return nil, "", fmt.Errorf("unsupported declaration in %q", file)
 	}
 }
 
