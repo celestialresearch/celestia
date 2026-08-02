@@ -15,11 +15,16 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/source-policy-driver.XXXXXX")
 driver_pid=
+descendant_pid=
 setup_pid=
 # shellcheck source=.github/scripts/verification/fixture.sh
 source "$root/.github/scripts/verification/fixture.sh"
 
 cleanup() {
+  if [[ -n "$descendant_pid" ]]; then
+    kill -KILL "$descendant_pid" 2>/dev/null || true
+    wait "$descendant_pid" 2>/dev/null || true
+  fi
   if [[ -n "$setup_pid" ]]; then
     kill -KILL -- "-$setup_pid" 2>/dev/null || true
   fi
@@ -356,6 +361,42 @@ if ! cmp -s \
   printf 'source-policy driver continued after a failing script\n' >&2
   exit 1
 fi
+
+cat >"$source_policy_dir/setup.sh" <<'EOF'
+#!/usr/bin/env bash
+(
+  trap '' TERM
+  while :; do sleep 1; done
+) &
+printf '%d\n' "$!" >"$CELESTIA_DESCENDANT_PID"
+EOF
+chmod +x "$source_policy_dir/setup.sh"
+git -C "$source_policy_repo" add source-policy/setup.sh
+git -C "$source_policy_repo" update-index --chmod=+x source-policy/setup.sh
+set +e
+CELESTIA_DESCENDANT_PID="$work/descendant-pid" \
+CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null 2>&1
+status=$?
+set -e
+if [[ ! -s "$work/descendant-pid" ]]; then
+  printf 'source-policy descendant fixture did not start\n' >&2
+  exit 1
+fi
+descendant_pid=$(cat "$work/descendant-pid")
+if [[ "$status" -eq 0 ]]; then
+  printf 'source-policy driver accepted a surviving descendant\n' >&2
+  exit 1
+fi
+if verification_process_running "$descendant_pid"; then
+  printf 'source-policy driver left a descendant alive after success\n' >&2
+  exit 1
+fi
+descendant_pid=
+git -C "$source_policy_repo" checkout -- source-policy/setup.sh
 
 set +e
 output=$(

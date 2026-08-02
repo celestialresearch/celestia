@@ -67,6 +67,34 @@ active_script_running() {
     kill -0 "$active_script_pid" 2>/dev/null
 }
 
+active_script_group_running() {
+  kill -0 -- "-$active_script_pid" 2>/dev/null
+}
+
+stop_completed_group() {
+  local attempt
+
+  active_script_group_running || return 0
+  kill -TERM -- "-$active_script_pid" 2>/dev/null || true
+  attempt=0
+  while active_script_group_running && ((attempt < 40)); do
+    sleep 0.05
+    attempt=$((attempt + 1))
+  done
+  if active_script_group_running; then
+    kill -KILL -- "-$active_script_pid" 2>/dev/null || true
+    attempt=0
+    while active_script_group_running && ((attempt < 40)); do
+      sleep 0.05
+      attempt=$((attempt + 1))
+    done
+  fi
+  if active_script_group_running; then
+    printf 'source-policy script retained a live process group\n' >&2
+  fi
+  return 1
+}
+
 stop_active_script() {
   local attempt
   local signal_status=$1
@@ -93,6 +121,7 @@ stop_active_script() {
 }
 
 run_source_policy_script() {
+  local cleanup_status
   local path=$1
   local result
   local work_dir=$2
@@ -111,8 +140,15 @@ run_source_policy_script() {
   set +e
   wait "$active_script_pid"
   result=$?
+  stop_completed_group
+  cleanup_status=$?
   set -e
   active_script_pid=
+  if [[ "$cleanup_status" -ne 0 && "$result" -eq 0 ]]; then
+    printf 'source-policy script left descendant processes: %s\n' \
+      "${path##*/}" >&2
+    return 1
+  fi
   return "$result"
 }
 
