@@ -27,6 +27,45 @@ output=
 status=0
 
 fifo_pid=
+source_policy_files=(
+  tools/sourcepolicy/architecture_attempt_split.go
+  tools/sourcepolicy/architecture_imports.go
+  tools/sourcepolicy/architecture_inventory.go
+  tools/sourcepolicy/architecture_limits.go
+  tools/sourcepolicy/architecture_paths.go
+  tools/sourcepolicy/architecture_rust.go
+  tools/sourcepolicy/architecture_scripts.go
+  tools/sourcepolicy/architecture_source_policy.go
+  tools/sourcepolicy/architecture_split.go
+  tools/sourcepolicy/architecture_values.go
+  tools/sourcepolicy/architecture.go
+  tools/sourcepolicy/cargo.go
+  tools/sourcepolicy/cargoconfig.go
+  tools/sourcepolicy/doc.go
+  tools/sourcepolicy/executable_inventory.go
+  tools/sourcepolicy/gobuildtags.go
+  tools/sourcepolicy/gocgo.go
+  tools/sourcepolicy/goexit.go
+  tools/sourcepolicy/gofallback.go
+  tools/sourcepolicy/goinspect.go
+  tools/sourcepolicy/golangci.go
+  tools/sourcepolicy/goload.go
+  tools/sourcepolicy/goskip.go
+  tools/sourcepolicy/gotarget.go
+  tools/sourcepolicy/gotestmain.go
+  tools/sourcepolicy/inventory.go
+  tools/sourcepolicy/main.go
+  tools/sourcepolicy/manifest.go
+  tools/sourcepolicy/module_replacement.go
+  tools/sourcepolicy/rustpolicy.go
+  tools/sourcepolicy/rustsyntax.go
+  tools/sourcepolicy/scan.go
+  tools/sourcepolicy/source_open_other.go
+  tools/sourcepolicy/source_open_unix.go
+  tools/sourcepolicy/source.go
+  tools/sourcepolicy/suppression.go
+  tools/sourcepolicy/testinventory.go
+)
 mkdir -p \
   "$work_dir/.github/scripts" \
   "$work_dir/a" \
@@ -37,31 +76,16 @@ cp "$root/.github/scripts/coveragecheck.sh" \
   "$root/.github/scripts/modcheck.sh" \
   "$root/.github/scripts/policycheck.sh" \
   "$work_dir/.github/scripts/"
-cp \
-  "$root/tools/sourcepolicy/gofallback.go" \
-  "$root/tools/sourcepolicy/architecture.go" \
-  "$root/tools/sourcepolicy/architecture_attempt_split.go" \
-  "$root/tools/sourcepolicy/architecture_inventory.go" \
-  "$root/tools/sourcepolicy/architecture_limits.go" \
-  "$root/tools/sourcepolicy/architecture_imports.go" \
-  "$root/tools/sourcepolicy/architecture_paths.go" \
-  "$root/tools/sourcepolicy/architecture_rust.go" \
-  "$root/tools/sourcepolicy/architecture_scripts.go" \
-  "$root/tools/sourcepolicy/architecture_split.go" \
-  "$root/tools/sourcepolicy/architecture_values.go" \
-  "$root/tools/sourcepolicy/executable_inventory.go" \
-  "$root/tools/sourcepolicy/gobuildtags.go" \
-  "$root/tools/sourcepolicy/goinspect.go" \
-  "$root/tools/sourcepolicy/goskip.go" \
-  "$root/tools/sourcepolicy/main.go" \
-  "$root/tools/sourcepolicy/manifest.go" \
-  "$root/tools/sourcepolicy/module_replacement.go" \
-  "$root/tools/sourcepolicy/rustpolicy.go" \
-  "$root/tools/sourcepolicy/source_open_other.go" \
-  "$root/tools/sourcepolicy/source_open_unix.go" \
-  "$root/tools/sourcepolicy/suppression.go" \
-  "$root/tools/sourcepolicy/testinventory.go" \
-  "$work_dir/tools/sourcepolicy/"
+if ! diff -u \
+  <(printf '%s\n' "${source_policy_files[@]}" | LC_ALL=C sort) \
+  <(git -C "$root" ls-files -- 'tools/sourcepolicy/*.go' |
+    grep -Ev '_test\.go$' | LC_ALL=C sort); then
+  printf 'source-policy fixture inventory differs from tracked source\n' >&2
+  return 1
+fi
+for source_policy_file in "${source_policy_files[@]}"; do
+  cp -- "$root/$source_policy_file" "$work_dir/tools/sourcepolicy/"
+done
 cp "$root/docs/contracts/governed_url_reference_v1.json" \
   "$root/docs/contracts/cel_struct_001.json" \
   "$root/docs/contracts/cel_struct_003.json" \
@@ -318,6 +342,29 @@ mkdir -p "$work_dir/config-bin"
   cd "$work_dir"
   go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
 )
+for omission in \
+  'gotarget.go|undefined: buildTarget' \
+  'gocgo.go|undefined: cgoPolicyImporter' \
+  'rustsyntax.go|undefined: rustPolicyToken'; do
+  omitted_file=${omission%%|*}
+  expected_diagnostic=${omission#*|}
+  rm -- "$work_dir/tools/sourcepolicy/$omitted_file"
+  set +e
+  output=$(cd "$work_dir" && go build ./tools/sourcepolicy 2>&1)
+  status=$?
+  set -e
+  cp -- "$root/tools/sourcepolicy/$omitted_file" \
+    "$work_dir/tools/sourcepolicy/"
+  [[ "$status" -ne 0 ]] || {
+    printf 'source-policy fixture built without %s\n' "$omitted_file" >&2
+    return 1
+  }
+  grep -Fq "$expected_diagnostic" <<<"$output" || {
+    printf 'source-policy fixture omission of %s failed unexpectedly:\n%s\n' \
+      "$omitted_file" "$output" >&2
+    return 1
+  }
+done
 for manifest in governed_url_reference_v1.json cel_struct_001.json \
   cel_struct_003.json cel_struct_004a.json cel_struct_004b.json \
   cel_struct_004c.json cel_struct_004d.json cel_struct_004e.json \
