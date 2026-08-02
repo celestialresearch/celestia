@@ -19,10 +19,16 @@ source "$script_dir/fixture.sh"
 
 main() (
 root=$(cd -- "$script_dir/../../.." && pwd)
+change_pid=
+currency_pid=
 work_dir=$(new_verification_work verification-lint)
 trap 'cleanup_verification "$work_dir" "$change_pid" "$currency_pid"' EXIT
 trap '[[ $- != *e* ]] || printf "verification-lint failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 trap 'exit 1' HUP INT TERM
+if [[ "${CELESTIA_LINT_EARLY_FAILURE_TEST:-0}" == 1 ]]; then
+  printf 'requested lint cleanup failure\n' >&2
+  return 1
+fi
 output=
 status=0
 
@@ -31,10 +37,26 @@ if [[ ! "$go_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   printf 'verification fixture requires a patch-level Go version\n' >&2
   return 1
 fi
-change_pid=
-currency_pid=
 golangci_lint=$(cd "$root" && go tool -n golangci-lint)
 shellcheck_script="$root/.github/scripts/windows-shellcheck.ps1"
+
+early_cleanup="$work_dir/early-cleanup"
+mkdir -- "$early_cleanup"
+set +e
+output=$(TMPDIR="$early_cleanup" CELESTIA_LINT_EARLY_FAILURE_TEST=1 \
+  bash "$root/.github/scripts/verification/lint_test.sh" 2>&1)
+status=$?
+set -e
+if [[ "$status" -eq 0 ]] ||
+  [[ "$output" != *'requested lint cleanup failure'* ]] ||
+  [[ "$output" == *'unbound variable'* ]]; then
+  printf 'lint cleanup obscured an early failure:\n%s\n' "$output" >&2
+  return 1
+fi
+if find "$early_cleanup" -mindepth 1 -print -quit | grep -q .; then
+  printf 'lint cleanup retained early-failure state\n' >&2
+  return 1
+fi
 
 mkdir -p "$work_dir/module-policy/.github/scripts"
 cp "$root/.github/scripts/policycheck.sh" \
