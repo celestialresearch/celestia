@@ -69,42 +69,49 @@ func TestAttemptSplitInventorySeparatesDimensions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("baseline inventory: %v", err)
 	}
-	for name, source := range map[string][]byte{
-		"build":     []byte("//go:build linux\n\npackage attemptstore\nconst limit = 1\nfunc TestRecord(t *testing.T) {}\n"),
-		"package":   []byte("//go:build windows\n\npackage evidence\nconst limit = 1\nfunc TestRecord(t *testing.T) {}\n"),
-		"signature": []byte("//go:build windows\n\npackage attemptstore\nconst limit = 1\nfunc TestRecord(t *testing.T, value string) {}\n"),
-		"target":    []byte("//go:build windows\n\npackage attemptstore\nconst limit = 1\nfunc TestRenamed(t *testing.T) {}\n"),
-		"import":    []byte("//go:build windows\n\npackage attemptstore\nimport _ \"example.test/sideeffect\"\nconst limit = 1\nfunc TestRecord(t *testing.T) {}\n"),
+	for name, fixture := range map[string]struct {
+		source    []byte
+		dimension func(attemptSplitInventory) string
+	}{
+		"build": {
+			[]byte("//go:build linux\n\npackage attemptstore\nconst limit = 1\nfunc TestRecord(t *testing.T) {}\n"),
+			func(inventory attemptSplitInventory) string { return inventory.packages },
+		},
+		"signature": {
+			[]byte("//go:build windows\n\npackage attemptstore\nconst limit = 1\nfunc TestRecord(t *testing.T, value string) {}\n"),
+			func(inventory attemptSplitInventory) string { return inventory.sources },
+		},
+		"target": {
+			[]byte("//go:build windows\n\npackage attemptstore\nconst limit = 1\nfunc TestRenamed(t *testing.T) {}\n"),
+			func(inventory attemptSplitInventory) string { return inventory.targets },
+		},
+		"import": {
+			[]byte("//go:build windows\n\npackage attemptstore\nimport _ \"example.test/sideeffect\"\nconst limit = 1\nfunc TestRecord(t *testing.T) {}\n"),
+			func(inventory attemptSplitInventory) string { return inventory.sources },
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			got, inventoryErr := attemptSplitInventoryFor(
-				[]string{file}, fixtureReader(map[string][]byte{file: source}),
+				[]string{file}, fixtureReader(map[string][]byte{file: fixture.source}),
 			)
-			if name == "package" {
-				if inventoryErr == nil || !strings.Contains(inventoryErr.Error(), "uses package") {
-					t.Fatalf("error = %v, want package rejection", inventoryErr)
-				}
-				return
-			}
 			if inventoryErr != nil {
 				t.Fatalf("changed inventory: %v", inventoryErr)
 			}
-			switch name {
-			case "build":
-				if got.packages == want.packages {
-					t.Fatal("build change was accepted")
-				}
-			case "signature", "import":
-				if got.sources == want.sources {
-					t.Fatal("signature change was accepted")
-				}
-			case "target":
-				if got.targets == want.targets {
-					t.Fatal("test target change was accepted")
-				}
+			if fixture.dimension(got) == fixture.dimension(want) {
+				t.Fatalf("%s change was accepted", name)
 			}
 		})
+	}
+}
+
+func TestAttemptSplitInventoryRejectsPackage(t *testing.T) {
+	t.Parallel()
+	file := attemptSplitDirectory + "record_windows_test.go"
+	source := []byte("//go:build windows\n\npackage evidence\nconst limit = 1\nfunc TestRecord(t *testing.T) {}\n")
+	_, err := attemptSplitInventoryFor([]string{file}, fixtureReader(map[string][]byte{file: source}))
+	if err == nil || !strings.Contains(err.Error(), "uses package") {
+		t.Fatalf("error = %v, want package rejection", err)
 	}
 }
 
@@ -281,26 +288,20 @@ func TestAttemptSplitInventoryDetectsDuplicateDeclaration(t *testing.T) {
 func TestAttemptSplitInventoryFailsClosed(t *testing.T) {
 	t.Parallel()
 	file := attemptSplitDirectory + "record.go"
-	for name, read := range map[string]func(string) ([]byte, error){
-		"missing": func(string) ([]byte, error) { return nil, errors.New("missing") },
-		"malformed source": func(string) ([]byte, error) {
-			return []byte("package attemptstore\nfunc"), nil
-		},
-		"malformed build": func(string) ([]byte, error) {
-			return []byte("//go:build (windows\n\npackage attemptstore\n"), nil
-		},
-		"multiple build": func(string) ([]byte, error) {
-			return []byte("//go:build windows\n//go:build amd64\n\npackage attemptstore\n"), nil
-		},
-		"legacy build": func(string) ([]byte, error) {
-			return []byte("// +build windows\n\npackage attemptstore\n"), nil
-		},
-		"misplaced build": func(string) ([]byte, error) {
-			return []byte("//go:build windows\npackage attemptstore\n"), nil
-		},
+	for name, fixture := range map[string]struct {
+		source []byte
+		err    error
+	}{
+		"missing":          {err: errors.New("missing")},
+		"malformed source": {source: []byte("package attemptstore\nfunc")},
+		"malformed build":  {source: []byte("//go:build (windows\n\npackage attemptstore\n")},
+		"multiple build":   {source: []byte("//go:build windows\n//go:build amd64\n\npackage attemptstore\n")},
+		"legacy build":     {source: []byte("// +build windows\n\npackage attemptstore\n")},
+		"misplaced build":  {source: []byte("//go:build windows\npackage attemptstore\n")},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+			read := func(string) ([]byte, error) { return fixture.source, fixture.err }
 			_, err := attemptSplitInventoryFor([]string{file}, read)
 			if err == nil || !strings.Contains(err.Error(), "attempt split") {
 				t.Fatalf("error = %v, want attempt split failure", err)

@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -89,12 +90,7 @@ func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
 
 func reviewedManifestContents(t *testing.T) map[string][]byte {
 	t.Helper()
-	paths := []string{
-		governedManifestPath, structureManifestPath, executionManifestPath,
-		transformManifestPath, protocolManifestPath, admissionManifestPath,
-		attemptManifestPath, operationManifestPath, layoutManifestPath,
-		splitManifestPath, attemptSplitPath,
-	}
+	paths := reviewedManifestPaths()
 	manifests := make(map[string][]byte, len(paths))
 	for _, path := range paths {
 		data, err := readReviewedManifest(path)
@@ -106,31 +102,36 @@ func reviewedManifestContents(t *testing.T) map[string][]byte {
 	return manifests
 }
 
+func reviewedManifestPaths() []string {
+	readers := reviewedManifestReaders()
+	paths := make([]string, 0, len(readers))
+	for path := range readers {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
 func readReviewedManifest(path string) ([]byte, error) {
-	switch path {
-	case governedManifestPath:
-		return os.ReadFile(governedManifestPath)
-	case structureManifestPath:
-		return os.ReadFile(structureManifestPath)
-	case executionManifestPath:
-		return os.ReadFile(executionManifestPath)
-	case transformManifestPath:
-		return os.ReadFile(transformManifestPath)
-	case protocolManifestPath:
-		return os.ReadFile(protocolManifestPath)
-	case admissionManifestPath:
-		return os.ReadFile(admissionManifestPath)
-	case attemptManifestPath:
-		return os.ReadFile(attemptManifestPath)
-	case operationManifestPath:
-		return os.ReadFile(operationManifestPath)
-	case layoutManifestPath:
-		return os.ReadFile(layoutManifestPath)
-	case splitManifestPath:
-		return os.ReadFile(splitManifestPath)
-	case attemptSplitPath:
-		return os.ReadFile(attemptSplitPath)
-	default:
+	read, ok := reviewedManifestReaders()[path]
+	if !ok {
 		return nil, errors.New("unexpected manifest")
+	}
+	return read()
+}
+
+func reviewedManifestReaders() map[string]func() ([]byte, error) {
+	return map[string]func() ([]byte, error){
+		governedManifestPath:  func() ([]byte, error) { return os.ReadFile(governedManifestPath) },
+		structureManifestPath: func() ([]byte, error) { return os.ReadFile(structureManifestPath) },
+		executionManifestPath: func() ([]byte, error) { return os.ReadFile(executionManifestPath) },
+		transformManifestPath: func() ([]byte, error) { return os.ReadFile(transformManifestPath) },
+		protocolManifestPath:  func() ([]byte, error) { return os.ReadFile(protocolManifestPath) },
+		admissionManifestPath: func() ([]byte, error) { return os.ReadFile(admissionManifestPath) },
+		attemptManifestPath:   func() ([]byte, error) { return os.ReadFile(attemptManifestPath) },
+		operationManifestPath: func() ([]byte, error) { return os.ReadFile(operationManifestPath) },
+		layoutManifestPath:    func() ([]byte, error) { return os.ReadFile(layoutManifestPath) },
+		splitManifestPath:     func() ([]byte, error) { return os.ReadFile(splitManifestPath) },
+		attemptSplitPath:      func() ([]byte, error) { return os.ReadFile(attemptSplitPath) },
 	}
 }
