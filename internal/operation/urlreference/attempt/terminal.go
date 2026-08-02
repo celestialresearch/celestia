@@ -15,7 +15,6 @@ package attemptstore
 
 import (
 	"fmt"
-	"os"
 )
 
 func loadTerminal(path string, records *Records) error {
@@ -44,24 +43,6 @@ func loadTerminal(path string, records *Records) error {
 		return ErrCorrupt
 	}
 	return nil
-}
-
-func (store *Store) attemptPath(attemptID string) (string, error) {
-	if !validIdentity(attemptID) {
-		return "", fmt.Errorf("%w: attempt identity", ErrInvalid)
-	}
-	path := store.finalPath(attemptID)
-	if err := rejectLinkedAncestors(path); err != nil {
-		return "", err
-	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return "", fmt.Errorf("inspect attempt: %w", err)
-	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || pathIsLinked(path, info) {
-		return "", ErrCorrupt
-	}
-	return path, nil
 }
 
 func writeOrMatchReceipt(path, attemptID, kind, terminalFile, state string) error {

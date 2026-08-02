@@ -37,6 +37,24 @@ func (store *Store) finalPath(attemptID string) string {
 	return filepath.Join(store.attemptsPath(), attemptID)
 }
 
+func (store *Store) attemptPath(attemptID string) (string, error) {
+	if !validIdentity(attemptID) {
+		return "", fmt.Errorf("%w: attempt identity", ErrInvalid)
+	}
+	path := store.finalPath(attemptID)
+	if err := rejectLinkedAncestors(path); err != nil {
+		return "", err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("inspect attempt: %w", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || pathIsLinked(path, info) {
+		return "", ErrCorrupt
+	}
+	return path, nil
+}
+
 func (store *Store) prepareAttemptDirectories(
 	attemptID string,
 	createDirectory func(string) error,
