@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -24,6 +25,22 @@ const (
 	modeManifest     = "manifest"
 	modeArchitecture = "architecture"
 )
+
+type quotedDiagnosticError struct {
+	cause error
+}
+
+func (err quotedDiagnosticError) Error() string {
+	return strconv.QuoteToASCII(err.cause.Error())
+}
+
+func (err quotedDiagnosticError) Unwrap() error {
+	return err.cause
+}
+
+func quotedDiagnostic(err error) error {
+	return quotedDiagnosticError{cause: err}
+}
 
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == modeArchitecture {

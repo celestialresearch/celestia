@@ -132,7 +132,7 @@ func testsInFile(path string) ([]string, error) {
 	set := token.NewFileSet()
 	file, err := parser.ParseFile(set, path, nil, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
+		return nil, fmt.Errorf("parse %s: %w", path, quotedDiagnostic(err))
 	}
 	var tests []string
 	for _, declaration := range file.Decls {

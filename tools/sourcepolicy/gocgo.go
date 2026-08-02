@@ -76,7 +76,7 @@ func goSourceImportsC(
 		token.NewFileSet(), path, source, parser.ImportsOnly,
 	)
 	if err != nil {
-		return false, fmt.Errorf("%s: parse Go imports: %w", path, err)
+		return false, fmt.Errorf("%s: parse Go imports: %w", path, quotedDiagnostic(err))
 	}
 	return goFileImportsC(file), nil
 }

@@ -51,18 +51,6 @@ type attemptSplitFileInventory struct {
 	bytes    int
 }
 
-type attemptDiagnosticError struct {
-	cause error
-}
-
-func (err attemptDiagnosticError) Error() string {
-	return strconv.Quote(err.cause.Error())
-}
-
-func (err attemptDiagnosticError) Unwrap() error {
-	return err.cause
-}
-
 func attemptSplitDeclarationFindings(
 	files []string,
 	readFile func(string) ([]byte, error),
@@ -130,14 +118,14 @@ func attemptSplitFileInventoryFor(
 	source, err := readFile(file)
 	if err != nil {
 		return attemptSplitFileInventory{}, fmt.Errorf(
-			"read attempt split source %q: %w", file, attemptDiagnosticError{cause: err},
+			"read attempt split source %q: %w", file, quotedDiagnostic(err),
 		)
 	}
 	positions := token.NewFileSet()
 	parsed, err := parser.ParseFile(positions, strconv.Quote(file), source, parser.ParseComments)
 	if err != nil {
 		return attemptSplitFileInventory{}, fmt.Errorf(
-			"parse attempt split source %q: %w", file, attemptDiagnosticError{cause: err},
+			"parse attempt split source %q: %w", file, quotedDiagnostic(err),
 		)
 	}
 	if parsed.Name.Name != "attemptstore" {
@@ -145,7 +133,9 @@ func attemptSplitFileInventoryFor(
 	}
 	build, err := goBuildConstraint(source, positions, parsed)
 	if err != nil {
-		return attemptSplitFileInventory{}, fmt.Errorf("parse attempt split build constraint %q: %w", file, err)
+		return attemptSplitFileInventory{}, fmt.Errorf(
+			"parse attempt split build constraint %q: %w", file, quotedDiagnostic(err),
+		)
 	}
 	inventory := attemptSplitFileInventory{
 		packages: []string{inventoryRecord("package", file, parsed.Name.Name, build)},

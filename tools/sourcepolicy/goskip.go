@@ -69,7 +69,7 @@ func goSkipFindings(path string, source []byte) []string {
 	files := token.NewFileSet()
 	file, err := parser.ParseFile(files, path, source, 0)
 	if err != nil {
-		return []string{fmt.Sprintf("%s: parse Go test: %v", path, err)}
+		return []string{fmt.Sprintf("%s: parse Go test: %v", path, quotedDiagnostic(err))}
 	}
 	return goSkipFindingsInPackage(files, []*ast.File{file}, map[*ast.File]string{
 		file: path,

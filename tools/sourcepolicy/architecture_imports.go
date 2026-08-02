@@ -38,12 +38,12 @@ func architectureImportFindings(
 		}
 		parsed, err := parser.ParseFile(token.NewFileSet(), file, source, parser.ImportsOnly)
 		if err != nil {
-			return nil, fmt.Errorf("parse imports %s: %w", file, err)
+			return nil, fmt.Errorf("parse imports %s: %w", file, quotedDiagnostic(err))
 		}
 		for _, specification := range parsed.Imports {
 			imported, err := strconv.Unquote(specification.Path.Value)
 			if err != nil {
-				return nil, fmt.Errorf("parse import path %s: %w", file, err)
+				return nil, fmt.Errorf("parse import path %s: %w", file, quotedDiagnostic(err))
 			}
 			if imported == "C" {
 				findings = append(findings, file+": Cgo is not declared by the architecture constitution")

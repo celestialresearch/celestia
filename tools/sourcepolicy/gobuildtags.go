@@ -31,7 +31,7 @@ func rejectUnsupportedBuildTags(path string, source []byte) error {
 		if strings.HasSuffix(path, "_test.go") {
 			kind = "test"
 		}
-		return fmt.Errorf("%s: parse Go %s: %w", path, kind, err)
+		return fmt.Errorf("%s: parse Go %s: %w", path, kind, quotedDiagnostic(err))
 	}
 	legacyHeaderEnd := legacyBuildHeaderEnd(source)
 	goBuildSeen := false
@@ -74,7 +74,7 @@ func validateBuildComment(
 	}
 	expression, err := constraint.Parse(text)
 	if err != nil {
-		return fmt.Errorf("%s: parse Go build constraint: %w", path, err)
+		return fmt.Errorf("%s: parse Go build constraint: %w", path, quotedDiagnostic(err))
 	}
 	if unsupportedBuildTag(expression) {
 		return fmt.Errorf("%s: ungoverned Go build constraints are unsupported", path)

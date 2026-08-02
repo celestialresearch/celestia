@@ -665,7 +665,7 @@ func observePackageDocumentation(
 	}
 	parsed, err := parser.ParseFile(token.NewFileSet(), file, source, parser.ParseComments)
 	if err != nil {
-		return fmt.Errorf("parse package documentation %s: %w", file, err)
+		return fmt.Errorf("parse package documentation %s: %w", file, quotedDiagnostic(err))
 	}
 	if portablePackageDocumentation(file, source) && parsed.Doc != nil &&
 		strings.HasPrefix(parsed.Doc.Text(), "Package "+parsed.Name.Name+" ") {

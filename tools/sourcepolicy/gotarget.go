@@ -230,7 +230,7 @@ func policyBuildContext(
 func hasGoPolicySelector(path string, source []byte) (bool, error) {
 	file, err := parser.ParseFile(token.NewFileSet(), path, source, 0)
 	if err != nil {
-		return false, fmt.Errorf("%s: parse Go test: %w", path, err)
+		return false, fmt.Errorf("%s: parse Go test: %w", path, quotedDiagnostic(err))
 	}
 	found := false
 	ast.Inspect(file, func(node ast.Node) bool {

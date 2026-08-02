@@ -43,7 +43,7 @@ func rejectModuleReplacements(
 		}
 		module, err := modfile.Parse(path, source, nil)
 		if err != nil {
-			return fmt.Errorf("%s: parse Go module: %w", path, err)
+			return fmt.Errorf("%s: parse Go module: %w", path, quotedDiagnostic(err))
 		}
 		if len(module.Replace) != 0 {
 			return fmt.Errorf("%s: Go module replacements are prohibited", path)
