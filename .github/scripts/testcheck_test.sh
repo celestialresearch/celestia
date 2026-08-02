@@ -164,6 +164,55 @@ CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
   bash "$root/.github/scripts/verification_test.sh" --fixture >/dev/null
 
+cat >"$verification_dir/lint_test.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$$" >"$CELESTIA_FAMILY_PID"
+sleep 60 &
+printf '%s\n' "$!" >"$CELESTIA_DESCENDANT_PID"
+wait
+EOF
+chmod +x "$verification_dir/lint_test.sh"
+git -C "$verification_repo" add verification/lint_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/lint_test.sh
+CELESTIA_DESCENDANT_PID="$work/verification-descendant.pid" \
+  CELESTIA_FAMILY_PID="$work/verification-family.pid" \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" --fixture \
+  >/dev/null 2>&1 &
+verification_pid=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  [[ -s "$work/verification-family.pid" ]] && break
+  sleep 0.1
+done
+[[ -s "$work/verification-family.pid" ]] || {
+  printf 'verification cancellation fixture did not start\n' >&2
+  exit 1
+}
+[[ -s "$work/verification-descendant.pid" ]] || {
+  printf 'verification cancellation descendant did not start\n' >&2
+  exit 1
+}
+family_pid=$(cat "$work/verification-family.pid")
+descendant_pid=$(cat "$work/verification-descendant.pid")
+kill -TERM "$verification_pid"
+wait "$verification_pid" 2>/dev/null || true
+for pid in "$family_pid" "$descendant_pid"; do
+  if kill -0 "$pid" 2>/dev/null; then
+    printf 'verification cancellation retained process %s\n' "$pid" >&2
+    kill "$pid" 2>/dev/null || true
+    exit 1
+  fi
+done
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$verification_dir/lint_test.sh"
+chmod +x "$verification_dir/lint_test.sh"
+git -C "$verification_repo" add verification/lint_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/lint_test.sh
+
 set +e
 output=$(
   CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \

@@ -48,6 +48,27 @@ if [[ "$fixture_mode" != --fixture ]] &&
   exit 2
 fi
 
+# shellcheck disable=SC2329 # Invoked by registered signal and exit traps.
+terminate_family() {
+  local pid=$1
+
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  kill -KILL -- "-$pid" 2>/dev/null || true
+}
+
+# shellcheck disable=SC2329 # Invoked by registered signal and exit traps.
+finish_driver() {
+  local status=$1
+
+  trap - EXIT HUP INT TERM
+  if [[ -n "${driver_pid:-}" ]]; then
+    terminate_family "$driver_pid" 2>/dev/null || true
+    wait "$driver_pid" 2>/dev/null || true
+    driver_pid=
+  fi
+  exit "$status"
+}
+
 main() (
   local executed
   local family
@@ -70,4 +91,18 @@ main() (
     "$executed" "$family_repo" "$family_prefix"
 )
 
-main "$@"
+driver_pid=
+trap 'finish_driver $?' EXIT
+trap 'finish_driver 129' HUP
+trap 'finish_driver 130' INT
+trap 'finish_driver 143' TERM
+set -m
+main "$@" &
+set +m
+driver_pid=$!
+set +e
+wait "$driver_pid"
+status=$?
+set -e
+driver_pid=
+exit "$status"
