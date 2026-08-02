@@ -46,6 +46,9 @@
     {"name": "undeclared-policy-rust", "mutation": "undeclared-policy-rust", "rule": "split-source-inventory", "expected": "reject"},
     {"name": "undeclared-policy-data", "mutation": "undeclared-policy-data", "rule": "split-source-inventory", "expected": "reject"},
     {"name": "undeclared-policy-text", "mutation": "undeclared-policy-text", "rule": "split-source-inventory", "expected": "reject"},
-    {"name": "undeclared-policy-extensionless", "mutation": "undeclared-policy-extensionless", "rule": "split-source-inventory", "expected": "reject"}
+    {"name": "undeclared-policy-extensionless", "mutation": "undeclared-policy-extensionless", "rule": "split-source-inventory", "expected": "reject"},
+    {"name": "undeclared-action-policy-test", "mutation": "undeclared-action-policy-test", "rule": "action-policy-file-inventory", "expected": "reject"},
+    {"name": "action-policy-test-target-drift", "mutation": "action-policy-test-target-drift", "rule": "action-policy-test-inventory", "expected": "reject"},
+    {"name": "action-policy-fuzz-target-drift", "mutation": "action-policy-fuzz-target-drift", "rule": "action-policy-fuzz-inventory", "expected": "reject"}
   ]
 }

@@ -248,6 +248,9 @@ func expectedSplitFiles() []string {
 	for _, file := range sourcePolicySplitFiles() {
 		files = append(files, "tools/sourcepolicy/"+file)
 	}
+	for _, file := range actionPolicySplitFiles() {
+		files = append(files, "tools/actionpolicy/"+file)
+	}
 	return files
 }
 

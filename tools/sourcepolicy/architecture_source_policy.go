@@ -18,6 +18,8 @@ func sourcePolicySplitFiles() []string {
 }
 
 var sourcePolicySplitInventory = []string{
+	"architecture_action_policy_test.go",
+	"architecture_action_policy.go",
 	"architecture_attempt_split_test.go",
 	"architecture_attempt_split.go",
 	"architecture_bounds_test.go",

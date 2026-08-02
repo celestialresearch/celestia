@@ -22,7 +22,7 @@ type splitDirectory struct {
 }
 
 func splitDirectories() []splitDirectory {
-	return []splitDirectory{
+	directories := []splitDirectory{
 		{
 			path: "internal/operation/urlreference/transform",
 			files: []string{
@@ -94,10 +94,14 @@ func splitDirectories() []splitDirectory {
 				"verification_windows_test.go",
 			},
 		},
-		{
-			path:  "tools/sourcepolicy",
-			files: sourcePolicySplitFiles(),
-		},
+	}
+	return append(directories, policySplitDirectories()...)
+}
+
+func policySplitDirectories() []splitDirectory {
+	return []splitDirectory{
+		{path: "tools/sourcepolicy", files: sourcePolicySplitFiles()},
+		{path: "tools/actionpolicy", files: actionPolicySplitFiles()},
 	}
 }
 

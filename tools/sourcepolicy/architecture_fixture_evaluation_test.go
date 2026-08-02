@@ -12,6 +12,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"slices"
@@ -169,6 +170,34 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"undeclared-policy-extensionless": func(architecturePolicy) bool {
 		return hasUndeclaredSplitSourceFinding("tools/sourcepolicy/Makefile")
 	},
+	"undeclared-action-policy-test": func(architecturePolicy) bool {
+		files := append(expectedSplitFiles(), "tools/actionpolicy/rogue_test.go")
+		return slices.ContainsFunc(splitSourcePathFindings(files), func(finding string) bool {
+			return strings.Contains(finding, "undeclared split source")
+		})
+	},
+	"action-policy-test-target-drift": func(architecturePolicy) bool {
+		return actionPolicySplitMutationRejected("tools/actionpolicy/actions_test.go", func(source []byte) []byte {
+			return bytes.Replace(source, []byte("func Test"), []byte("func Check"), 1)
+		})
+	},
+	"action-policy-fuzz-target-drift": func(architecturePolicy) bool {
+		return actionPolicySplitMutationRejected("tools/actionpolicy/fuzz_test.go", func(source []byte) []byte {
+			return bytes.Replace(source, []byte("func Fuzz"), []byte("func Check"), 1)
+		})
+	},
+}
+
+func actionPolicySplitMutationRejected(path string, mutate func([]byte) []byte) bool {
+	readFile := func(file string) ([]byte, error) {
+		source, err := readArchitectureFile(file)
+		if err != nil || file != path {
+			return source, err
+		}
+		return mutate(source), nil
+	}
+	findings, err := actionPolicySplitDeclarationFindings(expectedSplitFiles(), readFile)
+	return err == nil && len(findings) != 0
 }
 
 func hasUndeclaredSplitSourceFinding(file string) bool {

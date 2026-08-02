@@ -35,6 +35,7 @@ governed_manifests=(
   docs/contracts/cel_split_007.json
 )
 source_policy_files=(
+  tools/sourcepolicy/architecture_action_policy.go
   tools/sourcepolicy/architecture_attempt_split.go
   tools/sourcepolicy/architecture_documentation.go
   tools/sourcepolicy/architecture_evaluation.go
