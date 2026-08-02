@@ -166,6 +166,19 @@ action_family_group_running() {
   kill -0 -- "-$active_family_pid" 2>/dev/null
 }
 
+linux_action_family_zombies() {
+  local state
+  local states
+
+  [[ "$(uname -s 2>/dev/null)" == Linux ]] || return 1
+  states=$(ps -o stat= --pgroup "$active_family_pid" 2>/dev/null) || return 1
+  [[ -n "$states" && "${#states}" -le 4096 ]] || return 1
+  while IFS= read -r state; do
+    state=${state//[[:space:]]/}
+    [[ "$state" == Z* ]] || return 1
+  done <<<"$states"
+}
+
 stop_completed_action_family() {
   local attempt
 
@@ -176,7 +189,7 @@ stop_completed_action_family() {
     sleep 0.05
     attempt=$((attempt + 1))
   done
-  if action_family_group_running; then
+  if action_family_group_running && ! linux_action_family_zombies; then
     printf 'action test family retained a live process group\n' >&2
   fi
   return 1
@@ -196,7 +209,8 @@ terminate_active_action_family() {
       attempt=$((attempt + 1))
     done
   fi
-  ! action_family_group_running && [[ "$cleanup_failure" == 0 ]]
+  { ! action_family_group_running || linux_action_family_zombies; } &&
+    [[ "$cleanup_failure" == 0 ]]
 }
 
 stop_active_action_family() {
