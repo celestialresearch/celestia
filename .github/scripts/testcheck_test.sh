@@ -146,7 +146,9 @@ git -C "$verification_repo" init -q
 git -C "$verification_repo" config core.autocrlf false
 families='lint_test.sh
 action_test.sh
+devcheck_config_test.sh
 rust_config_test.sh
+rust_integration_test.sh
 rust_artefact_test.sh
 coverage_test.sh
 source_policy_test.sh
@@ -253,7 +255,7 @@ if bash "$root/.github/scripts/testcheck.sh" verification \
 fi
 git -C "$verification_repo" rm -q -f verification/unexpected_test.sh
 
-rm -- "$verification_dir/action_test.sh"
+rm -- "$verification_dir/devcheck_config_test.sh"
 if CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
   CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
@@ -262,14 +264,15 @@ if CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   printf 'verification driver accepted a missing family\n' >&2
   exit 1
 fi
-printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$verification_dir/action_test.sh"
-chmod +x "$verification_dir/action_test.sh"
-git -C "$verification_repo" add verification/action_test.sh
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$verification_dir/devcheck_config_test.sh"
+chmod +x "$verification_dir/devcheck_config_test.sh"
+git -C "$verification_repo" add verification/devcheck_config_test.sh
 git -C "$verification_repo" update-index --chmod=+x \
-  verification/action_test.sh
+  verification/devcheck_config_test.sh
 
 git -C "$verification_repo" update-index --chmod=-x \
-  verification/coverage_test.sh
+  verification/rust_integration_test.sh
 if CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
   CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
@@ -279,14 +282,14 @@ if CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   exit 1
 fi
 git -C "$verification_repo" update-index --chmod=+x \
-  verification/coverage_test.sh
+  verification/rust_integration_test.sh
 
 printf '%s\n' '#!/usr/bin/env bash' 'exit 9' \
-  >"$verification_dir/licence_test.sh"
-chmod +x "$verification_dir/licence_test.sh"
-git -C "$verification_repo" add verification/licence_test.sh
+  >"$verification_dir/rust_config_test.sh"
+chmod +x "$verification_dir/rust_config_test.sh"
+git -C "$verification_repo" add verification/rust_config_test.sh
 git -C "$verification_repo" update-index --chmod=+x \
-  verification/licence_test.sh
+  verification/rust_config_test.sh
 if CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
   CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \

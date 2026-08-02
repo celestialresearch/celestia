@@ -184,7 +184,9 @@ verification_tests() {
   cat >"$temporary/expected" <<'EOF'
 lint_test.sh
 action_test.sh
+devcheck_config_test.sh
 rust_config_test.sh
+rust_integration_test.sh
 rust_artefact_test.sh
 coverage_test.sh
 source_policy_test.sh
