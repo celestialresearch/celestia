@@ -211,12 +211,52 @@ EOF
   fi
 }
 
+action_tests() {
+  local directory=$profile
+  local executed=$fixture_mode
+  local family
+  local mode
+  local repository=$verification_repo
+  local prefix=$verification_prefix
+
+  if [[ ! -d "$directory" || ! -f "$executed" ||
+    ! -d "$repository" || -z "$prefix" ]]; then
+    printf 'Usage: testcheck.sh action FAMILY_DIR EXECUTED REPO PREFIX\n' >&2
+    return 2
+  fi
+  cat >"$temporary/expected" <<'EOF'
+remote_release_test.sh
+cache_test.sh
+inventory_test.sh
+permissions_test.sh
+EOF
+  while IFS= read -r family; do
+    mode=$(git -C "$repository" ls-files --stage -- "$prefix/$family")
+    if [[ ! -f "$directory/$family" || "${mode%% *}" != 100755 ]]; then
+      printf 'action test family is unavailable: %s\n' "$family" >&2
+      return 1
+    fi
+  done <"$temporary/expected"
+  find "$directory" -type f -name '*_test.sh' -exec basename {} \; |
+    LC_ALL=C sort >"$temporary/available"
+  LC_ALL=C sort "$temporary/expected" >"$temporary/expected-sorted"
+  if ! cmp -s "$temporary/expected-sorted" "$temporary/available"; then
+    printf 'action test family inventory differs\n' >&2
+    return 1
+  fi
+  if ! cmp -s "$temporary/expected" "$executed"; then
+    printf 'action test families lacked ordered execution\n' >&2
+    return 1
+  fi
+}
+
 case "$mode" in
 go) go_tests ;;
 rust) rust_tests ;;
 verification) verification_tests ;;
+action) action_tests ;;
 *)
-  printf 'Usage: testcheck.sh go quick|race|standard | rust | verification FAMILY_DIR EXECUTED\n' >&2
+  printf 'Usage: testcheck.sh go quick|race|standard | rust | verification FAMILY_DIR EXECUTED | action FAMILY_DIR EXECUTED REPO PREFIX\n' >&2
   exit 2
   ;;
 esac
