@@ -87,6 +87,38 @@ func TestArchitectureRejectsUndeclaredAttemptSource(t *testing.T) {
 	assertSplitFinding(t, files, "undeclared split source")
 }
 
+func TestArchitectureRejectsUnsplitOperation(t *testing.T) {
+	t.Parallel()
+
+	assertSplitFinding(t, []string{
+		"internal/operation/urlreference/operation_windows_test.go",
+	}, "obsolete split source")
+}
+
+func TestArchitectureRequiresOperationSplitDestination(t *testing.T) {
+	t.Parallel()
+
+	files := expectedSplitFiles()
+	files = slices.DeleteFunc(files, func(file string) bool {
+		return file == "internal/operation/urlreference/evidence_windows.go"
+	})
+	findings := missingSplitSourceFindings(files)
+	if !slices.ContainsFunc(findings, func(finding string) bool {
+		return strings.Contains(finding, "required split source is missing")
+	}) {
+		t.Fatalf("findings = %v, want missing operation destination", findings)
+	}
+}
+
+func TestArchitectureRejectsUndeclaredOperationSource(t *testing.T) {
+	t.Parallel()
+
+	files := append(expectedSplitFiles(),
+		"internal/operation/urlreference/misc.go",
+	)
+	assertSplitFinding(t, files, "undeclared split source")
+}
+
 func assertSplitFinding(t *testing.T, files []string, fragment string) {
 	t.Helper()
 	findings := architecturePathFindings(
@@ -120,6 +152,9 @@ func expectedSplitFiles() []string {
 		"internal/operation/urlreference/protocol/request_test.go",
 		"internal/operation/urlreference/protocol/response.go",
 		"internal/operation/urlreference/protocol/response_test.go",
+		"internal/operation/urlreference/admission/admission.go",
+		"internal/operation/urlreference/admission/admission_test.go",
+		"internal/operation/urlreference/admission/doc.go",
 		"worker/url-reference/src/grammar.rs",
 		"worker/url-reference/src/main.rs",
 		"worker/url-reference/src/request.rs",
@@ -131,7 +166,31 @@ func expectedSplitFiles() []string {
 		"worker/url-reference/src/tests/transform.rs",
 		"worker/url-reference/src/transform.rs",
 	}
-	return append(files, expectedAttemptSplitFiles()...)
+	files = append(files, expectedAttemptSplitFiles()...)
+	return append(files, expectedOperationSplitFiles()...)
+}
+
+func expectedOperationSplitFiles() []string {
+	return []string{
+		"internal/operation/urlreference/admission_windows_test.go",
+		"internal/operation/urlreference/benchmark_windows_test.go",
+		"internal/operation/urlreference/cancellation_windows_test.go",
+		"internal/operation/urlreference/diagnostics_windows_test.go",
+		"internal/operation/urlreference/doc.go",
+		"internal/operation/urlreference/evidence_windows.go",
+		"internal/operation/urlreference/execution_windows_test.go",
+		"internal/operation/urlreference/operation.go",
+		"internal/operation/urlreference/operation_unsupported.go",
+		"internal/operation/urlreference/operation_unsupported_test.go",
+		"internal/operation/urlreference/operation_windows.go",
+		"internal/operation/urlreference/platform_windows.go",
+		"internal/operation/urlreference/projection_windows.go",
+		"internal/operation/urlreference/protocol_windows_test.go",
+		"internal/operation/urlreference/publication_windows_test.go",
+		"internal/operation/urlreference/test_support_windows_test.go",
+		"internal/operation/urlreference/verification_windows.go",
+		"internal/operation/urlreference/verification_windows_test.go",
+	}
 }
 
 func expectedAttemptSplitFiles() []string {

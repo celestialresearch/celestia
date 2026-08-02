@@ -35,6 +35,12 @@ func splitDirectories() []splitDirectory {
 			},
 		},
 		{
+			path: "internal/operation/urlreference/admission",
+			files: []string{
+				"admission.go", "admission_test.go", "doc.go",
+			},
+		},
+		{
 			path: "worker/url-reference/src",
 			files: []string{
 				"grammar.rs", "main.rs", "request.rs", "response.rs", "tests/grammar.rs",
@@ -72,6 +78,19 @@ func splitDirectories() []splitDirectory {
 				"transition.go", "transition_test.go",
 			},
 		},
+		{
+			path: "internal/operation/urlreference",
+			files: []string{
+				"admission_windows_test.go", "benchmark_windows_test.go",
+				"cancellation_windows_test.go", "diagnostics_windows_test.go", "doc.go",
+				"evidence_windows.go", "execution_windows_test.go", "operation.go",
+				"operation_unsupported.go", "operation_unsupported_test.go",
+				"operation_windows.go", "platform_windows.go", "projection_windows.go",
+				"protocol_windows_test.go", "publication_windows_test.go",
+				"test_support_windows_test.go", "verification_windows.go",
+				"verification_windows_test.go",
+			},
+		},
 	}
 }
 
@@ -86,6 +105,7 @@ func splitSourcePathFindings(files []string) []string {
 		"internal/operation/urlreference/attempt/publication_test.go",
 		"internal/operation/urlreference/attempt/records.go",
 		"internal/operation/urlreference/attempt/records_transition_test.go",
+		"internal/operation/urlreference/operation_windows_test.go",
 	})
 	var findings []string
 	for _, file := range files {
