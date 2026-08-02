@@ -182,8 +182,10 @@ if [[ "$bounded" -ne 1 ]]; then
 fi
 
 if [[ "${CELESTIA_DEPGUARD_DEADLINE_FIXTURE:-}" == 1 ]]; then
+  trap 'trap - TERM; wait 2>/dev/null || true; exit 143' TERM
   if [[ -n "${CELESTIA_DEPGUARD_DESCENDANT_FILE:-}" ]]; then
     (
+      trap 'trap - TERM; wait 2>/dev/null || true; exit 143' TERM
       sleep 1.2
       sleep 60 &
       printf '%s\n' "$!" >>"$CELESTIA_DEPGUARD_DESCENDANT_FILE"

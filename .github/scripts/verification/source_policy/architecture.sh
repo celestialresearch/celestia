@@ -13,6 +13,15 @@
 set -euo pipefail
 export GOWORK=off
 
+require_stopped_descendant() {
+  local pid=$1
+
+  if kill -0 "$pid" 2>/dev/null; then
+    printf 'depguard deadline left descendant %s alive\n' "$pid" >&2
+    return 1
+  fi
+}
+
 main() (
 root=$1
 work_dir=$2
@@ -109,6 +118,16 @@ done
   return 1
 }
 if ! command -v taskkill.exe >/dev/null 2>&1; then
+  sleep 60 &
+  live_descendant=$!
+  if require_stopped_descendant "$live_descendant" >/dev/null 2>&1; then
+    printf 'depguard cleanup accepted a live descendant\n' >&2
+    kill "$live_descendant" 2>/dev/null || true
+    wait "$live_descendant" 2>/dev/null || true
+    return 1
+  fi
+  kill "$live_descendant"
+  wait "$live_descendant" 2>/dev/null || true
   depguard_descendants="$work_dir/depguard-descendants"
   status=0
   CELESTIA_DEPGUARD_BOUNDED=1 CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
@@ -119,10 +138,7 @@ if ! command -v taskkill.exe >/dev/null 2>&1; then
     return 1
   }
   while IFS= read -r pid; do
-    if kill -0 "$pid" 2>/dev/null; then
-      printf 'depguard deadline left descendant %s alive\n' "$pid" >&2
-      return 1
-    fi
+    require_stopped_descendant "$pid"
   done <"$depguard_descendants"
 fi
 mkdir -p "$architecture_dir/worker/rogue"
