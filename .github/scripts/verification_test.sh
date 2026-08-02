@@ -82,7 +82,7 @@ main() (
   for family in "${families[@]}"; do
     path="$family_dir/$family"
     mode=$(git -C "$family_repo" ls-files --stage -- "$family_prefix/$family")
-    if [[ ! -f "$path" || "${mode%% *}" != 100755 ]]; then
+    if [[ -L "$path" || ! -f "$path" || "${mode%% *}" != 100755 ]]; then
       printf 'verification family is unavailable: %s\n' "$family" >&2
       return 1
     fi

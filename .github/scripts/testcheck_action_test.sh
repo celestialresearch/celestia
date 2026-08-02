@@ -76,6 +76,20 @@ chmod +x "$action_dir/cache_test.sh"
 git -C "$action_repo" add actioncheck/cache_test.sh
 git -C "$action_repo" update-index --chmod=+x actioncheck/cache_test.sh
 
+mv -- "$action_dir/cache_test.sh" "$work/external-cache-test.sh"
+if ln -s "$work/external-cache-test.sh" "$action_dir/cache_test.sh" &&
+  [[ -L "$action_dir/cache_test.sh" ]]; then
+  if bash "$root/.github/scripts/testcheck.sh" action "$action_dir" \
+    "$work/executed" "$action_repo" actioncheck >/dev/null 2>&1; then
+    printf 'action inventory accepted a symlinked family\n' >&2
+    exit 1
+  fi
+  rm -- "$action_dir/cache_test.sh"
+else
+  rm -f -- "$action_dir/cache_test.sh"
+fi
+mv -- "$work/external-cache-test.sh" "$action_dir/cache_test.sh"
+
 git -C "$action_repo" update-index --chmod=-x actioncheck/permissions_test.sh
 if bash "$root/.github/scripts/testcheck.sh" action "$action_dir" \
   "$work/executed" "$action_repo" actioncheck >/dev/null 2>&1; then

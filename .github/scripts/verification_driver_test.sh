@@ -150,6 +150,26 @@ git -C "$verification_repo" add verification/devcheck_config_test.sh
 git -C "$verification_repo" update-index --chmod=+x \
   verification/devcheck_config_test.sh
 
+mv -- "$verification_dir/devcheck_config_test.sh" \
+  "$work/external-devcheck-config.sh"
+if ln -s "$work/external-devcheck-config.sh" \
+  "$verification_dir/devcheck_config_test.sh" &&
+  [[ -L "$verification_dir/devcheck_config_test.sh" ]]; then
+  if CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+    CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+    CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+    bash "$root/.github/scripts/verification_test.sh" --fixture \
+    >/dev/null 2>&1; then
+    printf 'verification driver accepted a symlinked family\n' >&2
+    exit 1
+  fi
+  rm -- "$verification_dir/devcheck_config_test.sh"
+else
+  rm -f -- "$verification_dir/devcheck_config_test.sh"
+fi
+mv -- "$work/external-devcheck-config.sh" \
+  "$verification_dir/devcheck_config_test.sh"
+
 git -C "$verification_repo" update-index --chmod=-x \
   verification/rust_integration_test.sh
 if CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \

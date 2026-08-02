@@ -195,7 +195,7 @@ release_artefact_test.sh
 EOF
   while IFS= read -r family; do
     mode=$(git -C "$repository" ls-files --stage -- "$prefix/$family")
-    if [[ ! -f "$directory/$family" || "${mode%% *}" != 100755 ]]; then
+    if [[ -L "$directory/$family" || ! -f "$directory/$family" || "${mode%% *}" != 100755 ]]; then
       printf 'verification family is unavailable: %s\n' "$family" >&2
       return 1
     fi
@@ -234,7 +234,7 @@ permissions_test.sh
 EOF
   while IFS= read -r family; do
     mode=$(git -C "$repository" ls-files --stage -- "$prefix/$family")
-    if [[ ! -f "$directory/$family" || "${mode%% *}" != 100755 ]]; then
+    if [[ -L "$directory/$family" || ! -f "$directory/$family" || "${mode%% *}" != 100755 ]]; then
       printf 'action test family is unavailable: %s\n' "$family" >&2
       return 1
     fi
