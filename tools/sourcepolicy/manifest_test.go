@@ -133,5 +133,6 @@ func reviewedManifestReaders() map[string]func() ([]byte, error) {
 		layoutManifestPath:    func() ([]byte, error) { return os.ReadFile(layoutManifestPath) },
 		splitManifestPath:     func() ([]byte, error) { return os.ReadFile(splitManifestPath) },
 		attemptSplitPath:      func() ([]byte, error) { return os.ReadFile(attemptSplitPath) },
+		supervisionSplitPath:  func() ([]byte, error) { return os.ReadFile(supervisionSplitPath) },
 	}
 }

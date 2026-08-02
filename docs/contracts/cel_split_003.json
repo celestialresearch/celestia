@@ -1,0 +1,397 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-split-003",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Process-supervision sources and tests are split by lifecycle ownership without changing launch, observation, cleanup or outcome behaviour",
+  "owner": "tools/sourcepolicy",
+  "inputs": [
+    {
+      "id": "CEL-SPLIT-003-INPUT-001",
+      "media_type": "application/vnd.celestia.tracked-source",
+      "maximum_bytes": 16777216,
+      "validation": "Bounded tracked process-supervision source, test, build-tag, symbol and native-behaviour inventories"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-SPLIT-003-OUTPUT-001",
+      "media_type": "application/vnd.celestia.policy-result",
+      "maximum_bytes": 1048576,
+      "validation": "Deterministic process-supervision split acceptance or rejection with a bounded diagnostic"
+    }
+  ],
+  "canonical_state": [
+    "The process-supervision declaration, test, build-tag and native-binding inventories are preserved across the split",
+    "Supervisor orchestration remains in supervisor_windows.go",
+    "Launch preparation, suspended process start, standard-stream construction and resource closure are owned by launch_windows.go, process_start_windows.go, pipes_windows.go and resources_windows.go",
+    "Observation orchestration, completion and deadline arbitration, process-tree cleanup and final outcome projection are owned by observation_windows.go, wait_windows.go, cleanup_windows.go and outcome_windows.go",
+    "Container, image, environment, wait, stream, startup-cleanup, layout and resource-close tests remain beside their declared owners",
+    "End-to-end supervisor behaviour remains in supervisor_windows_test.go while process-tree cleanup evidence is owned by process_tree_windows_test.go"
+  ],
+  "derived_state": [
+    "Focused launch, wait, stream, cleanup, outcome, process-tree and independent Assurance verdicts"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-SPLIT-003-EFFECT-001",
+      "kind": "source-layout verification result",
+      "authority": "CEL-SPLIT-003-AUTH-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-SPLIT-003-AUTH-001",
+      "owner": "tools/sourcepolicy",
+      "grant": "Accept only the exact declared process-supervision split files and preserved inventories",
+      "refusal": "Reject an old mixed-responsibility file, missing destination, undeclared sibling, duplicate declaration or changed source or test inventory"
+    },
+    {
+      "id": "CEL-SPLIT-003-AUTH-002",
+      "owner": "internal/architecturecheck",
+      "grant": "Independently compare the exact split inventories and native supervision rules",
+      "refusal": "Reject changed launch, deadline, cleanup, process-tree, containment, executable-identity, stream or outcome semantics"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-SPLIT-003-TRUST-001",
+      "source": "tracked repository content",
+      "target": "tools/sourcepolicy",
+      "treatment": "Compare the exact process-supervision source tree, symbol, test and build-tag inventories with this manifest"
+    },
+    {
+      "id": "CEL-SPLIT-003-TRUST-002",
+      "source": "Production architecture policy",
+      "target": "internal/architecturecheck",
+      "treatment": "Compare Production results with independent lifecycle, containment, process-tree and failure-precedence evidence"
+    }
+  ],
+  "bounds": {
+    "processes": 1,
+    "memory_bytes": 67108864,
+    "output_bytes": 1048576,
+    "worker_time_milliseconds": 30000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-SPLIT-003-RESOURCE-001",
+      "kind": "tracked_inventory",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
+      "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds",
+      "release": "Release inventory and parsed syntax when policy evaluation returns",
+      "cleanup_failure": "Return an infrastructure error without accepting the tree"
+    },
+    {
+      "id": "CEL-SPLIT-003-RESOURCE-002",
+      "kind": "policy_document",
+      "owner": "internal/architecturecheck",
+      "acquisition": "Read one bounded strict architecture policy document",
+      "bound": "At most 1048576 bytes per inventory or fixture",
+      "release": "Release decoded policy when independent evaluation returns",
+      "cleanup_failure": "Return an assurance error without accepting the tree"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native Production and Assurance policy and process-supervision execution"
+    },
+    {
+      "os": "other",
+      "arch": "other",
+      "support": "unsupported",
+      "refusal": "Process execution remains unavailable outside the qualified Windows AMD64 boundary",
+      "evidence": "Unsupported-platform refusal and compile checks only"
+    }
+  ],
+  "states": [
+    {
+      "id": "proposed",
+      "kind": "intermediate"
+    },
+    {
+      "id": "accepted",
+      "kind": "success"
+    },
+    {
+      "id": "rejected",
+      "kind": "refusal"
+    },
+    {
+      "id": "failed",
+      "kind": "failure"
+    },
+    {
+      "id": "cancelled",
+      "kind": "cancellation"
+    },
+    {
+      "id": "indeterminate",
+      "kind": "indeterminate"
+    }
+  ],
+  "allowed_transitions": [
+    {
+      "from": "proposed",
+      "to": "accepted"
+    },
+    {
+      "from": "proposed",
+      "to": "rejected"
+    },
+    {
+      "from": "proposed",
+      "to": "failed"
+    },
+    {
+      "from": "proposed",
+      "to": "cancelled"
+    },
+    {
+      "from": "proposed",
+      "to": "indeterminate"
+    }
+  ],
+  "prohibited_transitions": [
+    {
+      "from": "accepted",
+      "to": "proposed"
+    },
+    {
+      "from": "accepted",
+      "to": "rejected"
+    },
+    {
+      "from": "accepted",
+      "to": "failed"
+    },
+    {
+      "from": "accepted",
+      "to": "cancelled"
+    },
+    {
+      "from": "accepted",
+      "to": "indeterminate"
+    },
+    {
+      "from": "rejected",
+      "to": "proposed"
+    },
+    {
+      "from": "rejected",
+      "to": "accepted"
+    },
+    {
+      "from": "rejected",
+      "to": "failed"
+    },
+    {
+      "from": "rejected",
+      "to": "cancelled"
+    },
+    {
+      "from": "rejected",
+      "to": "indeterminate"
+    },
+    {
+      "from": "failed",
+      "to": "proposed"
+    },
+    {
+      "from": "failed",
+      "to": "accepted"
+    },
+    {
+      "from": "failed",
+      "to": "rejected"
+    },
+    {
+      "from": "failed",
+      "to": "cancelled"
+    },
+    {
+      "from": "failed",
+      "to": "indeterminate"
+    },
+    {
+      "from": "cancelled",
+      "to": "proposed"
+    },
+    {
+      "from": "cancelled",
+      "to": "accepted"
+    },
+    {
+      "from": "cancelled",
+      "to": "rejected"
+    },
+    {
+      "from": "cancelled",
+      "to": "failed"
+    },
+    {
+      "from": "cancelled",
+      "to": "indeterminate"
+    },
+    {
+      "from": "indeterminate",
+      "to": "proposed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "accepted"
+    },
+    {
+      "from": "indeterminate",
+      "to": "rejected"
+    },
+    {
+      "from": "indeterminate",
+      "to": "failed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "cancelled"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-SPLIT-003-INV-001",
+      "statement": "The split preserves every process-supervision declaration, test target, build constraint and native binding",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Process-supervision declaration to lifecycle owner",
+      "falsifier": "A declaration, test target, build constraint or native binding is missing, duplicated or moved to the wrong lifecycle responsibility",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-003-PROD-001",
+          "owner": "source-policy supervision split inventory and declaration fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-003-ASSURE-001",
+          "owner": "independent supervision split inventory and declaration comparison"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Static declaration inventory does not prove native process semantic equivalence"
+    },
+    {
+      "id": "CEL-SPLIT-003-INV-002",
+      "statement": "Launch, wait, cleanup and outcome projection remain separate lifecycle authorities",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Configured worker launch to terminal supervised outcome",
+      "falsifier": "Deadline arbitration, cleanup errors, process-tree state or outcome dimensions are duplicated, discarded or reordered",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-003-PROD-002",
+          "owner": "focused launch, wait, cleanup and outcome tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-003-ASSURE-002",
+          "owner": "independent lifecycle and failure-precedence model"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Source ownership does not prove every concurrent deadline interleaving"
+    },
+    {
+      "id": "CEL-SPLIT-003-INV-003",
+      "statement": "The split preserves AppContainer setup, Job Object limits, executable identity, stream bounds and complete process-tree cleanup",
+      "owner": "internal/execution/supervision",
+      "severity": "high",
+      "boundary": "Configured executable to contained process tree and bounded standard streams",
+      "falsifier": "A worker gains authority, a descendant survives return, executable identity changes, a stream exceeds its bound or cleanup loses the primary failure",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-003-PROD-003",
+          "owner": "native containment, hostile worker, stream, deadline and process-tree tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-003-ASSURE-003",
+          "owner": "independent containment, resource and process-tree qualification"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Native containment and cleanup remain qualified only on Windows AMD64"
+    }
+  ],
+  "success_semantics": "Accepted means the exact declared source split preserves symbols, tests, launch and observation ordering, deadline priority, cleanup errors, process-tree ownership, containment, executable identity, stream bounds and outcome projection",
+  "refusal_semantics": "An old mixed-responsibility file, missing destination, undeclared sibling, changed inventory, duplicate implementation, wrapper or supervision regression returns a bounded rejection",
+  "failure_semantics": "Malformed policy, parse failure or unavailable required tooling fails the gate",
+  "cancellation_semantics": "Cancellation stops evaluation and cannot produce acceptance",
+  "indeterminate_semantics": "Missing or contradictory evidence cannot produce acceptance",
+  "recovery_semantics": "Rerun from the unchanged tracked inventory; no partial policy result is canonical",
+  "compatibility_or_reset_policy": "Unused pre-release source may be replaced directly; no old file, wrapper, forwarding path, duplicate implementation or migration shim is retained",
+  "falsifiers": [
+    "A declaration, test target, build constraint or native binding changes during the split",
+    "An old mixed-responsibility file remains or a destination file is missing",
+    "An undeclared sibling source or test file appears in the process-supervision package",
+    "A wrapper, duplicate state model, migration path or order dependency is introduced",
+    "Deadline priority, cleanup error retention, process-tree ownership, AppContainer setup, Job Object limits, executable identity, stream bounds or unsupported-platform refusal changes"
+  ],
+  "production_controls": [
+    {
+      "id": "CEL-SPLIT-003-PROD-001",
+      "owner": "source-policy supervision split inventory and declaration fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-003-PROD-002",
+      "owner": "focused launch, wait, cleanup and outcome tests"
+    },
+    {
+      "id": "CEL-SPLIT-003-PROD-003",
+      "owner": "native containment, hostile worker, stream, deadline and process-tree tests"
+    }
+  ],
+  "assurance_controls": [
+    {
+      "id": "CEL-SPLIT-003-ASSURE-001",
+      "owner": "independent supervision split inventory and declaration comparison"
+    },
+    {
+      "id": "CEL-SPLIT-003-ASSURE-002",
+      "owner": "independent lifecycle and failure-precedence model"
+    },
+    {
+      "id": "CEL-SPLIT-003-ASSURE-003",
+      "owner": "independent containment, resource and process-tree qualification"
+    }
+  ],
+  "residual_limitations": [
+    "This structural split does not establish new process-supervision behaviour",
+    "Native containment and process-tree behaviour remain qualified only on Windows AMD64",
+    "Static structure checks require native runtime and independent Assurance evidence before semantic equivalence is accepted",
+    "Exact-pair sign-off requires committed clean Product and Assurance candidates"
+  ],
+  "non_goals": [
+    "Change deadline priority, select arbitration, cleanup error retention, process-tree ownership or terminal projection",
+    "Change AppContainer setup, Job Object limits, executable identity, stream bounds or unsupported-platform refusal",
+    "Create an interface, wrapper, registry, option or duplicate state model",
+    "Retain an old mixed-responsibility file, forwarding path or migration shim",
+    "Move or split another package or change admission, protocol, persistence, worker or operation behaviour"
+  ],
+  "deletion_criteria": [
+    "Delete this slice contract only when a later reviewed contract explicitly supersedes the split inventory"
+  ]
+}
