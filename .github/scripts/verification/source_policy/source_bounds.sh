@@ -17,14 +17,14 @@ export GOWORK=off
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 # shellcheck source=.github/scripts/verification/fixture.sh
 source "$script_dir/fixture.sh"
-fifo_pid=
-trap '[[ -z "$fifo_pid" ]] || terminate_child "$fifo_pid"' EXIT
 
 main() (
 root=$1
 work_dir=$2
 output=
 status=0
+fifo_pid=
+trap '[[ -z "$fifo_pid" ]] || terminate_child "$fifo_pid"' EXIT
 cat >"$work_dir/.git/info/exclude" <<'EOF'
 /config-bin/
 /lint-*/
