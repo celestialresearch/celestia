@@ -161,6 +161,37 @@ func TestAttemptSplitInventoryIgnoresDeclarationOrder(t *testing.T) {
 	}
 }
 
+func TestAttemptSplitInventorySeparatesFunctionsAndMethods(t *testing.T) {
+	t.Parallel()
+	file := attemptSplitDirectory + "record.go"
+	function := []byte("package attemptstore\ntype A struct{}\nfunc AB() {}\n")
+	method := []byte("package attemptstore\ntype A struct{}\nfunc (A) B() {}\n")
+	want, err := attemptSplitInventoryFor([]string{file}, fixtureReader(map[string][]byte{file: function}))
+	if err != nil {
+		t.Fatalf("inventory free function: %v", err)
+	}
+	got, err := attemptSplitInventoryFor([]string{file}, fixtureReader(map[string][]byte{file: method}))
+	if err != nil {
+		t.Fatalf("inventory method: %v", err)
+	}
+	if got.sources == want.sources {
+		t.Fatal("method and free function share structural identity")
+	}
+}
+
+func TestInventoryRecordFramesEveryField(t *testing.T) {
+	t.Parallel()
+	for _, records := range [][2]string{
+		{inventoryRecord("ab", "c"), inventoryRecord("a", "bc")},
+		{inventoryRecord("kind", "ab", "c"), inventoryRecord("kind", "a", "bc")},
+		{inventoryRecord("kind", "name"), inventoryRecord("kind", "", "name")},
+	} {
+		if records[0] == records[1] {
+			t.Fatal("distinct inventory fields share an encoding")
+		}
+	}
+}
+
 func TestAttemptSplitInventoryBoundsAggregateSource(t *testing.T) {
 	t.Parallel()
 	file := attemptSplitDirectory + "record.go"

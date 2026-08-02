@@ -32,9 +32,9 @@ import (
 const (
 	attemptSplitDirectory  = "internal/operation/urlreference/attempt/"
 	maxAttemptSplitBytes   = 16 << 20
-	attemptSplitPackageSHA = "41b08fd475b7651104ebff3d729e86f36dd4d320c5acc096450fcfb67dd32f3e"
-	attemptSplitSourceSHA  = "85bb6616dc77af1b2d11d51c0ee5adf321ecb45f7036c2997eaa12fbee8307f9"
-	attemptSplitTargetSHA  = "f37c7c43363f82ea02f887f4b14964c090fb52d06548df8a25630a22edabe18e"
+	attemptSplitPackageSHA = "192a264c5ee60a59a1b5a6fcb9badd0460e41516c6c9b01d0d43e09fbb362438"
+	attemptSplitSourceSHA  = "221f0f88934d7f53a7ee31a68c53457f942ddbee5439ac894538ac74d9f1f51d"
+	attemptSplitTargetSHA  = "9c5e90825b7c98d77e3ba643f070c13da1fa7c4edc4937054682bf0e20309e8f"
 )
 
 type attemptSplitInventory struct {
@@ -101,22 +101,22 @@ func attemptSplitInventoryFor(
 		if err != nil {
 			return attemptSplitInventory{}, fmt.Errorf("parse attempt split build constraint %s: %w", file, err)
 		}
-		packages = append(packages, file+"\x00"+parsed.Name.Name+"\x00"+build)
+		packages = append(packages, inventoryRecord("package", file, parsed.Name.Name, build))
 		for _, declaration := range parsed.Decls {
 			records, target, inventoryErr := goSplitDeclarationInventory(file, declaration)
 			if inventoryErr != nil {
 				return attemptSplitInventory{}, inventoryErr
 			}
 			for _, record := range records {
-				sources = append(sources, file+"\x00"+record)
+				sources = append(sources, inventoryRecord("source", file, record))
 			}
 			if target != "" {
-				targets = append(targets, file+"\x00"+target)
+				targets = append(targets, inventoryRecord("target", file, target))
 			}
 		}
 		for _, example := range doc.Examples(parsed) {
 			if example.Output != "" || example.EmptyOutput {
-				targets = append(targets, file+"\x00Example"+example.Name)
+				targets = append(targets, inventoryRecord("example-target", file, example.Name))
 			}
 		}
 	}
@@ -182,10 +182,13 @@ func goSplitDeclarationInventory(file string, declaration ast.Decl) ([]string, s
 		if err != nil {
 			return nil, "", fmt.Errorf("render function signature in %s: %w", file, err)
 		}
-		identity := "func:" + receiver + value.Name.Name
-		record := identity + "\x00" + signature
+		kind := "free-function"
+		if receiver != "" {
+			kind = "method"
+		}
+		record := inventoryRecord(kind, receiver, value.Name.Name, signature)
 		if receiver == "" && isGoTestTarget(value.Name.Name) {
-			return []string{record}, value.Name.Name + "\x00" + signature, nil
+			return []string{record}, inventoryRecord("go-test", value.Name.Name, signature), nil
 		}
 		return []string{record}, "", nil
 	case *ast.GenDecl:
@@ -210,15 +213,15 @@ func goSplitSpecificationInventory(kind string, specification ast.Spec) ([]strin
 	}
 	switch value := specification.(type) {
 	case *ast.TypeSpec:
-		return []string{"type:" + value.Name.Name + "\x00" + rendered}, nil
+		return []string{inventoryRecord("type", value.Name.Name, rendered)}, nil
 	case *ast.ValueSpec:
 		records := make([]string, 0, len(value.Names))
 		for _, name := range value.Names {
-			records = append(records, kind+":"+name.Name+"\x00"+rendered)
+			records = append(records, inventoryRecord(kind, name.Name, rendered))
 		}
 		return records, nil
 	case *ast.ImportSpec:
-		return []string{"import:" + rendered + "\x00" + rendered}, nil
+		return []string{inventoryRecord("import", rendered)}, nil
 	default:
 		return nil, fmt.Errorf("unsupported specification %T", specification)
 	}
@@ -239,6 +242,21 @@ func renderGoNode(node any) (string, error) {
 		return "", err
 	}
 	return rendered.String(), nil
+}
+
+func inventoryRecord(kind string, fields ...string) string {
+	var record bytes.Buffer
+	writeInventoryField := func(field string) {
+		var length [8]byte
+		binary.BigEndian.PutUint64(length[:], uint64(len(field)))
+		record.Write(length[:])
+		record.WriteString(field)
+	}
+	writeInventoryField(kind)
+	for _, field := range fields {
+		writeInventoryField(field)
+	}
+	return record.String()
 }
 
 func hashInventory(records []string) string {
