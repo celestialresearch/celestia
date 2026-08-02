@@ -17,6 +17,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/sys/windows"
@@ -431,5 +432,229 @@ func testRecordRepairOperations() recordRepairOperations {
 			return root.Remove(name)
 		},
 		confirm: confirmPublication,
+	}
+}
+
+func TestPublishedAttemptDirectoryIsStable(t *testing.T) {
+	attempt := &Attempt{path: `C:\evidence\attempt`}
+	path, err := attempt.publishDirectory()
+	if err != nil || path != attempt.path {
+		t.Fatalf("publishDirectory() path = %q, error = %v", path, err)
+	}
+}
+
+func TestAttemptPreparationRejectsPublishedIdentity(t *testing.T) {
+	store := newTestStore(t)
+	accepted, _ := testAccepted(t)
+	if err := createEvidenceDirectory(store.finalPath(accepted.Request.AttemptID)); err != nil {
+		t.Fatalf("create published fixture: %v", err)
+	}
+	if _, _, err := store.prepareAttemptDirectories(
+		accepted.Request.AttemptID,
+		createEvidenceDirectory,
+	); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("prepareAttemptDirectories() error = %v, want %v", err, ErrDuplicate)
+	}
+}
+
+func TestAttemptPreparationRejectsInvalidRoot(t *testing.T) {
+	accepted, _ := testAccepted(t)
+	store := &Store{root: "invalid\x00root"}
+	if _, _, err := store.prepareAttemptDirectories(
+		accepted.Request.AttemptID,
+		createEvidenceDirectory,
+	); err == nil {
+		t.Fatal("invalid attempt root accepted")
+	}
+}
+
+func TestPublishPendingDirectoryRejectsExistingTarget(t *testing.T) {
+	parent := protectedTestDirectory(t)
+	source := filepath.Join(parent, "source")
+	target := filepath.Join(parent, "target")
+	for _, path := range []string{source, target} {
+		if err := createEvidenceDirectory(path); err != nil {
+			t.Fatalf("create %s: %v", filepath.Base(path), err)
+		}
+	}
+	if _, err := publishPendingDirectory(source, target, parent); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("publishPendingDirectory() error = %v, want %v", err, ErrDuplicate)
+	}
+}
+
+func TestRemovePendingDirectoryRejectsInvalidState(t *testing.T) {
+	t.Run("non-directory", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "pending")
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatalf("write pending fixture: %v", err)
+		}
+		if err := removePendingDirectory(path); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("removePendingDirectory() error = %v, want %v", err, ErrCorrupt)
+		}
+	})
+
+	t.Run("non-empty directory", func(t *testing.T) {
+		parent := filepath.Join(t.TempDir(), "owned")
+		if err := createEvidenceDirectory(parent); err != nil {
+			t.Fatalf("create protected parent: %v", err)
+		}
+		path := filepath.Join(parent, "pending")
+		if err := createEvidenceDirectory(path); err != nil {
+			t.Fatalf("create pending directory: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(path, "record"), nil, 0o600); err != nil {
+			t.Fatalf("write pending record: %v", err)
+		}
+		if err := removePendingDirectory(path); err == nil {
+			t.Fatal("removePendingDirectory() removed a non-empty directory")
+		}
+	})
+}
+
+func TestReceiptCreationRequiresBothRecords(t *testing.T) {
+	path := protectedTestDirectory(t)
+	accepted, _ := testAccepted(t)
+	if err := writeOrMatchReceipt(
+		path,
+		accepted.Request.AttemptID,
+		"observation",
+		observationFile,
+		"verified",
+	); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("writeOrMatchReceipt() error = %v, want missing record", err)
+	}
+}
+
+func TestPublicationRequiresReceipt(t *testing.T) {
+	path := protectedTestDirectory(t)
+	accepted, _ := testAccepted(t)
+	if err := publishMarker(path, accepted.Request.AttemptID); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("publishMarker() error = %v, want missing receipt", err)
+	}
+}
+
+func TestPublishDirectoryRetainsCleanupFailure(t *testing.T) {
+	t.Parallel()
+
+	accepted, _ := testAccepted(t)
+	failure := errors.New("injected pending cleanup failure")
+	attempt := &Attempt{
+		store:       &Store{root: `C:\evidence`},
+		path:        `C:\evidence\pending\attempt`,
+		pendingPath: `C:\evidence\pending`,
+		admitted:    Admitted{AttemptID: accepted.Request.AttemptID},
+	}
+	path, err := attempt.publishDirectoryWith(pendingPublicationOperations{
+		publish: func(string, string, string) (string, error) {
+			return `C:\evidence\attempts\attempt`, nil
+		},
+		remove: func(string) error { return failure },
+	})
+	if path != "" || !errors.Is(err, failure) ||
+		attempt.pendingPath != "" {
+		t.Fatalf(
+			"path = %q, error = %v, pending = %q",
+			path,
+			err,
+			attempt.pendingPath,
+		)
+	}
+}
+
+func TestRemovePendingReportsSecurityFailure(t *testing.T) {
+	t.Parallel()
+
+	info, err := os.Stat(t.TempDir())
+	if err != nil {
+		t.Fatalf("stat fixture: %v", err)
+	}
+	failure := errors.New("injected pending security failure")
+	err = removePendingDirectoryWith(
+		"unused",
+		pendingRemovalOperations{
+			lstat:  func(string) (os.FileInfo, error) { return info, nil },
+			linked: func(string, os.FileInfo) bool { return false },
+			secure: func(string) error { return failure },
+			remove: func(string) error {
+				t.Fatal("remove called after security failure")
+				return nil
+			},
+		},
+	)
+	if !errors.Is(err, failure) {
+		t.Fatalf("removePendingDirectoryWith() error = %v", err)
+	}
+}
+
+func TestPublishMarkerReportsWriteFailure(t *testing.T) {
+	t.Parallel()
+
+	failure := errors.New("injected marker write failure")
+	err := publishMarkerWith(
+		"unused",
+		"attempt",
+		markerPublicationOperations{
+			read: func(string, string) (Records, error) {
+				return Records{
+					Receipt:     Receipt{TerminalFile: observationFile},
+					receiptHash: strings.Repeat("a", 64),
+				}, nil
+			},
+			validate: func(string, string, bool) error { return nil },
+			write: func(string, string, any) error {
+				return failure
+			},
+		},
+	)
+	if !errors.Is(err, failure) {
+		t.Fatalf("publishMarkerWith() error = %v", err)
+	}
+}
+
+func TestPublishRejectsConflictingReceipt(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("Stage() error = %v", err)
+	}
+	conflict := Receipt{
+		Version:       Version,
+		AttemptID:     accepted.Request.AttemptID,
+		TerminalKind:  "recovery",
+		AdmittedFile:  admittedFile,
+		AdmittedHash:  strings.Repeat("a", 64),
+		TerminalFile:  recoveryFile,
+		TerminalHash:  strings.Repeat("b", 64),
+		TerminalState: "indeterminate",
+	}
+	if err := writeRecord(attempt.path, receiptFile, conflict); err != nil {
+		t.Fatalf("write conflicting receipt: %v", err)
+	}
+	err = attempt.Publish(testObservationFor(t, accepted))
+	if !errors.Is(err, ErrPublication) || !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("conflicting receipt accepted: %v", err)
+	}
+}
+
+func TestPublishRejectsFinalDirectoryCollision(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("Stage() error = %v", err)
+	}
+	if err := createEvidenceDirectory(store.finalPath(accepted.Request.AttemptID)); err != nil {
+		t.Fatalf("create final collision: %v", err)
+	}
+	err = attempt.Publish(testObservationFor(t, accepted))
+	if !errors.Is(err, ErrPublication) || !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("final collision accepted: %v", err)
+	}
+}
+
+func TestRemovePendingRejectsInvalidPath(t *testing.T) {
+	if err := removePendingDirectory("invalid\x00path"); err == nil {
+		t.Fatal("invalid pending path accepted")
 	}
 }

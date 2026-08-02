@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"celestia.research/celestia/internal/operation/urlreference/protocol"
+	workerprotocol "celestia.research/celestia/internal/operation/urlreference/protocol"
 )
 
 func TestStageRejectsAcceptedFrameMismatch(t *testing.T) {
@@ -318,4 +318,12 @@ func bindRequestInput(request *workerprotocol.Request, input string) {
 
 func zeroHash() string {
 	return "0000000000000000000000000000000000000000000000000000000000000000"
+}
+
+func TestValidateAcceptedRejectsMalformedFrame(t *testing.T) {
+	accepted, admittedAt := testAccepted(t)
+	accepted.Frame = []byte("{")
+	if _, err := validateAccepted(accepted, admittedAt); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("validateAccepted() error = %v, want %v", err, ErrInvalid)
+	}
 }

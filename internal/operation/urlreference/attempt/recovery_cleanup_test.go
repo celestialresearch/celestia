@@ -16,6 +16,7 @@ package attemptstore
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -54,5 +55,25 @@ func TestRecoverRemovesPendingParentAfterRename(t *testing.T) {
 	}
 	if _, err := os.Lstat(store.pendingPath(accepted.Request.AttemptID)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("pending parent retained: %v", err)
+	}
+}
+
+func TestStoreRejectsPendingPathReplacementDuringCleanup(t *testing.T) {
+	if err := removePendingDirectory(filepath.Join(t.TempDir(), "missing")); err != nil {
+		t.Fatalf("missing pending path: %v", err)
+	}
+	directory := filepath.Join(t.TempDir(), "pending-directory")
+	if err := createEvidenceDirectory(directory); err != nil {
+		t.Fatalf("create pending directory: %v", err)
+	}
+	if err := removePendingDirectory(directory); err != nil {
+		t.Fatalf("remove pending directory: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "pending")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("write pending replacement: %v", err)
+	}
+	if err := removePendingDirectory(path); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("pending file replacement accepted: %v", err)
 	}
 }

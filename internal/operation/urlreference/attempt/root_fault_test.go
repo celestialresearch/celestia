@@ -223,3 +223,14 @@ func TestEvidenceDirectoryHelpersReportFailures(t *testing.T) {
 		t.Fatalf("create lock directory error = %v", err)
 	}
 }
+
+func TestAttemptPathRejectsFile(t *testing.T) {
+	store := newTestStore(t)
+	attemptID := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	if err := os.WriteFile(store.finalPath(attemptID), []byte("file"), 0o600); err != nil {
+		t.Fatalf("write attempt file: %v", err)
+	}
+	if _, err := store.attemptPath(attemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("attempt file: %v", err)
+	}
+}

@@ -14,12 +14,14 @@
 package attemptstore
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -505,5 +507,196 @@ func writeJSONFile(t *testing.T, path string, value any) {
 	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatalf("write JSON: %v", err)
+	}
+}
+
+func TestReadRecordRejectsNonCanonicalJSON(t *testing.T) {
+	root := t.TempDir()
+	recovery := Recovery{
+		Version:        Version,
+		AttemptID:      strings.Repeat("A", 43),
+		TerminalStatus: "indeterminate",
+		Reason:         "fixture",
+	}
+	canonical, err := json.Marshal(recovery)
+	if err != nil {
+		t.Fatalf("encode recovery: %v", err)
+	}
+	tests := map[string][]byte{
+		"leading whitespace": append([]byte(" "), canonical...),
+		"duplicate field": append(
+			bytes.TrimSuffix(canonical, []byte("}")),
+			[]byte(`,"version":1}`)...,
+		),
+	}
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(root, name+".json")
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatalf("write record: %v", err)
+			}
+			var actual Recovery
+			if err := readRecord(root, filepath.Base(path), &actual); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("non-canonical record accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestReadRootedBoundsEvidence(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(
+		filepath.Join(root, "large.json"),
+		make([]byte, maxRecordBytes+1),
+		0o600,
+	); err != nil {
+		t.Fatalf("write large record: %v", err)
+	}
+	if _, err := readRooted(root, "large.json"); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("large record accepted: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "directory"), 0o700); err != nil {
+		t.Fatalf("create directory record: %v", err)
+	}
+	if _, err := readRooted(root, "directory"); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("directory record accepted: %v", err)
+	}
+}
+
+func TestStoreRejectsRecordOutsideEvidenceBundle(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-bundle")
+	if err := writeRecord(path, admittedFile, Admitted{}); err == nil {
+		t.Fatal("record written outside an evidence bundle")
+	}
+}
+
+func TestStoreRejectsUnserialisableRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bundle")
+	if err := createEvidenceDirectory(path); err != nil {
+		t.Fatalf("create record bundle: %v", err)
+	}
+	if err := writeRecord(path, "invalid.json", make(chan int)); err == nil {
+		t.Fatal("unserialisable record accepted")
+	}
+}
+
+func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("duplicate stage: %v", err)
+	}
+	observation := testObservation("invalid")
+	if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid observation: %v", err)
+	}
+	observation = testObservation(accepted.Request.AttemptID)
+	if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("released attempt published: %v", err)
+	}
+	for _, reason := range []string{
+		"",
+		" ",
+		"line\nbreak",
+		string([]byte{0xff}),
+		strings.Repeat("x", maxRecoveryReasonBytes+1),
+	} {
+		if err := store.Recover(accepted.Request.AttemptID, reason); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("invalid recovery reason %q: %v", reason, err)
+		}
+	}
+	if _, err := store.Inspect("invalid"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid identity: %v", err)
+	}
+	if _, err := store.Inspect(
+		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB",
+	); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("non-canonical identity: %v", err)
+	}
+}
+
+func TestStoreReportsWriteFailure(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	cleanupAttempt(t, attempt)
+	if err := os.Rename(attempt.path, attempt.path+".moved"); err != nil {
+		t.Fatalf("move attempt: %v", err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err == nil {
+		t.Fatal("missing attempt directory accepted publication")
+	}
+}
+
+func TestStoreRejectsMalformedRecords(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	path := store.finalPath(accepted.Request.AttemptID)
+	tests := []struct {
+		name string
+		file string
+		data []byte
+	}{
+		{name: "admitted JSON", file: "admitted.json", data: []byte("{")},
+		{name: "receipt JSON", file: "receipt.json", data: []byte("{}{}")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			target := filepath.Join(path, test.file)
+			original, readErr := readRooted(path, test.file)
+			if readErr != nil {
+				t.Fatalf("read record: %v", readErr)
+			}
+			if writeErr := os.WriteFile(target, test.data, 0o600); writeErr != nil {
+				t.Fatalf("write malformed record: %v", writeErr)
+			}
+			if _, inspectErr := store.Inspect(accepted.Request.AttemptID); inspectErr == nil {
+				t.Fatal("malformed record was accepted")
+			}
+			if writeErr := os.WriteFile(target, original, 0o600); writeErr != nil {
+				t.Fatalf("restore record: %v", writeErr)
+			}
+		})
+	}
+}
+
+func TestWriteRecordRejectsDuplicate(t *testing.T) {
+	root := t.TempDir()
+	if err := writeRecord(root, "record.json", map[string]int{"value": 1}); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	if err := writeRecord(root, "record.json", map[string]int{"value": 2}); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("duplicate write: %v", err)
+	}
+	if err := writeRecord(filepath.Join(root, "missing"), "record.json", struct{}{}); err == nil {
+		t.Fatal("missing directory accepted write")
+	}
+}
+
+func TestWriteRecordRejectsOversizedEncodingBeforeTemporaryFile(t *testing.T) {
+	root := t.TempDir()
+	if err := writeRecord(root, "large.json", strings.Repeat("x", maxRecordBytes)); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("oversized record: %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(root, ".large.json.*"))
+	if err != nil {
+		t.Fatalf("glob temporary records: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("oversized record left temporary files: %v", matches)
 	}
 }

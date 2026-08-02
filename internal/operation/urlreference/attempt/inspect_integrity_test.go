@@ -14,7 +14,9 @@
 package attemptstore
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -305,4 +307,176 @@ func publishedAttempt(t *testing.T) (*Store, string, string) {
 	}
 	attemptID := accepted.Request.AttemptID
 	return store, attemptID, store.finalPath(attemptID)
+}
+
+func TestStoreDetectsCorruption(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("stage published attempt: %v", err)
+	}
+	path := filepath.Join(store.finalPath(accepted.Request.AttemptID), observationFile)
+	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+		t.Fatalf("corrupt observation: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("inspect corruption: %v", err)
+	}
+}
+
+func TestStoreRejectsReceiptPathSubstitution(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	receiptPath := filepath.Join(store.finalPath(accepted.Request.AttemptID), receiptFile)
+	root, err := os.OpenRoot(filepath.Dir(receiptPath))
+	if err != nil {
+		t.Fatalf("open attempt root: %v", err)
+	}
+	data, err := func() (data []byte, returnedErr error) {
+		defer func() {
+			returnedErr = errors.Join(returnedErr, root.Close())
+		}()
+		file, openErr := root.Open(filepath.Base(receiptPath))
+		if openErr != nil {
+			return nil, openErr
+		}
+		defer func() {
+			returnedErr = errors.Join(returnedErr, file.Close())
+		}()
+		return io.ReadAll(file)
+	}()
+	if err != nil {
+		t.Fatalf("read receipt: %v", err)
+	}
+	var receipt Receipt
+	if err := json.Unmarshal(data, &receipt); err != nil {
+		t.Fatalf("decode receipt: %v", err)
+	}
+	receipt.TerminalFile = "../outside"
+	changed, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatalf("encode receipt: %v", err)
+	}
+	if err := os.WriteFile(receiptPath, changed, 0o600); err != nil {
+		t.Fatalf("replace receipt: %v", err)
+	}
+	if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("path substitution: %v", err)
+	}
+}
+
+func TestStoreRejectsReceiptVariants(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*Receipt)
+	}{
+		{name: "attempt", change: func(receipt *Receipt) { receipt.AttemptID = "invalid" }},
+		{name: "admitted file", change: func(receipt *Receipt) { receipt.AdmittedFile = "other" }},
+		{name: "kind", change: func(receipt *Receipt) { receipt.TerminalKind = "other" }},
+		{name: "observation file", change: func(receipt *Receipt) { receipt.TerminalFile = "other" }},
+		{
+			name: "recovery file",
+			change: func(receipt *Receipt) {
+				receipt.TerminalKind = "recovery"
+				receipt.TerminalFile = "other"
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store := newTestStore(t)
+			accepted, admittedAt := testAccepted(t)
+			attempt, err := store.Stage(accepted, admittedAt)
+			if err != nil {
+				t.Fatalf("stage: %v", err)
+			}
+			if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+				t.Fatalf("publish: %v", err)
+			}
+			path := store.finalPath(accepted.Request.AttemptID)
+			var receipt Receipt
+			if err := readRecord(path, "receipt.json", &receipt); err != nil {
+				t.Fatalf("read receipt: %v", err)
+			}
+			test.change(&receipt)
+			data, err := json.Marshal(receipt)
+			if err != nil {
+				t.Fatalf("encode receipt: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(path, "receipt.json"), data, 0o600); err != nil {
+				t.Fatalf("replace receipt: %v", err)
+			}
+			if _, err := store.Inspect(accepted.Request.AttemptID); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("variant accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestRootedReadRejectsNonFiles(t *testing.T) {
+	root := t.TempDir()
+	if _, err := readRooted(root, "."); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("directory read: %v", err)
+	}
+	target := filepath.Join(root, "target")
+	if err := os.WriteFile(target, []byte("target"), 0o600); err != nil {
+		t.Fatalf("write target: %v", err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("create record symlink: %v", err)
+	}
+	if _, err := readRooted(root, "link"); err == nil {
+		t.Fatal("symlink read was accepted")
+	}
+}
+
+func TestHashHelpersRejectMissingAndMismatch(t *testing.T) {
+	root := t.TempDir()
+	if _, err := fileHash(root, "missing"); err == nil {
+		t.Fatal("missing file was hashed")
+	}
+	if err := os.WriteFile(filepath.Join(root, "record"), []byte("record"), 0o600); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	if err := verifyHash(root, "record", "wrong"); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("hash mismatch: %v", err)
+	}
+	accepted, admittedAt := testAccepted(t)
+	admitted := Admitted{
+		Version:       Version,
+		AttemptID:     accepted.Request.AttemptID,
+		AdmittedAt:    admittedAt.Format(time.RFC3339Nano),
+		OriginalInput: accepted.Request.Input,
+		RequestFrame:  accepted.Frame,
+	}
+	if err := writeRecord(root, admittedFile, admitted); err != nil {
+		t.Fatalf("write admitted: %v", err)
+	}
+	if err := writeOrMatchReceipt(
+		root,
+		accepted.Request.AttemptID,
+		"observation",
+		"missing",
+		"failed",
+	); err == nil {
+		t.Fatal("missing terminal record published")
+	}
+	if _, err := readRooted(filepath.Join(root, "missing"), "record"); err == nil {
+		t.Fatal("missing root accepted")
+	}
 }
