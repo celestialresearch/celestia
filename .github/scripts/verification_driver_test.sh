@@ -52,6 +52,80 @@ CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
   bash "$root/.github/scripts/verification_test.sh" --fixture >/dev/null
 
+snapshot_checkpoint="$work/snapshot-checkpoint.sh"
+cat >"$snapshot_checkpoint" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$CELESTIA_VERIFICATION_SNAPSHOT_PATH" == action_test.sh ]] || exit 0
+[[ ! -e "$CELESTIA_SNAPSHOT_RACE_MARKER" ]] || exit 0
+: >"$CELESTIA_SNAPSHOT_RACE_MARKER"
+case "$CELESTIA_SNAPSHOT_RACE_MODE" in
+replace)
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 7' \
+    >"$CELESTIA_SNAPSHOT_RACE_SOURCE"
+  chmod +x "$CELESTIA_SNAPSHOT_RACE_SOURCE"
+  ;;
+symlink)
+  rm -- "$CELESTIA_SNAPSHOT_RACE_SOURCE"
+  mv -- "$CELESTIA_SNAPSHOT_RACE_LINK" \
+    "$CELESTIA_SNAPSHOT_RACE_SOURCE"
+  ;;
+*) exit 2 ;;
+esac
+EOF
+chmod +x "$snapshot_checkpoint"
+for snapshot_race_mode in replace symlink; do
+  snapshot_race_marker="$work/snapshot-$snapshot_race_mode-ran"
+  snapshot_race_link="$verification_repo/snapshot-race-link"
+  snapshot_race_target="$work/snapshot-$snapshot_race_mode-target.sh"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$snapshot_race_target"
+  chmod +x "$snapshot_race_target"
+  if [[ "$snapshot_race_mode" == symlink ]]; then
+    create_verification_symlink "$verification_repo" snapshot-race-link \
+      "$snapshot_race_target"
+    git -C "$verification_repo" update-index --force-remove snapshot-race-link
+  fi
+  set +e
+  output=$(CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT="$snapshot_checkpoint" \
+    CELESTIA_SNAPSHOT_RACE_MARKER="$snapshot_race_marker" \
+    CELESTIA_SNAPSHOT_RACE_MODE="$snapshot_race_mode" \
+    CELESTIA_SNAPSHOT_RACE_LINK="$snapshot_race_link" \
+    CELESTIA_SNAPSHOT_RACE_SOURCE="$verification_dir/action_test.sh" \
+    CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+    CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+    CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+    bash "$root/.github/scripts/verification_test.sh" --fixture 2>&1)
+  status=$?
+  set -e
+  if [[ ! -e "$snapshot_race_marker" ]]; then
+    printf 'verification %s snapshot race did not execute\n' \
+      "$snapshot_race_mode" >&2
+    exit 1
+  fi
+  if [[ "$status" -eq 0 || "$output" != *"action_test.sh"* ]]; then
+    printf 'verification accepted a %s snapshot race:\n%s\n' \
+      "$snapshot_race_mode" "$output" >&2
+    exit 1
+  fi
+  rm -f -- "$verification_dir/action_test.sh"
+  git -C "$verification_repo" checkout -- verification/action_test.sh
+done
+
+set +e
+output=$(CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT="$work/missing-checkpoint" \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" --fixture 2>&1)
+status=$?
+set -e
+if [[ "$status" -eq 0 ||
+  "$output" != *"snapshot checkpoint is unavailable"* ]]; then
+  printf 'verification accepted an unavailable snapshot checkpoint:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+
 cat >"$verification_dir/action_test.sh" <<'EOF'
 #!/usr/bin/env bash
 printf current >"$CELESTIA_CURRENT_FAMILY_MARKER"
@@ -186,6 +260,18 @@ set -e
 if [[ "$status" -ne 2 ]] ||
   [[ "$output" != *"overrides require fixture mode"* ]]; then
   printf 'verification driver accepted an ambient family override:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+
+set +e
+output=$(CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT="$snapshot_checkpoint" \
+  bash "$root/.github/scripts/verification_test.sh" 2>&1)
+status=$?
+set -e
+if [[ "$status" -ne 2 ]] ||
+  [[ "$output" != *"overrides require fixture mode"* ]]; then
+  printf 'verification driver accepted an ambient snapshot checkpoint:\n%s\n' \
     "$output" >&2
   exit 1
 fi

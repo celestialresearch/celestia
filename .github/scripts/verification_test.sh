@@ -45,7 +45,8 @@ esac
 if [[ "$fixture_mode" != --fixture ]] &&
   [[ -n "${CELESTIA_VERIFICATION_FAMILY_DIR+x}" ||
     -n "${CELESTIA_VERIFICATION_FAMILY_REPO+x}" ||
-    -n "${CELESTIA_VERIFICATION_FAMILY_PREFIX+x}" ]]; then
+    -n "${CELESTIA_VERIFICATION_FAMILY_PREFIX+x}" ||
+    -n "${CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT+x}" ]]; then
   printf 'verification family overrides require fixture mode\n' >&2
   exit 2
 fi
@@ -91,6 +92,13 @@ finish_driver() {
 snapshot_family_tree() {
   local destination=$1
   local manifest=$2
+  local bindings=$3
+  local binding
+  local binding_digest
+  local binding_index=0
+  local binding_size
+  local copied_digest
+  local copied_size
   local metadata
   local mode
   local path
@@ -127,15 +135,49 @@ snapshot_family_tree() {
     fi
     source="$family_repo/$path"
     target="$destination/$relative"
+    binding="$bindings/$binding_index/object"
+    binding_index=$((binding_index + 1))
     if [[ -L "$source" || ! -f "$source" ]]; then
       printf 'verification snapshot source is unavailable: %s\n' \
         "$relative" >&2
       return 1
     fi
     mkdir -p -- "${target%/*}"
-    cp -- "$source" "$target"
+    mkdir -- "${binding%/*}"
+    if ! cat -- "$source" >"$binding" ||
+      [[ -L "$source" || ! -f "$source" ]] ||
+      ! cmp -s -- "$source" "$binding"; then
+      printf 'verification snapshot source changed: %s\n' "$relative" >&2
+      return 1
+    fi
+    binding_size=$(wc -c <"$binding")
+    binding_digest=$(git hash-object --no-filters -- "$binding")
+    chmod 400 -- "$binding"
+    chmod 500 -- "${binding%/*}"
+    if [[ -n "${CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT:-}" ]]; then
+      if [[ -L "$CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT" ||
+        ! -f "$CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT" ||
+        ! -x "$CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT" ]]; then
+        printf 'verification snapshot checkpoint is unavailable\n' >&2
+        return 1
+      fi
+      CELESTIA_VERIFICATION_SNAPSHOT_PATH=$relative \
+        "$CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT"
+    fi
+    copied_size=$(wc -c <"$binding")
+    if [[ -L "$source" || ! -f "$source" ]] ||
+      [[ "$copied_size" != "$binding_size" ]] ||
+      ! cmp -s -- "$source" "$binding" ||
+      ! cp -- "$binding" "$target"; then
+      printf 'verification snapshot source changed: %s\n' "$relative" >&2
+      return 1
+    fi
+    copied_size=$(wc -c <"$target")
+    copied_digest=$(git hash-object --no-filters -- "$target")
     if [[ -L "$target" || ! -f "$target" ]] ||
-      ! cmp -s "$source" "$target"; then
+      [[ "$copied_size" != "$binding_size" ||
+        "$copied_digest" != "$binding_digest" ]] ||
+      ! cmp -s -- "$binding" "$target"; then
       printf 'verification snapshot copy differs: %s\n' "$relative" >&2
       return 1
     fi
@@ -152,6 +194,7 @@ main() (
   local work=$1
   local snapshot=$2
   local declared
+  local bindings
   local executed
   local family
   local manifest
@@ -159,15 +202,16 @@ main() (
   local source
 
   declared="$work/declared"
+  bindings="$work/bindings"
   executed="$work/executed"
   manifest="$work/manifest"
   source="$work/source"
-  mkdir -- "$source"
+  mkdir -- "$bindings" "$source"
   printf '%s\n' "${families[@]}" >"$declared"
   bash "$root/.github/scripts/testcheck.sh" verification "$family_dir" \
     "$declared" "$family_repo" "$family_prefix"
   git -C "$family_repo" ls-files --stage -z -- "$family_prefix" >"$manifest"
-  snapshot_family_tree "$source" "$manifest"
+  snapshot_family_tree "$source" "$manifest" "$bindings"
   for family in "${families[@]}"; do
     chmod -R u+w -- "$snapshot"
     rm -rf -- "$snapshot"
