@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"sort"
@@ -85,6 +86,34 @@ func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
 				t.Fatalf("changed or missing manifest %s accepted", target)
 			}
 		}
+	}
+}
+
+func TestAssuranceSplitManifestPreservesCustody(t *testing.T) {
+	t.Chdir("../..")
+	data, err := os.ReadFile(assuranceSplitPath)
+	if err != nil {
+		t.Fatalf("read Assurance split manifest: %v", err)
+	}
+	var manifest struct {
+		Owner              string `json:"owner"`
+		ProductionControls []struct {
+			Owner string `json:"owner"`
+		} `json:"production_controls"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatalf("decode Assurance split manifest: %v", err)
+	}
+	if manifest.Owner != "internal/architecturecheck" {
+		t.Fatalf("manifest owner = %q", manifest.Owner)
+	}
+	if len(manifest.ProductionControls) != 1 ||
+		manifest.ProductionControls[0].Owner !=
+			"source-policy exact CEL-SPLIT-007 declaration digest" {
+		t.Fatalf("Product controls claim Assurance custody: %+v", manifest.ProductionControls)
+	}
+	if bytes.Contains(data, []byte("source-policy Assurance")) {
+		t.Fatal("Product claims Assurance inventory ownership")
 	}
 }
 

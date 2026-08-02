@@ -6,7 +6,7 @@
     "class": "initial"
   },
   "operator_visible_outcome": "Assurance sources and tests are split by existing ownership without changing selection, execution or canonical evidence",
-  "owner": "tools/sourcepolicy",
+  "owner": "internal/architecturecheck",
   "inputs": [
     {
       "id": "CEL-SPLIT-007-INPUT-001",
@@ -48,8 +48,8 @@
     {
       "id": "CEL-SPLIT-007-AUTH-001",
       "owner": "tools/sourcepolicy",
-      "grant": "Accept only the declared Assurance split files and preserved inventories",
-      "refusal": "Reject an old monolith, missing destination, undeclared sibling, duplicate declaration or changed symbol, test, command or fixture inventory"
+      "grant": "Accept only the exact reviewed CEL-SPLIT-007 declaration bytes",
+      "refusal": "Reject a missing or changed CEL-SPLIT-007 declaration"
     },
     {
       "id": "CEL-SPLIT-007-AUTH-002",
@@ -61,15 +61,15 @@
   "trust_boundaries": [
     {
       "id": "CEL-SPLIT-007-TRUST-001",
-      "source": "tracked Production and Assurance content",
+      "source": "tracked Product CEL-SPLIT-007 declaration",
       "target": "tools/sourcepolicy",
-      "treatment": "Compare the exact Assurance source, declaration, test, command and fixture inventories with this manifest"
+      "treatment": "Compare the declaration bytes with the exact reviewed digest without reading Assurance content"
     },
     {
       "id": "CEL-SPLIT-007-TRUST-002",
-      "source": "Production architecture result",
+      "source": "tracked Assurance content and Product declaration",
       "target": "internal/architecturecheck",
-      "treatment": "Independently reject structural or semantic drift in the Assurance split"
+      "treatment": "Independently compare the Assurance source, declaration, test, command, fixture and package-owner inventories with this manifest"
     }
   ],
   "bounds": {
@@ -82,20 +82,20 @@
   "resources": [
     {
       "id": "CEL-SPLIT-007-RESOURCE-001",
-      "kind": "tracked_inventory",
+      "kind": "policy_document",
       "owner": "tools/sourcepolicy",
-      "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
-      "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds",
-      "release": "Release inventory and parsed syntax when policy evaluation returns",
-      "cleanup_failure": "Return an infrastructure error without accepting the tree"
+      "acquisition": "Read the tracked CEL-SPLIT-007 declaration",
+      "bound": "At most 1048576 bytes and 30000 milliseconds",
+      "release": "Release declaration bytes when digest verification returns",
+      "cleanup_failure": "Return a Product policy error without accepting the declaration"
     },
     {
       "id": "CEL-SPLIT-007-RESOURCE-002",
-      "kind": "policy_document",
+      "kind": "tracked_inventory",
       "owner": "internal/architecturecheck",
-      "acquisition": "Read one bounded strict architecture policy document",
-      "bound": "At most 1048576 bytes per inventory or fixture",
-      "release": "Release decoded policy when independent evaluation returns",
+      "acquisition": "Read one bounded NUL-delimited Assurance tracked-file inventory and the strict Product declaration",
+      "bound": "At most 100000 paths, 16777216 aggregate source bytes, 1048576 declaration bytes and 30000 milliseconds",
+      "release": "Release inventory and parsed declaration when independent evaluation returns",
       "cleanup_failure": "Return an assurance error without accepting the tree"
     }
   ],
@@ -154,12 +154,12 @@
     {
       "id": "CEL-SPLIT-007-INV-001",
       "statement": "The split preserves every Assurance declaration, test target, command, fixture and package owner",
-      "owner": "tools/sourcepolicy",
+      "owner": "internal/architecturecheck",
       "severity": "high",
       "boundary": "Assurance declaration to cohesive destination file",
       "falsifier": "A declaration, test, command, fixture or owner is missing, duplicated or moved to the wrong responsibility",
       "production_controls": [
-        { "id": "CEL-SPLIT-007-PROD-001", "owner": "source-policy Assurance split inventory and declaration fixtures" }
+        { "id": "CEL-SPLIT-007-PROD-001", "owner": "source-policy exact CEL-SPLIT-007 declaration digest" }
       ],
       "assurance_controls": [
         { "id": "CEL-SPLIT-007-ASSURE-001", "owner": "independent Assurance split inventory and declaration comparison" }
@@ -175,7 +175,7 @@
       "boundary": "Immutable candidate preparation to bounded control execution",
       "falsifier": "A command uses an unbound executable or source, exceeds a declared bound or exposes unredacted diagnostics",
       "production_controls": [
-        { "id": "CEL-SPLIT-007-PROD-002", "owner": "source-policy Assurance owner and call inventories" }
+        { "id": "CEL-SPLIT-007-PROD-001", "owner": "source-policy exact CEL-SPLIT-007 declaration digest" }
       ],
       "assurance_controls": [
         { "id": "CEL-SPLIT-007-ASSURE-002", "owner": "runner identity, source, bound and diagnostic fault fixtures" }
@@ -191,7 +191,7 @@
       "boundary": "Selected control input to canonical durable report and command output",
       "falsifier": "A control is skipped, duplicated, renamed or reordered or canonical report bytes, privacy or verdict semantics change",
       "production_controls": [
-        { "id": "CEL-SPLIT-007-PROD-003", "owner": "source-policy command, test and fixture inventory" }
+        { "id": "CEL-SPLIT-007-PROD-001", "owner": "source-policy exact CEL-SPLIT-007 declaration digest" }
       ],
       "assurance_controls": [
         { "id": "CEL-SPLIT-007-ASSURE-003", "owner": "canonical report, mutation, replay, rulepack, suppression and CLI fixtures" }
@@ -216,9 +216,7 @@
     "A wrapper, duplicate validator, alias or order dependency is introduced"
   ],
   "production_controls": [
-    { "id": "CEL-SPLIT-007-PROD-001", "owner": "source-policy Assurance split inventory and declaration fixtures" },
-    { "id": "CEL-SPLIT-007-PROD-002", "owner": "source-policy Assurance owner and call inventories" },
-    { "id": "CEL-SPLIT-007-PROD-003", "owner": "source-policy command, test and fixture inventory" }
+    { "id": "CEL-SPLIT-007-PROD-001", "owner": "source-policy exact CEL-SPLIT-007 declaration digest" }
   ],
   "assurance_controls": [
     { "id": "CEL-SPLIT-007-ASSURE-001", "owner": "independent Assurance split inventory and declaration comparison" },
