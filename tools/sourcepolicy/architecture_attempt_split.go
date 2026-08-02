@@ -44,6 +44,13 @@ type attemptSplitInventory struct {
 	targets  string
 }
 
+type attemptSplitFileInventory struct {
+	packages []string
+	sources  []string
+	targets  []string
+	bytes    int
+}
+
 type attemptDiagnosticError struct {
 	cause error
 }
@@ -94,46 +101,17 @@ func attemptSplitInventoryFor(
 	targets := make([]string, 0, len(goFiles))
 	total := 0
 	for _, file := range goFiles {
-		source, err := readFile(file)
+		inventory, err := attemptSplitFileInventoryFor(file, readFile)
 		if err != nil {
-			return attemptSplitInventory{}, fmt.Errorf(
-				"read attempt split source %q: %w", file, attemptDiagnosticError{cause: err},
-			)
+			return attemptSplitInventory{}, err
 		}
-		total += len(source)
+		total += inventory.bytes
 		if total > maxAttemptSplitBytes {
 			return attemptSplitInventory{}, fmt.Errorf("attempt split source inventory exceeds bound")
 		}
-		positions := token.NewFileSet()
-		parsed, err := parser.ParseFile(positions, strconv.Quote(file), source, parser.ParseComments)
-		if err != nil {
-			return attemptSplitInventory{}, fmt.Errorf("parse attempt split source %q: %w", file, err)
-		}
-		if parsed.Name.Name != "attemptstore" {
-			return attemptSplitInventory{}, fmt.Errorf("attempt split source %q uses package %s", file, parsed.Name.Name)
-		}
-		build, err := goBuildConstraint(source, positions, parsed)
-		if err != nil {
-			return attemptSplitInventory{}, fmt.Errorf("parse attempt split build constraint %q: %w", file, err)
-		}
-		packages = append(packages, inventoryRecord("package", file, parsed.Name.Name, build))
-		for _, declaration := range parsed.Decls {
-			records, target, inventoryErr := goSplitDeclarationInventory(file, declaration)
-			if inventoryErr != nil {
-				return attemptSplitInventory{}, inventoryErr
-			}
-			for _, record := range records {
-				sources = append(sources, inventoryRecord("source", file, record))
-			}
-			if target != "" {
-				targets = append(targets, inventoryRecord("target", file, target))
-			}
-		}
-		for _, example := range doc.Examples(parsed) {
-			if example.Output != "" || example.EmptyOutput {
-				targets = append(targets, inventoryRecord("example-target", file, example.Name))
-			}
-		}
+		packages = append(packages, inventory.packages...)
+		sources = append(sources, inventory.sources...)
+		targets = append(targets, inventory.targets...)
 	}
 	sort.Strings(packages)
 	sort.Strings(sources)
@@ -143,6 +121,52 @@ func attemptSplitInventoryFor(
 		sources:  hashInventory(sources),
 		targets:  hashInventory(targets),
 	}, nil
+}
+
+func attemptSplitFileInventoryFor(
+	file string,
+	readFile func(string) ([]byte, error),
+) (attemptSplitFileInventory, error) {
+	source, err := readFile(file)
+	if err != nil {
+		return attemptSplitFileInventory{}, fmt.Errorf(
+			"read attempt split source %q: %w", file, attemptDiagnosticError{cause: err},
+		)
+	}
+	positions := token.NewFileSet()
+	parsed, err := parser.ParseFile(positions, strconv.Quote(file), source, parser.ParseComments)
+	if err != nil {
+		return attemptSplitFileInventory{}, fmt.Errorf("parse attempt split source %q: %w", file, err)
+	}
+	if parsed.Name.Name != "attemptstore" {
+		return attemptSplitFileInventory{}, fmt.Errorf("attempt split source %q uses package %s", file, parsed.Name.Name)
+	}
+	build, err := goBuildConstraint(source, positions, parsed)
+	if err != nil {
+		return attemptSplitFileInventory{}, fmt.Errorf("parse attempt split build constraint %q: %w", file, err)
+	}
+	inventory := attemptSplitFileInventory{
+		packages: []string{inventoryRecord("package", file, parsed.Name.Name, build)},
+		bytes:    len(source),
+	}
+	for _, declaration := range parsed.Decls {
+		records, target, inventoryErr := goSplitDeclarationInventory(file, declaration)
+		if inventoryErr != nil {
+			return attemptSplitFileInventory{}, inventoryErr
+		}
+		for _, record := range records {
+			inventory.sources = append(inventory.sources, inventoryRecord("source", file, record))
+		}
+		if target != "" {
+			inventory.targets = append(inventory.targets, inventoryRecord("target", file, target))
+		}
+	}
+	for _, example := range doc.Examples(parsed) {
+		if example.Output != "" || example.EmptyOutput {
+			inventory.targets = append(inventory.targets, inventoryRecord("example-target", file, example.Name))
+		}
+	}
+	return inventory, nil
 }
 
 func goBuildConstraint(source []byte, positions *token.FileSet, parsed *ast.File) (string, error) {
