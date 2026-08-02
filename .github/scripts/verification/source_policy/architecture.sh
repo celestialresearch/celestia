@@ -164,6 +164,60 @@ grep -Fq 'internal/operation/urlreference/attempt: source inventory differs:' \
 }
 git -C "$architecture_dir" checkout -- \
   internal/operation/urlreference/attempt/contract.go
+for rogue in rogue.s rogue.rs rogue.json rogue.txt Makefile; do
+  if [[ "$rogue" == rogue.s ]]; then
+    printf '\n' >"$architecture_dir/tools/sourcepolicy/$rogue"
+  else
+    printf 'fixture\n' >"$architecture_dir/tools/sourcepolicy/$rogue"
+  fi
+  git -C "$architecture_dir" add "tools/sourcepolicy/$rogue"
+  set +e
+  output=$(cd "$architecture_dir" &&
+    bash .github/scripts/policycheck.sh architecture 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted undeclared source-policy artefact %s\n' \
+      "$rogue" >&2
+    return 1
+  }
+  grep -Fq "tools/sourcepolicy/$rogue: undeclared split source" \
+    <<<"$output" || {
+    printf 'policy output omitted source-policy inventory diagnostic for %s:\n%s\n' \
+      "$rogue" "$output" >&2
+    return 1
+  }
+  git -C "$architecture_dir" rm -q --cached "tools/sourcepolicy/$rogue"
+  rm -- "$architecture_dir/tools/sourcepolicy/$rogue"
+done
+awk '
+  { print }
+  $0 == "\t\tif strings.HasPrefix(file, directory.path+\"/\") {" {
+    print "\t\t\tif directory.path == \"tools/sourcepolicy\" && !strings.HasSuffix(file, \".go\") {"
+    print "\t\t\t\treturn false"
+    print "\t\t\t}"
+  }
+' "$architecture_dir/tools/sourcepolicy/architecture_split.go" \
+  >"$architecture_dir/tools/sourcepolicy/architecture_split.go.mutated"
+mv "$architecture_dir/tools/sourcepolicy/architecture_split.go.mutated" \
+  "$architecture_dir/tools/sourcepolicy/architecture_split.go"
+set +e
+output=$(cd "$architecture_dir" &&
+  go test -count=1 ./tools/sourcepolicy \
+    -run '^TestArchitectureRejectsUndeclaredPolicyArtefacts$' 2>&1)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'source-policy inventory regression survived the extension mutation\n' >&2
+  return 1
+}
+grep -Fq 'tools/sourcepolicy/rogue.s' <<<"$output" || {
+  printf 'source-policy mutation failed for an unrelated reason:\n%s\n' \
+    "$output" >&2
+  return 1
+}
+git -C "$architecture_dir" checkout -- \
+  tools/sourcepolicy/architecture_split.go
 )
 
 main "$@"

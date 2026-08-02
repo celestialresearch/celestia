@@ -41,6 +41,11 @@
     {"name": "attempt-outside-operation", "mutation": "attempt-outside-operation", "rule": "operation-package-ownership", "expected": "reject"},
     {"name": "attempt-store-recreated", "mutation": "attempt-store-recreated", "rule": "prohibited-path", "expected": "reject"},
     {"name": "outside-operation-root", "mutation": "outside-operation-root", "rule": "operation-package-ownership", "expected": "reject"},
-    {"name": "url-operation-recreated", "mutation": "url-operation-recreated", "rule": "prohibited-path", "expected": "reject"}
+    {"name": "url-operation-recreated", "mutation": "url-operation-recreated", "rule": "prohibited-path", "expected": "reject"},
+    {"name": "undeclared-policy-assembly", "mutation": "undeclared-policy-assembly", "rule": "split-source-inventory", "expected": "reject"},
+    {"name": "undeclared-policy-rust", "mutation": "undeclared-policy-rust", "rule": "split-source-inventory", "expected": "reject"},
+    {"name": "undeclared-policy-data", "mutation": "undeclared-policy-data", "rule": "split-source-inventory", "expected": "reject"},
+    {"name": "undeclared-policy-text", "mutation": "undeclared-policy-text", "rule": "split-source-inventory", "expected": "reject"},
+    {"name": "undeclared-policy-extensionless", "mutation": "undeclared-policy-extensionless", "rule": "split-source-inventory", "expected": "reject"}
   ]
 }

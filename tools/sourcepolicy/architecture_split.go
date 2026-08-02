@@ -177,9 +177,7 @@ func governedSplitPath(file string) bool {
 	for _, directory := range splitDirectories() {
 		if strings.HasPrefix(file, directory.path+"/") {
 			if directory.path == "tools/sourcepolicy" {
-				return strings.HasSuffix(file, ".go") &&
-					validArchitecturePath(file) &&
-					validWindowsArchitecturePath(file)
+				return validArchitecturePath(file)
 			}
 			return true
 		}

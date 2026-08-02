@@ -14,6 +14,8 @@ package main
 import (
 	"errors"
 	"os"
+	"slices"
+	"strings"
 )
 
 func evaluateArchitectureFixture(mutation string) string {
@@ -152,6 +154,27 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 		return hasArchitecturePathFinding([]string{"internal/operation/other/operation.go"}, policy)
 	},
 	"url-operation-recreated": urlOperationRecreated,
+	"undeclared-policy-assembly": func(architecturePolicy) bool {
+		return hasUndeclaredSplitSourceFinding("tools/sourcepolicy/rogue.s")
+	},
+	"undeclared-policy-rust": func(architecturePolicy) bool {
+		return hasUndeclaredSplitSourceFinding("tools/sourcepolicy/rogue.rs")
+	},
+	"undeclared-policy-data": func(architecturePolicy) bool {
+		return hasUndeclaredSplitSourceFinding("tools/sourcepolicy/rogue.json")
+	},
+	"undeclared-policy-text": func(architecturePolicy) bool {
+		return hasUndeclaredSplitSourceFinding("tools/sourcepolicy/rogue.txt")
+	},
+	"undeclared-policy-extensionless": func(architecturePolicy) bool {
+		return hasUndeclaredSplitSourceFinding("tools/sourcepolicy/Makefile")
+	},
+}
+
+func hasUndeclaredSplitSourceFinding(file string) bool {
+	return slices.ContainsFunc(splitSourcePathFindings([]string{file}), func(finding string) bool {
+		return strings.Contains(finding, "undeclared split source")
+	})
 }
 
 func processSupervisionRecreated(policy architecturePolicy) bool {

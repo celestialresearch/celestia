@@ -149,6 +149,24 @@ func TestArchitectureRejectsUndeclaredPolicySource(t *testing.T) {
 	assertSplitFinding(t, files, "undeclared split source")
 }
 
+func TestArchitectureRejectsUndeclaredPolicyArtefacts(t *testing.T) {
+	t.Parallel()
+
+	for _, file := range []string{
+		"tools/sourcepolicy/rogue.s",
+		"tools/sourcepolicy/rogue.rs",
+		"tools/sourcepolicy/rogue.json",
+		"tools/sourcepolicy/rogue.txt",
+		"tools/sourcepolicy/Makefile",
+	} {
+		t.Run(file, func(t *testing.T) {
+			t.Parallel()
+			files := append(expectedSplitFiles(), file)
+			assertSplitFinding(t, files, "undeclared split source")
+		})
+	}
+}
+
 func TestArchitectureRejectsMovedPolicyOwner(t *testing.T) {
 	t.Parallel()
 
