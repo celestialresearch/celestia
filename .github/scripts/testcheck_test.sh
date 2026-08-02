@@ -306,5 +306,100 @@ git -C "$action_repo" update-index --chmod=-x \
 if bash "$root/.github/scripts/testcheck.sh" action "$action_dir" \
   "$work/action-executed" "$action_repo" actioncheck >/dev/null 2>&1; then
   printf 'action inventory accepted a non-executable family\n' >&2
+source_policy_repo="$work/source-policy-repo"
+source_policy_dir="$source_policy_repo/source-policy"
+source_policy_log="$work/source-policy.log"
+mkdir -p "$source_policy_dir"
+git -C "$source_policy_repo" init -q
+git -C "$source_policy_repo" config core.autocrlf false
+source_policy_scripts='setup.sh
+architecture.sh
+manifests.sh
+source_bounds.sh
+go_execution.sh
+rust_cargo.sh
+suppressions.sh
+scanner_failure.sh'
+while IFS= read -r script; do
+  cat >"$source_policy_dir/$script" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$(basename -- "$0")" >>"$CELESTIA_SOURCE_POLICY_LOG"
+EOF
+  chmod +x "$source_policy_dir/$script"
+done <<<"$source_policy_scripts"
+git -C "$source_policy_repo" add -f source-policy
+while IFS= read -r script; do
+  git -C "$source_policy_repo" update-index --chmod=+x \
+    "source-policy/$script"
+done <<<"$source_policy_scripts"
+
+CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null
+if ! cmp -s <(printf '%s\n' "$source_policy_scripts") "$source_policy_log"; then
+  printf 'source-policy driver reordered its scripts\n' >&2
+  exit 1
+fi
+
+rm -- "$source_policy_dir/architecture.sh"
+if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null 2>&1; then
+  printf 'source-policy driver accepted a missing script\n' >&2
+  exit 1
+fi
+git -C "$source_policy_repo" checkout -- source-policy/architecture.sh
+
+git -C "$source_policy_repo" update-index --chmod=-x \
+  source-policy/manifests.sh
+if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null 2>&1; then
+  printf 'source-policy driver accepted a non-executable script\n' >&2
+  exit 1
+fi
+git -C "$source_policy_repo" update-index --chmod=+x \
+  source-policy/manifests.sh
+
+cat >"$source_policy_dir/go_execution.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 9
+EOF
+chmod +x "$source_policy_dir/go_execution.sh"
+git -C "$source_policy_repo" add source-policy/go_execution.sh
+git -C "$source_policy_repo" update-index --chmod=+x \
+  source-policy/go_execution.sh
+if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null 2>&1; then
+  printf 'source-policy driver accepted a failing script\n' >&2
+  exit 1
+fi
+
+set +e
+output=$(
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+    bash "$root/.github/scripts/verification/source_policy_test.sh" 2>&1
+)
+status=$?
+set -e
+if [[ "$status" -ne 2 ]] ||
+  [[ "$output" != *"overrides require fixture mode"* ]]; then
+  printf 'source-policy driver accepted an ambient script override:\n%s\n' \
+    "$output" >&2
   exit 1
 fi
