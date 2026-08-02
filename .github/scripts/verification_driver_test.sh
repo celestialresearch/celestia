@@ -52,6 +52,70 @@ CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
   bash "$root/.github/scripts/verification_test.sh" --fixture >/dev/null
 
+master_temp="$work/master-temp"
+master_attack_marker="$work/master-attack-ran"
+master_later_marker="$work/master-later-ran"
+mkdir -- "$master_temp"
+cat >"$verification_dir/lint_test.sh" <<'EOF'
+#!/usr/bin/env bash
+snapshot=${BASH_SOURCE[0]%/*}
+for path in "$TMPDIR"/celestia-verification-driver.*/source.tar; do
+  [[ -f "$path" ]] || continue
+  chmod u+w -- "$path"
+  printf '%s\n' '#!/usr/bin/env bash' \
+    ': >"$CELESTIA_MASTER_LATER_MARKER"' \
+    >"$snapshot/action_test.sh"
+  chmod +x "$snapshot/action_test.sh"
+  tar -cf "$path" -C "$snapshot" .
+  chmod 400 -- "$path"
+  : >"$CELESTIA_MASTER_ATTACK_MARKER"
+done
+EOF
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$verification_dir/action_test.sh"
+chmod +x "$verification_dir/lint_test.sh" \
+  "$verification_dir/action_test.sh"
+git -C "$verification_repo" add verification/lint_test.sh \
+  verification/action_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/lint_test.sh verification/action_test.sh
+set +e
+output=$(TMPDIR="$master_temp" \
+  CELESTIA_MASTER_ATTACK_MARKER="$master_attack_marker" \
+  CELESTIA_MASTER_LATER_MARKER="$master_later_marker" \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" --fixture 2>&1)
+status=$?
+set -e
+if [[ ! -e "$master_attack_marker" ]]; then
+  printf 'verification master attack did not execute\n' >&2
+  exit 1
+fi
+if [[ -e "$master_later_marker" ]]; then
+  printf 'verification driver executed a child-rewritten master\n' >&2
+  exit 1
+fi
+if [[ "$status" -eq 0 ||
+  "$output" != *"verification master snapshot identity differs"* ]]; then
+  printf 'verification driver accepted child-rewritten master state:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+require_empty_verification_directory "$master_temp" \
+  'verification master temporary'
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$verification_dir/lint_test.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$verification_dir/action_test.sh"
+chmod +x "$verification_dir/lint_test.sh" \
+  "$verification_dir/action_test.sh"
+git -C "$verification_repo" add verification/lint_test.sh \
+  verification/action_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/lint_test.sh verification/action_test.sh
+
 snapshot_checkpoint="$work/snapshot-checkpoint.sh"
 cat >"$snapshot_checkpoint" <<'EOF'
 #!/usr/bin/env bash

@@ -190,6 +190,29 @@ snapshot_family_tree() {
   find "$destination" -type d -exec chmod 500 {} +
 }
 
+snapshot_size() {
+  local size
+
+  size=$(wc -c <"$1") || return 1
+  size=${size//[[:space:]]/}
+  [[ "$size" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$size"
+}
+
+snapshot_matches() {
+  local path=$1
+  local expected_size=$2
+  local expected_identity=$3
+  local identity
+  local size
+
+  [[ ! -L "$path" && -f "$path" ]] || return 1
+  size=$(snapshot_size "$path") || return 1
+  [[ "$size" == "$expected_size" ]] || return 1
+  identity=$(git hash-object --no-filters -- "$path") || return 1
+  [[ "$identity" == "$expected_identity" ]]
+}
+
 main() (
   local work=$1
   local snapshot=$2
@@ -198,6 +221,9 @@ main() (
   local executed
   local family
   local manifest
+  local master
+  local master_identity
+  local master_size
   local path
   local source
 
@@ -205,6 +231,7 @@ main() (
   bindings="$work/bindings"
   executed="$work/executed"
   manifest="$work/manifest"
+  master="$work/source.tar"
   source="$work/source"
   mkdir -- "$bindings" "$source"
   printf '%s\n' "${families[@]}" >"$declared"
@@ -212,11 +239,21 @@ main() (
     "$declared" "$family_repo" "$family_prefix"
   git -C "$family_repo" ls-files --stage -z -- "$family_prefix" >"$manifest"
   snapshot_family_tree "$source" "$manifest" "$bindings"
+  tar -cf "$master" -C "$source" .
+  master_size=$(snapshot_size "$master") || return 1
+  master_identity=$(git hash-object --no-filters -- "$master") || return 1
+  chmod 400 -- "$master"
+  chmod -R u+w -- "$source" "$bindings"
+  rm -rf -- "$source" "$bindings"
   for family in "${families[@]}"; do
     chmod -R u+w -- "$snapshot"
     rm -rf -- "$snapshot"
     mkdir -- "$snapshot"
-    cp -R -- "$source/." "$snapshot"
+    if ! snapshot_matches "$master" "$master_size" "$master_identity"; then
+      printf 'verification master snapshot identity differs\n' >&2
+      return 1
+    fi
+    tar -xf "$master" -C "$snapshot"
     path="$snapshot/$family"
     if [[ -L "$path" || ! -f "$path" || ! -x "$path" ]]; then
       printf 'verification family is unavailable: %s\n' "$family" >&2
