@@ -169,11 +169,39 @@ chmod +x "$verification_dir/rust_config_test.sh"
 git -C "$verification_repo" add verification/rust_config_test.sh
 git -C "$verification_repo" update-index --chmod=+x \
   verification/rust_config_test.sh
-if CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+cat >"$verification_dir/rust_integration_test.sh" <<'EOF'
+#!/usr/bin/env bash
+printf started >"$CELESTIA_LATER_FAMILY"
+EOF
+chmod +x "$verification_dir/rust_integration_test.sh"
+git -C "$verification_repo" add verification/rust_integration_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/rust_integration_test.sh
+driver_temp="$work/driver-temp"
+mkdir "$driver_temp"
+set +e
+CELESTIA_LATER_FAMILY="$work/later-family" \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
   CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  TMPDIR="$driver_temp" \
   bash "$root/.github/scripts/verification_test.sh" --fixture \
-  >/dev/null 2>&1; then
-  printf 'verification driver accepted a failing family\n' >&2
+  >/dev/null 2>&1
+status=$?
+set -e
+if [[ "$status" -ne 9 ]]; then
+  printf 'verification driver returned %d after family failure\n' "$status" >&2
+  exit 1
+fi
+if [[ -e "$work/later-family" ]]; then
+  printf 'verification driver continued after family failure\n' >&2
+  exit 1
+fi
+if ! retained_state=$(find "$driver_temp" -mindepth 1 -print -quit); then
+  printf 'verification driver failure state is uninspectable\n' >&2
+  exit 1
+fi
+if [[ -n "$retained_state" ]]; then
+  printf 'verification driver retained failure state\n' >&2
   exit 1
 fi
