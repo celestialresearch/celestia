@@ -209,13 +209,9 @@ func goBuildConstraint(source []byte, positions *token.FileSet, parsed *ast.File
 func goSplitDeclarationInventory(file string, declaration ast.Decl) ([]string, string, error) {
 	switch value := declaration.(type) {
 	case *ast.FuncDecl:
-		receiver := ""
-		if value.Recv != nil {
-			var err error
-			receiver, err = renderGoNode(value.Recv.List[0].Type)
-			if err != nil {
-				return nil, "", fmt.Errorf("render receiver in %q: %w", file, err)
-			}
+		receiver, err := goSplitReceiver(file, value.Recv)
+		if err != nil {
+			return nil, "", err
 		}
 		signature, err := renderGoNode(value.Type)
 		if err != nil {
@@ -243,6 +239,20 @@ func goSplitDeclarationInventory(file string, declaration ast.Decl) ([]string, s
 	default:
 		return nil, "", fmt.Errorf("unsupported declaration in %q", file)
 	}
+}
+
+func goSplitReceiver(file string, receiver *ast.FieldList) (string, error) {
+	if receiver == nil {
+		return "", nil
+	}
+	if len(receiver.List) != 1 || len(receiver.List[0].Names) > 1 {
+		return "", fmt.Errorf("invalid receiver cardinality in %q", file)
+	}
+	rendered, err := renderGoNode(receiver.List[0].Type)
+	if err != nil {
+		return "", fmt.Errorf("render receiver in %q: %w", file, err)
+	}
+	return rendered, nil
 }
 
 func goSplitSpecificationInventory(kind string, specification ast.Spec) ([]string, error) {

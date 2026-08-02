@@ -310,6 +310,26 @@ func TestAttemptSplitInventoryFailsClosed(t *testing.T) {
 	}
 }
 
+func TestAttemptSplitInventoryRejectsMalformedReceiver(t *testing.T) {
+	t.Parallel()
+	file := attemptSplitDirectory + "record.go"
+	for name, source := range map[string][]byte{
+		"empty":           []byte("package attemptstore\nfunc () validateRecord() {}\n"),
+		"multiple fields": []byte("package attemptstore\nfunc (A, B) validateRecord() {}\n"),
+		"multiple names":  []byte("package attemptstore\nfunc (a, b A) validateRecord() {}\n"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := attemptSplitInventoryFor(
+				[]string{file}, fixtureReader(map[string][]byte{file: source}),
+			)
+			if err == nil || !strings.Contains(err.Error(), "receiver cardinality") {
+				t.Fatalf("error = %v, want receiver-cardinality rejection", err)
+			}
+		})
+	}
+}
+
 func TestAttemptSplitDiagnosticsQuotePaths(t *testing.T) {
 	t.Parallel()
 	file := attemptSplitDirectory + "hostile\n\t\r\x1b\x7f.go"
