@@ -52,6 +52,72 @@ CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
   bash "$root/.github/scripts/verification_test.sh" --fixture >/dev/null
 
+cat >"$verification_dir/action_test.sh" <<'EOF'
+#!/usr/bin/env bash
+printf current >"$CELESTIA_CURRENT_FAMILY_MARKER"
+EOF
+chmod +x "$verification_dir/action_test.sh"
+CELESTIA_CURRENT_FAMILY_MARKER="$work/current-family-ran" \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" --fixture >/dev/null
+if [[ ! -e "$work/current-family-ran" ]]; then
+  printf 'verification driver ignored current family content\n' >&2
+  exit 1
+fi
+git -C "$verification_repo" checkout -- verification/action_test.sh
+
+cat >"$verification_dir/lint_test.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >"$CELESTIA_REPLACED_FAMILY" <<'SCRIPT'
+#!/usr/bin/env bash
+printf replaced >"$CELESTIA_REPLACEMENT_MARKER"
+SCRIPT
+chmod +x "$CELESTIA_REPLACED_FAMILY"
+EOF
+chmod +x "$verification_dir/lint_test.sh"
+git -C "$verification_repo" add verification/lint_test.sh
+git -C "$verification_repo" update-index --chmod=+x verification/lint_test.sh
+CELESTIA_REPLACED_FAMILY="$verification_dir/action_test.sh" \
+  CELESTIA_REPLACEMENT_MARKER="$work/replacement-ran" \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" --fixture >/dev/null
+if [[ -e "$work/replacement-ran" ]]; then
+  printf 'verification family replaced a later family\n' >&2
+  exit 1
+fi
+git -C "$verification_repo" checkout -- verification
+
+cat >"$verification_dir/lint_test.sh" <<'EOF'
+#!/usr/bin/env bash
+rm -- "$CELESTIA_REPLACED_FAMILY"
+ln -s "$CELESTIA_REPLACEMENT_TARGET" "$CELESTIA_REPLACED_FAMILY"
+EOF
+chmod +x "$verification_dir/lint_test.sh"
+git -C "$verification_repo" add verification/lint_test.sh
+git -C "$verification_repo" update-index --chmod=+x verification/lint_test.sh
+cat >"$work/replacement-target.sh" <<'EOF'
+#!/usr/bin/env bash
+printf symlinked >"$CELESTIA_REPLACEMENT_MARKER"
+EOF
+chmod +x "$work/replacement-target.sh"
+CELESTIA_REPLACED_FAMILY="$verification_dir/action_test.sh" \
+  CELESTIA_REPLACEMENT_MARKER="$work/symlink-ran" \
+  CELESTIA_REPLACEMENT_TARGET="$work/replacement-target.sh" \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" --fixture >/dev/null
+if [[ -e "$work/symlink-ran" ]]; then
+  printf 'verification family symlinked a later family\n' >&2
+  exit 1
+fi
+rm -- "$verification_dir/action_test.sh"
+git -C "$verification_repo" checkout -- verification
+
 cat >"$verification_dir/lint_test.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$$" >"$CELESTIA_FAMILY_PID"
@@ -62,7 +128,10 @@ EOF
 chmod +x "$verification_dir/lint_test.sh"
 git -C "$verification_repo" add verification/lint_test.sh
 git -C "$verification_repo" update-index --chmod=+x verification/lint_test.sh
-CELESTIA_DESCENDANT_PID="$work/descendant.pid" \
+cancellation_temp="$work/cancellation-temp"
+mkdir "$cancellation_temp"
+TMPDIR="$cancellation_temp" \
+  CELESTIA_DESCENDANT_PID="$work/descendant.pid" \
   CELESTIA_FAMILY_PID="$work/family.pid" \
   CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
@@ -70,7 +139,7 @@ CELESTIA_DESCENDANT_PID="$work/descendant.pid" \
   bash "$root/.github/scripts/verification_test.sh" --fixture \
   >/dev/null 2>&1 &
 verification_pid=$!
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for _ in {1..100}; do
   [[ -s "$work/family.pid" ]] && break
   sleep 0.1
 done
@@ -86,6 +155,13 @@ family_pid=$(cat "$work/family.pid")
 descendant_pid=$(cat "$work/descendant.pid")
 kill -TERM "$verification_pid"
 wait "$verification_pid" 2>/dev/null || true
+require_empty_verification_directory "$cancellation_temp" \
+  'verification cancellation temporary'
+if find "$root/.github/scripts" -maxdepth 1 -type d \
+  -name '.verification-family.*' -print -quit | grep -q .; then
+  printf 'verification cancellation retained snapshot state\n' >&2
+  exit 1
+fi
 for pid in "$family_pid" "$descendant_pid"; do
   if verification_process_running "$pid"; then
     printf 'verification cancellation retained process %s\n' "$pid" >&2

@@ -58,6 +58,20 @@ terminate_family() {
   kill -KILL -- "-$pid" 2>/dev/null || true
 }
 
+# shellcheck disable=SC2329 # Invoked through the registered exit handler.
+cleanup_driver() {
+  local status=0
+
+  if [[ -n "${snapshot_root:-}" && -e "$snapshot_root" ]]; then
+    chmod -R u+w -- "$snapshot_root" || status=1
+    rm -rf -- "$snapshot_root" || status=1
+  fi
+  if [[ -n "${driver_work:-}" && -e "$driver_work" ]]; then
+    rm -rf -- "$driver_work" || status=1
+  fi
+  return "$status"
+}
+
 # shellcheck disable=SC2329 # Invoked by registered signal and exit traps.
 finish_driver() {
   local status=$1
@@ -68,38 +82,123 @@ finish_driver() {
     wait "$driver_pid" 2>/dev/null || true
     driver_pid=
   fi
+  if ! cleanup_driver; then
+    status=1
+  fi
   exit "$status"
 }
 
-main() (
-  local executed
-  local family
+snapshot_family_tree() {
+  local destination=$1
+  local manifest=$2
+  local metadata
   local mode
   local path
+  local record
+  local relative
+  local source
+  local stage
+  local target
 
-  executed=$(mktemp "${TMPDIR:-/tmp}/celestia-verification.XXXXXX")
-  trap 'rm -f -- "$executed"' EXIT
+  while IFS= read -r -d '' record; do
+    metadata=${record%%$'\t'*}
+    path=${record#*$'\t'}
+    mode=${metadata%% *}
+    metadata=${metadata#* }
+    stage=${metadata##* }
+    case "$path" in
+    "$family_prefix"/*) relative=${path#"$family_prefix/"} ;;
+    *)
+      printf 'verification snapshot escaped its prefix\n' >&2
+      return 1
+      ;;
+    esac
+    case "$relative" in
+    "" | /* | *$'\n'* | *$'\r'* | ../* | */../* | */..)
+      printf 'verification snapshot has an unsupported path\n' >&2
+      return 1
+      ;;
+    esac
+    if [[ "$stage" != 0 ||
+      ("$mode" != 100644 && "$mode" != 100755) ]]; then
+      printf 'verification snapshot has an unsupported entry: %s\n' \
+        "$relative" >&2
+      return 1
+    fi
+    source="$family_repo/$path"
+    target="$destination/$relative"
+    if [[ -L "$source" || ! -f "$source" ]]; then
+      printf 'verification snapshot source is unavailable: %s\n' \
+        "$relative" >&2
+      return 1
+    fi
+    mkdir -p -- "${target%/*}"
+    cp -- "$source" "$target"
+    if [[ -L "$target" || ! -f "$target" ]] ||
+      ! cmp -s "$source" "$target"; then
+      printf 'verification snapshot copy differs: %s\n' "$relative" >&2
+      return 1
+    fi
+    if [[ "$mode" == 100755 ]]; then
+      chmod 500 -- "$target"
+    else
+      chmod 400 -- "$target"
+    fi
+  done <"$manifest"
+  find "$destination" -type d -exec chmod 500 {} +
+}
+
+main() (
+  local work=$1
+  local snapshot=$2
+  local declared
+  local executed
+  local family
+  local manifest
+  local path
+  local source
+
+  declared="$work/declared"
+  executed="$work/executed"
+  manifest="$work/manifest"
+  source="$work/source"
+  mkdir -- "$source"
+  printf '%s\n' "${families[@]}" >"$declared"
+  bash "$root/.github/scripts/testcheck.sh" verification "$family_dir" \
+    "$declared" "$family_repo" "$family_prefix"
+  git -C "$family_repo" ls-files --stage -z -- "$family_prefix" >"$manifest"
+  snapshot_family_tree "$source" "$manifest"
   for family in "${families[@]}"; do
-    path="$family_dir/$family"
-    mode=$(git -C "$family_repo" ls-files --stage -- "$family_prefix/$family")
-    if [[ -L "$path" || ! -f "$path" || "${mode%% *}" != 100755 ]]; then
+    chmod -R u+w -- "$snapshot"
+    rm -rf -- "$snapshot"
+    mkdir -- "$snapshot"
+    cp -R -- "$source/." "$snapshot"
+    path="$snapshot/$family"
+    if [[ -L "$path" || ! -f "$path" || ! -x "$path" ]]; then
       printf 'verification family is unavailable: %s\n' "$family" >&2
       return 1
     fi
     "$path"
     printf '%s\n' "$family" >>"$executed"
   done
-  bash "$root/.github/scripts/testcheck.sh" verification "$family_dir" \
-    "$executed" "$family_repo" "$family_prefix"
+  if ! cmp -s "$declared" "$executed"; then
+    printf 'verification families lacked ordered execution\n' >&2
+    return 1
+  fi
 )
 
 driver_pid=
+driver_work=
+snapshot_root=
 trap 'finish_driver $?' EXIT
 trap 'finish_driver 129' HUP
 trap 'finish_driver 130' INT
 trap 'finish_driver 143' TERM
+driver_work=$(mktemp -d "${TMPDIR:-/tmp}/celestia-verification-driver.XXXXXX")
+snapshot_root=$(mktemp -d \
+  "$root/.github/scripts/.verification-family.XXXXXX")
 set -m
-main "$@" &
+main "$driver_work" "$snapshot_root" "$@" &
 set +m
 driver_pid=$!
 set +e
