@@ -153,3 +153,42 @@ func TestInspectRejectsWrongVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestStoreRejectsMalformedRecords(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	path := store.finalPath(accepted.Request.AttemptID)
+	tests := []struct {
+		name string
+		file string
+		data []byte
+	}{
+		{name: "admitted JSON", file: "admitted.json", data: []byte("{")},
+		{name: "receipt JSON", file: "receipt.json", data: []byte("{}{}")},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			target := filepath.Join(path, test.file)
+			original, readErr := readRooted(path, test.file)
+			if readErr != nil {
+				t.Fatalf("read record: %v", readErr)
+			}
+			if writeErr := os.WriteFile(target, test.data, 0o600); writeErr != nil {
+				t.Fatalf("write malformed record: %v", writeErr)
+			}
+			if _, inspectErr := store.Inspect(accepted.Request.AttemptID); inspectErr == nil {
+				t.Fatal("malformed record was accepted")
+			}
+			if writeErr := os.WriteFile(target, original, 0o600); writeErr != nil {
+				t.Fatalf("restore record: %v", writeErr)
+			}
+		})
+	}
+}

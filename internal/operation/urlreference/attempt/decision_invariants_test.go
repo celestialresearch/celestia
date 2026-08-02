@@ -359,6 +359,45 @@ func TestLoadTerminalRejectsUnknownKind(t *testing.T) {
 	}
 }
 
+func TestStoreRejectsDuplicateAndInvalidRecords(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("duplicate stage: %v", err)
+	}
+	observation := testObservation("invalid")
+	if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid observation: %v", err)
+	}
+	observation = testObservation(accepted.Request.AttemptID)
+	if err := attempt.Publish(observation); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("released attempt published: %v", err)
+	}
+	for _, reason := range []string{
+		"",
+		" ",
+		"line\nbreak",
+		string([]byte{0xff}),
+		strings.Repeat("x", maxRecoveryReasonBytes+1),
+	} {
+		if err := store.Recover(accepted.Request.AttemptID, reason); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("invalid recovery reason %q: %v", reason, err)
+		}
+	}
+	if _, err := store.Inspect("invalid"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid identity: %v", err)
+	}
+	if _, err := store.Inspect(
+		"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB",
+	); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("non-canonical identity: %v", err)
+	}
+}
+
 func completedResponse(output string) workerprotocol.Response {
 	return workerprotocol.Response{
 		Status: workerprotocol.Completed,

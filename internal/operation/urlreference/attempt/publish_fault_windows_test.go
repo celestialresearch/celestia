@@ -224,3 +224,19 @@ func TestPendingPublicationRejectsInvalidTarget(t *testing.T) {
 		t.Fatal("invalid publication target accepted")
 	}
 }
+
+func TestStoreReportsWriteFailure(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	cleanupAttempt(t, attempt)
+	if err := os.Rename(attempt.path, attempt.path+".moved"); err != nil {
+		t.Fatalf("move attempt: %v", err)
+	}
+	if err := attempt.Publish(testObservationFor(t, accepted)); err == nil {
+		t.Fatal("missing attempt directory accepted publication")
+	}
+}
