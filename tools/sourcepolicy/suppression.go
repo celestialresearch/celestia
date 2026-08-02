@@ -22,6 +22,11 @@ import (
 	"mvdan.cc/sh/v3/syntax"
 )
 
+const (
+	nolintMarker = "//no" + "lint"
+	nosecMarker  = "#no" + "sec"
+)
+
 var (
 	validNosec = regexp.MustCompile(
 		`^[[:space:]]+G[0-9]+(,G[0-9]+)*[[:space:]]+--[[:space:]]+[^[:space:]].*$`,

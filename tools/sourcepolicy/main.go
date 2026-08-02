@@ -16,22 +16,13 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 )
 
 const (
-	modeSuppressions      = "suppressions"
-	modeTestSkips         = "test-skips"
-	modeManifest          = "manifest"
-	modeArchitecture      = "architecture"
-	maxSourceBytes        = 1 << 20
-	maxInventoryBytes     = 16 << 20
-	maxInventoryPaths     = 100_000
-	maxInventoryPathBytes = 32 << 10
-	maxGoBuildLoads       = 4
-	maxGoPolicyDuration   = 3 * time.Minute
-	nolintMarker          = "//no" + "lint"
-	nosecMarker           = "#no" + "sec"
+	modeSuppressions = "suppressions"
+	modeTestSkips    = "test-skips"
+	modeManifest     = "manifest"
+	modeArchitecture = "architecture"
 )
 
 func main() {

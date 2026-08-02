@@ -21,6 +21,12 @@ import (
 	"time"
 )
 
+const (
+	maxInventoryBytes     = 16 << 20
+	maxInventoryPaths     = 100_000
+	maxInventoryPathBytes = 32 << 10
+)
+
 func sourceFiles() ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

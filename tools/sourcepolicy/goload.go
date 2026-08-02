@@ -18,8 +18,14 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/tools/go/packages"
+)
+
+const (
+	maxGoBuildLoads     = 4
+	maxGoPolicyDuration = 3 * time.Minute
 )
 
 type goBuildUnit struct {

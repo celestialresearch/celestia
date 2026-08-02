@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 )
 
+const maxSourceBytes = 1 << 20
+
 func readSource(path string) (source []byte, err error) {
 	return readSourceWith(path, sourceReader{
 		openRoot: os.OpenRoot,
