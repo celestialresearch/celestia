@@ -55,7 +55,10 @@ fn response_write_requires_flush() {
     let mut writer = RecordingWriter::default();
     assert_eq!(write_to(&response, &mut writer), Ok(()));
     assert_eq!(writer.flushes, 1);
-    assert!(!writer.data.is_empty());
+    assert_eq!(
+        writer.data,
+        br#"{"protocol_version":1,"operation_id":"url-reference","operation_version":1,"attempt_id":"attempt","request_nonce":"nonce","worker_id":"celestia-url-reference","worker_version":"1","status":"failed","diagnostics":[],"duration_ns":0}"#
+    );
     writer.fail_flush = true;
     assert_eq!(write_to(&response, &mut writer), Err(()));
     assert_eq!(writer.flushes, 2);
