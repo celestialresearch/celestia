@@ -462,7 +462,10 @@ bash "$root/.github/scripts/changecheck_test.sh" &
 change_pid=$!
 bash "$root/.github/scripts/currencycheck_test.sh" &
 currency_pid=$!
-bash "$root/.github/scripts/testcheck_test.sh"
+bash "$root/.github/scripts/testcheck_modes_test.sh"
+bash "$root/.github/scripts/verification_driver_test.sh"
+bash "$root/.github/scripts/testcheck_action_test.sh"
+bash "$root/.github/scripts/source_policy_driver_test.sh"
 
 status=0
 await_child Change "$change_pid" || status=1
