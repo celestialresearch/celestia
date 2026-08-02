@@ -93,7 +93,7 @@ terminate_family() {
     sleep 0.05
     attempt=$((attempt + 1))
   done
-  ! kill -0 -- "-$pid" 2>/dev/null
+  ! kill -0 -- "-$pid" 2>/dev/null || linux_family_zombies "$pid"
 }
 
 # shellcheck disable=SC2329 # Invoked through registered exit handlers.
@@ -174,6 +174,20 @@ read_driver_status() {
 
 family_group_running() {
   kill -0 -- "-$active_family_pid" 2>/dev/null
+}
+
+linux_family_zombies() {
+  local state
+  local states
+  local pid=$1
+
+  [[ "$(uname -s 2>/dev/null)" == Linux ]] || return 1
+  states=$(ps -o stat= --pgroup "$pid" 2>/dev/null) || return 1
+  [[ -n "$states" && "${#states}" -le 4096 ]] || return 1
+  while IFS= read -r state; do
+    state=${state//[[:space:]]/}
+    [[ "$state" == Z* ]] || return 1
+  done <<<"$states"
 }
 
 family_job_owned() {
