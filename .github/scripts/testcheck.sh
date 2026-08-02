@@ -18,10 +18,12 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 mode=${1:-}
 profile=${2:-}
 fixture_mode=${3:-}
+verification_repo=${4:-}
+verification_prefix=${5:-}
 cargo_bin=cargo
-if [[ "$fixture_mode" == --fixture ]]; then
+if [[ "$mode" == rust && "$fixture_mode" == --fixture ]]; then
   cargo_bin=${CARGO_BIN:-cargo}
-elif [[ -n "${CARGO_BIN+x}" ]]; then
+elif [[ "$mode" == rust && -n "${CARGO_BIN+x}" ]]; then
   printf 'CARGO_BIN is permitted only in fixture mode\n' >&2
   exit 2
 fi
@@ -166,11 +168,55 @@ rust_tests() {
   rust_command true
 }
 
+verification_tests() {
+  local directory=$profile
+  local executed=$fixture_mode
+  local family
+  local mode
+  local repository=$verification_repo
+  local prefix=$verification_prefix
+
+  if [[ ! -d "$directory" || ! -f "$executed" ||
+    ! -d "$repository" || -z "$prefix" ]]; then
+    printf 'Usage: testcheck.sh verification FAMILY_DIR EXECUTED\n' >&2
+    return 2
+  fi
+  cat >"$temporary/expected" <<'EOF'
+lint_test.sh
+action_test.sh
+rust_config_test.sh
+rust_artefact_test.sh
+coverage_test.sh
+source_policy_test.sh
+licence_test.sh
+release_artefact_test.sh
+EOF
+  while IFS= read -r family; do
+    mode=$(git -C "$repository" ls-files --stage -- "$prefix/$family")
+    if [[ ! -f "$directory/$family" || "${mode%% *}" != 100755 ]]; then
+      printf 'verification family is unavailable: %s\n' "$family" >&2
+      return 1
+    fi
+  done <"$temporary/expected"
+  find "$directory" -type f -name '*_test.sh' -exec basename {} \; |
+    LC_ALL=C sort >"$temporary/available"
+  LC_ALL=C sort "$temporary/expected" >"$temporary/expected-sorted"
+  if ! cmp -s "$temporary/expected-sorted" "$temporary/available"; then
+    printf 'verification family inventory differs\n' >&2
+    return 1
+  fi
+  if ! cmp -s "$temporary/expected" "$executed"; then
+    printf 'verification families lacked ordered execution\n' >&2
+    return 1
+  fi
+}
+
 case "$mode" in
 go) go_tests ;;
 rust) rust_tests ;;
+verification) verification_tests ;;
 *)
-  printf 'Usage: testcheck.sh go quick|race|standard | rust\n' >&2
+  printf 'Usage: testcheck.sh go quick|race|standard | rust | verification FAMILY_DIR EXECUTED\n' >&2
   exit 2
   ;;
 esac

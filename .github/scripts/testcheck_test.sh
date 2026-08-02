@@ -136,3 +136,74 @@ if grep -Fv -- '--all-features' "$work/cargo.log" >/dev/null; then
   cat "$work/cargo.log" >&2
   exit 1
 fi
+
+verification_repo="$work/verification-repo"
+verification_dir="$verification_repo/verification"
+mkdir -p "$verification_dir"
+git -C "$verification_repo" init -q
+git -C "$verification_repo" config core.autocrlf false
+families='lint_test.sh
+action_test.sh
+rust_config_test.sh
+rust_artefact_test.sh
+coverage_test.sh
+source_policy_test.sh
+licence_test.sh
+release_artefact_test.sh'
+while IFS= read -r family; do
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$verification_dir/$family"
+  chmod +x "$verification_dir/$family"
+done <<<"$families"
+git -C "$verification_repo" add -f verification
+while IFS= read -r family; do
+  git -C "$verification_repo" update-index --chmod=+x \
+    "verification/$family"
+done <<<"$families"
+CELESTIA_VERIFICATION_FIXTURE=true \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" >/dev/null
+
+rm -- "$verification_dir/action_test.sh"
+if CELESTIA_VERIFICATION_FIXTURE=true \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" >/dev/null 2>&1; then
+  printf 'verification driver accepted a missing family\n' >&2
+  exit 1
+fi
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$verification_dir/action_test.sh"
+chmod +x "$verification_dir/action_test.sh"
+git -C "$verification_repo" add verification/action_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/action_test.sh
+
+git -C "$verification_repo" update-index --chmod=-x \
+  verification/coverage_test.sh
+if CELESTIA_VERIFICATION_FIXTURE=true \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" >/dev/null 2>&1; then
+  printf 'verification driver accepted a non-executable family\n' >&2
+  exit 1
+fi
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/coverage_test.sh
+
+printf '%s\n' '#!/usr/bin/env bash' 'exit 9' \
+  >"$verification_dir/licence_test.sh"
+chmod +x "$verification_dir/licence_test.sh"
+git -C "$verification_repo" add verification/licence_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/licence_test.sh
+if CELESTIA_VERIFICATION_FIXTURE=true \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  bash "$root/.github/scripts/verification_test.sh" >/dev/null 2>&1; then
+  printf 'verification driver accepted a failing family\n' >&2
+  exit 1
+fi

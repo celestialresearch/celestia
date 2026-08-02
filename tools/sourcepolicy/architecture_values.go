@@ -56,7 +56,17 @@ func expectedScripts() []string {
 		".github/scripts/licencecheck.sh", ".github/scripts/modcheck.sh",
 		".github/scripts/platformlint.sh", ".github/scripts/policycheck.sh",
 		".github/scripts/rustcheck.sh", ".github/scripts/testcheck.sh",
-		".github/scripts/testcheck_test.sh", ".github/scripts/verification_test.sh",
+		".github/scripts/testcheck_test.sh",
+		".github/scripts/verification/action_test.sh",
+		".github/scripts/verification/coverage_test.sh",
+		".github/scripts/verification/fixture.sh",
+		".github/scripts/verification/licence_test.sh",
+		".github/scripts/verification/lint_test.sh",
+		".github/scripts/verification/release_artefact_test.sh",
+		".github/scripts/verification/rust_artefact_test.sh",
+		".github/scripts/verification/rust_config_test.sh",
+		".github/scripts/verification/source_policy_test.sh",
+		".github/scripts/verification_test.sh",
 		".github/scripts/windows-shellcheck.ps1",
 	}
 }
