@@ -30,8 +30,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"celestia.research/celestia/internal/operation/urlreference/transform"
 	"celestia.research/celestia/internal/operation/urlreference/protocol"
+	"celestia.research/celestia/internal/operation/urlreference/transform"
 )
 
 func invalidRecordFile(path string, info os.FileInfo) bool {

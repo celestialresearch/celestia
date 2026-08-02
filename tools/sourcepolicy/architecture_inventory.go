@@ -12,19 +12,8 @@
 package main
 
 import (
-	"crypto/sha256"
-	"fmt"
 	"slices"
-	"sort"
-	"strings"
 )
-
-func inventoryDigest(files []string) string {
-	values := slices.Clone(files)
-	sort.Strings(values)
-	digest := sha256.Sum256([]byte(strings.Join(values, "\n") + "\n"))
-	return fmt.Sprintf("%x", digest)
-}
 
 func equalStrings(actual, expected []string) bool {
 	return slices.Equal(actual, expected)
