@@ -27,10 +27,25 @@ families=(
   release_artefact_test.sh
 )
 
-if [[ "${CELESTIA_VERIFICATION_FIXTURE:-false}" == true ]]; then
+fixture_mode=${1:-}
+case "$fixture_mode" in
+"") ;;
+--fixture)
   family_dir=${CELESTIA_VERIFICATION_FAMILY_DIR:?}
   family_repo=${CELESTIA_VERIFICATION_FAMILY_REPO:?}
   family_prefix=${CELESTIA_VERIFICATION_FAMILY_PREFIX:?}
+  ;;
+*)
+  printf 'Usage: verification_test.sh [--fixture]\n' >&2
+  exit 2
+  ;;
+esac
+if [[ "$fixture_mode" != --fixture ]] &&
+  [[ -n "${CELESTIA_VERIFICATION_FAMILY_DIR+x}" ||
+    -n "${CELESTIA_VERIFICATION_FAMILY_REPO+x}" ||
+    -n "${CELESTIA_VERIFICATION_FAMILY_PREFIX+x}" ]]; then
+  printf 'verification family overrides require fixture mode\n' >&2
+  exit 2
 fi
 
 main() (
