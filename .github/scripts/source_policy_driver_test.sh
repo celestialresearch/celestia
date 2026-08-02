@@ -14,10 +14,18 @@ set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/source-policy-driver.XXXXXX")
+driver_pid=
+setup_pid=
 # shellcheck source=.github/scripts/verification/fixture.sh
 source "$root/.github/scripts/verification/fixture.sh"
 
 cleanup() {
+  if [[ -n "$setup_pid" ]]; then
+    kill -KILL -- "-$setup_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$driver_pid" ]]; then
+    terminate_child "$driver_pid"
+  fi
   rm -rf -- "$work"
 }
 trap cleanup EXIT
@@ -191,3 +199,69 @@ if [[ "$status" -ne 2 ]] ||
     "$output" >&2
   exit 1
 fi
+
+cat >"$source_policy_dir/setup.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%d\n' "$$" >"$CELESTIA_CANCELLATION_PROBE/setup-pid"
+(
+  trap '' TERM
+  while :; do sleep 1; done
+) &
+printf '%d\n' "$!" >"$CELESTIA_CANCELLATION_PROBE/setup-child-pid"
+while :; do sleep 1; done
+EOF
+chmod +x "$source_policy_dir/setup.sh"
+git -C "$source_policy_repo" add source-policy/setup.sh
+git -C "$source_policy_repo" update-index --chmod=+x source-policy/setup.sh
+cancellation_probe="$work/cancellation"
+mkdir -p "$cancellation_probe"
+CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+CELESTIA_CANCELLATION_PROBE="$cancellation_probe" \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null 2>&1 &
+driver_pid=$!
+attempt=0
+while [[ (! -s "$cancellation_probe/setup-pid" ||
+  ! -s "$cancellation_probe/setup-child-pid") && $attempt -lt 50 ]]; do
+  verification_process_running "$driver_pid" || break
+  sleep 0.1
+  attempt=$((attempt + 1))
+done
+if [[ ! -s "$cancellation_probe/setup-pid" ||
+  ! -s "$cancellation_probe/setup-child-pid" ]]; then
+  printf 'source-policy cancellation fixture did not start\n' >&2
+  exit 1
+fi
+setup_pid=$(cat "$cancellation_probe/setup-pid")
+setup_child_pid=$(cat "$cancellation_probe/setup-child-pid")
+kill -TERM "$driver_pid"
+attempt=0
+while verification_process_running "$driver_pid" && ((attempt < 50)); do
+  sleep 0.1
+  attempt=$((attempt + 1))
+done
+if verification_process_running "$driver_pid"; then
+  printf 'source-policy driver did not stop after cancellation\n' >&2
+  exit 1
+fi
+set +e
+wait "$driver_pid"
+status=$?
+set -e
+driver_pid=
+if [[ "$status" -ne 143 ]]; then
+  printf 'source-policy driver returned %d after cancellation\n' "$status" >&2
+  exit 1
+fi
+if verification_process_running "$setup_pid"; then
+  printf 'source-policy setup survived driver cancellation\n' >&2
+  exit 1
+fi
+if verification_process_running "$setup_child_pid"; then
+  printf 'source-policy setup descendant survived driver cancellation\n' >&2
+  exit 1
+fi
+setup_pid=

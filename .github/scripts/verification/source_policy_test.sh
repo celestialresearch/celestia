@@ -52,6 +52,64 @@ fi
 # shellcheck source=.github/scripts/verification/fixture.sh
 source "$script_dir/fixture.sh"
 
+active_script_pid=
+pending_signal=
+starting_script=
+
+active_script_running() {
+  kill -0 -- "-$active_script_pid" 2>/dev/null ||
+    kill -0 "$active_script_pid" 2>/dev/null
+}
+
+stop_active_script() {
+  local attempt
+  local signal_status=$1
+
+  if [[ -z "$active_script_pid" && -n "$starting_script" ]]; then
+    pending_signal=$signal_status
+    return
+  fi
+  trap - HUP INT TERM
+  if [[ -n "$active_script_pid" ]]; then
+    kill -TERM -- "-$active_script_pid" 2>/dev/null ||
+      kill -TERM "$active_script_pid" 2>/dev/null || true
+    attempt=0
+    while active_script_running && ((attempt < 40)); do
+      sleep 0.05
+      attempt=$((attempt + 1))
+    done
+    kill -KILL -- "-$active_script_pid" 2>/dev/null ||
+      kill -KILL "$active_script_pid" 2>/dev/null || true
+    wait "$active_script_pid" 2>/dev/null || true
+    active_script_pid=
+  fi
+  exit "$signal_status"
+}
+
+run_source_policy_script() {
+  local path=$1
+  local result
+  local work_dir=$2
+
+  starting_script=1
+  set -m
+  "$path" "$root" "$work_dir" &
+  active_script_pid=$!
+  set +m
+  starting_script=
+  if [[ -n "$pending_signal" ]]; then
+    result=$pending_signal
+    pending_signal=
+    stop_active_script "$result"
+  fi
+  set +e
+  wait "$active_script_pid"
+  result=$?
+  set -e
+  active_script_pid=
+  return "$result"
+}
+
 reject_extra_source() (
   local fixture_root
   local fixture_work
@@ -117,7 +175,7 @@ reject_extra_contract() (
   }
 )
 
-main() (
+main() {
   local executed
   local mode
   local path
@@ -126,9 +184,11 @@ main() (
 
   work_dir=$(new_verification_work verification-source-policy)
   executed="$work_dir/executed"
-  trap 'cleanup_verification "$work_dir"' EXIT
+  trap 'cleanup_verification '"$(printf '%q' "$work_dir")" EXIT
   trap '[[ $- != *e* ]] || printf "verification-source-policy failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
-  trap 'exit 1' HUP INT TERM
+  trap 'stop_active_script 129' HUP
+  trap 'stop_active_script 130' INT
+  trap 'stop_active_script 143' TERM
 
   printf '%s\n' "${scripts[@]/#/$script_prefix\/}" | LC_ALL=C sort \
     >"$work_dir/expected-scripts"
@@ -180,13 +240,13 @@ main() (
       printf 'source-policy script is unavailable: %s\n' "$script" >&2
       return 1
     fi
-    "$path" "$root" "$work_dir"
+    run_source_policy_script "$path" "$work_dir"
     printf '%s\n' "$script" >>"$executed"
   done
   if ! diff -u <(printf '%s\n' "${scripts[@]}") "$executed"; then
     printf 'source-policy scripts lacked ordered execution\n' >&2
     return 1
   fi
-)
+}
 
 main "$@"
