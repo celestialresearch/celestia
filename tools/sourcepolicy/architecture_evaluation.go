@@ -129,7 +129,11 @@ func splitDeclarationFindings(
 	if err != nil {
 		return nil, err
 	}
-	return append(attempt, supervision...), nil
+	operation, err := operationSplitDeclarationFindings(files, readFile)
+	if err != nil {
+		return nil, err
+	}
+	return append(append(attempt, supervision...), operation...), nil
 }
 
 func architectureFindingsFull(findings []string) bool {

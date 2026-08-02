@@ -104,11 +104,33 @@ func supervisionSplitInventoryFor(
 	readFile func(string) ([]byte, error),
 	owners map[string]string,
 ) (attemptSplitInventory, error) {
+	return ownedGoSplitInventoryFor(files, readFile, ownedGoSplitSpec{
+		directory: supervisionSplitDirectory,
+		packages:  []string{"supervision", "supervision_test"},
+		owners:    owners,
+		maxBytes:  maxSupervisionSplitBytes,
+		label:     "supervision",
+	})
+}
+
+type ownedGoSplitSpec struct {
+	directory string
+	packages  []string
+	owners    map[string]string
+	maxBytes  int
+	label     string
+}
+
+func ownedGoSplitInventoryFor(
+	files []string,
+	readFile func(string) ([]byte, error),
+	spec ownedGoSplitSpec,
+) (attemptSplitInventory, error) {
 	goFiles := slices.DeleteFunc(slices.Clone(files), func(file string) bool {
-		return !strings.HasPrefix(file, supervisionSplitDirectory)
+		return !strings.HasPrefix(file, spec.directory)
 	})
 	sort.Strings(goFiles)
-	if len(goFiles) != len(owners) {
+	if len(goFiles) != len(spec.owners) {
 		return attemptSplitInventory{
 			packages: hashInventory([]string{inventoryRecord("file-count", strconv.Itoa(len(goFiles)))}),
 		}, nil
@@ -118,20 +140,20 @@ func supervisionSplitInventoryFor(
 	targets := make([]string, 0, len(goFiles))
 	total := 0
 	for _, file := range goFiles {
-		name := strings.TrimPrefix(file, supervisionSplitDirectory)
-		owner, ok := owners[name]
+		name := strings.TrimPrefix(file, spec.directory)
+		owner, ok := spec.owners[name]
 		if !ok || path.Ext(file) != ".go" {
 			return attemptSplitInventory{
 				packages: hashInventory([]string{inventoryRecord("unexpected-file", file)}),
 			}, nil
 		}
-		inventory, err := supervisionSplitFileInventoryFor(file, owner, readFile)
+		inventory, err := ownedGoSplitFileInventoryFor(file, owner, readFile, spec)
 		if err != nil {
 			return attemptSplitInventory{}, err
 		}
 		total += inventory.bytes
-		if total > maxSupervisionSplitBytes {
-			return attemptSplitInventory{}, fmt.Errorf("supervision split source inventory exceeds bound")
+		if total > spec.maxBytes {
+			return attemptSplitInventory{}, fmt.Errorf("%s split source inventory exceeds bound", spec.label)
 		}
 		packages = append(packages, inventory.packages...)
 		sources = append(sources, inventory.sources...)
@@ -147,33 +169,34 @@ func supervisionSplitInventoryFor(
 	}, nil
 }
 
-func supervisionSplitFileInventoryFor(
+func ownedGoSplitFileInventoryFor(
 	file string,
 	owner string,
 	readFile func(string) ([]byte, error),
+	spec ownedGoSplitSpec,
 ) (attemptSplitFileInventory, error) {
 	source, err := readFile(file)
 	if err != nil {
 		return attemptSplitFileInventory{}, fmt.Errorf(
-			"read supervision split source %q: %w", file, quotedDiagnostic(err),
+			"read %s split source %q: %w", spec.label, file, quotedDiagnostic(err),
 		)
 	}
 	positions := token.NewFileSet()
 	parsed, err := parser.ParseFile(positions, strconv.Quote(file), source, parser.ParseComments)
 	if err != nil {
 		return attemptSplitFileInventory{}, fmt.Errorf(
-			"parse supervision split source %q: %w", file, quotedDiagnostic(err),
+			"parse %s split source %q: %w", spec.label, file, quotedDiagnostic(err),
 		)
 	}
-	if parsed.Name.Name != "supervision" && parsed.Name.Name != "supervision_test" {
+	if !slices.Contains(spec.packages, parsed.Name.Name) {
 		return attemptSplitFileInventory{}, fmt.Errorf(
-			"supervision split source %q uses package %s", file, parsed.Name.Name,
+			"%s split source %q uses package %s", spec.label, file, parsed.Name.Name,
 		)
 	}
 	build, err := goBuildConstraint(source, positions, parsed)
 	if err != nil {
 		return attemptSplitFileInventory{}, fmt.Errorf(
-			"parse supervision split build constraint %q: %w", file, quotedDiagnostic(err),
+			"parse %s split build constraint %q: %w", spec.label, file, quotedDiagnostic(err),
 		)
 	}
 	inventory := attemptSplitFileInventory{
