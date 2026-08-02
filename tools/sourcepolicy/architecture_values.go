@@ -48,6 +48,11 @@ func expectedRustPackages() []string {
 
 func expectedScripts() []string {
 	return []string{
+		".github/scripts/actioncheck/cache_test.sh",
+		".github/scripts/actioncheck/fixture.sh",
+		".github/scripts/actioncheck/inventory_test.sh",
+		".github/scripts/actioncheck/permissions_test.sh",
+		".github/scripts/actioncheck/remote_release_test.sh",
 		".github/scripts/actioncheck.sh", ".github/scripts/actioncheck_test.sh",
 		".github/scripts/changecheck.sh", ".github/scripts/changecheck_test.sh",
 		".github/scripts/coveragecheck.sh", ".github/scripts/currencycheck.sh",

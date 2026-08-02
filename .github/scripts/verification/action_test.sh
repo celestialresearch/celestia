@@ -28,6 +28,33 @@ status=0
 
 real_go=$(command -v go)
 bash "$root/.github/scripts/actioncheck_test.sh"
+family_repo="$work_dir/action-families"
+family_dir="$family_repo/families"
+mkdir -p "$family_dir"
+git -C "$family_repo" init -q
+git -C "$family_repo" config core.autocrlf false
+families='remote_release_test.sh
+cache_test.sh
+inventory_test.sh
+permissions_test.sh'
+while IFS= read -r family; do
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$family_dir/$family"
+  chmod +x "$family_dir/$family"
+done <<<"$families"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 9' \
+  >"$family_dir/inventory_test.sh"
+git -C "$family_repo" add -f families
+while IFS= read -r family; do
+  git -C "$family_repo" update-index --chmod=+x "families/$family"
+done <<<"$families"
+if CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1; then
+  printf 'action test driver accepted a failing family\n' >&2
+  return 1
+fi
 repo_dir="$work_dir/repo"
 mkdir -p "$repo_dir"
 tar -cf - -C "$root" \
