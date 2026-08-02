@@ -234,3 +234,70 @@ func TestAttemptPathRejectsFile(t *testing.T) {
 		t.Fatalf("attempt file: %v", err)
 	}
 }
+
+func TestReadRootedRejectsLinkedAncestor(t *testing.T) {
+	root, err := canonicalEvidenceRoot(t.TempDir())
+	if err != nil {
+		t.Fatalf("canonical root: %v", err)
+	}
+	record := Recovery{
+		Version:        Version,
+		AttemptID:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+		TerminalStatus: "indeterminate",
+		Reason:         "interrupted",
+	}
+	if err := writeRecord(root, recoveryFile, record); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	link := filepath.Join(t.TempDir(), "evidence-link")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatalf("create linked ancestor: %v", err)
+	}
+	if _, err := readRooted(link, recoveryFile); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("linked ancestor accepted: %v", err)
+	}
+}
+
+func TestNewRejectsLinkedRoot(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatalf("create target: %v", err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("create linked root: %v", err)
+	}
+	if _, err := New(link); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("linked root accepted: %v", err)
+	}
+}
+
+func TestCanonicalEvidenceRootRejectsInvalidPath(t *testing.T) {
+	if _, err := canonicalEvidenceRoot("invalid\x00path"); err == nil {
+		t.Fatal("invalid evidence root accepted")
+	}
+}
+
+func TestCanonicalEvidenceRootRejectsBrokenLink(t *testing.T) {
+	root := t.TempDir()
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(filepath.Join(root, "missing"), link); err != nil {
+		t.Fatalf("create broken link: %v", err)
+	}
+	if _, err := canonicalEvidenceRoot(filepath.Join(link, "child")); err == nil {
+		t.Fatal("broken-link root accepted")
+	}
+}
+
+func TestBundleValidationRejectsInvalidRoot(t *testing.T) {
+	if err := validateBundleFiles("invalid\x00path", observationFile, true); err == nil {
+		t.Fatal("invalid bundle root accepted")
+	}
+	file := filepath.Join(t.TempDir(), "bundle-file")
+	if err := os.WriteFile(file, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("write bundle file: %v", err)
+	}
+	if err := validateBundleFiles(file, observationFile, true); err == nil {
+		t.Fatal("bundle file accepted as a directory")
+	}
+}

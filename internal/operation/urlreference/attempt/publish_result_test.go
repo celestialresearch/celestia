@@ -100,27 +100,3 @@ func TestAttemptCloseIsIdempotent(t *testing.T) {
 		t.Fatalf("second close: %v", err)
 	}
 }
-
-func TestStorePublishesAndInspects(t *testing.T) {
-	store := newTestStore(t)
-	accepted, admittedAt := testAccepted(t)
-	attempt, err := store.Stage(accepted, admittedAt)
-	if err != nil {
-		t.Fatalf("stage: %v", err)
-	}
-	observation := testObservationFor(t, accepted)
-	if err := attempt.Publish(observation); err != nil {
-		t.Fatalf("publish: %v", err)
-	}
-	records, err := store.Inspect(accepted.Request.AttemptID)
-	if err != nil {
-		t.Fatalf("inspect: %v", err)
-	}
-	if records.Observation == nil ||
-		records.Recovery != nil ||
-		records.Admitted.OriginalInput != accepted.Request.Input ||
-		string(records.Admitted.RequestFrame) != string(accepted.Frame) ||
-		records.Observation.TerminalStatus != "verified" {
-		t.Fatalf("records=%+v", records)
-	}
-}

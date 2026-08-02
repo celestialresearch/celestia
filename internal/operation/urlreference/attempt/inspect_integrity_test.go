@@ -480,3 +480,21 @@ func TestHashHelpersRejectMissingAndMismatch(t *testing.T) {
 		t.Fatal("missing root accepted")
 	}
 }
+
+func TestReadRootedReportsPostInspectionOpenFailure(t *testing.T) {
+	t.Parallel()
+	root := protectedTestDirectory(t)
+	name := recoveryFile
+	if err := writeRecord(root, name, map[string]string{"value": "fixture"}); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	failure := errors.New("injected record open failure")
+	_, err := readRootedWith(
+		root,
+		name,
+		func(*os.Root, string) (*os.File, error) { return nil, failure },
+	)
+	if !errors.Is(err, failure) {
+		t.Fatalf("readRootedWith() error = %v", err)
+	}
+}

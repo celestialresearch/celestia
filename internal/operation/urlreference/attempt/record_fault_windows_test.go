@@ -16,6 +16,7 @@ package attemptstore
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"golang.org/x/sys/windows"
@@ -165,5 +166,31 @@ func TestCreateRecordTempClosesUnwrappedHandle(t *testing.T) {
 		operations,
 	); err == nil || !closed {
 		t.Fatalf("error = %v, closed = %t", err, closed)
+	}
+}
+
+func TestRecordTempRejectsMissingDirectory(t *testing.T) {
+	store := newTestStore(t)
+	temporary, err := createRecordTemp(store.root, "record.json")
+	if err != nil {
+		t.Fatalf("create protected record temporary file: %v", err)
+	}
+	name := temporary.Name()
+	t.Cleanup(func() { removeTestPath(t, name) })
+	if err := temporary.Close(); err != nil {
+		t.Fatalf("close protected record temporary file: %v", err)
+	}
+	if err := secureEvidenceFile(name); err != nil {
+		t.Fatalf("protected record temporary file rejected: %v", err)
+	}
+	_, err = createRecordTemp(filepath.Join(t.TempDir(), "missing"), "record.json")
+	if err == nil {
+		t.Fatal("record temporary file created in a missing directory")
+	}
+	if _, err := createRecordTemp("invalid\x00path", "record.json"); err == nil {
+		t.Fatal("record temporary file accepted an invalid path")
+	}
+	if err := createEvidenceDirectory(t.TempDir()); err == nil {
+		t.Fatal("existing evidence directory recreated")
 	}
 }

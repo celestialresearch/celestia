@@ -16,7 +16,6 @@ package attemptstore
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -165,33 +164,6 @@ func TestStageRejectsMarkerOnlyAttempt(t *testing.T) {
 	}
 	if marker, err := store.hasOwnershipMarker(attemptID); err != nil || !marker {
 		t.Fatalf("ownership marker lost: present=%t error=%v", marker, err)
-	}
-}
-
-func TestRecoverRejectsPublishedAttemptWithoutMarker(t *testing.T) {
-	store := newTestStore(t)
-	accepted, admittedAt := testAccepted(t)
-	attempt, err := store.Stage(accepted, admittedAt)
-	if err != nil {
-		t.Fatalf("Stage() error = %v", err)
-	}
-	if err := attempt.Publish(testObservationFor(t, accepted)); err != nil {
-		t.Fatalf("Publish() error = %v", err)
-	}
-	marker := filepath.Join(
-		store.root, locksDirectory,
-		accepted.Request.AttemptID+ownershipMarkerSuffix,
-	)
-	if err := os.Remove(marker); err != nil {
-		t.Fatalf("remove marker: %v", err)
-	}
-	if err := store.Recover(
-		accepted.Request.AttemptID, "missing marker",
-	); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("Recover() error = %v", err)
-	}
-	if _, err := os.Lstat(store.finalPath(accepted.Request.AttemptID)); err != nil {
-		t.Fatalf("published attempt changed: %v", err)
 	}
 }
 

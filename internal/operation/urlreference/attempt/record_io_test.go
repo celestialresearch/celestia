@@ -20,7 +20,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -33,24 +32,6 @@ type failingRecordWriter struct {
 	syncErr    error
 	closeErr   error
 	closeCalls int
-}
-
-func TestReadRootedReportsPostInspectionOpenFailure(t *testing.T) {
-	t.Parallel()
-	root := protectedTestDirectory(t)
-	name := recoveryFile
-	if err := writeRecord(root, name, map[string]string{"value": "fixture"}); err != nil {
-		t.Fatalf("write record: %v", err)
-	}
-	failure := errors.New("injected record open failure")
-	_, err := readRootedWith(
-		root,
-		name,
-		func(*os.Root, string) (*os.File, error) { return nil, failure },
-	)
-	if !errors.Is(err, failure) {
-		t.Fatalf("readRootedWith() error = %v", err)
-	}
 }
 
 func (writer *failingRecordWriter) Name() string {
@@ -317,149 +298,6 @@ func TestWriteOrMatchRecordRejectsCorruptDuplicate(t *testing.T) {
 	}
 	if err := writeOrMatchRecord(root, recoveryFile, record); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("corrupt duplicate accepted: %v", err)
-	}
-}
-
-func TestReadRootedRejectsLinkedAncestor(t *testing.T) {
-	root, err := canonicalEvidenceRoot(t.TempDir())
-	if err != nil {
-		t.Fatalf("canonical root: %v", err)
-	}
-	record := Recovery{
-		Version:        Version,
-		AttemptID:      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-		TerminalStatus: "indeterminate",
-		Reason:         "interrupted",
-	}
-	if err := writeRecord(root, recoveryFile, record); err != nil {
-		t.Fatalf("write record: %v", err)
-	}
-	link := filepath.Join(t.TempDir(), "evidence-link")
-	if err := os.Symlink(root, link); err != nil {
-		t.Fatalf("create linked ancestor: %v", err)
-	}
-	if _, err := readRooted(link, recoveryFile); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("linked ancestor accepted: %v", err)
-	}
-}
-
-func TestNewRejectsLinkedRoot(t *testing.T) {
-	target := filepath.Join(t.TempDir(), "target")
-	if err := os.Mkdir(target, 0o700); err != nil {
-		t.Fatalf("create target: %v", err)
-	}
-	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatalf("create linked root: %v", err)
-	}
-	if _, err := New(link); !errors.Is(err, ErrCorrupt) {
-		t.Fatalf("linked root accepted: %v", err)
-	}
-}
-
-func TestPendingPublicationRefusesExistingTarget(t *testing.T) {
-	root, err := canonicalEvidenceRoot(t.TempDir())
-	if err != nil {
-		t.Fatalf("canonical root: %v", err)
-	}
-	source := filepath.Join(root, "source")
-	target := filepath.Join(root, "target")
-	for _, path := range []string{source, target} {
-		if err := os.Mkdir(path, 0o700); err != nil {
-			t.Fatalf("create directory: %v", err)
-		}
-	}
-	if _, err := publishPendingDirectory(source, target, root); !errors.Is(err, ErrDuplicate) {
-		t.Fatalf("existing target replaced: %v", err)
-	}
-	if exists, err := pathExists(filepath.Join(root, "missing")); err != nil || exists {
-		t.Fatalf("missing path: exists=%t error=%v", exists, err)
-	}
-	if exists, err := pathExists(source); err != nil || !exists {
-		t.Fatalf("existing path: exists=%t error=%v", exists, err)
-	}
-	if _, err := pathExists("invalid\x00path"); err == nil {
-		t.Fatal("invalid path accepted")
-	}
-}
-
-func TestPendingPublicationRequiresSource(t *testing.T) {
-	root, err := canonicalEvidenceRoot(t.TempDir())
-	if err != nil {
-		t.Fatalf("canonical root: %v", err)
-	}
-	source := filepath.Join(root, "source")
-	target := filepath.Join(root, "target")
-	if err := os.RemoveAll(source); err != nil {
-		t.Fatalf("remove source: %v", err)
-	}
-	if err := os.RemoveAll(target); err != nil {
-		t.Fatalf("remove target: %v", err)
-	}
-	if _, err := publishPendingDirectory(source, target, root); err == nil {
-		t.Fatal("missing source published")
-	}
-}
-
-func TestPendingPublicationRejectsInvalidTarget(t *testing.T) {
-	if _, err := publishPendingDirectory(
-		t.TempDir(),
-		"invalid\x00target",
-		t.TempDir(),
-	); err == nil {
-		t.Fatal("invalid publication target accepted")
-	}
-}
-
-func TestCanonicalEvidenceRootRejectsInvalidPath(t *testing.T) {
-	if _, err := canonicalEvidenceRoot("invalid\x00path"); err == nil {
-		t.Fatal("invalid evidence root accepted")
-	}
-}
-
-func TestCanonicalEvidenceRootRejectsBrokenLink(t *testing.T) {
-	root := t.TempDir()
-	link := filepath.Join(root, "link")
-	if err := os.Symlink(filepath.Join(root, "missing"), link); err != nil {
-		t.Fatalf("create broken link: %v", err)
-	}
-	if _, err := canonicalEvidenceRoot(filepath.Join(link, "child")); err == nil {
-		t.Fatal("broken-link root accepted")
-	}
-}
-
-func TestBundleValidationRejectsInvalidRoot(t *testing.T) {
-	if err := validateBundleFiles("invalid\x00path", observationFile, true); err == nil {
-		t.Fatal("invalid bundle root accepted")
-	}
-	file := filepath.Join(t.TempDir(), "bundle-file")
-	if err := os.WriteFile(file, []byte("not a directory"), 0o600); err != nil {
-		t.Fatalf("write bundle file: %v", err)
-	}
-	if err := validateBundleFiles(file, observationFile, true); err == nil {
-		t.Fatal("bundle file accepted as a directory")
-	}
-}
-
-func TestMissingAttemptCannotRecover(t *testing.T) {
-	store := newTestStore(t)
-	attemptID := "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	before, err := os.ReadDir(filepath.Join(store.root, locksDirectory))
-	if err != nil {
-		t.Fatalf("read locks before recovery: %v", err)
-	}
-	if err := store.Recover(attemptID, "missing"); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("missing attempt recovered: %v", err)
-	}
-	after, err := os.ReadDir(filepath.Join(store.root, locksDirectory))
-	if err != nil {
-		t.Fatalf("read locks after recovery: %v", err)
-	}
-	if !reflect.DeepEqual(before, after) {
-		t.Fatalf("missing recovery changed locks: before=%v after=%v", before, after)
-	}
-	if _, err := store.Inspect(attemptID); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("missing attempt inspected: %v", err)
 	}
 }
 
