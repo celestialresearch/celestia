@@ -27,7 +27,7 @@ import (
 	"unsafe"
 
 	"celestia.research/celestia/internal/attemptstore"
-	"celestia.research/celestia/internal/processsupervision"
+	"celestia.research/celestia/internal/execution/supervision"
 	"celestia.research/celestia/internal/urladmission"
 	"celestia.research/celestia/internal/urlreferencev1"
 	"celestia.research/celestia/internal/workerprotocolv1"
@@ -256,8 +256,8 @@ func TestObservationPreservesProcessFailure(t *testing.T) {
 	result := Result{
 		Status:    Failed,
 		AttemptID: "attempt",
-		Process: processsupervision.Outcome{
-			Status: processsupervision.ExitFailed,
+		Process: supervision.Outcome{
+			Status: supervision.ExitFailed,
 			Err:    context.Canceled,
 		},
 		Err: ErrProtocol,
@@ -287,8 +287,8 @@ func TestObservationMapsProtocolState(t *testing.T) {
 		{
 			name: "rejected",
 			result: Result{
-				Process: processsupervision.Outcome{
-					Status: processsupervision.Completed,
+				Process: supervision.Outcome{
+					Status: supervision.Completed,
 				},
 				Err: ErrProtocol,
 			},
@@ -358,8 +358,8 @@ func TestOperationPublishesCallerDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
-	process := processsupervision.Outcome{
-		Status:          processsupervision.Cancelled,
+	process := supervision.Outcome{
+		Status:          supervision.Cancelled,
 		Err:             context.DeadlineExceeded,
 		CleanupComplete: true,
 		Duration:        time.Nanosecond,
@@ -378,7 +378,7 @@ func TestOperationPublishesCallerDeadline(t *testing.T) {
 		t.Fatalf("inspect: %v", err)
 	}
 	if records.Observation == nil ||
-		records.Observation.ProcessStatus != string(processsupervision.Cancelled) ||
+		records.Observation.ProcessStatus != string(supervision.Cancelled) ||
 		records.Observation.TerminalStatus != string(TimedOut) {
 		t.Fatalf("records=%+v", records)
 	}
@@ -386,17 +386,17 @@ func TestOperationPublishesCallerDeadline(t *testing.T) {
 
 func TestTerminalStatusPreservesPrimaryOutcomeDuringCleanupFailure(t *testing.T) {
 	tests := []struct {
-		status processsupervision.Status
+		status supervision.Status
 		err    error
 		want   Status
 	}{
-		{status: processsupervision.TimedOut, err: context.DeadlineExceeded, want: TimedOut},
-		{status: processsupervision.Cancelled, err: context.Canceled, want: Cancelled},
-		{status: processsupervision.ExitFailed, err: errors.New("process failed"), want: Failed},
-		{status: processsupervision.Completed, err: errors.New("cleanup failed"), want: Failed},
+		{status: supervision.TimedOut, err: context.DeadlineExceeded, want: TimedOut},
+		{status: supervision.Cancelled, err: context.Canceled, want: Cancelled},
+		{status: supervision.ExitFailed, err: errors.New("process failed"), want: Failed},
+		{status: supervision.Completed, err: errors.New("cleanup failed"), want: Failed},
 	}
 	for _, test := range tests {
-		process := processsupervision.Outcome{
+		process := supervision.Outcome{
 			Status:          test.status,
 			CleanupComplete: false,
 			Err:             test.err,
@@ -434,7 +434,7 @@ func TestOperationPublishesProcessFailure(t *testing.T) {
 		"https://partial.test",
 		urlreference.Defang,
 	)
-	if result.Status != Failed || result.Process.Status != processsupervision.ExitFailed {
+	if result.Status != Failed || result.Process.Status != supervision.ExitFailed {
 		t.Fatalf("result=%+v", result)
 	}
 	records, err := operation.store.Inspect(result.AttemptID)
@@ -455,7 +455,7 @@ func TestOperationRejectsMalformedProtocol(t *testing.T) {
 	accepted := admittedFixture(t, admittedAt)
 	accepted.Frame = []byte("malformed")
 	result, _ := operation.executeAccepted(context.Background(), accepted, admittedAt)
-	if result.Status != Failed || result.Process.Status != processsupervision.Completed {
+	if result.Status != Failed || result.Process.Status != supervision.Completed {
 		t.Fatalf("result=%+v", result)
 	}
 }
@@ -470,7 +470,7 @@ func TestOperationPublishesProtocolFailure(t *testing.T) {
 		"https://malformed.test",
 		urlreference.Defang,
 	)
-	if result.Status != Failed || result.Process.Status != processsupervision.Completed {
+	if result.Status != Failed || result.Process.Status != supervision.Completed {
 		t.Fatalf("result=%+v", result)
 	}
 }
@@ -480,21 +480,21 @@ func TestOperationRecordsValidWorkerFailure(t *testing.T) {
 		name          string
 		input         string
 		status        workerprotocol.Status
-		processStatus processsupervision.Status
+		processStatus supervision.Status
 		exitCode      uint32
 	}{
 		{
 			name:          "rejected",
 			input:         "https://rejected.test",
 			status:        workerprotocol.Rejected,
-			processStatus: processsupervision.Completed,
+			processStatus: supervision.Completed,
 			exitCode:      2,
 		},
 		{
 			name:          "failed",
 			input:         "https://failed.test",
 			status:        workerprotocol.Failed,
-			processStatus: processsupervision.ExitFailed,
+			processStatus: supervision.ExitFailed,
 			exitCode:      3,
 		},
 	}
@@ -522,7 +522,7 @@ func TestOperationRecordsValidWorkerFailure(t *testing.T) {
 func assertWorkerFailure(t *testing.T, result Result, status workerprotocol.Status) {
 	t.Helper()
 	if result.Status != Failed ||
-		result.Process.Status != processsupervision.Completed ||
+		result.Process.Status != supervision.Completed ||
 		len(result.Process.Stdout) != 0 ||
 		len(result.Process.Stderr) != 0 ||
 		result.Response == nil ||
@@ -611,7 +611,7 @@ func TestProjectDiagnostics(t *testing.T) {
 func assertWorkerFailureEvidence(
 	t *testing.T,
 	records attemptstore.Records,
-	processStatus processsupervision.Status,
+	processStatus supervision.Status,
 	exitCode uint32,
 ) {
 	t.Helper()
@@ -623,11 +623,11 @@ func assertWorkerFailureEvidence(
 		records.Observation.TerminalStatus != string(Failed) {
 		t.Fatalf("records=%+v", records)
 	}
-	if processStatus == processsupervision.ExitFailed &&
+	if processStatus == supervision.ExitFailed &&
 		records.Observation.ProcessError == "" {
 		t.Fatalf("failed worker omitted process error: %+v", records.Observation)
 	}
-	if processStatus == processsupervision.Completed &&
+	if processStatus == supervision.Completed &&
 		records.Observation.ProcessError != "" {
 		t.Fatalf("rejected worker recorded process error: %+v", records.Observation)
 	}
@@ -858,11 +858,11 @@ func TestUnexpectedPublishErrorIsIndeterminate(t *testing.T) {
 }
 
 func TestUnknownProcessStatusFails(t *testing.T) {
-	if status := terminalStatus(processsupervision.Outcome{}); status != Failed {
+	if status := terminalStatus(supervision.Outcome{}); status != Failed {
 		t.Fatalf("terminal status=%q, want %q", status, Failed)
 	}
-	process := processsupervision.Outcome{
-		Status: processsupervision.StartFailed,
+	process := supervision.Outcome{
+		Status: supervision.StartFailed,
 		Err:    errors.New("native start failure"),
 	}
 	if status := terminalStatus(process); status != Failed {

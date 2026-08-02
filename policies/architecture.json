@@ -1,6 +1,6 @@
 {
   "schema_version": "celestia.production.architecture.v1",
-  "current_slice": "CEL-STRUCT-001",
+  "current_slice": "CEL-STRUCT-003",
   "base_commit": "ea8f840aa230f0498f82f3cd00dca22760cf6020",
   "module_path": "celestia.research/celestia",
   "inventory_format": "sha256-lf-paths-v1",
@@ -60,7 +60,7 @@
   ],
   "declared_packages": [
     "internal/attemptstore",
-    "internal/processsupervision",
+    "internal/execution/supervision",
     "internal/urladmission",
     "internal/urloperation",
     "internal/urlreferencev1",
@@ -166,37 +166,6 @@
       ]
     },
     {
-      "path": "internal/processsupervision",
-      "inventory_count": 19,
-      "inventory_sha256": "6f3533b58c7efd95e2948ebaf8f6fa956b81454204f15ac29520086cecc87fe8",
-      "destination": "internal/execution/supervision",
-      "migration_slice": "CEL-STRUCT-003",
-      "reason": "Process supervision remains at its pre-constitution path until its path-only move",
-      "expires_at_completion": "CEL-STRUCT-003",
-      "allow_new_files": false,
-      "inventory_paths": [
-        "internal/processsupervision/container_fault_windows_test.go",
-        "internal/processsupervision/image_windows.go",
-        "internal/processsupervision/image_windows_test.go",
-        "internal/processsupervision/launch_fault_windows_test.go",
-        "internal/processsupervision/native_errors_windows_test.go",
-        "internal/processsupervision/native_fault_windows_test.go",
-        "internal/processsupervision/native_pointer_windows.go",
-        "internal/processsupervision/native_test_helpers_windows_test.go",
-        "internal/processsupervision/native_windows.go",
-        "internal/processsupervision/observation_windows.go",
-        "internal/processsupervision/observation_windows_test.go",
-        "internal/processsupervision/runtime_windows.go",
-        "internal/processsupervision/stream_windows.go",
-        "internal/processsupervision/supervisor.go",
-        "internal/processsupervision/supervisor_unsupported.go",
-        "internal/processsupervision/supervisor_unsupported_test.go",
-        "internal/processsupervision/supervisor_windows.go",
-        "internal/processsupervision/supervisor_windows_test.go",
-        "internal/processsupervision/timing_windows.go"
-      ]
-    },
-    {
       "path": "internal/urladmission",
       "inventory_count": 2,
       "inventory_sha256": "7f3df87edbfd1b3f0a79f8778bf495b45ec31a806b73a9c9f34280131e00bbf5",
@@ -260,5 +229,7 @@
       ]
     }
   ],
-  "retired_migration_paths": []
+  "retired_migration_paths": [
+    "internal/processsupervision"
+  ]
 }

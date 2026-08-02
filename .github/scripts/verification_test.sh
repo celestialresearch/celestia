@@ -541,6 +541,7 @@ EOF
     "$work_dir/tools/sourcepolicy/"
   cp "$root/docs/contracts/governed_url_reference_v1.json" \
     "$root/docs/contracts/cel_struct_001.json" \
+    "$root/docs/contracts/cel_struct_003.json" \
     "$work_dir/docs/contracts/"
 
   architecture_dir="$work_dir/architecture-repo"
@@ -763,7 +764,8 @@ EOF
     cd "$work_dir"
     go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
   )
-  for manifest in governed_url_reference_v1.json cel_struct_001.json; do
+  for manifest in governed_url_reference_v1.json cel_struct_001.json \
+    cel_struct_003.json; do
     printf '\n' >>"$work_dir/docs/contracts/$manifest"
     set +e
     output=$(cd "$work_dir" &&

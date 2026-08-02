@@ -300,18 +300,18 @@ run_case production-assurance-reject internal/example/example.go \
 run_case production-worker-reject internal/example/example.go \
   celestia.research/celestia/worker/url-reference reject \
   'Production runtime must not import worker source'
-run_case execution-allow internal/processsupervision/example.go fmt pass ''
-run_case execution-reject internal/processsupervision/example.go \
+run_case execution-allow internal/execution/supervision/example.go fmt pass ''
+run_case execution-reject internal/execution/supervision/example.go \
   celestia.research/celestia/internal/urloperation reject \
   'execution packages must not import operation packages'
-run_case execution-test-reject internal/processsupervision/rogue_test.go \
+run_case execution-test-reject internal/execution/supervision/rogue_test.go \
   celestia.research/celestia/internal/urloperation reject \
   'execution packages must not import operation packages'
 run_case execution-integration-allow \
-  internal/processsupervision/supervisor_windows_test.go \
+  internal/execution/supervision/supervisor_windows_test.go \
   celestia.research/celestia/internal/urladmission pass ''
 run_case execution-integration-reject \
-  internal/processsupervision/supervisor_windows_test.go \
+  internal/execution/supervision/supervisor_windows_test.go \
   celestia.research/celestia/internal/urloperation reject \
   'supervision qualification test imports only declared dependencies'
 run_case command-allow cmd/example/main.go \
@@ -327,11 +327,11 @@ run_case operation-reject internal/urloperation/example.go \
 run_case attempt-allow internal/attemptstore/example.go \
   celestia.research/celestia/internal/workerprotocolv1 pass ''
 run_case attempt-reject internal/attemptstore/example.go \
-  celestia.research/celestia/internal/processsupervision reject \
+  celestia.research/celestia/internal/execution/supervision reject \
   'attempt evidence imports only lower URL-reference owners'
 run_case final-attempt-reject \
   internal/operation/urlreference/attempt/example.go \
-  celestia.research/celestia/internal/processsupervision reject \
+  celestia.research/celestia/internal/execution/supervision reject \
   'attempt evidence imports only lower URL-reference owners'
 run_case admission-allow internal/urladmission/example.go \
   celestia.research/celestia/internal/workerprotocolv1 pass ''
@@ -353,11 +353,11 @@ run_case final-protocol-reject \
   'protocol imports only transformation'
 run_case transform-allow internal/urlreferencev1/example.go fmt pass ''
 run_case transform-reject internal/urlreferencev1/example.go \
-  celestia.research/celestia/internal/processsupervision reject \
+  celestia.research/celestia/internal/execution/supervision reject \
   'transformation must not import other Production internals'
 run_case final-transform-reject \
   internal/operation/urlreference/transform/example.go \
-  celestia.research/celestia/internal/processsupervision reject \
+  celestia.research/celestia/internal/execution/supervision reject \
   'transformation must not import other Production internals'
 
 wait_cases
