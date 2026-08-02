@@ -73,7 +73,7 @@ func TestArchitectureSourceOwnership(t *testing.T) {
 		file string
 		want bool
 	}{
-		"declared internal":   {file: "internal/operation/urlreference/attempt/native.c"},
+		"undeclared attempt":  {file: "internal/operation/urlreference/attempt/native.c", want: true},
 		"declared Java":       {file: "tools/sourcepolicy/Main.java"},
 		"declared worker":     {file: "worker/url-reference/data.bin"},
 		"command data":        {file: "cmd/rogue/data.json", want: true},

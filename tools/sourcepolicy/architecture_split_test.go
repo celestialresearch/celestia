@@ -55,6 +55,38 @@ func TestArchitectureRejectsUndeclaredSplitSource(t *testing.T) {
 	assertSplitFinding(t, files, "undeclared split source")
 }
 
+func TestArchitectureRejectsObsoleteAttemptSource(t *testing.T) {
+	t.Parallel()
+
+	assertSplitFinding(t, []string{
+		"internal/operation/urlreference/attempt/publication_test.go",
+	}, "obsolete split source")
+}
+
+func TestArchitectureRequiresAttemptSplitDestination(t *testing.T) {
+	t.Parallel()
+
+	files := expectedSplitFiles()
+	files = slices.DeleteFunc(files, func(file string) bool {
+		return file == "internal/operation/urlreference/attempt/recover.go"
+	})
+	findings := missingSplitSourceFindings(files)
+	if !slices.ContainsFunc(findings, func(finding string) bool {
+		return strings.Contains(finding, "required split source is missing")
+	}) {
+		t.Fatalf("findings = %v, want missing attempt destination", findings)
+	}
+}
+
+func TestArchitectureRejectsUndeclaredAttemptSource(t *testing.T) {
+	t.Parallel()
+
+	files := append(expectedSplitFiles(),
+		"internal/operation/urlreference/attempt/misc.go",
+	)
+	assertSplitFinding(t, files, "undeclared split source")
+}
+
 func assertSplitFinding(t *testing.T, files []string, fragment string) {
 	t.Helper()
 	findings := architecturePathFindings(
@@ -68,7 +100,7 @@ func assertSplitFinding(t *testing.T, files []string, fragment string) {
 }
 
 func expectedSplitFiles() []string {
-	return []string{
+	files := []string{
 		"internal/operation/urlreference/transform/benchmark_test.go",
 		"internal/operation/urlreference/transform/conformance_test.go",
 		"internal/operation/urlreference/transform/doc.go",
@@ -98,5 +130,82 @@ func expectedSplitFiles() []string {
 		"worker/url-reference/src/tests/response.rs",
 		"worker/url-reference/src/tests/transform.rs",
 		"worker/url-reference/src/transform.rs",
+	}
+	return append(files, expectedAttemptSplitFiles()...)
+}
+
+func expectedAttemptSplitFiles() []string {
+	return []string{
+		"internal/operation/urlreference/attempt/acl_fault_windows_test.go",
+		"internal/operation/urlreference/attempt/acl_windows.go",
+		"internal/operation/urlreference/attempt/acl_windows_test.go",
+		"internal/operation/urlreference/attempt/admitted_binding_test.go",
+		"internal/operation/urlreference/attempt/contract.go",
+		"internal/operation/urlreference/attempt/decision_invariants_test.go",
+		"internal/operation/urlreference/attempt/doc.go",
+		"internal/operation/urlreference/attempt/fail_closed_test.go",
+		"internal/operation/urlreference/attempt/identity_test.go",
+		"internal/operation/urlreference/attempt/inspect.go",
+		"internal/operation/urlreference/attempt/inspect_integrity_test.go",
+		"internal/operation/urlreference/attempt/inspect_test.go",
+		"internal/operation/urlreference/attempt/inspection_concurrency_test.go",
+		"internal/operation/urlreference/attempt/lock.go",
+		"internal/operation/urlreference/attempt/lock_fail_closed_test.go",
+		"internal/operation/urlreference/attempt/lock_fault_injection_windows_test.go",
+		"internal/operation/urlreference/attempt/lock_root.go",
+		"internal/operation/urlreference/attempt/lock_root_test.go",
+		"internal/operation/urlreference/attempt/lock_test.go",
+		"internal/operation/urlreference/attempt/lock_windows.go",
+		"internal/operation/urlreference/attempt/lock_windows_test.go",
+		"internal/operation/urlreference/attempt/observation_validation.go",
+		"internal/operation/urlreference/attempt/observation_validation_test.go",
+		"internal/operation/urlreference/attempt/ownership.go",
+		"internal/operation/urlreference/attempt/ownership_test.go",
+		"internal/operation/urlreference/attempt/paths.go",
+		"internal/operation/urlreference/attempt/paths_fault_test.go",
+		"internal/operation/urlreference/attempt/platform.go",
+		"internal/operation/urlreference/attempt/publish.go",
+		"internal/operation/urlreference/attempt/publish_fault_windows_test.go",
+		"internal/operation/urlreference/attempt/publish_result_test.go",
+		"internal/operation/urlreference/attempt/publish_test.go",
+		"internal/operation/urlreference/attempt/publish_windows.go",
+		"internal/operation/urlreference/attempt/publish_windows_test.go",
+		"internal/operation/urlreference/attempt/record.go",
+		"internal/operation/urlreference/attempt/record_fault_windows_test.go",
+		"internal/operation/urlreference/attempt/record_fuzz_test.go",
+		"internal/operation/urlreference/attempt/record_io.go",
+		"internal/operation/urlreference/attempt/record_io_test.go",
+		"internal/operation/urlreference/attempt/record_name.go",
+		"internal/operation/urlreference/attempt/record_name_test.go",
+		"internal/operation/urlreference/attempt/record_recovery_windows_test.go",
+		"internal/operation/urlreference/attempt/record_validation.go",
+		"internal/operation/urlreference/attempt/record_validation_test.go",
+		"internal/operation/urlreference/attempt/record_windows.go",
+		"internal/operation/urlreference/attempt/recover.go",
+		"internal/operation/urlreference/attempt/recovery_cleanup_test.go",
+		"internal/operation/urlreference/attempt/recovery_fault_test.go",
+		"internal/operation/urlreference/attempt/recovery_interruption_windows_test.go",
+		"internal/operation/urlreference/attempt/recovery_test.go",
+		"internal/operation/urlreference/attempt/repair_fault_windows_test.go",
+		"internal/operation/urlreference/attempt/repair_windows.go",
+		"internal/operation/urlreference/attempt/request_v1.go",
+		"internal/operation/urlreference/attempt/request_v1_test.go",
+		"internal/operation/urlreference/attempt/root.go",
+		"internal/operation/urlreference/attempt/root_fault_test.go",
+		"internal/operation/urlreference/attempt/root_parent_windows.go",
+		"internal/operation/urlreference/attempt/root_path_windows.go",
+		"internal/operation/urlreference/attempt/root_path_windows_test.go",
+		"internal/operation/urlreference/attempt/stage.go",
+		"internal/operation/urlreference/attempt/staging_fault_windows_test.go",
+		"internal/operation/urlreference/attempt/staging_test.go",
+		"internal/operation/urlreference/attempt/store.go",
+		"internal/operation/urlreference/attempt/store_fault_test.go",
+		"internal/operation/urlreference/attempt/store_test.go",
+		"internal/operation/urlreference/attempt/store_unsupported.go",
+		"internal/operation/urlreference/attempt/store_unsupported_test.go",
+		"internal/operation/urlreference/attempt/terminal.go",
+		"internal/operation/urlreference/attempt/terminal_fault_test.go",
+		"internal/operation/urlreference/attempt/transition.go",
+		"internal/operation/urlreference/attempt/transition_test.go",
 	}
 }

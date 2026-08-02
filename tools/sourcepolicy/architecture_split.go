@@ -42,6 +42,36 @@ func splitDirectories() []splitDirectory {
 				"transform.rs",
 			},
 		},
+		{
+			path: "internal/operation/urlreference/attempt",
+			files: []string{
+				"acl_fault_windows_test.go", "acl_windows.go", "acl_windows_test.go",
+				"admitted_binding_test.go",
+				"contract.go", "decision_invariants_test.go", "doc.go", "fail_closed_test.go",
+				"identity_test.go", "inspect.go", "inspect_integrity_test.go", "inspect_test.go",
+				"inspection_concurrency_test.go", "lock.go", "lock_fail_closed_test.go",
+				"lock_fault_injection_windows_test.go", "lock_root.go", "lock_root_test.go",
+				"lock_test.go", "lock_windows.go", "lock_windows_test.go",
+				"observation_validation.go", "observation_validation_test.go", "ownership.go",
+				"ownership_test.go", "paths.go", "paths_fault_test.go", "platform.go",
+				"publish.go", "publish_fault_windows_test.go", "publish_result_test.go",
+				"publish_test.go", "publish_windows.go", "publish_windows_test.go", "record.go",
+				"record_fault_windows_test.go", "record_fuzz_test.go", "record_io.go",
+				"record_io_test.go", "record_name.go", "record_name_test.go",
+				"record_recovery_windows_test.go", "record_validation.go",
+				"record_validation_test.go", "record_windows.go", "recover.go",
+				"recovery_cleanup_test.go", "recovery_fault_test.go",
+				"recovery_interruption_windows_test.go", "recovery_test.go",
+				"repair_fault_windows_test.go", "repair_windows.go", "request_v1.go",
+				"request_v1_test.go", "root.go",
+				"root_fault_test.go", "root_parent_windows.go", "root_path_windows.go",
+				"root_path_windows_test.go", "stage.go", "staging_fault_windows_test.go",
+				"staging_test.go", "store.go", "store_fault_test.go", "store_test.go",
+				"store_unsupported.go", "store_unsupported_test.go", "terminal.go",
+				"terminal_fault_test.go",
+				"transition.go", "transition_test.go",
+			},
+		},
 	}
 }
 
@@ -53,6 +83,9 @@ func splitSourcePathFindings(files []string) []string {
 		"worker/url-reference/src/tests.rs",
 		"worker/url-reference/src/protocol.rs",
 		"worker/url-reference/src/tests/protocol.rs",
+		"internal/operation/urlreference/attempt/publication_test.go",
+		"internal/operation/urlreference/attempt/records.go",
+		"internal/operation/urlreference/attempt/records_transition_test.go",
 	})
 	var findings []string
 	for _, file := range files {

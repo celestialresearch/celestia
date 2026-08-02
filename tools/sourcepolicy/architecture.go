@@ -311,6 +311,14 @@ func architectureFindings(
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
+	declarations, err := attemptSplitDeclarationFindings(files, readFile)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, declarations...)
+	if architectureFindingsFull(findings) {
+		return boundedArchitectureFindings(findings), nil
+	}
 	shebangs, err := architectureShebangFindings(files, policy.Scripts, readFile)
 	if err != nil {
 		return nil, err
