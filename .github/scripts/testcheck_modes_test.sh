@@ -40,7 +40,7 @@ chmod +x "$work/bin/go"
 cat >"$work/bin/testinventory" <<EOF
 #!/usr/bin/env bash
 if [[ "\$1" == go ]]; then
-  printf '%s\\n' 'fixture.invalid/test\tTestMustRun'
+  printf '%s\\t%s\\n' 'fixture.invalid/test' 'TestMustRun'
 else
   printf '%s\\t%s\\n' '$work/package' '$work/bin/rust-test'
 fi
