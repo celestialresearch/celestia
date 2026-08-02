@@ -55,6 +55,45 @@ func TestArchitectureFindingsAreBounded(t *testing.T) {
 	}
 }
 
+func TestArchitectureFindingsRetainOneTruncationMarker(t *testing.T) {
+	t.Parallel()
+
+	policy := validArchitectureFixturePolicy()
+	files := make([]string, maxArchitectureFindings+1)
+	for index := range files {
+		files[index] = "unapproved" + strconv.Itoa(index) + "/source.go"
+	}
+	findings, err := architectureFindings(
+		files,
+		nil,
+		policy,
+		func(path string) ([]byte, error) {
+			if path == "go.mod" {
+				return []byte("module celestia.research/celestia\n\ngo 1.26.5\n"), nil
+			}
+			return nil, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("architectureFindings() error = %v", err)
+	}
+	if len(findings) != maxArchitectureFindings+1 {
+		t.Fatalf("architectureFindings() returned %d findings", len(findings))
+	}
+	if findings[len(findings)-1] != architectureTruncated {
+		t.Fatalf("last finding = %q, want truncation marker", findings[len(findings)-1])
+	}
+	count := 0
+	for _, finding := range findings {
+		if finding == architectureTruncated {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("truncation marker count = %d, want 1", count)
+	}
+}
+
 func TestArchitectureErrorsAreBounded(t *testing.T) {
 	t.Parallel()
 

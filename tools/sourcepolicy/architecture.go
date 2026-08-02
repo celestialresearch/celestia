@@ -358,12 +358,16 @@ func architectureFindingsFull(findings []string) bool {
 }
 
 func boundedArchitectureFindings(findings []string) []string {
-	if !architectureFindingsFull(findings) {
+	bounded := slices.DeleteFunc(slices.Clone(findings), func(finding string) bool {
+		return finding == architectureTruncated
+	})
+	truncated := len(bounded) != len(findings) || architectureFindingsFull(bounded)
+	if !truncated {
 		return findings
 	}
-	ordered := slices.Clone(findings)
-	sort.Strings(ordered)
-	return append(ordered[:maxArchitectureFindings], architectureTruncated)
+	sort.Strings(bounded)
+	bounded = bounded[:min(len(bounded), maxArchitectureFindings)]
+	return append(bounded, architectureTruncated)
 }
 
 func validateCurrentModule(
