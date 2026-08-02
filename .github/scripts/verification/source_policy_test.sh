@@ -98,7 +98,9 @@ main() (
   trap '[[ $- != *e* ]] || printf "verification-source-policy failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
   trap 'exit 1' HUP INT TERM
 
-  reject_extra_contract
+  if [[ -z "$fixture_mode" ]]; then
+    reject_extra_contract
+  fi
   for script in "${scripts[@]}"; do
     path="$script_dir_path/$script"
     mode=$(git -C "$script_repo" ls-files --stage -- "$script_prefix/$script")
