@@ -47,10 +47,49 @@ while IFS= read -r family; do
   git -C "$verification_repo" update-index --chmod=+x \
     "verification/$family"
 done <<<"$families"
-CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
-  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
-  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
-  bash "$root/.github/scripts/verification_test.sh" --fixture >/dev/null
+initial_output="$work/initial-output"
+run_initial_driver() {
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+    CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+    CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+    bash "$root/.github/scripts/verification_test.sh" --fixture
+}
+case "$(uname -s 2>/dev/null)" in
+CYGWIN* | MINGW* | MSYS*)
+  if ! run_initial_driver >"$initial_output" 2>&1; then
+    printf 'verification driver rejected completed families:\n' >&2
+    cat "$initial_output" >&2
+    exit 1
+  fi
+  ;;
+*)
+  set -m
+  run_initial_driver >"$initial_output" 2>&1 &
+  initial_pid=$!
+  for ((attempt = 0; attempt < 200; attempt++)); do
+    verification_process_running "$initial_pid" || break
+    sleep 0.05
+  done
+  if verification_process_running "$initial_pid"; then
+    kill -KILL -- "-$initial_pid" 2>/dev/null || true
+    wait "$initial_pid" 2>/dev/null || true
+    set +m
+    printf 'verification driver did not join completed families:\n' >&2
+    cat "$initial_output" >&2
+    exit 1
+  fi
+  set +e
+  wait "$initial_pid"
+  initial_status=$?
+  set -e
+  set +m
+  if [[ "$initial_status" -ne 0 ]]; then
+    printf 'verification driver rejected completed families:\n' >&2
+    cat "$initial_output" >&2
+    exit 1
+  fi
+  ;;
+esac
 
 descendant_pid_file="$work/success-descendant.pid"
 descendant_later_marker="$work/success-descendant-later-ran"

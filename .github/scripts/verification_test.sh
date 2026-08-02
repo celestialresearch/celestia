@@ -106,11 +106,12 @@ job_owned() {
   local job_pid=
 
   [[ -n "$job" ]] || return 1
-  jobs -r -p "$job" >"$record" 2>/dev/null || true
-  if [[ ! -s "$record" ]]; then
-    jobs -s -p "$job" >"$record" 2>/dev/null || true
-  fi
-  IFS= read -r job_pid <"$record" || true
+  jobs -r -p >"$record" 2>/dev/null || true
+  jobs -s -p >>"$record" 2>/dev/null || true
+  while IFS= read -r job_pid; do
+    [[ "$job_pid" == "$pid" ]] && break
+    job_pid=
+  done <"$record"
   rm -f -- "$record"
   [[ "$job_pid" == "$pid" ]]
 }
