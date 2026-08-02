@@ -76,6 +76,119 @@ if ! cmp -s <(printf '%s\n' "$source_policy_scripts") "$source_policy_log"; then
   exit 1
 fi
 
+snapshot_checkpoint="$work/snapshot-checkpoint.sh"
+snapshot_fixture="$work/fixture.sh"
+snapshot_target="$work/snapshot-target.sh"
+cp -- "$root/.github/scripts/verification/fixture.sh" "$snapshot_fixture"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$snapshot_target"
+cat >"$snapshot_checkpoint" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+kind=$1
+path=$2
+[[ "$kind" == "$CELESTIA_SNAPSHOT_RACE_KIND" ]] || exit 0
+[[ "$path" == "$CELESTIA_SNAPSHOT_RACE_SOURCE" ]] || exit 0
+[[ ! -e "$CELESTIA_SNAPSHOT_RACE_MARKER" ]] || exit 0
+case "$CELESTIA_SNAPSHOT_RACE_MODE" in
+replace)
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$path"
+  ;;
+symlink)
+  rm -- "$path"
+  mv -- "$CELESTIA_SNAPSHOT_RACE_LINK" "$path"
+  ;;
+*) exit 2 ;;
+esac
+: >"$CELESTIA_SNAPSHOT_RACE_MARKER"
+EOF
+chmod +x "$snapshot_checkpoint" "$snapshot_target"
+for snapshot_kind in fixture script; do
+  for snapshot_mode in replace symlink; do
+    snapshot_marker="$work/snapshot-$snapshot_kind-$snapshot_mode-ran"
+    if [[ "$snapshot_kind" == fixture ]]; then
+      snapshot_source=$snapshot_fixture
+      snapshot_diagnostic='source-policy fixture changed during snapshot'
+    else
+      snapshot_source="$source_policy_dir/architecture.sh"
+      snapshot_diagnostic='source-policy script changed during snapshot: architecture.sh'
+    fi
+    snapshot_link_repo="$work/snapshot-$snapshot_kind-$snapshot_mode-link"
+    if [[ "$snapshot_mode" == symlink ]]; then
+      mkdir -- "$snapshot_link_repo"
+      git -C "$snapshot_link_repo" init -q
+      create_verification_symlink "$snapshot_link_repo" link.sh \
+        "$snapshot_target"
+    fi
+    set +e
+    output=$(CELESTIA_SNAPSHOT_RACE_KIND="$snapshot_kind" \
+      CELESTIA_SNAPSHOT_RACE_MARKER="$snapshot_marker" \
+      CELESTIA_SNAPSHOT_RACE_MODE="$snapshot_mode" \
+      CELESTIA_SNAPSHOT_RACE_SOURCE="$snapshot_source" \
+      CELESTIA_SNAPSHOT_RACE_LINK="$snapshot_link_repo/link.sh" \
+      CELESTIA_SOURCE_POLICY_FIXTURE_PATH="$snapshot_fixture" \
+      CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+      CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+      CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+      CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+      CELESTIA_SOURCE_POLICY_SNAPSHOT_CHECKPOINT="$snapshot_checkpoint" \
+      bash "$root/.github/scripts/verification/source_policy_test.sh" \
+        --fixture 2>&1)
+    status=$?
+    set -e
+    if [[ ! -e "$snapshot_marker" ]]; then
+      printf 'source-policy %s %s snapshot race did not execute\n' \
+        "$snapshot_kind" "$snapshot_mode" >&2
+      exit 1
+    fi
+    if [[ "$status" -eq 0 || "$output" != *"$snapshot_diagnostic"* ]]; then
+      printf 'source-policy accepted a %s %s snapshot race:\n%s\n' \
+        "$snapshot_kind" "$snapshot_mode" "$output" >&2
+      exit 1
+    fi
+    if [[ "$snapshot_kind" == fixture ]]; then
+      rm -f -- "$snapshot_fixture"
+      cp -- "$root/.github/scripts/verification/fixture.sh" "$snapshot_fixture"
+    else
+      rm -f -- "$source_policy_dir/architecture.sh"
+      git -C "$source_policy_repo" checkout -- source-policy/architecture.sh
+    fi
+  done
+done
+
+double_rewrite_marker="$work/double-rewrite-ran"
+cat >"$source_policy_dir/setup.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$(basename -- "$0")" >>"$CELESTIA_SOURCE_POLICY_LOG"
+mkdir -p -- "$2/bindings"
+cat >"$2/driver/source_policy/architecture.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+: >"$CELESTIA_SOURCE_POLICY_DOUBLE_REWRITE_MARKER"
+SCRIPT
+cp -- "$2/driver/source_policy/architecture.sh" \
+  "$2/bindings/architecture.sh"
+chmod +x "$2/driver/source_policy/architecture.sh"
+EOF
+chmod +x "$source_policy_dir/setup.sh"
+rm -f -- "$source_policy_log" "$double_rewrite_marker"
+set +e
+output=$(CELESTIA_SOURCE_POLICY_DOUBLE_REWRITE_MARKER="$double_rewrite_marker" \
+  CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture 2>&1)
+status=$?
+set -e
+if [[ "$status" -eq 0 ||
+  "$output" != *'source-policy script changed before execution: architecture.sh'* ||
+  -e "$double_rewrite_marker" ]]; then
+  printf 'source-policy driver accepted rewritten snapshot and binding:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+git -C "$source_policy_repo" checkout -- source-policy/setup.sh
+
 replacement_marker="$work/replacement-ran"
 cat >"$source_policy_dir/setup.sh" <<'EOF'
 #!/usr/bin/env bash

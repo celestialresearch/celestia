@@ -29,12 +29,16 @@ scripts=(
 )
 
 fixture_mode=${1:-}
+fixture_path="$script_dir/fixture.sh"
+snapshot_checkpoint=
 case "$fixture_mode" in
 "") ;;
 --fixture)
   script_dir_path=${CELESTIA_SOURCE_POLICY_SCRIPT_DIR:?}
   script_repo=${CELESTIA_SOURCE_POLICY_SCRIPT_REPO:?}
   script_prefix=${CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX:?}
+  fixture_path=${CELESTIA_SOURCE_POLICY_FIXTURE_PATH:-$fixture_path}
+  snapshot_checkpoint=${CELESTIA_SOURCE_POLICY_SNAPSHOT_CHECKPOINT:-}
   ;;
 *)
   printf 'Usage: source_policy_test.sh [--fixture]\n' >&2
@@ -44,7 +48,9 @@ esac
 if [[ "$fixture_mode" != --fixture ]] &&
   [[ -n "${CELESTIA_SOURCE_POLICY_SCRIPT_DIR+x}" ||
     -n "${CELESTIA_SOURCE_POLICY_SCRIPT_REPO+x}" ||
-    -n "${CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX+x}" ]]; then
+    -n "${CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX+x}" ||
+    -n "${CELESTIA_SOURCE_POLICY_FIXTURE_PATH+x}" ||
+    -n "${CELESTIA_SOURCE_POLICY_SNAPSHOT_CHECKPOINT+x}" ]]; then
   printf 'source-policy script overrides require fixture mode\n' >&2
   exit 2
 fi
@@ -175,31 +181,45 @@ reject_extra_contract() (
   }
 )
 
-bind_script() {
-  local bound
-  local bound_size
-  local file_size
-  local path=$1
+snapshot_script() {
+  local binding=$1
+  local kind=$2
+  local path=$3
+  local source_size
+  local target=$4
+  local target_size
 
-  bound=$(cat -- "$path"; printf '\034') || return 1
-  bound_size=$(printf '%s' "$bound" | wc -c) || return 1
-  file_size=$(wc -c <"$path") || return 1
-  [[ "$bound_size" -eq "$((file_size + 1))" ]] || return 1
-  printf '%s' "$bound"
+  [[ ! -L "$path" && -f "$path" ]] || return 1
+  cat -- "$path" >"$binding" || return 1
+  source_size=$(wc -c <"$binding") || return 1
+  [[ ! -L "$path" && -f "$path" ]] || return 1
+  [[ "$(wc -c <"$path")" -eq "$source_size" ]] || return 1
+  cmp -s -- "$path" "$binding" || return 1
+  if [[ -n "$snapshot_checkpoint" ]]; then
+    "$snapshot_checkpoint" "$kind" "$path" || return 1
+  fi
+  [[ ! -L "$path" && -f "$path" ]] || return 1
+  [[ "$(wc -c <"$path")" -eq "$source_size" ]] || return 1
+  cmp -s -- "$path" "$binding" || return 1
+  cat -- "$binding" >"$target" || return 1
+  target_size=$(wc -c <"$target") || return 1
+  [[ "$target_size" -eq "$source_size" ]] || return 1
+  cmp -s -- "$binding" "$target"
 }
 
 main() {
-  local bound
+  local binding_dir
   local executed
-  local fixture_bound
-  local fixture_path
+  local fixture_hash
+  local fixture_size
   local index
   local mode
   local path
   local script
   local snapshot
   local snapshot_dir
-  local -a snapshot_bounds=()
+  local -a snapshot_hashes=()
+  local -a snapshot_sizes=()
   local work_dir
 
   work_dir=$(new_verification_work verification-source-policy)
@@ -254,16 +274,15 @@ main() {
     reject_extra_contract
   fi
   snapshot_dir="$work_dir/driver"
-  mkdir -p -- "$snapshot_dir/source_policy"
-  fixture_path="$script_dir/fixture.sh"
-  if [[ -L "$fixture_path" || ! -f "$fixture_path" ]] ||
-    ! cat -- "$fixture_path" >"$snapshot_dir/fixture.sh" ||
-    [[ -L "$fixture_path" || ! -f "$fixture_path" ]] ||
-    ! cmp -s -- "$fixture_path" "$snapshot_dir/fixture.sh" ||
-    ! fixture_bound=$(bind_script "$snapshot_dir/fixture.sh"); then
+  binding_dir="$work_dir/bindings"
+  mkdir -p -- "$snapshot_dir/source_policy" "$binding_dir"
+  if ! snapshot_script "$binding_dir/fixture.sh" fixture "$fixture_path" \
+    "$snapshot_dir/fixture.sh"; then
     printf 'source-policy fixture changed during snapshot\n' >&2
     return 1
   fi
+  fixture_size=$(wc -c <"$snapshot_dir/fixture.sh")
+  fixture_hash=$(git hash-object --no-filters -- "$snapshot_dir/fixture.sh")
   for script in "${scripts[@]}"; do
     path="$script_dir_path/$script"
     mode=$(git -C "$script_repo" ls-files --stage -- "$script_prefix/$script")
@@ -272,27 +291,26 @@ main() {
       return 1
     fi
     snapshot="$snapshot_dir/source_policy/$script"
-    if ! cat -- "$path" >"$snapshot" ||
-      [[ -L "$path" || ! -f "$path" ]] ||
-      ! cmp -s -- "$path" "$snapshot" ||
+    if ! snapshot_script "$binding_dir/$script" script "$path" "$snapshot" ||
       ! chmod 700 -- "$snapshot"; then
       printf 'source-policy script changed during snapshot: %s\n' "$script" >&2
       return 1
     fi
-    if ! bound=$(bind_script "$snapshot"); then
-      printf 'source-policy script cannot be bound: %s\n' "$script" >&2
-      return 1
-    fi
-    snapshot_bounds+=("$bound")
+    snapshot_sizes+=("$(wc -c <"$snapshot")")
+    snapshot_hashes+=("$(git hash-object --no-filters -- "$snapshot")")
   done
+  rm -rf -- "$binding_dir"
   index=0
   for script in "${scripts[@]}"; do
     snapshot="$snapshot_dir/source_policy/$script"
     if [[ -L "$snapshot" || ! -f "$snapshot" ]] ||
-      ! bound=$(bind_script "$snapshot") ||
-      [[ "$bound" != "${snapshot_bounds[$index]}" ]] ||
-      ! bound=$(bind_script "$snapshot_dir/fixture.sh") ||
-      [[ "$bound" != "$fixture_bound" ]]; then
+      [[ "$(wc -c <"$snapshot")" -ne "${snapshot_sizes[$index]}" ]] ||
+      [[ "$(git hash-object --no-filters -- "$snapshot")" != \
+        "${snapshot_hashes[$index]}" ]] ||
+      [[ -L "$snapshot_dir/fixture.sh" || ! -f "$snapshot_dir/fixture.sh" ]] ||
+      [[ "$(wc -c <"$snapshot_dir/fixture.sh")" -ne "$fixture_size" ]] ||
+      [[ "$(git hash-object --no-filters -- \
+        "$snapshot_dir/fixture.sh")" != "$fixture_hash" ]]; then
       printf 'source-policy script changed before execution: %s\n' "$script" >&2
       return 1
     fi
