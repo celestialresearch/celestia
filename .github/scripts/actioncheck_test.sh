@@ -40,6 +40,33 @@ cache_test.sh
 inventory_test.sh
 permissions_test.sh'
 
+action_family_identity() {
+  local family=$1
+  local indexed_path
+  local indexed_object
+  local metadata
+  local mode
+  local record
+  local stage
+  local unexpected
+  local working_object
+
+  record=$(git -C "$family_repo" ls-files --stage -- \
+    "$family_prefix/$family") || return 1
+  [[ "$record" != *$'\n'* && "$record" == *$'\t'* ]] || return 1
+  metadata=${record%%$'\t'*}
+  indexed_path=${record#*$'\t'}
+  IFS=' ' read -r mode indexed_object stage unexpected <<<"$metadata"
+  [[ "$mode" == 100755 && -n "$indexed_object" && "$stage" == 0 &&
+    -z "$unexpected" &&
+    "$indexed_path" == "$family_prefix/$family" &&
+    ! -L "$family_dir/$family" && -f "$family_dir/$family" ]] || return 1
+  working_object=$(git hash-object --no-filters -- \
+    "$family_dir/$family") || return 1
+  [[ -n "$working_object" ]] || return 1
+  printf '%s\n' "$working_object"
+}
+
 # shellcheck disable=SC2329 # Invoked by registered signal and exit traps.
 finish_action_driver() {
   local status=$1
@@ -57,18 +84,58 @@ finish_action_driver() {
 main() (
   local executed
   local family
+  local identity
+  local identities
   local planned
+  local run_root
+  local snapshot
+  local snapshot_path
 
   executed=$(mktemp "${TMPDIR:-/tmp}/celestia-action-families.XXXXXX")
   planned="$executed.planned"
-  trap 'rm -f -- "$executed" "$planned"' EXIT
+  identities="$executed.identities"
+  snapshot="$executed.snapshot.tar"
+  run_root=
+  mkdir -- "$identities"
+  trap 'rm -rf -- "$executed" "$planned" "$identities" "$snapshot"; if [[ -n "$run_root" ]]; then rm -rf -- "$run_root"; fi' EXIT
   printf '%s\n' "$families" >"$planned"
   bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$planned" \
     "$family_repo" "$family_prefix"
+  while IFS= read -r family; do
+    identity=$(action_family_identity "$family") || {
+      printf 'action test family is unavailable: %s\n' "$family" >&2
+      return 1
+    }
+    printf '%s\n' "$identity" >"$identities/$family"
+  done <<<"$families"
+  git -C "$family_repo" ls-files -z | \
+    tar --null -cf "$snapshot" -C "$family_repo" -T -
 
   : >"$executed"
   while IFS= read -r family; do
-    bash "$family_dir/$family"
+    run_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-action-run.XXXXXX")
+    tar -xf "$snapshot" -C "$run_root"
+    git -C "$run_root" init -q
+    git -C "$run_root" config core.autocrlf false
+    git -C "$run_root" add -f .
+    snapshot_path="$run_root/$family_prefix/$family"
+    if [[ -L "$snapshot_path" || ! -f "$snapshot_path" ]]; then
+      printf 'action test family snapshot is unavailable: %s\n' \
+        "$family" >&2
+      return 1
+    fi
+    identity=$(git hash-object --no-filters -- "$snapshot_path") || return 1
+    if [[ "$identity" != "$(cat "$identities/$family")" ]]; then
+      printf 'action test family snapshot identity differs: %s\n' \
+        "$family" >&2
+      return 1
+    fi
+    (
+      cd -- "$run_root"
+      bash "$snapshot_path"
+    )
+    rm -rf -- "$run_root"
+    run_root=
     printf '%s\n' "$family" >>"$executed"
   done <<<"$families"
 

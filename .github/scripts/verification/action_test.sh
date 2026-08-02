@@ -99,6 +99,142 @@ for pid in "$action_family_pid" "$action_descendant_pid"; do
     return 1
   fi
 done
+snapshot_temp="$work_dir/action-snapshot-temp"
+mkdir -p "$snapshot_temp"
+printf 'tracked\n' >"$family_repo/missing-snapshot-input"
+git -C "$family_repo" add missing-snapshot-input
+rm -- "$family_repo/missing-snapshot-input"
+set +e
+output=$(TMPDIR="$snapshot_temp" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture 2>&1)
+status=$?
+set -e
+git -C "$family_repo" rm --cached -q missing-snapshot-input
+if [[ "$status" -eq 0 || "$output" != *missing-snapshot-input* ]]; then
+  printf 'action snapshot failure lost its diagnostic:\n%s\n' "$output" >&2
+  return 1
+fi
+require_empty_verification_directory "$snapshot_temp" \
+  'action snapshot temporary'
+
+race_marker="$work_dir/action-replacement-ran"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >"$CELESTIA_ACTION_LATER_FAMILY" <<'SCRIPT'
+#!/usr/bin/env bash
+: >"$CELESTIA_ACTION_RACE_MARKER"
+SCRIPT
+chmod +x "$CELESTIA_ACTION_LATER_FAMILY"
+EOF
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_dir/cache_test.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_dir/inventory_test.sh"
+chmod +x "$family_dir/remote_release_test.sh" "$family_dir/cache_test.sh" \
+  "$family_dir/inventory_test.sh"
+git -C "$family_repo" add families/remote_release_test.sh \
+  families/cache_test.sh families/inventory_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/remote_release_test.sh families/cache_test.sh \
+  families/inventory_test.sh
+set +e
+CELESTIA_ACTION_LATER_FAMILY="$family_dir/cache_test.sh" \
+  CELESTIA_ACTION_RACE_MARKER="$race_marker" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1
+status=$?
+set -e
+if [[ -e "$race_marker" ]]; then
+  printf 'action driver executed a replaced family\n' >&2
+  return 1
+fi
+if [[ "$status" -ne 0 ]]; then
+  printf 'action driver rejected its replacement-safe snapshot\n' >&2
+  return 1
+fi
+git -C "$family_repo" checkout-index --force -- \
+  families/remote_release_test.sh families/cache_test.sh
+
+race_marker="$work_dir/action-symlink-ran"
+link_marker="$work_dir/action-symlink-created"
+symlink_target="$work_dir/action-symlink-target.sh"
+cat >"$symlink_target" <<'EOF'
+#!/usr/bin/env bash
+: >"$CELESTIA_ACTION_RACE_MARKER"
+EOF
+chmod +x "$symlink_target"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+rm -- "$CELESTIA_ACTION_LATER_FAMILY"
+ln -s "$CELESTIA_ACTION_SYMLINK_TARGET" "$CELESTIA_ACTION_LATER_FAMILY"
+: >"$CELESTIA_ACTION_LINK_MARKER"
+EOF
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_dir/cache_test.sh"
+chmod +x "$family_dir/remote_release_test.sh" "$family_dir/cache_test.sh"
+git -C "$family_repo" add families/remote_release_test.sh \
+  families/cache_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/remote_release_test.sh families/cache_test.sh
+set +e
+CELESTIA_ACTION_LATER_FAMILY="$family_dir/cache_test.sh" \
+  CELESTIA_ACTION_LINK_MARKER="$link_marker" \
+  CELESTIA_ACTION_RACE_MARKER="$race_marker" \
+  CELESTIA_ACTION_SYMLINK_TARGET="$symlink_target" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1
+status=$?
+set -e
+if [[ ! -e "$link_marker" ]]; then
+  printf 'action symlink race did not execute\n' >&2
+  return 1
+fi
+if [[ -e "$race_marker" ]]; then
+  printf 'action driver executed a symlinked family\n' >&2
+  return 1
+fi
+if [[ "$status" -ne 0 ]]; then
+  printf 'action driver rejected its symlink-safe snapshot\n' >&2
+  return 1
+fi
+git -C "$family_repo" checkout-index --force -- \
+  families/remote_release_test.sh families/cache_test.sh
+
+race_marker="$work_dir/action-working-change-ran"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_dir/remote_release_test.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_dir/cache_test.sh"
+chmod +x "$family_dir/remote_release_test.sh"
+git -C "$family_repo" add families/remote_release_test.sh \
+  families/cache_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/remote_release_test.sh families/cache_test.sh
+cat >"$family_dir/cache_test.sh" <<'EOF'
+#!/usr/bin/env bash
+: >"$CELESTIA_ACTION_RACE_MARKER"
+EOF
+chmod +x "$family_dir/cache_test.sh"
+CELESTIA_ACTION_RACE_MARKER="$race_marker" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture
+if [[ ! -e "$race_marker" ]]; then
+  printf 'action driver executed stale indexed family content\n' >&2
+  return 1
+fi
+git -C "$family_repo" checkout-index --force -- families/cache_test.sh
+
 printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
   >"$family_dir/remote_release_test.sh"
 chmod +x "$family_dir/remote_release_test.sh"
@@ -126,6 +262,12 @@ if require_empty_verification_directory "$work_dir/missing-driver-temp" \
   printf 'action test driver accepted missing cleanup state\n' >&2
   return 1
 fi
+printf '%s\n' '#!/usr/bin/env bash' 'exit 9' \
+  >"$family_dir/inventory_test.sh"
+chmod +x "$family_dir/inventory_test.sh"
+git -C "$family_repo" add families/inventory_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/inventory_test.sh
 if TMPDIR="$driver_temp" CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
   CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
   CELESTIA_ACTION_FAMILY_PREFIX=families \
