@@ -1,0 +1,462 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-split-006",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Action-policy tests and shell verification tests are split by cohesive intent without changing policy verdicts, family order or failure propagation",
+  "owner": "tools/sourcepolicy",
+  "inputs": [
+    {
+      "id": "CEL-SPLIT-006-INPUT-001",
+      "media_type": "application/vnd.celestia.tracked-source",
+      "maximum_bytes": 16777216,
+      "validation": "Bounded tracked action-policy test, verification driver and verification-family inventory"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-SPLIT-006-OUTPUT-001",
+      "media_type": "application/vnd.celestia.policy-result",
+      "maximum_bytes": 1048576,
+      "validation": "Deterministic split-inventory acceptance or rejection with a bounded diagnostic"
+    }
+  ],
+  "canonical_state": [
+    "Action-policy command execution and diagnostics are owned by main_test.go",
+    "Action inventory, alias resolution, structural bounds, document output, image inventory, permissions, YAML validation and fuzzing are owned by actions_test.go, aliases_test.go, bounds_test.go, document_test.go, images_test.go, permissions_test.go, yaml_test.go and fuzz_test.go respectively",
+    "The verification driver executes the lint, action, Rust configuration, Rust artefact, coverage, source policy, licence and release artefact families in that exact order",
+    "Every declared verification family is a tracked regular executable with Git mode 100755 while the shared fixture helper is not a family",
+    "Verification families execute serially and the driver records a family only after it returns success",
+    "The first missing, non-executable or failing family prevents later families from executing and makes the parent driver fail",
+    "Each family acquires its own unique temporary directory and the driver removes its execution record on every ordinary exit"
+  ],
+  "derived_state": [
+    "Focused action-policy, shell syntax, ShellCheck, family-inventory and independent Assurance verdicts"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-SPLIT-006-EFFECT-001",
+      "kind": "source-layout verification result",
+      "authority": "CEL-SPLIT-006-AUTH-001"
+    },
+    {
+      "id": "CEL-SPLIT-006-EFFECT-002",
+      "kind": "serial verification-family execution",
+      "authority": "CEL-SPLIT-006-AUTH-002"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-SPLIT-006-AUTH-001",
+      "owner": "tools/sourcepolicy",
+      "grant": "Accept only the exact declared action-test and verification-family ownership inventories",
+      "refusal": "Reject an old monolith, missing destination, undeclared sibling, wrong owner, reordered family or changed executable mode"
+    },
+    {
+      "id": "CEL-SPLIT-006-AUTH-002",
+      "owner": "verification driver",
+      "grant": "Execute the exact declared verification families serially in their declared order",
+      "refusal": "Reject a missing, non-regular, non-executable or failing family without accepting partial execution"
+    },
+    {
+      "id": "CEL-SPLIT-006-AUTH-003",
+      "owner": "internal/architecturecheck",
+      "grant": "Independently compare the exact test ownership, family order, modes and failure semantics",
+      "refusal": "Reject changed policy coverage, order, mode, isolation, execution accounting or failure propagation"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-SPLIT-006-TRUST-001",
+      "source": "tracked repository content",
+      "target": "tools/sourcepolicy",
+      "treatment": "Compare the exact action-test and verification-family inventories with this manifest"
+    },
+    {
+      "id": "CEL-SPLIT-006-TRUST-002",
+      "source": "tracked verification family",
+      "target": "verification driver",
+      "treatment": "Require the exact declared path and executable mode before direct serial execution"
+    },
+    {
+      "id": "CEL-SPLIT-006-TRUST-003",
+      "source": "Production architecture policy",
+      "target": "internal/architecturecheck",
+      "treatment": "Compare Production inventory results with independent ownership, order, mode and failure fixtures"
+    }
+  ],
+  "bounds": {
+    "processes": 2,
+    "memory_bytes": 67108864,
+    "output_bytes": 1048576,
+    "worker_time_milliseconds": 30000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-SPLIT-006-RESOURCE-001",
+      "kind": "tracked_inventory",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
+      "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds",
+      "release": "Release inventory and parsed syntax when policy evaluation returns",
+      "cleanup_failure": "Return an infrastructure error without accepting the tree"
+    },
+    {
+      "id": "CEL-SPLIT-006-RESOURCE-002",
+      "kind": "process",
+      "owner": "verification driver",
+      "acquisition": "Start at most one declared family process at a time after validating its tracked executable mode",
+      "bound": "One parent driver and one active family with bounded family-owned child work",
+      "release": "Wait for the active family before selecting the next family",
+      "cleanup_failure": "Return failure and do not record the family as executed",
+      "cancellation": "Shell interruption stops the active driver path and cannot produce acceptance",
+      "join": "Direct family execution is joined before the ordered loop advances"
+    },
+    {
+      "id": "CEL-SPLIT-006-RESOURCE-003",
+      "kind": "temporary_file",
+      "owner": "verification driver",
+      "acquisition": "Create one unique execution-record path through mktemp",
+      "bound": "At most eight newline-delimited declared family names",
+      "release": "Remove the execution record through the subshell EXIT trap",
+      "cleanup_failure": "Fail the surrounding verification environment without treating the record as maintained evidence"
+    },
+    {
+      "id": "CEL-SPLIT-006-RESOURCE-004",
+      "kind": "policy_document",
+      "owner": "internal/architecturecheck",
+      "acquisition": "Read one bounded strict architecture policy document and its governed source inventory",
+      "bound": "At most 1048576 bytes per policy, inventory or fixture",
+      "release": "Release decoded policy and inventory when independent evaluation returns",
+      "cleanup_failure": "Return an assurance error without accepting the tree"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native Production and Assurance policy execution with Bash invocation"
+    }
+  ],
+  "states": [
+    {
+      "id": "proposed",
+      "kind": "intermediate"
+    },
+    {
+      "id": "accepted",
+      "kind": "success"
+    },
+    {
+      "id": "rejected",
+      "kind": "refusal"
+    },
+    {
+      "id": "failed",
+      "kind": "failure"
+    },
+    {
+      "id": "cancelled",
+      "kind": "cancellation"
+    },
+    {
+      "id": "indeterminate",
+      "kind": "indeterminate"
+    }
+  ],
+  "allowed_transitions": [
+    {
+      "from": "proposed",
+      "to": "accepted"
+    },
+    {
+      "from": "proposed",
+      "to": "rejected"
+    },
+    {
+      "from": "proposed",
+      "to": "failed"
+    },
+    {
+      "from": "proposed",
+      "to": "cancelled"
+    },
+    {
+      "from": "proposed",
+      "to": "indeterminate"
+    }
+  ],
+  "prohibited_transitions": [
+    {
+      "from": "accepted",
+      "to": "proposed"
+    },
+    {
+      "from": "accepted",
+      "to": "rejected"
+    },
+    {
+      "from": "accepted",
+      "to": "failed"
+    },
+    {
+      "from": "accepted",
+      "to": "cancelled"
+    },
+    {
+      "from": "accepted",
+      "to": "indeterminate"
+    },
+    {
+      "from": "rejected",
+      "to": "proposed"
+    },
+    {
+      "from": "rejected",
+      "to": "accepted"
+    },
+    {
+      "from": "rejected",
+      "to": "failed"
+    },
+    {
+      "from": "rejected",
+      "to": "cancelled"
+    },
+    {
+      "from": "rejected",
+      "to": "indeterminate"
+    },
+    {
+      "from": "failed",
+      "to": "proposed"
+    },
+    {
+      "from": "failed",
+      "to": "accepted"
+    },
+    {
+      "from": "failed",
+      "to": "rejected"
+    },
+    {
+      "from": "failed",
+      "to": "cancelled"
+    },
+    {
+      "from": "failed",
+      "to": "indeterminate"
+    },
+    {
+      "from": "cancelled",
+      "to": "proposed"
+    },
+    {
+      "from": "cancelled",
+      "to": "accepted"
+    },
+    {
+      "from": "cancelled",
+      "to": "rejected"
+    },
+    {
+      "from": "cancelled",
+      "to": "failed"
+    },
+    {
+      "from": "cancelled",
+      "to": "indeterminate"
+    },
+    {
+      "from": "indeterminate",
+      "to": "proposed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "accepted"
+    },
+    {
+      "from": "indeterminate",
+      "to": "rejected"
+    },
+    {
+      "from": "indeterminate",
+      "to": "failed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "cancelled"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-SPLIT-006-INV-001",
+      "statement": "Every action-policy test remains owned by one cohesive intent file without losing a test or fuzz target",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Action-policy test declaration to policy responsibility",
+      "falsifier": "A test or fuzz target is missing, duplicated, moved to the wrong intent file or replaced by a weaker assertion",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-006-PROD-001",
+          "owner": "source-policy action-test inventory and focused action-policy tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-006-ASSURE-001",
+          "owner": "independent action-test ownership and target comparison"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Static ownership and passing tests do not prove every future YAML parser failure class"
+    },
+    {
+      "id": "CEL-SPLIT-006-INV-002",
+      "statement": "The driver executes exactly eight declared executable verification families serially in the declared order",
+      "owner": "verification driver",
+      "severity": "high",
+      "boundary": "Tracked verification-family inventory to direct shell execution",
+      "falsifier": "A family is omitted, added through discovery, reordered, executed concurrently, accepted without mode 100755 or recorded before success",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-006-PROD-002",
+          "owner": "verification driver and testcheck family inventory fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-006-ASSURE-002",
+          "owner": "independent family order, mode and execution-accounting fixtures"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Native behaviour of every external tool invoked by a family remains governed by its owning check"
+    },
+    {
+      "id": "CEL-SPLIT-006-INV-003",
+      "statement": "Missing, non-executable and failing families fail the parent gate without executing later families",
+      "owner": "verification driver",
+      "severity": "high",
+      "boundary": "Verification-family outcome to parent verification verdict",
+      "falsifier": "The driver returns success, records execution or continues after any declared family is unavailable or fails",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-006-PROD-003",
+          "owner": "known-bad missing, mode and failure-propagation family fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-006-ASSURE-003",
+          "owner": "independent parent-verdict and later-family non-execution fixtures"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Abrupt host termination can leave operating-system temporary state outside the repository"
+    },
+    {
+      "id": "CEL-SPLIT-006-INV-004",
+      "statement": "The shell split preserves Bash 3.2 syntax, labels, temporary isolation and ordinary cleanup",
+      "owner": "verification driver",
+      "severity": "medium",
+      "boundary": "Verification driver and family source to supported shell execution",
+      "falsifier": "A family requires newer Bash syntax, changes an established label, shares mutable fixture state or retains its execution record after return",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-006-PROD-004",
+          "owner": "Bash syntax, ShellCheck, deterministic fixture and temporary-isolation controls"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-006-ASSURE-004",
+          "owner": "independent shell lifecycle and diagnostic contract comparison"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Cross-shell invocation evidence is separate from Bash language compatibility"
+    }
+  ],
+  "success_semantics": "Accepted means the exact action-test ownership and eight-family shell split preserve targets, order, executable modes, serial execution, labels, isolation, cleanup and failure propagation",
+  "refusal_semantics": "An old monolith, missing destination, undeclared sibling, changed owner, missing or non-executable family, reordered inventory or weakened failure fixture returns a bounded rejection",
+  "failure_semantics": "Malformed policy, parse failure, unavailable required tooling or any family failure fails the parent gate",
+  "cancellation_semantics": "Cancellation stops the active policy or family path and cannot produce acceptance",
+  "indeterminate_semantics": "Missing, contradictory or incomplete inventory or execution evidence cannot produce acceptance",
+  "recovery_semantics": "Rerun from the unchanged tracked inventory after removing non-canonical temporary state; no partial family result is canonical",
+  "compatibility_or_reset_policy": "Unused pre-release test layout is replaced directly; no old driver, wrapper, discovery path, forwarding script or duplicate test implementation is retained",
+  "falsifiers": [
+    "An action-policy test or fuzz target disappears, duplicates or moves to an unrelated owner",
+    "The driver discovers families through a glob or executes them out of the declared order",
+    "A missing, non-regular, non-executable or failing family does not fail the parent gate",
+    "A family is recorded before it succeeds or a later family runs after failure",
+    "The split changes an output label, exit status, temporary isolation or Bash 3.2 compatibility",
+    "An old monolithic test implementation, wrapper or duplicate policy test remains"
+  ],
+  "production_controls": [
+    {
+      "id": "CEL-SPLIT-006-PROD-001",
+      "owner": "source-policy action-test inventory and focused action-policy tests"
+    },
+    {
+      "id": "CEL-SPLIT-006-PROD-002",
+      "owner": "verification driver and testcheck family inventory fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-006-PROD-003",
+      "owner": "known-bad missing, mode and failure-propagation family fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-006-PROD-004",
+      "owner": "Bash syntax, ShellCheck, deterministic fixture and temporary-isolation controls"
+    }
+  ],
+  "assurance_controls": [
+    {
+      "id": "CEL-SPLIT-006-ASSURE-001",
+      "owner": "independent action-test ownership and target comparison"
+    },
+    {
+      "id": "CEL-SPLIT-006-ASSURE-002",
+      "owner": "independent family order, mode and execution-accounting fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-006-ASSURE-003",
+      "owner": "independent parent-verdict and later-family non-execution fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-006-ASSURE-004",
+      "owner": "independent shell lifecycle and diagnostic contract comparison"
+    }
+  ],
+  "residual_limitations": [
+    "This structural split does not establish new workflow or verification behaviour",
+    "The manifest does not prove the correctness of external tools invoked by each family",
+    "Windows AMD64 remains the native Product and Assurance qualification boundary",
+    "Exact-pair sign-off requires committed clean Product and Assurance candidates"
+  ],
+  "non_goals": [
+    "Change action-policy parsing, permissions, image inventory or diagnostics",
+    "Add verification parallelism, caching, retries or dynamic family discovery",
+    "Change family order, labels, exit statuses, tool selection or policy semantics",
+    "Create a generic test runner, registry, plugin, wrapper or compatibility path",
+    "Move or split source policy, Product runtime, Rust worker or Assurance packages",
+    "Retain the old monolithic test bodies or duplicate an existing test target"
+  ],
+  "deletion_criteria": [
+    "Delete this slice contract only when a later reviewed contract explicitly supersedes the action-test and verification-family inventories"
+  ]
+}
