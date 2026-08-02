@@ -37,8 +37,9 @@ func splitDirectories() []splitDirectory {
 		{
 			path: "worker/url-reference/src",
 			files: []string{
-				"main.rs", "protocol.rs", "tests/mod.rs", "tests/protocol.rs",
-				"tests/transform.rs", "transform.rs",
+				"grammar.rs", "main.rs", "request.rs", "response.rs", "tests/grammar.rs",
+				"tests/mod.rs", "tests/request.rs", "tests/response.rs", "tests/transform.rs",
+				"transform.rs",
 			},
 		},
 	}
@@ -50,6 +51,8 @@ func splitSourcePathFindings(files []string) []string {
 		"internal/operation/urlreference/transform/urlreference.go",
 		"internal/operation/urlreference/protocol/protocol_test.go",
 		"worker/url-reference/src/tests.rs",
+		"worker/url-reference/src/protocol.rs",
+		"worker/url-reference/src/tests/protocol.rs",
 	})
 	var findings []string
 	for _, file := range files {

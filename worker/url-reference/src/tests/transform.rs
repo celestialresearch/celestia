@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-use crate::protocol::Mode;
+use crate::request::Mode;
 use crate::transform::transform;
 use serde::Deserialize;
 
@@ -113,43 +113,6 @@ fn transforms_references() {
         transform("https://[2001:db8::1]:443/", &Mode::Defang),
         Ok("hxxps://[2001:db8::1]:443/".to_owned())
     );
-}
-
-#[test]
-fn rejects_mixed_hosts() {
-    assert_eq!(transform("https://example[.]test/", &Mode::Defang), Err(()));
-}
-
-#[test]
-fn rejects_invalid_references() {
-    let inputs = [
-        "",
-        "example.test",
-        "HTTPS://example.test",
-        "https:///path",
-        "https://example.test:",
-        "https://example.test:0",
-        "https://example.test:65536",
-        "https://user@example.test/",
-        "https://256.0.2.1/",
-        "https://192.00.2.1/",
-        "https://2001:db8::1/",
-        "https://[::ffff:192.0.2.1]/",
-        "https://[fe80::1%25eth0]/",
-        "https://bücher.example/",
-        "https://example。test/",
-        "https://example.test/%2",
-        " https://example.test/",
-        "https://example.test/ ",
-        "hxxps://a[.]b.c/",
-    ];
-    for input in inputs {
-        assert_eq!(
-            transform(input, &Mode::Defang),
-            Err(()),
-            "accepted {input:?}"
-        );
-    }
 }
 
 #[test]

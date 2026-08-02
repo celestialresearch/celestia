@@ -24,6 +24,8 @@ func TestArchitectureRejectsUnsplitSources(t *testing.T) {
 		"internal/operation/urlreference/transform/urlreference.go",
 		"internal/operation/urlreference/protocol/protocol_test.go",
 		"worker/url-reference/src/tests.rs",
+		"worker/url-reference/src/protocol.rs",
+		"worker/url-reference/src/tests/protocol.rs",
 	} {
 		assertSplitFinding(t, []string{file}, "obsolete split source")
 	}
@@ -86,11 +88,15 @@ func expectedSplitFiles() []string {
 		"internal/operation/urlreference/protocol/request_test.go",
 		"internal/operation/urlreference/protocol/response.go",
 		"internal/operation/urlreference/protocol/response_test.go",
+		"worker/url-reference/src/grammar.rs",
 		"worker/url-reference/src/main.rs",
-		"worker/url-reference/src/protocol.rs",
-		"worker/url-reference/src/transform.rs",
+		"worker/url-reference/src/request.rs",
+		"worker/url-reference/src/response.rs",
+		"worker/url-reference/src/tests/grammar.rs",
 		"worker/url-reference/src/tests/mod.rs",
-		"worker/url-reference/src/tests/protocol.rs",
+		"worker/url-reference/src/tests/request.rs",
+		"worker/url-reference/src/tests/response.rs",
 		"worker/url-reference/src/tests/transform.rs",
+		"worker/url-reference/src/transform.rs",
 	}
 }

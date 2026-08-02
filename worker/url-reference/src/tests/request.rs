@@ -9,61 +9,8 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-use crate::protocol::{
-    Response, parse_request, sha256, valid_deadline, valid_identity, validate_request,
-    write_response_to,
-};
+use crate::request::{parse, sha256, valid_deadline, valid_identity, validate};
 use crate::transform::transform;
-use std::io::{self, Write};
-
-#[derive(Default)]
-struct RecordingWriter {
-    data: Vec<u8>,
-    flushes: usize,
-    fail_flush: bool,
-}
-
-impl Write for RecordingWriter {
-    fn write(&mut self, data: &[u8]) -> io::Result<usize> {
-        self.data.extend_from_slice(data);
-        Ok(data.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.flushes += 1;
-        if self.fail_flush {
-            return Err(io::Error::other("flush"));
-        }
-        Ok(())
-    }
-}
-
-#[test]
-fn response_write_requires_flush() {
-    let response = Response {
-        protocol_version: 1,
-        operation_id: "url-reference",
-        operation_version: 1,
-        attempt_id: "attempt",
-        request_nonce: "nonce",
-        worker_id: "celestia-url-reference",
-        worker_version: "1",
-        status: "failed",
-        output_media_type: None,
-        output_length: None,
-        output_sha256: None,
-        output: None,
-        diagnostics: Vec::new(),
-        duration_ns: 0,
-    };
-    let mut writer = RecordingWriter::default();
-    assert_eq!(write_response_to(&response, &mut writer), Ok(()));
-    assert_eq!(writer.flushes, 1);
-    assert!(!writer.data.is_empty());
-    writer.fail_flush = true;
-    assert_eq!(write_response_to(&response, &mut writer), Err(()));
-    assert_eq!(writer.flushes, 2);
-}
 
 #[test]
 fn checks_identifiers() {
@@ -94,7 +41,7 @@ fn checks_deadlines() {
 #[test]
 fn mutated_request_frames_are_deterministic_and_bounded() {
     let seed = valid_request_frame();
-    assert!(parse_request(&seed).is_ok());
+    assert!(parse(&seed).is_ok());
     let mut state = 0x9e37_79b9_7f4a_7c15_u64;
     for iteration in 0..25_000 {
         state ^= state << 13;
@@ -114,11 +61,11 @@ fn mutated_request_frames_are_deterministic_and_bounded() {
             ),
             _ => candidate.truncate(index),
         }
-        let first = parse_request(&candidate);
-        let second = parse_request(&candidate);
+        let first = parse(&candidate);
+        let second = parse(&candidate);
         assert_eq!(first.is_ok(), second.is_ok());
         if let Ok(request) = first {
-            assert!(validate_request(&request).is_ok());
+            assert!(validate(&request).is_ok());
             assert!(transform(&request.input, &request.mode).is_ok());
         }
     }

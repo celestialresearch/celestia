@@ -9,14 +9,12 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use std::io::{self, Read, Write};
-use std::time::Instant;
+use std::io::{self, Read};
 
 const MAX_REQUEST_BYTES: u64 = 65_536;
 pub(crate) const MAX_INPUT_BYTES: usize = 4_096;
-pub(crate) const MAX_OUTPUT_BYTES: usize = 8_192;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -53,40 +51,24 @@ struct Limits {
     processes: usize,
 }
 
-#[derive(Serialize)]
-pub(crate) struct Response<'a> {
-    pub(crate) protocol_version: u8,
-    pub(crate) operation_id: &'static str,
-    pub(crate) operation_version: u8,
-    pub(crate) attempt_id: &'a str,
-    pub(crate) request_nonce: &'a str,
-    pub(crate) worker_id: &'static str,
-    pub(crate) worker_version: &'static str,
-    pub(crate) status: &'static str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) output_media_type: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) output_length: Option<usize>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) output_sha256: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) output: Option<String>,
-    pub(crate) diagnostics: Vec<Diagnostic>,
-    pub(crate) duration_ns: u64,
+pub(crate) fn read() -> Result<Vec<u8>, ()> {
+    let mut data = Vec::new();
+    io::stdin()
+        .take(MAX_REQUEST_BYTES + 1)
+        .read_to_end(&mut data)
+        .map_err(|_| ())?;
+    if data.is_empty() || data.len() > usize::try_from(MAX_REQUEST_BYTES).map_err(|_| ())? {
+        return Err(());
+    }
+    Ok(data)
 }
 
-#[derive(Serialize)]
-pub(crate) struct Diagnostic {
-    pub(crate) code: &'static str,
-    pub(crate) message: &'static str,
-}
-
-pub(crate) fn parse_request(data: &[u8]) -> Result<Request, ()> {
+pub(crate) fn parse(data: &[u8]) -> Result<Request, ()> {
     if !is_compact_frame(data) {
         return Err(());
     }
     let request: Request = serde_json::from_slice(data).map_err(|_| ())?;
-    validate_request(&request)?;
+    validate(&request)?;
     Ok(request)
 }
 
@@ -111,38 +93,7 @@ fn is_compact_frame(data: &[u8]) -> bool {
     true
 }
 
-pub(crate) fn write_response(response: &Response<'_>) -> Result<(), ()> {
-    write_response_to(response, &mut io::stdout())
-}
-
-pub(crate) fn write_response_to(
-    response: &Response<'_>,
-    writer: &mut impl Write,
-) -> Result<(), ()> {
-    let encoded = serde_json::to_vec(&response).map_err(|_| ())?;
-    writer.write_all(&encoded).map_err(|_| ())?;
-    writer.flush().map_err(|_| ())
-}
-
-pub(crate) fn duration_ns(start: Instant) -> u64 {
-    u64::try_from(start.elapsed().as_nanos())
-        .unwrap_or(u64::MAX)
-        .min(2_000_000_000)
-}
-
-pub(crate) fn read_request() -> Result<Vec<u8>, ()> {
-    let mut data = Vec::new();
-    io::stdin()
-        .take(MAX_REQUEST_BYTES + 1)
-        .read_to_end(&mut data)
-        .map_err(|_| ())?;
-    if data.is_empty() || data.len() > usize::try_from(MAX_REQUEST_BYTES).map_err(|_| ())? {
-        return Err(());
-    }
-    Ok(data)
-}
-
-pub(crate) fn validate_request(request: &Request) -> Result<(), ()> {
+pub(crate) fn validate(request: &Request) -> Result<(), ()> {
     if request.protocol_version != 1
         || request.operation_id != "url-reference"
         || request.operation_version != 1

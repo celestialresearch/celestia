@@ -9,13 +9,13 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-mod protocol;
+mod grammar;
+mod request;
+mod response;
 mod transform;
 
-use protocol::{
-    Diagnostic, MAX_OUTPUT_BYTES, Response, duration_ns, parse_request, read_request, sha256,
-    write_response,
-};
+use request::{parse, read};
+use response::{Diagnostic, MAX_OUTPUT_BYTES, Response, duration_ns, write};
 use std::process::ExitCode;
 use std::time::Instant;
 use transform::transform;
@@ -29,8 +29,8 @@ fn main() -> ExitCode {
 
 fn run() -> Result<ExitCode, ()> {
     let start = Instant::now();
-    let data = read_request()?;
-    let request = parse_request(&data)?;
+    let data = read()?;
+    let request = parse(&data)?;
     let output = match transform(&request.input, &request.mode) {
         Ok(output) => output,
         Err(()) => {
@@ -53,7 +53,7 @@ fn run() -> Result<ExitCode, ()> {
                 }],
                 duration_ns: duration_ns(start),
             };
-            write_response(&response)?;
+            write(&response)?;
             return Ok(ExitCode::from(2));
         }
     };
@@ -71,12 +71,12 @@ fn run() -> Result<ExitCode, ()> {
         status: "completed",
         output_media_type: Some(&request.input_media_type),
         output_length: Some(output.len()),
-        output_sha256: Some(sha256(&output)),
+        output_sha256: Some(request::sha256(&output)),
         output: Some(output),
         diagnostics: Vec::new(),
         duration_ns: duration_ns(start),
     };
-    write_response(&response)?;
+    write(&response)?;
     Ok(ExitCode::SUCCESS)
 }
 
