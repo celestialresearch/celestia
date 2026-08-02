@@ -47,12 +47,31 @@ git -C "$family_repo" add -f families
 while IFS= read -r family; do
   git -C "$family_repo" update-index --chmod=+x "families/$family"
 done <<<"$families"
-if CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+set +e
+output=$(CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" 2>&1)
+status=$?
+set -e
+if [[ "$status" -ne 2 ||
+  "$output" != *"overrides require fixture mode"* ]]; then
+  printf 'action test driver accepted an ambient family override:\n%s\n' \
+    "$output" >&2
+  return 1
+fi
+driver_temp="$work_dir/action-driver-temp"
+mkdir -p "$driver_temp"
+if TMPDIR="$driver_temp" CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
   CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
   CELESTIA_ACTION_FAMILY_PREFIX=families \
   bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
   >/dev/null 2>&1; then
   printf 'action test driver accepted a failing family\n' >&2
+  return 1
+fi
+if find "$driver_temp" -mindepth 1 -print -quit | grep -q .; then
+  printf 'action test driver retained temporary state after failure\n' >&2
   return 1
 fi
 repo_dir="$work_dir/repo"
