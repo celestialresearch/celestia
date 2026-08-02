@@ -689,6 +689,24 @@ fi
 git -C "$verification_repo" update-index --chmod=+x \
   verification/rust_integration_test.sh
 
+chmod 644 -- "$verification_dir/rust_integration_test.sh"
+if [[ ! -x "$verification_dir/rust_integration_test.sh" ]]; then
+  set +e
+  output=$(CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+    CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+    CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+    bash "$root/.github/scripts/verification_test.sh" --fixture 2>&1)
+  status=$?
+  set -e
+  if [[ "$status" -eq 0 ||
+    "$output" != *"verification snapshot source mode differs: rust_integration_test.sh"* ]]; then
+    printf 'verification driver accepted working-tree mode drift:\n%s\n' \
+      "$output" >&2
+    exit 1
+  fi
+fi
+chmod +x -- "$verification_dir/rust_integration_test.sh"
+
 printf '%s\n' '#!/usr/bin/env bash' 'exit 9' \
   >"$verification_dir/rust_config_test.sh"
 chmod +x "$verification_dir/rust_config_test.sh"

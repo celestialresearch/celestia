@@ -467,6 +467,11 @@ snapshot_family_tree() {
         "$relative" >&2
       return 1
     fi
+    if [[ "$mode" == 100755 && ! -x "$source" ]]; then
+      printf 'verification snapshot source mode differs: %s\n' \
+        "$relative" >&2
+      return 1
+    fi
     mkdir -p -- "${target%/*}"
     mkdir -- "${binding%/*}"
     if ! cat -- "$source" >"$binding" ||
