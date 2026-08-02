@@ -39,20 +39,55 @@ families='remote_release_test.sh
 cache_test.sh
 inventory_test.sh
 permissions_test.sh'
-executed=$(mktemp "${TMPDIR:-/tmp}/celestia-action-families.XXXXXX")
-planned="$executed.planned"
-trap 'rm -f -- "$executed" "$planned"' EXIT
-trap 'exit 130' HUP INT TERM
 
-printf '%s\n' "$families" >"$planned"
-bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$planned" \
-  "$family_repo" "$family_prefix"
+# shellcheck disable=SC2329 # Invoked by registered signal and exit traps.
+finish_action_driver() {
+  local status=$1
 
-: >"$executed"
-while IFS= read -r family; do
-  bash "$family_dir/$family"
-  printf '%s\n' "$family" >>"$executed"
-done <<<"$families"
+  trap - EXIT HUP INT TERM
+  if [[ -n "${driver_pid:-}" ]]; then
+    kill -TERM -- "-$driver_pid" 2>/dev/null || true
+    kill -KILL -- "-$driver_pid" 2>/dev/null || true
+    wait "$driver_pid" 2>/dev/null || true
+    driver_pid=
+  fi
+  exit "$status"
+}
 
-bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$executed" \
-  "$family_repo" "$family_prefix"
+main() (
+  local executed
+  local family
+  local planned
+
+  executed=$(mktemp "${TMPDIR:-/tmp}/celestia-action-families.XXXXXX")
+  planned="$executed.planned"
+  trap 'rm -f -- "$executed" "$planned"' EXIT
+  printf '%s\n' "$families" >"$planned"
+  bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$planned" \
+    "$family_repo" "$family_prefix"
+
+  : >"$executed"
+  while IFS= read -r family; do
+    bash "$family_dir/$family"
+    printf '%s\n' "$family" >>"$executed"
+  done <<<"$families"
+
+  bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$executed" \
+    "$family_repo" "$family_prefix"
+)
+
+driver_pid=
+trap 'finish_action_driver $?' EXIT
+trap 'finish_action_driver 129' HUP
+trap 'finish_action_driver 130' INT
+trap 'finish_action_driver 143' TERM
+set -m
+main &
+set +m
+driver_pid=$!
+set +e
+wait "$driver_pid"
+status=$?
+set -e
+driver_pid=
+exit "$status"

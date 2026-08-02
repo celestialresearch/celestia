@@ -20,7 +20,8 @@ source "$script_dir/fixture.sh"
 main() (
 root=$(cd -- "$script_dir/../../.." && pwd)
 work_dir=$(new_verification_work verification-action)
-trap 'cleanup_verification "$work_dir"' EXIT
+action_driver_pid=
+trap 'cleanup_verification "$work_dir" "$action_driver_pid"' EXIT
 trap '[[ $- != *e* ]] || printf "verification-action failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 trap 'exit 1' HUP INT TERM
 output=
@@ -47,6 +48,52 @@ git -C "$family_repo" add -f families
 while IFS= read -r family; do
   git -C "$family_repo" update-index --chmod=+x "families/$family"
 done <<<"$families"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$$" >"$CELESTIA_ACTION_FAMILY_PID"
+sleep 60 &
+printf '%s\n' "$!" >"$CELESTIA_ACTION_DESCENDANT_PID"
+wait
+EOF
+chmod +x "$family_dir/remote_release_test.sh"
+git -C "$family_repo" add families/remote_release_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/remote_release_test.sh
+CELESTIA_ACTION_DESCENDANT_PID="$work_dir/action-descendant.pid" \
+  CELESTIA_ACTION_FAMILY_PID="$work_dir/action-family.pid" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  >/dev/null 2>&1 &
+action_driver_pid=$!
+for _ in {1..50}; do
+  [[ -s "$work_dir/action-descendant.pid" ]] && break
+  sleep 0.1
+done
+[[ -s "$work_dir/action-family.pid" &&
+  -s "$work_dir/action-descendant.pid" ]] || {
+  printf 'action cancellation fixture did not start\n' >&2
+  return 1
+}
+action_family_pid=$(cat "$work_dir/action-family.pid")
+action_descendant_pid=$(cat "$work_dir/action-descendant.pid")
+kill -TERM "$action_driver_pid"
+wait "$action_driver_pid" 2>/dev/null || true
+action_driver_pid=
+for pid in "$action_family_pid" "$action_descendant_pid"; do
+  if kill -0 "$pid" 2>/dev/null; then
+    printf 'action cancellation retained process %s\n' "$pid" >&2
+    kill "$pid" 2>/dev/null || true
+    return 1
+  fi
+done
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_dir/remote_release_test.sh"
+chmod +x "$family_dir/remote_release_test.sh"
+git -C "$family_repo" add families/remote_release_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/remote_release_test.sh
 set +e
 output=$(CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
   CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
