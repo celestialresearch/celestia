@@ -1,0 +1,389 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-split-001",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Transformation, protocol and Rust worker sources are split by cohesive intent without behavioural or artefact change",
+  "owner": "tools/sourcepolicy",
+  "inputs": [
+    {
+      "id": "CEL-SPLIT-001-INPUT-001",
+      "media_type": "application/vnd.celestia.tracked-source",
+      "maximum_bytes": 16777216,
+      "validation": "Bounded tracked Go and Rust source, test and artefact inventories"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-SPLIT-001-OUTPUT-001",
+      "media_type": "application/vnd.celestia.policy-result",
+      "maximum_bytes": 1048576,
+      "validation": "Deterministic split-inventory acceptance or rejection with a bounded diagnostic"
+    }
+  ],
+  "canonical_state": [
+    "The declared Go and Rust symbol, test, build-tag and artefact inventories are preserved across the split",
+    "The Go transformation implementation consists of transform.go, parse.go, host.go and text.go",
+    "The Go protocol implementation consists of protocol.go, request.go, response.go and frame.go",
+    "The Rust worker implementation consists of main.rs, protocol.rs and transform.rs",
+    "The Rust unit evidence consists of tests/mod.rs, tests/protocol.rs and tests/transform.rs",
+    "The Go protocol unit evidence consists of request_test.go, response_test.go, frame_test.go and fuzz_test.go while benchmarks remain in benchmark_test.go"
+  ],
+  "derived_state": [
+    "Focused package, conformance, process, artefact and independent Assurance verdicts"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-SPLIT-001-EFFECT-001",
+      "kind": "source-layout verification result",
+      "authority": "CEL-SPLIT-001-AUTH-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-SPLIT-001-AUTH-001",
+      "owner": "tools/sourcepolicy",
+      "grant": "Accept only the exact declared split files and preserved inventories",
+      "refusal": "Reject an old monolith, missing destination, undeclared sibling, duplicate declaration or changed test or artefact inventory"
+    },
+    {
+      "id": "CEL-SPLIT-001-AUTH-002",
+      "owner": "internal/architecturecheck",
+      "grant": "Independently compare the exact split inventories, rulepack results and artefacts",
+      "refusal": "Reject changed protocol, transformation, process or artefact semantics"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-SPLIT-001-TRUST-001",
+      "source": "tracked repository content",
+      "target": "tools/sourcepolicy",
+      "treatment": "Compare the exact split source tree, symbol and test inventories with this manifest"
+    },
+    {
+      "id": "CEL-SPLIT-001-TRUST-002",
+      "source": "Production architecture policy",
+      "target": "internal/architecturecheck",
+      "treatment": "Compare Production results and artefacts with independent Go and Rust rulepack evidence"
+    }
+  ],
+  "bounds": {
+    "processes": 1,
+    "memory_bytes": 67108864,
+    "output_bytes": 1048576,
+    "worker_time_milliseconds": 30000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-SPLIT-001-RESOURCE-001",
+      "kind": "tracked_inventory",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
+      "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds",
+      "release": "Release inventory and parsed syntax when policy evaluation returns",
+      "cleanup_failure": "Return an infrastructure error without accepting the tree"
+    },
+    {
+      "id": "CEL-SPLIT-001-RESOURCE-002",
+      "kind": "policy_document",
+      "owner": "internal/architecturecheck",
+      "acquisition": "Read one bounded strict architecture policy document",
+      "bound": "At most 1048576 bytes per inventory or fixture",
+      "release": "Release decoded policy when independent evaluation returns",
+      "cleanup_failure": "Return an assurance error without accepting the tree"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native Production and Assurance policy execution"
+    }
+  ],
+  "states": [
+    {
+      "id": "proposed",
+      "kind": "intermediate"
+    },
+    {
+      "id": "accepted",
+      "kind": "success"
+    },
+    {
+      "id": "rejected",
+      "kind": "refusal"
+    },
+    {
+      "id": "failed",
+      "kind": "failure"
+    },
+    {
+      "id": "cancelled",
+      "kind": "cancellation"
+    },
+    {
+      "id": "indeterminate",
+      "kind": "indeterminate"
+    }
+  ],
+  "allowed_transitions": [
+    {
+      "from": "proposed",
+      "to": "accepted"
+    },
+    {
+      "from": "proposed",
+      "to": "rejected"
+    },
+    {
+      "from": "proposed",
+      "to": "failed"
+    },
+    {
+      "from": "proposed",
+      "to": "cancelled"
+    },
+    {
+      "from": "proposed",
+      "to": "indeterminate"
+    }
+  ],
+  "prohibited_transitions": [
+    {
+      "from": "accepted",
+      "to": "proposed"
+    },
+    {
+      "from": "accepted",
+      "to": "rejected"
+    },
+    {
+      "from": "accepted",
+      "to": "failed"
+    },
+    {
+      "from": "accepted",
+      "to": "cancelled"
+    },
+    {
+      "from": "accepted",
+      "to": "indeterminate"
+    },
+    {
+      "from": "rejected",
+      "to": "proposed"
+    },
+    {
+      "from": "rejected",
+      "to": "accepted"
+    },
+    {
+      "from": "rejected",
+      "to": "failed"
+    },
+    {
+      "from": "rejected",
+      "to": "cancelled"
+    },
+    {
+      "from": "rejected",
+      "to": "indeterminate"
+    },
+    {
+      "from": "failed",
+      "to": "proposed"
+    },
+    {
+      "from": "failed",
+      "to": "accepted"
+    },
+    {
+      "from": "failed",
+      "to": "rejected"
+    },
+    {
+      "from": "failed",
+      "to": "cancelled"
+    },
+    {
+      "from": "failed",
+      "to": "indeterminate"
+    },
+    {
+      "from": "cancelled",
+      "to": "proposed"
+    },
+    {
+      "from": "cancelled",
+      "to": "accepted"
+    },
+    {
+      "from": "cancelled",
+      "to": "rejected"
+    },
+    {
+      "from": "cancelled",
+      "to": "failed"
+    },
+    {
+      "from": "cancelled",
+      "to": "indeterminate"
+    },
+    {
+      "from": "indeterminate",
+      "to": "proposed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "accepted"
+    },
+    {
+      "from": "indeterminate",
+      "to": "rejected"
+    },
+    {
+      "from": "indeterminate",
+      "to": "failed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "cancelled"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-SPLIT-001-INV-001",
+      "statement": "The split preserves every Go and Rust declaration, test target, build constraint and package owner",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Go package import to authority owner",
+      "falsifier": "A declaration, test target, build constraint or owner is missing, duplicated or moved to the wrong responsibility",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-001-PROD-001",
+          "owner": "source-policy split inventory and declaration fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-001-ASSURE-001",
+          "owner": "independent split inventory and declaration comparison"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Static declaration inventory does not prove runtime semantic equivalence"
+    },
+    {
+      "id": "CEL-SPLIT-001-INV-002",
+      "statement": "Go transformation and protocol files are split only by declared responsibility",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Go source declaration to cohesive destination file",
+      "falsifier": "A wrapper, duplicate validator, interface, registry or order dependency is introduced",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-001-PROD-002",
+          "owner": "source-policy split inventory and focused package fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-001-ASSURE-002",
+          "owner": "independent split inventory and rulepack checks"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Source layout is structural evidence and does not prove all semantic equivalence"
+    },
+    {
+      "id": "CEL-SPLIT-001-INV-003",
+      "statement": "The Rust worker split preserves protocol bytes, process behaviour and ordinary artefacts",
+      "owner": "worker/url-reference",
+      "severity": "high",
+      "boundary": "Rust process entry to protocol and transformation modules",
+      "falsifier": "Protocol bytes, exit behaviour, conformance output or release artefacts change",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-001-PROD-003",
+          "owner": "Go package, Rust unit, process and release artefact tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-001-ASSURE-003",
+          "owner": "independent URL rulepack, model and artefact inspection"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "The Go and Rust implementations remain intentionally independent"
+    }
+  ],
+  "success_semantics": "Accepted means the exact declared source split preserves symbols, tests, build constraints, protocol bytes, transformation results and artefacts",
+  "refusal_semantics": "An old monolith, missing destination, undeclared sibling, changed inventory, duplicate implementation, wrapper or semantic regression returns a bounded rejection",
+  "failure_semantics": "Malformed policy, parse failure or unavailable required tooling fails the gate",
+  "cancellation_semantics": "Cancellation stops evaluation and cannot produce acceptance",
+  "indeterminate_semantics": "Missing or contradictory evidence cannot produce acceptance",
+  "recovery_semantics": "Rerun from the unchanged tracked inventory; no partial policy result is canonical",
+  "compatibility_or_reset_policy": "Unused pre-release source is split directly; no wrapper, forwarding file, duplicate implementation or compatibility surface is retained",
+  "falsifiers": [
+    "A declaration, test or build constraint changes during the split",
+    "An old monolith remains or a destination file is missing",
+    "An undeclared sibling source or test file appears in a governed split directory",
+    "A wrapper, duplicate validator or order dependency is introduced",
+    "Diagnostics, failure distinctions or unsupported-platform refusal change"
+  ],
+  "production_controls": [
+    {
+      "id": "CEL-SPLIT-001-PROD-001",
+      "owner": "source-policy split inventory and declaration fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-001-PROD-002",
+      "owner": "source-policy split inventory and focused package fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-001-PROD-003",
+      "owner": "Go package, Rust unit, process and release artefact tests"
+    }
+  ],
+  "assurance_controls": [
+    {
+      "id": "CEL-SPLIT-001-ASSURE-001",
+      "owner": "independent split inventory and declaration comparison"
+    },
+    {
+      "id": "CEL-SPLIT-001-ASSURE-002",
+      "owner": "independent split inventory and rulepack checks"
+    },
+    {
+      "id": "CEL-SPLIT-001-ASSURE-003",
+      "owner": "independent URL rulepack, model and artefact inspection"
+    }
+  ],
+  "residual_limitations": [
+    "This structural split does not establish new operation behaviour",
+    "Native Windows execution remains separately governed",
+    "Exact-pair sign-off requires committed clean Product and Assurance candidates"
+  ],
+  "non_goals": [
+    "Change orchestration, diagnostics, failure classification or platform refusal",
+    "Create an interface, wrapper, registry, option or duplicate implementation",
+    "Retain the old monolith as a forwarding or compatibility file",
+    "Move or split another package",
+    "Change admission, transformation, protocol, persistence, supervision or worker behaviour"
+  ],
+  "deletion_criteria": [
+    "Delete this slice contract only when a later reviewed contract explicitly supersedes the split inventory"
+  ]
+}
