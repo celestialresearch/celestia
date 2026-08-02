@@ -48,6 +48,7 @@ source_policy_files=(
   tools/sourcepolicy/architecture_scripts.go
   tools/sourcepolicy/architecture_source_policy.go
   tools/sourcepolicy/architecture_split.go
+  tools/sourcepolicy/architecture_supervision_split.go
   tools/sourcepolicy/architecture_values.go
   tools/sourcepolicy/architecture.go
   tools/sourcepolicy/cargo.go
