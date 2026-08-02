@@ -9,8 +9,10 @@ must never be used automatically as a network target.
 The operation identifier is `url-reference`, operation version is `1` and
 protocol version is `1`. The only modes are `fang` and `defang`.
 
-This is the first supported internal contract. Incompatible grammar, protocol,
-verification or evidence changes require a new version.
+This is the only maintained internal contract. Before operational use, a
+grammar, protocol, verification or evidence change replaces this contract and
+every maintained implementation and fixture in place. No superseded reader,
+writer or compatibility path is retained.
 
 ## Change Brief
 
@@ -33,8 +35,8 @@ grants authority or trust.
 
 One application-owned evidence root contains immutable attempt directories.
 Only accepted attempts reach it. One supervisor call owns one worker process
-and joins its complete process tree before returning. Protocol and evidence
-formats are compatible only within their declared versions.
+and joins its complete process tree before returning. Only the current
+declared protocol and evidence formats are supported.
 
 The selected options are strict byte-preserving grammar, a one-shot JSON
 protocol and per-attempt filesystem bundles. Permissive normalisation, SQLite

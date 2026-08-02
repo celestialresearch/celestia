@@ -75,10 +75,11 @@ durable terminal outcome.
   surrounding whitespace and are limited to 512 bytes.
 - A persistence failure cannot produce `verified`.
 
-v1 is the first supported evidence format. The `protocol` package defines v1
-frame semantics. The `transform` package defines the admission and
-publication semantics but inspection does not replay them. Incompatible
-changes require a new evidence version.
+v1 is the only maintained evidence format. The `protocol` package defines its
+frame semantics. The `transform` package defines the admission and publication
+semantics but inspection does not replay them. Before operational use, an
+incompatible change replaces all maintained readers, writers, fixtures and
+contracts in place. No superseded format or migration path is retained.
 
 The filesystem and same user remain trusted. This format does not defend
 against an authorised user replacing the complete evidence root or modifying
