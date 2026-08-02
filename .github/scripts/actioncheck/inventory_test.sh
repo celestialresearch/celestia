@@ -217,5 +217,3 @@ grep -Fq 'traversal budget' "$error_file" || {
   printf 'action parser did not report its traversal bound\n' >&2
   exit 1
 }
-
-action_file="$work_dir/main.yml"
