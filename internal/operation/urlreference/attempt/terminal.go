@@ -14,8 +14,16 @@
 package attemptstore
 
 import (
+	"errors"
 	"fmt"
+	"os"
 )
+
+type markerPublicationOperations struct {
+	read     func(string, string) (Records, error)
+	validate func(string, string, bool) error
+	write    func(string, string, any) error
+}
 
 func loadTerminal(path string, records *Records) error {
 	switch records.Receipt.TerminalKind {
@@ -103,4 +111,19 @@ func publishMarkerWith(
 		return fmt.Errorf("write publication: %w", err)
 	}
 	return nil
+}
+
+func publicationExists(path, attemptID string) (bool, error) {
+	var publication Publication
+	err := readRecord(path, publicationFile, &publication)
+	if err == nil {
+		if publication.AttemptID != attemptID {
+			return false, ErrCorrupt
+		}
+		return true, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	return false, err
 }

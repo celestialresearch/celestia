@@ -183,21 +183,6 @@ func recoverPublishedWith(
 	return ErrDuplicate
 }
 
-func publicationExists(path, attemptID string) (bool, error) {
-	var publication Publication
-	err := readRecord(path, publicationFile, &publication)
-	if err == nil {
-		if publication.AttemptID != attemptID {
-			return false, ErrCorrupt
-		}
-		return true, nil
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	return false, err
-}
-
 func (store *Store) recoverablePath(attemptID string) (string, bool, error) {
 	return store.recoverablePathWith(attemptID, pathExists, confirmPublication)
 }

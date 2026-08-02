@@ -31,12 +31,6 @@ type pendingRemovalOperations struct {
 	remove func(string) error
 }
 
-type markerPublicationOperations struct {
-	read     func(string, string) (Records, error)
-	validate func(string, string, bool) error
-	write    func(string, string, any) error
-}
-
 func (attempt *Attempt) Publish(observation Observation) error {
 	attempt.mu.Lock()
 	defer attempt.mu.Unlock()
