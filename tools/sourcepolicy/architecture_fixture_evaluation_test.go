@@ -201,6 +201,11 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 			return bytes.Replace(source, []byte("func Fuzz"), []byte("func Check"), 1)
 		})
 	},
+	"action-policy-assertion-weakened": func(architecturePolicy) bool {
+		return actionPolicySplitMutationRejected("tools/actionpolicy/images_test.go", func(source []byte) []byte {
+			return bytes.Replace(source, []byte("t.Errorf"), []byte("t.Logf"), 1)
+		})
+	},
 }
 
 func sourcePolicySplitMutationRejected(path string, mutate func([]byte) []byte) bool {

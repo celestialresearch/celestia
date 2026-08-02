@@ -54,6 +54,13 @@ func TestActionPolicySplitInventoryRejectsDrift(t *testing.T) {
 			},
 			want: "test target inventory differs",
 		},
+		"weakened assertion": {
+			path: "tools/actionpolicy/images_test.go",
+			edit: func(source []byte) []byte {
+				return bytes.Replace(source, []byte("t.Errorf"), []byte("t.Logf"), 1)
+			},
+			want: "source inventory differs",
+		},
 		"fuzz target": {
 			path: "tools/actionpolicy/fuzz_test.go",
 			edit: func(source []byte) []byte {
@@ -82,6 +89,57 @@ func TestActionPolicySplitInventoryRejectsDrift(t *testing.T) {
 				t.Fatalf("findings = %v, want %q", findings, test.want)
 			}
 		})
+	}
+}
+
+func TestActionPolicySplitInventoryIgnoresNonTargetBodies(t *testing.T) {
+	t.Parallel()
+
+	readFile := func(file string) ([]byte, error) {
+		source, err := readArchitectureFile(file)
+		if err != nil || file != "tools/actionpolicy/actions.go" {
+			return source, err
+		}
+		mutated := bytes.Replace(
+			source,
+			[]byte("func printActions(output io.Writer, path string, root *yaml.Node) error {"),
+			[]byte("func printActions(output io.Writer, path string, root *yaml.Node) error {\n\t_ = root"),
+			1,
+		)
+		if bytes.Equal(mutated, source) {
+			t.Fatal("non-target body fixture did not mutate source")
+		}
+		return mutated, nil
+	}
+	findings, err := actionPolicySplitDeclarationFindings(expectedSplitFiles(), readFile)
+	if err != nil {
+		t.Fatalf("actionPolicySplitDeclarationFindings() error = %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("non-target body changed architecture identity: %v", findings)
+	}
+}
+
+func TestActionPolicySplitInventoryBindsTargetBodies(t *testing.T) {
+	t.Parallel()
+
+	baseline, err := actionPolicySplitInventoryFor(expectedSplitFiles(), readArchitectureFile)
+	if err != nil {
+		t.Fatalf("actionPolicySplitInventoryFor() error = %v", err)
+	}
+	readFile := func(file string) ([]byte, error) {
+		source, readErr := readArchitectureFile(file)
+		if readErr != nil || file != "tools/actionpolicy/images_test.go" {
+			return source, readErr
+		}
+		return bytes.Replace(source, []byte("t.Errorf"), []byte("t.Logf"), 1), nil
+	}
+	mutated, err := actionPolicySplitInventoryFor(expectedSplitFiles(), readFile)
+	if err != nil {
+		t.Fatalf("mutated actionPolicySplitInventoryFor() error = %v", err)
+	}
+	if mutated.sources == baseline.sources || mutated.targets == baseline.targets {
+		t.Fatalf("weakened assertion retained source or target identity")
 	}
 }
 

@@ -114,11 +114,12 @@ func supervisionSplitInventoryFor(
 }
 
 type ownedGoSplitSpec struct {
-	directory string
-	packages  []string
-	owners    map[string]string
-	maxBytes  int
-	label     string
+	directory        string
+	packages         []string
+	owners           map[string]string
+	maxBytes         int
+	label            string
+	bindTargetBodies bool
 }
 
 func ownedGoSplitInventoryFor(
@@ -203,13 +204,14 @@ func ownedGoSplitFileInventoryFor(
 		packages: []string{inventoryRecord("package", file, owner, parsed.Name.Name, build)},
 		bytes:    len(source),
 	}
-	return supervisionSplitDeclarations(file, parsed, inventory)
+	return ownedGoSplitDeclarations(file, parsed, inventory, spec.bindTargetBodies)
 }
 
-func supervisionSplitDeclarations(
+func ownedGoSplitDeclarations(
 	file string,
 	parsed *ast.File,
 	inventory attemptSplitFileInventory,
+	bindTargetBodies bool,
 ) (attemptSplitFileInventory, error) {
 	for _, declaration := range parsed.Decls {
 		records, target, inventoryErr := goSplitDeclarationInventory(file, declaration)
@@ -218,6 +220,18 @@ func supervisionSplitDeclarations(
 		}
 		for _, record := range records {
 			inventory.sources = append(inventory.sources, inventoryRecord("source", file, record))
+		}
+		if bindTargetBodies && target != "" {
+			rendered, err := renderGoNode(declaration)
+			if err != nil {
+				return attemptSplitFileInventory{}, fmt.Errorf(
+					"render declaration in %q: %w", file, err,
+				)
+			}
+			inventory.sources = append(
+				inventory.sources, inventoryRecord("declaration", file, rendered),
+			)
+			target = inventoryRecord("test-declaration", target, rendered)
 		}
 		if target != "" {
 			inventory.targets = append(inventory.targets, inventoryRecord("target", file, target))

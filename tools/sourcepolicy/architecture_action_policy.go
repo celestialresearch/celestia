@@ -21,8 +21,8 @@ const (
 	actionPolicySplitDirectory  = "tools/actionpolicy/"
 	maxActionPolicySplitBytes   = 4 << 20
 	actionPolicySplitPackageSHA = "99a8a8bb5340b219cc1aed8466305977c0cc3f923b70b4ed5b5567fcac0498a5"
-	actionPolicySplitSourceSHA  = "42e7b698c640403881ef2a2ec7cd29d979f1737c3d3382dba272d81e534f0e7e"
-	actionPolicySplitTargetSHA  = "0268b71b60b1c451ffa3b4e671b2d1915212cb05dd08350ca2f2882991f95b23"
+	actionPolicySplitSourceSHA  = "6978ff6bdf3e1d0e6db88dec83e451840b868ba0948725814ca920664ae16d40"
+	actionPolicySplitTargetSHA  = "ee656553dd0aa93e63b91962246cb285e1db817579312b52eb662e2eb85e66aa"
 )
 
 var actionPolicySplitOwners = map[string]string{
@@ -56,13 +56,7 @@ func actionPolicySplitDeclarationFindings(
 	files []string,
 	readFile func(string) ([]byte, error),
 ) ([]string, error) {
-	inventory, err := ownedGoSplitInventoryFor(files, readFile, ownedGoSplitSpec{
-		directory: actionPolicySplitDirectory,
-		packages:  []string{"main"},
-		owners:    actionPolicySplitOwners,
-		maxBytes:  maxActionPolicySplitBytes,
-		label:     "action-policy",
-	})
+	inventory, err := actionPolicySplitInventoryFor(files, readFile)
 	if err != nil {
 		return nil, err
 	}
@@ -81,4 +75,18 @@ func actionPolicySplitDeclarationFindings(
 	}
 	sort.Strings(findings)
 	return findings, nil
+}
+
+func actionPolicySplitInventoryFor(
+	files []string,
+	readFile func(string) ([]byte, error),
+) (attemptSplitInventory, error) {
+	return ownedGoSplitInventoryFor(files, readFile, ownedGoSplitSpec{
+		directory:        actionPolicySplitDirectory,
+		packages:         []string{"main"},
+		owners:           actionPolicySplitOwners,
+		maxBytes:         maxActionPolicySplitBytes,
+		label:            "action-policy",
+		bindTargetBodies: true,
+	})
 }

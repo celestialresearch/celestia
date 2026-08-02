@@ -52,6 +52,7 @@
     {"name": "source-policy-fixture-drift", "mutation": "source-policy-fixture-drift", "rule": "source-policy-fixture-inventory", "expected": "reject"},
     {"name": "undeclared-action-policy-test", "mutation": "undeclared-action-policy-test", "rule": "action-policy-file-inventory", "expected": "reject"},
     {"name": "action-policy-test-target-drift", "mutation": "action-policy-test-target-drift", "rule": "action-policy-test-inventory", "expected": "reject"},
-    {"name": "action-policy-fuzz-target-drift", "mutation": "action-policy-fuzz-target-drift", "rule": "action-policy-fuzz-inventory", "expected": "reject"}
+    {"name": "action-policy-fuzz-target-drift", "mutation": "action-policy-fuzz-target-drift", "rule": "action-policy-fuzz-inventory", "expected": "reject"},
+    {"name": "action-policy-assertion-weakened", "mutation": "action-policy-assertion-weakened", "rule": "action-policy-declaration-inventory", "expected": "reject"}
   ]
 }
