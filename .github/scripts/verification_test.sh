@@ -655,8 +655,8 @@ trap 'record_driver_signal 129 HUP' HUP
 trap 'record_driver_signal 130 INT' INT
 trap 'record_driver_signal 143 TERM' TERM
 driver_work=$(mktemp -d "${TMPDIR:-/tmp}/celestia-verification-driver.XXXXXX")
-snapshot_root=$(mktemp -d \
-  "$root/.github/scripts/.verification-family.XXXXXX")
+snapshot_root="$driver_work/snapshot"
+mkdir -- "$snapshot_root"
 driver_status="$driver_work/status"
 : >"$driver_status"
 exec 8>"$driver_status"

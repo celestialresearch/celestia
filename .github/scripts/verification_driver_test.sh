@@ -420,6 +420,13 @@ for driver_status_failure in '' 1 missing leading-zero out-of-range extra-line; 
   }
   family_pid=$(cat "$work/family.pid")
   descendant_pid=$(cat "$work/descendant.pid")
+  if find "$root/.github/scripts" -maxdepth 1 -type d \
+    -name '.verification-family.*' -print -quit | grep -q .; then
+    printf 'verification cancellation staged snapshot in the repository\n' >&2
+    kill -TERM "$verification_pid" 2>/dev/null || true
+    wait "$verification_pid" 2>/dev/null || true
+    exit 1
+  fi
   kill -TERM "$verification_pid"
   set +e
   wait "$verification_pid" 2>/dev/null
