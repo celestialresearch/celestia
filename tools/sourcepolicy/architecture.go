@@ -353,9 +353,9 @@ func boundedArchitectureFindings(findings []string) []string {
 	if !architectureFindingsFull(findings) {
 		return findings
 	}
-	bounded := slices.Clone(findings[:maxArchitectureFindings])
-	sort.Strings(bounded)
-	return append(bounded, architectureTruncated)
+	ordered := slices.Clone(findings)
+	sort.Strings(ordered)
+	return append(ordered[:maxArchitectureFindings], architectureTruncated)
 }
 
 func validateCurrentModule(

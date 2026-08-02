@@ -13,10 +13,28 @@ package main
 
 import (
 	"bytes"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestBoundedArchitectureFindingsAreDeterministic(t *testing.T) {
+	t.Parallel()
+
+	findings := make([]string, maxArchitectureFindings+4)
+	for index := range findings {
+		findings[index] = "finding-" + strconv.Itoa(index)
+	}
+	reversed := slices.Clone(findings)
+	slices.Reverse(reversed)
+	if !slices.Equal(
+		boundedArchitectureFindings(findings),
+		boundedArchitectureFindings(reversed),
+	) {
+		t.Fatal("bounded findings depend on input order")
+	}
+}
 
 func TestArchitectureFindingsAreBounded(t *testing.T) {
 	t.Parallel()
