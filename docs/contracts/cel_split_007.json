@@ -1,0 +1,243 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-split-007",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Assurance sources and tests are split by existing ownership without changing selection, execution or canonical evidence",
+  "owner": "tools/sourcepolicy",
+  "inputs": [
+    {
+      "id": "CEL-SPLIT-007-INPUT-001",
+      "media_type": "application/vnd.celestia.tracked-source",
+      "maximum_bytes": 16777216,
+      "validation": "Bounded tracked Assurance source, test, command, report and fixture inventories"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-SPLIT-007-OUTPUT-001",
+      "media_type": "application/vnd.celestia.policy-result",
+      "maximum_bytes": 1048576,
+      "validation": "Deterministic Assurance split acceptance or rejection with a bounded diagnostic"
+    }
+  ],
+  "canonical_state": [
+    "Assurance package paths, exported symbols, commands, tests, fixtures and report schemas are preserved",
+    "Assurance orchestration is owned by runner.go, prepare.go, registry_controls.go, product_controls.go, signoff_controls.go, command.go, result.go and format.go",
+    "Contract validation is owned by validate_manifest.go, validate_defect.go, validate_suppression.go, validate_coverage.go, validate_decision.go, validate_report.go, validate_declarative.go and validate_shared.go",
+    "Decision probing is owned by probe.go, plan.go, rewrite.go, mark.go, trace.go and helper_source.go",
+    "Mutation is owned by mutation.go, execute.go, definitions_campaign.go, definitions_suppression.go, definitions_boundary.go and result.go",
+    "Defect replay is owned by replay.go, execute.go, catalogue.go, catalogue_recent.go, catalogue_latest.go and result.go",
+    "The governed URL rulepack model is owned by model.go, operation_model.go, authority_model.go, validate_model.go and compare_manifest.go",
+    "Suppression scanning is owned by scan.go, go.go, shell.go, rust.go, codeql.go and symbol.go",
+    "The assure CLI is owned by coverage_commands.go, manifest_commands.go, report_commands.go, governance_commands.go and command_file.go"
+  ],
+  "derived_state": [
+    "Focused package, command, canonical-report, mutation, replay and independent Assurance verdicts"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-SPLIT-007-EFFECT-001",
+      "kind": "source-layout verification result",
+      "authority": "CEL-SPLIT-007-AUTH-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-SPLIT-007-AUTH-001",
+      "owner": "tools/sourcepolicy",
+      "grant": "Accept only the declared Assurance split files and preserved inventories",
+      "refusal": "Reject an old monolith, missing destination, undeclared sibling, duplicate declaration or changed symbol, test, command or fixture inventory"
+    },
+    {
+      "id": "CEL-SPLIT-007-AUTH-002",
+      "owner": "internal/architecturecheck",
+      "grant": "Independently compare the Assurance split inventory and preserved semantic controls",
+      "refusal": "Reject changed identity binding, source materialisation, report bytes, bounds, privacy, selection or verdict semantics"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-SPLIT-007-TRUST-001",
+      "source": "tracked Production and Assurance content",
+      "target": "tools/sourcepolicy",
+      "treatment": "Compare the exact Assurance source, declaration, test, command and fixture inventories with this manifest"
+    },
+    {
+      "id": "CEL-SPLIT-007-TRUST-002",
+      "source": "Production architecture result",
+      "target": "internal/architecturecheck",
+      "treatment": "Independently reject structural or semantic drift in the Assurance split"
+    }
+  ],
+  "bounds": {
+    "processes": 1,
+    "memory_bytes": 67108864,
+    "output_bytes": 1048576,
+    "worker_time_milliseconds": 30000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-SPLIT-007-RESOURCE-001",
+      "kind": "tracked_inventory",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
+      "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds",
+      "release": "Release inventory and parsed syntax when policy evaluation returns",
+      "cleanup_failure": "Return an infrastructure error without accepting the tree"
+    },
+    {
+      "id": "CEL-SPLIT-007-RESOURCE-002",
+      "kind": "policy_document",
+      "owner": "internal/architecturecheck",
+      "acquisition": "Read one bounded strict architecture policy document",
+      "bound": "At most 1048576 bytes per inventory or fixture",
+      "release": "Release decoded policy when independent evaluation returns",
+      "cleanup_failure": "Return an assurance error without accepting the tree"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native Production and Assurance policy execution"
+    }
+  ],
+  "states": [
+    { "id": "proposed", "kind": "intermediate" },
+    { "id": "accepted", "kind": "success" },
+    { "id": "rejected", "kind": "refusal" },
+    { "id": "failed", "kind": "failure" },
+    { "id": "cancelled", "kind": "cancellation" },
+    { "id": "indeterminate", "kind": "indeterminate" }
+  ],
+  "allowed_transitions": [
+    { "from": "proposed", "to": "accepted" },
+    { "from": "proposed", "to": "rejected" },
+    { "from": "proposed", "to": "failed" },
+    { "from": "proposed", "to": "cancelled" },
+    { "from": "proposed", "to": "indeterminate" }
+  ],
+  "prohibited_transitions": [
+    { "from": "accepted", "to": "proposed" },
+    { "from": "accepted", "to": "rejected" },
+    { "from": "accepted", "to": "failed" },
+    { "from": "accepted", "to": "cancelled" },
+    { "from": "accepted", "to": "indeterminate" },
+    { "from": "rejected", "to": "proposed" },
+    { "from": "rejected", "to": "accepted" },
+    { "from": "rejected", "to": "failed" },
+    { "from": "rejected", "to": "cancelled" },
+    { "from": "rejected", "to": "indeterminate" },
+    { "from": "failed", "to": "proposed" },
+    { "from": "failed", "to": "accepted" },
+    { "from": "failed", "to": "rejected" },
+    { "from": "failed", "to": "cancelled" },
+    { "from": "failed", "to": "indeterminate" },
+    { "from": "cancelled", "to": "proposed" },
+    { "from": "cancelled", "to": "accepted" },
+    { "from": "cancelled", "to": "rejected" },
+    { "from": "cancelled", "to": "failed" },
+    { "from": "cancelled", "to": "indeterminate" },
+    { "from": "indeterminate", "to": "proposed" },
+    { "from": "indeterminate", "to": "accepted" },
+    { "from": "indeterminate", "to": "rejected" },
+    { "from": "indeterminate", "to": "failed" },
+    { "from": "indeterminate", "to": "cancelled" }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-SPLIT-007-INV-001",
+      "statement": "The split preserves every Assurance declaration, test target, command, fixture and package owner",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Assurance declaration to cohesive destination file",
+      "falsifier": "A declaration, test, command, fixture or owner is missing, duplicated or moved to the wrong responsibility",
+      "production_controls": [
+        { "id": "CEL-SPLIT-007-PROD-001", "owner": "source-policy Assurance split inventory and declaration fixtures" }
+      ],
+      "assurance_controls": [
+        { "id": "CEL-SPLIT-007-ASSURE-001", "owner": "independent Assurance split inventory and declaration comparison" }
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Static inventory does not prove execution or evidence equivalence"
+    },
+    {
+      "id": "CEL-SPLIT-007-INV-002",
+      "statement": "Executable identity, source materialisation, bounds and diagnostic privacy remain unchanged",
+      "owner": "internal/assurance",
+      "severity": "high",
+      "boundary": "Immutable candidate preparation to bounded control execution",
+      "falsifier": "A command uses an unbound executable or source, exceeds a declared bound or exposes unredacted diagnostics",
+      "production_controls": [
+        { "id": "CEL-SPLIT-007-PROD-002", "owner": "source-policy Assurance owner and call inventories" }
+      ],
+      "assurance_controls": [
+        { "id": "CEL-SPLIT-007-ASSURE-002", "owner": "runner identity, source, bound and diagnostic fault fixtures" }
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Native process behaviour remains qualified only on the recorded platform"
+    },
+    {
+      "id": "CEL-SPLIT-007-INV-003",
+      "statement": "Reports, mutations, replays, decisions, suppressions and CLI commands retain canonical bytes and exact selection",
+      "owner": "internal/contract",
+      "severity": "high",
+      "boundary": "Selected control input to canonical durable report and command output",
+      "falsifier": "A control is skipped, duplicated, renamed or reordered or canonical report bytes, privacy or verdict semantics change",
+      "production_controls": [
+        { "id": "CEL-SPLIT-007-PROD-003", "owner": "source-policy command, test and fixture inventory" }
+      ],
+      "assurance_controls": [
+        { "id": "CEL-SPLIT-007-ASSURE-003", "owner": "canonical report, mutation, replay, rulepack, suppression and CLI fixtures" }
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Structural equivalence does not prove every external toolchain behaviour"
+    }
+  ],
+  "success_semantics": "Accepted means the declared Assurance split preserves declarations, tests, commands, fixtures, executable identity, source materialisation, bounds, privacy, selection and canonical report bytes",
+  "refusal_semantics": "An old monolith, missing destination, undeclared sibling, changed inventory, duplicate implementation, wrapper or semantic regression returns a bounded rejection",
+  "failure_semantics": "Malformed policy, parse failure or unavailable required tooling fails the gate",
+  "cancellation_semantics": "Cancellation stops evaluation and cannot produce acceptance",
+  "indeterminate_semantics": "Missing or contradictory evidence cannot produce acceptance",
+  "recovery_semantics": "Rerun from the unchanged tracked inventory; no partial policy result is canonical",
+  "compatibility_or_reset_policy": "Unused pre-release source is split directly; no old file, wrapper, alias, forwarding package or duplicate implementation is retained",
+  "falsifiers": [
+    "A declaration, test target, command, fixture or package owner changes during the split",
+    "An old monolith remains or a declared destination file is missing",
+    "An undeclared sibling source or test file appears in a governed Assurance package",
+    "Executable identity, immutable source materialisation, process bounds or diagnostic privacy changes",
+    "Canonical report bytes, control selection, mutation identity, defect replay selection or CLI output changes",
+    "A wrapper, duplicate validator, alias or order dependency is introduced"
+  ],
+  "production_controls": [
+    { "id": "CEL-SPLIT-007-PROD-001", "owner": "source-policy Assurance split inventory and declaration fixtures" },
+    { "id": "CEL-SPLIT-007-PROD-002", "owner": "source-policy Assurance owner and call inventories" },
+    { "id": "CEL-SPLIT-007-PROD-003", "owner": "source-policy command, test and fixture inventory" }
+  ],
+  "assurance_controls": [
+    { "id": "CEL-SPLIT-007-ASSURE-001", "owner": "independent Assurance split inventory and declaration comparison" },
+    { "id": "CEL-SPLIT-007-ASSURE-002", "owner": "runner identity, source, bound and diagnostic fault fixtures" },
+    { "id": "CEL-SPLIT-007-ASSURE-003", "owner": "canonical report, mutation, replay, rulepack, suppression and CLI fixtures" }
+  ],
+  "residual_limitations": [
+    "This structural split does not establish new Assurance or Product behaviour",
+    "Native Windows execution and persistence remain separately governed",
+    "Exact-pair sign-off requires committed clean Product and Assurance candidates"
+  ],
+  "non_goals": [
+    "Change executable identity, source materialisation, report schema, report bytes, diagnostics, bounds, control selection or verdicts",
+    "Create an interface, wrapper, registry, option or duplicate implementation",
+    "Retain an old file, alias, forwarding package or compatibility path",
+    "Move or split Production code or another Assurance package",
+    "Change mutation definitions, defect replay commands, decision semantics, suppression policy, rulepack behaviour or CLI output"
+  ],
+  "deletion_criteria": [
+    "Delete this slice contract only when a later reviewed contract explicitly supersedes the split inventory"
+  ]
+}
