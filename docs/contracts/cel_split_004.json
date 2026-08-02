@@ -1,0 +1,189 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-split-004",
+  "contract_version": "1.0.0",
+  "revision": {"class": "initial"},
+  "operator_visible_outcome": "URL-reference operation tests and production responsibilities are split by orchestration boundary without changing the governed operation result or durable evidence",
+  "owner": "internal/operation/urlreference",
+  "inputs": [{"id": "CEL-SPLIT-004-INPUT-001", "media_type": "application/vnd.celestia.tracked-source", "maximum_bytes": 16777216, "validation": "Bounded tracked URL-operation source, test, build-constraint, symbol and target inventories"}],
+  "outputs": [{"id": "CEL-SPLIT-004-OUTPUT-001", "media_type": "application/vnd.celestia.policy-result", "maximum_bytes": 1048576, "validation": "Deterministic URL-operation split acceptance or rejection with a bounded diagnostic"}],
+  "canonical_state": [
+    "Operation orchestration, evidence construction, result projection, semantic verification and platform selection remain owned by operation_windows.go, evidence_windows.go, projection_windows.go, verification_windows.go and platform_windows.go",
+    "Admission refusal occurs before staging or worker execution and cannot create an admitted attempt",
+    "Every admitted attempt is durably staged before worker execution then is published with its exact process, protocol, verification and terminal observations or becomes indeterminate when publication is not durable",
+    "Process outcome, cleanup completion, protocol validity, worker status, independent semantic verification and terminal status remain distinct dimensions",
+    "A protocol-valid completed response becomes verified only when the independent Go transformation matches; a semantic lie remains executed_unverified",
+    "A protocol-valid rejected or failed worker response remains failed and does not become verified merely because the process exited normally",
+    "Timeout and cancellation retain their primary terminal meaning even when cleanup also fails",
+    "Publication failure has precedence over an otherwise valid operation result and produces indeterminate; release-only failure retains the operation terminal status while recording cleanup failure",
+    "Exact bounded worker standard output and standard error remain available only to durable evidence while caller-facing process results exclude both raw streams",
+    "Caller-facing diagnostics contain host-selected messages derived from validated codes and never expose worker-controlled diagnostic text",
+    "Unsupported platforms refuse operation construction before admission, staging, process creation or evidence mutation",
+    "Tests are divided only into admission, execution, protocol, verification, diagnostics, publication, cancellation, benchmark and shared qualified-harness ownership"
+  ],
+  "derived_state": ["Focused admission, process, protocol, semantic-verification, diagnostic, publication, cancellation and benchmark verdicts", "Independent Assurance comparison of lifecycle, authority, durable-state and platform relationships"],
+  "external_effects": [
+    {"id": "CEL-SPLIT-004-EFFECT-001", "kind": "source-layout verification result", "authority": "CEL-SPLIT-004-AUTH-001"},
+    {"id": "CEL-SPLIT-004-EFFECT-002", "kind": "bounded worker process execution", "authority": "CEL-SPLIT-004-AUTH-003"},
+    {"id": "CEL-SPLIT-004-EFFECT-003", "kind": "durable attempt publication", "authority": "CEL-SPLIT-004-AUTH-004"}
+  ],
+  "authorities": [
+    {"id": "CEL-SPLIT-004-AUTH-001", "owner": "tools/sourcepolicy", "grant": "Accept only the declared URL-operation source and test split with preserved build, symbol and target inventories", "refusal": "Reject an old mixed-responsibility test, missing destination, undeclared sibling, duplicate declaration or changed operation inventory"},
+    {"id": "CEL-SPLIT-004-AUTH-002", "owner": "internal/architecturecheck", "grant": "Independently compare the split inventory and governed URL-operation lifecycle", "refusal": "Reject changed orchestration, terminal selection, verification, projection, persistence precedence or platform refusal"},
+    {"id": "CEL-SPLIT-004-AUTH-003", "owner": "internal/operation/urlreference", "grant": "Execute one admitted request through the configured bounded supervisor on Windows AMD64", "refusal": "Reject invalid admission or an unsupported platform before worker execution"},
+    {"id": "CEL-SPLIT-004-AUTH-004", "owner": "internal/operation/urlreference/attempt", "grant": "Publish the exact admitted request and observed process, protocol, verification and terminal dimensions", "refusal": "Return indeterminate when required evidence cannot be retained durably"}
+  ],
+  "trust_boundaries": [
+    {"id": "CEL-SPLIT-004-TRUST-001", "source": "tracked repository content", "target": "tools/sourcepolicy", "treatment": "Compare exact URL-operation files, declarations, build constraints and test targets with the reviewed split"},
+    {"id": "CEL-SPLIT-004-TRUST-002", "source": "worker process and response", "target": "internal/operation/urlreference", "treatment": "Retain bounded raw evidence, validate the protocol, independently recompute the transformation and project only host-owned diagnostics"},
+    {"id": "CEL-SPLIT-004-TRUST-003", "source": "Production operation evidence", "target": "internal/architecturecheck", "treatment": "Compare Production results with an independent lifecycle and authority model without importing Production implementation"}
+  ],
+  "bounds": {"processes": 1, "memory_bytes": 67108864, "output_bytes": 1048576, "worker_time_milliseconds": 30000, "persistence_bytes": 1048576},
+  "resources": [
+    {"id": "CEL-SPLIT-004-RESOURCE-001", "kind": "tracked_inventory", "owner": "tools/sourcepolicy", "acquisition": "Read one bounded NUL-delimited tracked-file inventory", "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds", "release": "Release inventory and parsed syntax when policy evaluation returns", "cleanup_failure": "Return an infrastructure error without accepting the tree"},
+    {"id": "CEL-SPLIT-004-RESOURCE-002", "kind": "worker_process", "owner": "internal/execution/supervision", "acquisition": "Start one configured worker suspended inside its owned containment boundary", "bound": "One process, one request, bounded streams, memory, CPU and execution deadline", "release": "Terminate and join the complete owned process tree before returning", "cleanup_failure": "Record cleanup failure separately without erasing timeout, cancellation or process failure"},
+    {"id": "CEL-SPLIT-004-RESOURCE-003", "kind": "operation_evidence", "owner": "internal/operation/urlreference/attempt", "acquisition": "Stage one admitted request before executing its bounded worker", "bound": "One immutable attempt identity, one bounded worker response and one terminal observation", "release": "Publish one durable terminal bundle or retain an explicit indeterminate recovery condition", "cleanup_failure": "Record cleanup failure separately and never promote incomplete evidence to verified"},
+    {"id": "CEL-SPLIT-004-RESOURCE-004", "kind": "policy_document", "owner": "internal/architecturecheck", "acquisition": "Read one bounded strict slice manifest and governed operation model", "bound": "At most 1048576 bytes per manifest, inventory or fixture", "release": "Release decoded evidence when independent evaluation returns", "cleanup_failure": "Return an assurance error without accepting the split"}
+  ],
+  "platforms": [
+    {"os": "windows", "arch": "amd64", "support": "supported", "refusal": "", "evidence": "Native operation, process containment, persistence and Assurance qualification"},
+    {"os": "linux", "arch": "amd64", "support": "unsupported", "refusal": "Operation construction returns unavailable before admission or effects", "evidence": "Native hosted refusal test"},
+    {"os": "linux", "arch": "arm64", "support": "unsupported", "refusal": "Operation construction returns unavailable before admission or effects", "evidence": "Native hosted refusal test"},
+    {"os": "darwin", "arch": "amd64", "support": "unsupported", "refusal": "Operation construction returns unavailable before admission or effects", "evidence": "Native hosted refusal test"},
+    {"os": "darwin", "arch": "arm64", "support": "unsupported", "refusal": "Operation construction returns unavailable before admission or effects", "evidence": "Native hosted refusal test"},
+    {"os": "freebsd", "arch": "amd64", "support": "unsupported", "refusal": "Operation construction returns unavailable before admission or effects", "evidence": "Guest-native refusal test"},
+    {"os": "openbsd", "arch": "amd64", "support": "unsupported", "refusal": "Operation construction returns unavailable before admission or effects", "evidence": "Guest-native refusal test"},
+    {"os": "netbsd", "arch": "amd64", "support": "unsupported", "refusal": "Operation construction returns unavailable before admission or effects", "evidence": "Guest-native refusal test"},
+    {"os": "dragonfly", "arch": "amd64", "support": "unsupported", "refusal": "Operation construction returns unavailable before admission or effects", "evidence": "Guest-native refusal test"},
+    {"os": "plan9", "arch": "amd64", "support": "unsupported", "refusal": "Operation construction returns unavailable before admission or effects", "evidence": "Compile-only refusal evidence"}
+  ],
+  "states": [
+    {"id": "proposed", "kind": "intermediate"},
+    {"id": "accepted", "kind": "success"},
+    {"id": "rejected", "kind": "refusal"},
+    {"id": "failed", "kind": "failure"},
+    {"id": "cancelled", "kind": "cancellation"},
+    {"id": "indeterminate", "kind": "indeterminate"}
+  ],
+  "allowed_transitions": [
+    {"from": "proposed", "to": "accepted"},
+    {"from": "proposed", "to": "rejected"},
+    {"from": "proposed", "to": "failed"},
+    {"from": "proposed", "to": "cancelled"},
+    {"from": "proposed", "to": "indeterminate"}
+  ],
+  "prohibited_transitions": [
+    {"from": "accepted", "to": "proposed"}, {"from": "accepted", "to": "rejected"}, {"from": "accepted", "to": "failed"}, {"from": "accepted", "to": "cancelled"}, {"from": "accepted", "to": "indeterminate"},
+    {"from": "rejected", "to": "proposed"}, {"from": "rejected", "to": "accepted"}, {"from": "rejected", "to": "failed"}, {"from": "rejected", "to": "cancelled"}, {"from": "rejected", "to": "indeterminate"},
+    {"from": "failed", "to": "proposed"}, {"from": "failed", "to": "accepted"}, {"from": "failed", "to": "rejected"}, {"from": "failed", "to": "cancelled"}, {"from": "failed", "to": "indeterminate"},
+    {"from": "cancelled", "to": "proposed"}, {"from": "cancelled", "to": "accepted"}, {"from": "cancelled", "to": "rejected"}, {"from": "cancelled", "to": "failed"}, {"from": "cancelled", "to": "indeterminate"},
+    {"from": "indeterminate", "to": "proposed"}, {"from": "indeterminate", "to": "accepted"}, {"from": "indeterminate", "to": "rejected"}, {"from": "indeterminate", "to": "failed"}, {"from": "indeterminate", "to": "cancelled"}
+  ],
+  "invariants": [
+    {
+      "id": "CEL-SPLIT-004-INV-001",
+      "statement": "The split preserves every URL-operation source declaration, test target, benchmark, build constraint and package owner",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "URL-operation declaration to responsibility owner",
+      "falsifier": "A declaration, test target, benchmark, build constraint or owner is missing, duplicated or assigned to the wrong operation responsibility",
+      "production_controls": [{"id": "CEL-SPLIT-004-PROD-001", "owner": "source-policy operation split inventory and declaration fixtures"}],
+      "assurance_controls": [{"id": "CEL-SPLIT-004-ASSURE-001", "owner": "independent operation split inventory and declaration comparison"}],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Static inventory does not establish lifecycle or durable-state equivalence"
+    },
+    {
+      "id": "CEL-SPLIT-004-INV-002",
+      "statement": "Admission, execution, protocol validation, independent semantic verification and final terminal projection remain distinct authorities",
+      "owner": "internal/operation/urlreference",
+      "severity": "high",
+      "boundary": "Admitted request through worker response to caller result",
+      "falsifier": "A worker response declares itself verified, process success implies semantic success or a failed dimension is hidden behind one status",
+      "production_controls": [{"id": "CEL-SPLIT-004-PROD-002", "owner": "focused admission, execution, protocol and verification operation tests"}],
+      "assurance_controls": [{"id": "CEL-SPLIT-004-ASSURE-002", "owner": "independent governed-operation lifecycle and authority model"}],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Native containment and process cleanup remain separately governed by process supervision"
+    },
+    {
+      "id": "CEL-SPLIT-004-INV-003",
+      "statement": "Durable evidence preserves exact bounded process observations while caller projection excludes raw worker streams and worker-controlled diagnostic messages",
+      "owner": "internal/operation/urlreference",
+      "severity": "high",
+      "boundary": "Worker-controlled bytes to durable evidence and caller-visible result",
+      "falsifier": "Raw worker output reaches the caller, projected text is worker-selected or evidence omits a retained process, protocol, verification or terminal dimension",
+      "production_controls": [{"id": "CEL-SPLIT-004-PROD-003", "owner": "focused diagnostic, protocol and publication operation tests"}],
+      "assurance_controls": [{"id": "CEL-SPLIT-004-ASSURE-003", "owner": "independent diagnostic privacy and evidence-field comparison"}],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Evidence protects recorded observations, not external truth or same-user rewrite resistance"
+    },
+    {
+      "id": "CEL-SPLIT-004-INV-004",
+      "statement": "Publication and cleanup failures preserve their declared precedence without converting incomplete evidence into a durable verified result",
+      "owner": "internal/operation/urlreference/attempt",
+      "severity": "high",
+      "boundary": "Operation result to terminal evidence publication and ownership release",
+      "falsifier": "Publication failure leaves verified, release failure erases the primary outcome or an admitted attempt has neither a terminal bundle nor an explicit recovery condition",
+      "production_controls": [{"id": "CEL-SPLIT-004-PROD-004", "owner": "focused publication, cancellation and persistence-precedence operation tests"}],
+      "assurance_controls": [{"id": "CEL-SPLIT-004-ASSURE-004", "owner": "independent terminal and durable-state relationship checks"}],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Native interruption and filesystem durability remain qualified only on Windows AMD64"
+    },
+    {
+      "id": "CEL-SPLIT-004-INV-005",
+      "statement": "Unsupported platforms refuse the operation before admission, process launch or persistence effects",
+      "owner": "internal/operation/urlreference",
+      "severity": "high",
+      "boundary": "Platform selection to operation construction and first effect",
+      "falsifier": "An unsupported target admits, stages or launches a URL-reference attempt",
+      "production_controls": [{"id": "CEL-SPLIT-004-PROD-005", "owner": "unsupported-platform operation tests and compatibility compilation"}],
+      "assurance_controls": [{"id": "CEL-SPLIT-004-ASSURE-005", "owner": "independent platform refusal model"}],
+      "platforms": ["windows/amd64", "linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "freebsd/amd64", "openbsd/amd64", "netbsd/amd64", "dragonfly/amd64", "plan9/amd64"],
+      "residual_uncertainty": "Cross-compilation establishes refusal shape but only named native jobs exercise hosted refusal"
+    }
+  ],
+  "success_semantics": "Accepted means the exact declared operation split preserves its declarations, tests, build constraints, orchestration, verification, safe projection, terminal selection, durable evidence and platform refusal",
+  "refusal_semantics": "A mixed-responsibility test, missing destination, undeclared sibling, duplicate implementation, changed inventory or weakened lifecycle relationship returns a bounded rejection",
+  "failure_semantics": "Malformed policy, parse failure, unavailable required tooling or an operation execution failure remains failed and cannot become verified",
+  "cancellation_semantics": "Cancellation remains distinct, terminates owned execution and is retained as the primary outcome even if cleanup also fails",
+  "indeterminate_semantics": "Missing, contradictory or non-durable required evidence produces indeterminate and cannot produce verified",
+  "recovery_semantics": "A staged admitted attempt without durable terminal publication retains an explicit recovery condition; recovery never reruns the worker or promotes incomplete evidence",
+  "compatibility_or_reset_policy": "Unused pre-release source may be split directly; no wrapper, alias, forwarding file, duplicate implementation or compatibility path is retained",
+  "falsifiers": [
+    "A source declaration, test target, benchmark or build constraint changes during the split",
+    "An old mixed-responsibility operation test remains or a declared destination is absent",
+    "An undeclared sibling operation source or test appears",
+    "Worker success or protocol validity promotes output without independent semantic verification",
+    "Raw worker text reaches the caller or a worker selects an operator-facing message",
+    "Publication failure leaves a verified result or release failure erases the primary operation outcome",
+    "An admitted attempt has neither durable terminal evidence nor an explicit recovery condition",
+    "An unsupported platform reaches admission, process launch or persistence effects"
+  ],
+  "production_controls": [
+    {"id": "CEL-SPLIT-004-PROD-001", "owner": "source-policy operation split inventory and declaration fixtures"},
+    {"id": "CEL-SPLIT-004-PROD-002", "owner": "focused admission, execution, protocol and verification operation tests"},
+    {"id": "CEL-SPLIT-004-PROD-003", "owner": "focused diagnostic, protocol and publication operation tests"},
+    {"id": "CEL-SPLIT-004-PROD-004", "owner": "focused publication, cancellation and persistence-precedence operation tests"},
+    {"id": "CEL-SPLIT-004-PROD-005", "owner": "unsupported-platform operation tests and compatibility compilation"}
+  ],
+  "assurance_controls": [
+    {"id": "CEL-SPLIT-004-ASSURE-001", "owner": "independent operation split inventory and declaration comparison"},
+    {"id": "CEL-SPLIT-004-ASSURE-002", "owner": "independent governed-operation lifecycle and authority model"},
+    {"id": "CEL-SPLIT-004-ASSURE-003", "owner": "independent diagnostic privacy and evidence-field comparison"},
+    {"id": "CEL-SPLIT-004-ASSURE-004", "owner": "independent terminal and durable-state relationship checks"},
+    {"id": "CEL-SPLIT-004-ASSURE-005", "owner": "independent platform refusal model"}
+  ],
+  "residual_limitations": [
+    "This structural split establishes no new operation, persistence, protocol, containment or platform behaviour",
+    "Native execution and durable persistence remain qualified only on Windows AMD64",
+    "Cross-compilation and static inventory do not establish native containment, cleanup or filesystem durability",
+    "Exact-pair sign-off requires committed clean Product and Assurance candidates"
+  ],
+  "non_goals": [
+    "Change admission, execution, protocol decoding, semantic verification, diagnostics, terminal status, evidence bytes, publication precedence, cleanup or platform refusal",
+    "Create an interface, wrapper, registry, option, compatibility layer or duplicate state model",
+    "Move or split another package",
+    "Add platform support, process authority, persistence behaviour or worker capability",
+    "Optimise execution, tests or verification"
+  ],
+  "deletion_criteria": ["Delete this slice contract only when a later reviewed contract explicitly supersedes the operation split inventory and preserved relationships"]
+}
