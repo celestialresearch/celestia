@@ -16,6 +16,7 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/source-policy-driver.XXXXXX")
 driver_pid=
 descendant_pid=
+group_probe_count=
 setup_pid=
 # shellcheck source=.github/scripts/verification/fixture.sh
 source "$root/.github/scripts/verification/fixture.sh"
@@ -396,6 +397,74 @@ if verification_process_running "$descendant_pid"; then
   exit 1
 fi
 descendant_pid=
+git -C "$source_policy_repo" checkout -- source-policy/setup.sh
+
+set +e
+output=$(
+  CELESTIA_SOURCE_POLICY_GROUP_PROBE="$work/missing-group-probe" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+    bash "$root/.github/scripts/verification/source_policy_test.sh" \
+      --fixture 2>&1
+)
+status=$?
+set -e
+if [[ "$status" -ne 2 ]] ||
+  [[ "$output" != *'source-policy group probe is unavailable'* ]]; then
+  printf 'source-policy driver accepted an unavailable group probe:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+
+cat >"$source_policy_dir/setup.sh" <<'EOF'
+#!/usr/bin/env bash
+exit 9
+EOF
+cat >"$work/group-probe.sh" <<'EOF'
+#!/usr/bin/env bash
+count=0
+if [[ -s "$CELESTIA_GROUP_PROBE_COUNT" ]]; then
+  count=$(cat "$CELESTIA_GROUP_PROBE_COUNT")
+fi
+printf '%d\n' "$((count + 1))" >"$CELESTIA_GROUP_PROBE_COUNT"
+exit 0
+EOF
+chmod +x "$source_policy_dir/setup.sh" "$work/group-probe.sh"
+git -C "$source_policy_repo" add source-policy/setup.sh
+git -C "$source_policy_repo" update-index --chmod=+x source-policy/setup.sh
+group_probe_count="$work/group-probe-count"
+set +e
+output=$(
+  CELESTIA_GROUP_PROBE_COUNT="$group_probe_count" \
+    CELESTIA_SOURCE_POLICY_GROUP_PROBE="$work/group-probe.sh" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+    bash "$root/.github/scripts/verification/source_policy_test.sh" \
+      --fixture 2>&1
+)
+status=$?
+set -e
+if [[ "$status" -ne 1 ]]; then
+  printf 'source-policy cleanup failure retained script status 9 as %s\n' \
+    "$status" >&2
+  exit 1
+fi
+if [[ $(grep -Fc 'source-policy script retained a live process group' \
+  <<<"$output") -lt 2 ]] ||
+  [[ "$output" != *'source-policy script cleanup failed: setup.sh'* ]] ||
+  [[ "$output" != \
+    *'source-policy process-group cleanup failed during exit'* ]]; then
+  printf 'source-policy cleanup failure omitted its retry diagnostics:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+if [[ ! -s "$group_probe_count" ]] ||
+  [[ $(cat "$group_probe_count") -lt 2 ]]; then
+  printf 'source-policy cleanup failure omitted its exit retry\n' >&2
+  exit 1
+fi
 git -C "$source_policy_repo" checkout -- source-policy/setup.sh
 
 set +e

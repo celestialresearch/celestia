@@ -31,6 +31,7 @@ scripts=(
 fixture_mode=${1:-}
 fixture_path="$script_dir/fixture.sh"
 snapshot_checkpoint=
+group_probe=
 case "$fixture_mode" in
 "") ;;
 --fixture)
@@ -39,6 +40,7 @@ case "$fixture_mode" in
   script_prefix=${CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX:?}
   fixture_path=${CELESTIA_SOURCE_POLICY_FIXTURE_PATH:-$fixture_path}
   snapshot_checkpoint=${CELESTIA_SOURCE_POLICY_SNAPSHOT_CHECKPOINT:-}
+  group_probe=${CELESTIA_SOURCE_POLICY_GROUP_PROBE:-}
   ;;
 *)
   printf 'Usage: source_policy_test.sh [--fixture]\n' >&2
@@ -50,8 +52,14 @@ if [[ "$fixture_mode" != --fixture ]] &&
     -n "${CELESTIA_SOURCE_POLICY_SCRIPT_REPO+x}" ||
     -n "${CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX+x}" ||
     -n "${CELESTIA_SOURCE_POLICY_FIXTURE_PATH+x}" ||
-    -n "${CELESTIA_SOURCE_POLICY_SNAPSHOT_CHECKPOINT+x}" ]]; then
+    -n "${CELESTIA_SOURCE_POLICY_SNAPSHOT_CHECKPOINT+x}" ||
+    -n "${CELESTIA_SOURCE_POLICY_GROUP_PROBE+x}" ]]; then
   printf 'source-policy script overrides require fixture mode\n' >&2
+  exit 2
+fi
+if [[ -n "$group_probe" ]] &&
+  [[ -L "$group_probe" || ! -f "$group_probe" || ! -x "$group_probe" ]]; then
+  printf 'source-policy group probe is unavailable\n' >&2
   exit 2
 fi
 
@@ -68,6 +76,10 @@ active_script_running() {
 }
 
 active_script_group_running() {
+  if [[ -n "$group_probe" ]]; then
+    "$group_probe" "$active_script_pid"
+    return
+  fi
   kill -0 -- "-$active_script_pid" 2>/dev/null
 }
 
@@ -77,6 +89,9 @@ stop_completed_group() {
   active_script_group_running || return 0
   kill -TERM -- "-$active_script_pid" 2>/dev/null || true
   attempt=0
+  if [[ -n "$group_probe" ]]; then
+    attempt=40
+  fi
   while active_script_group_running && ((attempt < 40)); do
     sleep 0.05
     attempt=$((attempt + 1))
@@ -84,6 +99,9 @@ stop_completed_group() {
   if active_script_group_running; then
     kill -KILL -- "-$active_script_pid" 2>/dev/null || true
     attempt=0
+    if [[ -n "$group_probe" ]]; then
+      attempt=40
+    fi
     while active_script_group_running && ((attempt < 40)); do
       sleep 0.05
       attempt=$((attempt + 1))
@@ -91,8 +109,38 @@ stop_completed_group() {
   fi
   if active_script_group_running; then
     printf 'source-policy script retained a live process group\n' >&2
+    return 2
   fi
   return 1
+}
+
+finish_source_policy() {
+  local cleanup_status
+  local status=$1
+  local work_dir=$2
+
+  trap - EXIT HUP INT TERM
+  if [[ -n "$active_script_pid" ]]; then
+    set +e
+    stop_completed_group
+    cleanup_status=$?
+    set -e
+    if [[ "$cleanup_status" -eq 2 ]]; then
+      printf 'source-policy process-group cleanup failed during exit\n' >&2
+      status=1
+    else
+      active_script_pid=
+    fi
+  fi
+  set +e
+  cleanup_verification "$work_dir"
+  cleanup_status=$?
+  set -e
+  if [[ "$cleanup_status" -ne 0 ]]; then
+    printf 'source-policy temporary cleanup failed during exit\n' >&2
+    status=1
+  fi
+  exit "$status"
 }
 
 stop_active_script() {
@@ -115,7 +163,13 @@ stop_active_script() {
     kill -KILL -- "-$active_script_pid" 2>/dev/null ||
       kill -KILL "$active_script_pid" 2>/dev/null || true
     wait "$active_script_pid" 2>/dev/null || true
-    active_script_pid=
+    set +e
+    stop_completed_group
+    attempt=$?
+    set -e
+    if [[ "$attempt" -ne 2 ]]; then
+      active_script_pid=
+    fi
   fi
   exit "$signal_status"
 }
@@ -143,7 +197,13 @@ run_source_policy_script() {
   stop_completed_group
   cleanup_status=$?
   set -e
-  active_script_pid=
+  if [[ "$cleanup_status" -ne 2 ]]; then
+    active_script_pid=
+  fi
+  if [[ "$cleanup_status" -eq 2 ]]; then
+    printf 'source-policy script cleanup failed: %s\n' "${path##*/}" >&2
+    finish_source_policy 1 "$work_dir"
+  fi
   if [[ "$cleanup_status" -ne 0 && "$result" -eq 0 ]]; then
     printf 'source-policy script left descendant processes: %s\n' \
       "${path##*/}" >&2
@@ -260,7 +320,7 @@ main() {
 
   work_dir=$(new_verification_work verification-source-policy)
   executed="$work_dir/executed"
-  trap 'cleanup_verification '"$(printf '%q' "$work_dir")" EXIT
+  trap 'finish_source_policy "$?" '"$(printf '%q' "$work_dir")" EXIT
   trap '[[ $- != *e* ]] || printf "verification-source-policy failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
   trap 'stop_active_script 129' HUP
   trap 'stop_active_script 130' INT
