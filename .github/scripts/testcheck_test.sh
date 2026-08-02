@@ -309,7 +309,9 @@ if bash "$root/.github/scripts/testcheck.sh" action "$action_dir" \
 source_policy_repo="$work/source-policy-repo"
 source_policy_dir="$source_policy_repo/source-policy"
 source_policy_log="$work/source-policy.log"
+source_policy_temp="$work/source-policy-temp"
 mkdir -p "$source_policy_dir"
+mkdir -p "$source_policy_temp"
 git -C "$source_policy_repo" init -q
 git -C "$source_policy_repo" config core.autocrlf false
 source_policy_scripts='setup.sh
@@ -384,12 +386,17 @@ CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
 CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
 CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
 CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+CELESTIA_VERIFICATION_TMPDIR="$source_policy_temp" \
   bash "$root/.github/scripts/verification/source_policy_test.sh" \
     --fixture >/dev/null 2>&1
 status=$?
 set -e
 if [[ "$status" -ne 9 ]]; then
   printf 'source-policy driver changed script status 9 to %s\n' "$status" >&2
+  exit 1
+fi
+if find "$source_policy_temp" -mindepth 1 -print -quit | grep -q .; then
+  printf 'source-policy driver retained failed fixture state\n' >&2
   exit 1
 fi
 if ! cmp -s \
