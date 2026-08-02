@@ -110,12 +110,42 @@ func TestArchitectureRequiresOperationSplitDestination(t *testing.T) {
 	}
 }
 
+func TestArchitectureRejectsObsoletePolicySource(t *testing.T) {
+	t.Parallel()
+
+	assertSplitFinding(t, []string{
+		"tools/sourcepolicy/failures_test.go",
+	}, "obsolete split source")
+}
+
+func TestArchitectureRequiresPolicyDestination(t *testing.T) {
+	t.Parallel()
+
+	files := expectedSplitFiles()
+	files = slices.DeleteFunc(files, func(file string) bool {
+		return file == "tools/sourcepolicy/goexit.go"
+	})
+	findings := missingSplitSourceFindings(files)
+	if !slices.ContainsFunc(findings, func(finding string) bool {
+		return strings.Contains(finding, "required split source is missing")
+	}) {
+		t.Fatalf("findings = %v, want missing source-policy destination", findings)
+	}
+}
+
 func TestArchitectureRejectsUndeclaredOperationSource(t *testing.T) {
 	t.Parallel()
 
 	files := append(expectedSplitFiles(),
 		"internal/operation/urlreference/misc.go",
 	)
+	assertSplitFinding(t, files, "undeclared split source")
+}
+
+func TestArchitectureRejectsUndeclaredPolicySource(t *testing.T) {
+	t.Parallel()
+
+	files := append(expectedSplitFiles(), "tools/sourcepolicy/misc.go")
 	assertSplitFinding(t, files, "undeclared split source")
 }
 
@@ -167,7 +197,11 @@ func expectedSplitFiles() []string {
 		"worker/url-reference/src/transform.rs",
 	}
 	files = append(files, expectedAttemptSplitFiles()...)
-	return append(files, expectedOperationSplitFiles()...)
+	files = append(files, expectedOperationSplitFiles()...)
+	for _, file := range sourcePolicySplitFiles() {
+		files = append(files, "tools/sourcepolicy/"+file)
+	}
+	return files
 }
 
 func expectedOperationSplitFiles() []string {

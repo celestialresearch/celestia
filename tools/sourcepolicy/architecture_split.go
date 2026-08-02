@@ -91,6 +91,10 @@ func splitDirectories() []splitDirectory {
 				"verification_windows_test.go",
 			},
 		},
+		{
+			path:  "tools/sourcepolicy",
+			files: sourcePolicySplitFiles(),
+		},
 	}
 }
 
@@ -106,6 +110,12 @@ func splitSourcePathFindings(files []string) []string {
 		"internal/operation/urlreference/attempt/records.go",
 		"internal/operation/urlreference/attempt/records_transition_test.go",
 		"internal/operation/urlreference/operation_windows_test.go",
+		"tools/sourcepolicy/failures_test.go",
+		"tools/sourcepolicy/goinspect_dependency_test.go",
+		"tools/sourcepolicy/goselection_test.go",
+		"tools/sourcepolicy/goskip_timeout_test.go",
+		"tools/sourcepolicy/module_replacement_test.go",
+		"tools/sourcepolicy/policy_edges_test.go",
 	})
 	var findings []string
 	for _, file := range files {
@@ -146,6 +156,11 @@ func splitSourceSet() map[string]struct{} {
 func governedSplitPath(file string) bool {
 	for _, directory := range splitDirectories() {
 		if strings.HasPrefix(file, directory.path+"/") {
+			if directory.path == "tools/sourcepolicy" {
+				return strings.HasSuffix(file, ".go") &&
+					validArchitecturePath(file) &&
+					validWindowsArchitecturePath(file)
+			}
 			return true
 		}
 	}
