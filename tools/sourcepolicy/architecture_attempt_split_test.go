@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"errors"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"strconv"
 	"strings"
@@ -334,11 +335,16 @@ func TestAttemptSplitDiagnosticsQuotePaths(t *testing.T) {
 	t.Parallel()
 	file := attemptSplitDirectory + "hostile\n\t\r\x1b\x7f.go"
 	for name, fixture := range map[string]struct {
-		source []byte
-		err    error
+		source      []byte
+		err         error
+		parserCause bool
 	}{
-		"read":    {err: errors.New("missing " + file)},
-		"source":  {source: []byte("package attemptstore\nfunc")},
+		"read":   {err: errors.New("missing " + file)},
+		"source": {source: []byte("package attemptstore\nfunc")},
+		"line directive": {
+			source:      []byte("//line hostile\x1b[31m.go:1\npackage attemptstore\nfunc"),
+			parserCause: true,
+		},
 		"package": {source: []byte("package evidence\n")},
 		"build":   {source: []byte("//go:build (windows\n\npackage attemptstore\n")},
 	} {
@@ -355,6 +361,10 @@ func TestAttemptSplitDiagnosticsQuotePaths(t *testing.T) {
 			}
 			if !strings.Contains(diagnostic, strconv.Quote(file)) {
 				t.Fatalf("diagnostic = %q, want quoted path %q", diagnostic, strconv.Quote(file))
+			}
+			var parseErrors scanner.ErrorList
+			if fixture.parserCause && !errors.As(err, &parseErrors) {
+				t.Fatalf("error does not retain parser cause: %v", err)
 			}
 		})
 	}

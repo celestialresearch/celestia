@@ -136,7 +136,9 @@ func attemptSplitFileInventoryFor(
 	positions := token.NewFileSet()
 	parsed, err := parser.ParseFile(positions, strconv.Quote(file), source, parser.ParseComments)
 	if err != nil {
-		return attemptSplitFileInventory{}, fmt.Errorf("parse attempt split source %q: %w", file, err)
+		return attemptSplitFileInventory{}, fmt.Errorf(
+			"parse attempt split source %q: %w", file, attemptDiagnosticError{cause: err},
+		)
 	}
 	if parsed.Name.Name != "attemptstore" {
 		return attemptSplitFileInventory{}, fmt.Errorf("attempt split source %q uses package %s", file, parsed.Name.Name)
