@@ -205,7 +205,7 @@ for rogue in rogue.s rogue.rs rogue.json rogue.txt Makefile; do
       "$rogue" >&2
     return 1
   }
-  grep -Fq "tools/sourcepolicy/$rogue: undeclared split source" \
+  grep -Fq "\"tools/sourcepolicy/$rogue\": undeclared split source" \
     <<<"$output" || {
     printf 'policy output omitted source-policy inventory diagnostic for %s:\n%s\n' \
       "$rogue" "$output" >&2
