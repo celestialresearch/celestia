@@ -43,6 +43,107 @@ jobs:
 	}
 }
 
+const codeQLTestPrefix = `permissions: read-all
+jobs:
+  analyze:
+    permissions: {security-events: write}
+`
+
+func TestPermissionWorkflowBoundaries(t *testing.T) {
+	t.Parallel()
+	for name, input := range map[string]string{
+		"no jobs": "permissions: read-all\n",
+		"scalar job": `permissions: read-all
+jobs:
+  ignored: scalar
+`,
+		"job without write": `permissions: read-all
+jobs:
+  inspect:
+    permissions: read-all
+`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := inspectForFuzz([]byte(input), permissionsMode); err != nil {
+				t.Fatalf("inspect permissions: %v", err)
+			}
+		})
+	}
+
+}
+
+func TestPermissionWorkflowRejectsInvalidCodeQL(t *testing.T) {
+	t.Parallel()
+	testInvalidDocuments(t, []invalidDocument{
+		{
+			name:  "invalid workflow permissions",
+			path:  "main.yml",
+			input: "permissions: []\n",
+			mode:  permissionsMode,
+			want:  "workflow permissions",
+		},
+		{
+			name:  "invalid jobs",
+			path:  "main.yml",
+			input: "permissions: read-all\njobs: []\n",
+			mode:  permissionsMode,
+			want:  "jobs must be a mapping",
+		},
+		{
+			name:  "CodeQL steps missing",
+			path:  ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix,
+			mode:  permissionsMode,
+			want:  "steps must be a sequence",
+		},
+		{
+			name: "CodeQL actions missing",
+			path: ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + `    steps:
+      - uses: actions/setup-go@0123456789012345678901234567890123456789
+`,
+			mode: permissionsMode,
+			want: "exactly one CodeQL",
+		},
+		{
+			name:  "CodeQL steps empty",
+			path:  ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + "    steps: []\n",
+			mode:  permissionsMode,
+			want:  "exactly one CodeQL",
+		},
+		{
+			name: "CodeQL scalar step",
+			path: ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + `    steps:
+      - invalid
+`,
+			mode: permissionsMode,
+			want: "step must be a mapping",
+		},
+		{
+			name: "CodeQL step without action",
+			path: ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + `    steps:
+      - name: invalid
+`,
+			mode: permissionsMode,
+			want: "approved action",
+		},
+		{
+			name: "conditional CodeQL initialisation",
+			path: ".github/workflows/codeql.yml",
+			input: codeQLTestPrefix + `    steps:
+      - uses: github/codeql-action/init@0123456789012345678901234567890123456789
+        if: always()
+`,
+			mode: permissionsMode,
+			want: "initialisation must be unconditional",
+		},
+	})
+}
+
 func TestPermissionsRetainSecurityWriteAcrossEntries(t *testing.T) {
 	t.Parallel()
 
