@@ -1,0 +1,389 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-split-002",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Attempt evidence sources and tests are split by cohesive persistence ownership without changing retained bytes or state transitions",
+  "owner": "tools/sourcepolicy",
+  "inputs": [
+    {
+      "id": "CEL-SPLIT-002-INPUT-001",
+      "media_type": "application/vnd.celestia.tracked-source",
+      "maximum_bytes": 16777216,
+      "validation": "Bounded tracked attempt-evidence source, test, record and state-transition inventories"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-SPLIT-002-OUTPUT-001",
+      "media_type": "application/vnd.celestia.policy-result",
+      "maximum_bytes": 1048576,
+      "validation": "Deterministic attempt-evidence split acceptance or rejection with a bounded diagnostic"
+    }
+  ],
+  "canonical_state": [
+    "The attempt-evidence declaration, test, build-tag and record inventories are preserved across the split",
+    "Construction, record model, staging, publication, recovery and terminal lifecycle are owned by store.go, record.go, stage.go, publish.go, recover.go and terminal.go",
+    "Record shape, evidence binding and closed state transitions are owned by record_validation.go, observation_validation.go and transition.go",
+    "Reservation, ownership marker and rooted lock validation are owned by lock.go, ownership.go and lock_root.go",
+    "Windows atomic publication, ACL validation and interrupted-record repair are owned by publish_windows.go, acl_windows.go and repair_windows.go",
+    "Tests are redistributed only by the behaviour and fault boundary named in the maintained plan"
+  ],
+  "derived_state": [
+    "Focused persistence, corruption, interruption, contention and independent Assurance verdicts"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-SPLIT-002-EFFECT-001",
+      "kind": "source-layout verification result",
+      "authority": "CEL-SPLIT-002-AUTH-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-SPLIT-002-AUTH-001",
+      "owner": "tools/sourcepolicy",
+      "grant": "Accept only the exact declared attempt-evidence split files and preserved inventories",
+      "refusal": "Reject an old mixed-responsibility file, missing destination, undeclared sibling, duplicate declaration or changed record or test inventory"
+    },
+    {
+      "id": "CEL-SPLIT-002-AUTH-002",
+      "owner": "internal/architecturecheck",
+      "grant": "Independently compare the exact split inventories, persistence rules and retained evidence",
+      "refusal": "Reject changed bytes, atomicity, lock, corruption, interruption or state-transition semantics"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-SPLIT-002-TRUST-001",
+      "source": "tracked repository content",
+      "target": "tools/sourcepolicy",
+      "treatment": "Compare the exact attempt-evidence source tree, symbol and test inventories with this manifest"
+    },
+    {
+      "id": "CEL-SPLIT-002-TRUST-002",
+      "source": "Production architecture policy",
+      "target": "internal/architecturecheck",
+      "treatment": "Compare Production results with independent persistence, corruption and transition evidence"
+    }
+  ],
+  "bounds": {
+    "processes": 1,
+    "memory_bytes": 67108864,
+    "output_bytes": 1048576,
+    "worker_time_milliseconds": 30000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-SPLIT-002-RESOURCE-001",
+      "kind": "tracked_inventory",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
+      "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds",
+      "release": "Release inventory and parsed syntax when policy evaluation returns",
+      "cleanup_failure": "Return an infrastructure error without accepting the tree"
+    },
+    {
+      "id": "CEL-SPLIT-002-RESOURCE-002",
+      "kind": "policy_document",
+      "owner": "internal/architecturecheck",
+      "acquisition": "Read one bounded strict architecture policy document",
+      "bound": "At most 1048576 bytes per inventory or fixture",
+      "release": "Release decoded policy when independent evaluation returns",
+      "cleanup_failure": "Return an assurance error without accepting the tree"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native Production and Assurance policy execution"
+    }
+  ],
+  "states": [
+    {
+      "id": "proposed",
+      "kind": "intermediate"
+    },
+    {
+      "id": "accepted",
+      "kind": "success"
+    },
+    {
+      "id": "rejected",
+      "kind": "refusal"
+    },
+    {
+      "id": "failed",
+      "kind": "failure"
+    },
+    {
+      "id": "cancelled",
+      "kind": "cancellation"
+    },
+    {
+      "id": "indeterminate",
+      "kind": "indeterminate"
+    }
+  ],
+  "allowed_transitions": [
+    {
+      "from": "proposed",
+      "to": "accepted"
+    },
+    {
+      "from": "proposed",
+      "to": "rejected"
+    },
+    {
+      "from": "proposed",
+      "to": "failed"
+    },
+    {
+      "from": "proposed",
+      "to": "cancelled"
+    },
+    {
+      "from": "proposed",
+      "to": "indeterminate"
+    }
+  ],
+  "prohibited_transitions": [
+    {
+      "from": "accepted",
+      "to": "proposed"
+    },
+    {
+      "from": "accepted",
+      "to": "rejected"
+    },
+    {
+      "from": "accepted",
+      "to": "failed"
+    },
+    {
+      "from": "accepted",
+      "to": "cancelled"
+    },
+    {
+      "from": "accepted",
+      "to": "indeterminate"
+    },
+    {
+      "from": "rejected",
+      "to": "proposed"
+    },
+    {
+      "from": "rejected",
+      "to": "accepted"
+    },
+    {
+      "from": "rejected",
+      "to": "failed"
+    },
+    {
+      "from": "rejected",
+      "to": "cancelled"
+    },
+    {
+      "from": "rejected",
+      "to": "indeterminate"
+    },
+    {
+      "from": "failed",
+      "to": "proposed"
+    },
+    {
+      "from": "failed",
+      "to": "accepted"
+    },
+    {
+      "from": "failed",
+      "to": "rejected"
+    },
+    {
+      "from": "failed",
+      "to": "cancelled"
+    },
+    {
+      "from": "failed",
+      "to": "indeterminate"
+    },
+    {
+      "from": "cancelled",
+      "to": "proposed"
+    },
+    {
+      "from": "cancelled",
+      "to": "accepted"
+    },
+    {
+      "from": "cancelled",
+      "to": "rejected"
+    },
+    {
+      "from": "cancelled",
+      "to": "failed"
+    },
+    {
+      "from": "cancelled",
+      "to": "indeterminate"
+    },
+    {
+      "from": "indeterminate",
+      "to": "proposed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "accepted"
+    },
+    {
+      "from": "indeterminate",
+      "to": "rejected"
+    },
+    {
+      "from": "indeterminate",
+      "to": "failed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "cancelled"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-SPLIT-002-INV-001",
+      "statement": "The split preserves every attempt-evidence declaration, test target, build constraint and package owner",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Attempt-evidence declaration to authority owner",
+      "falsifier": "A declaration, test target, build constraint or owner is missing, duplicated or moved to the wrong persistence responsibility",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-002-PROD-001",
+          "owner": "source-policy attempt split inventory and declaration fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-002-ASSURE-001",
+          "owner": "independent attempt split inventory and declaration comparison"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Static declaration inventory does not prove persistence semantic equivalence"
+    },
+    {
+      "id": "CEL-SPLIT-002-INV-002",
+      "statement": "Record validation, recovery policy and terminal publication remain separate authorities",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Retained record bytes to validation, recovery and publication owners",
+      "falsifier": "Validation is duplicated, recovery changes canonical record meaning or one boolean hides process, protocol and verification states",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-002-PROD-002",
+          "owner": "source-policy split inventory and focused record and transition fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-002-ASSURE-002",
+          "owner": "independent record and state-transition checks"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Source layout is structural evidence and does not prove interruption behaviour"
+    },
+    {
+      "id": "CEL-SPLIT-002-INV-003",
+      "statement": "The split preserves retained bytes, atomic publication, exclusive locks, corruption refusal and interruption recovery",
+      "owner": "internal/operation/urlreference/attempt",
+      "severity": "high",
+      "boundary": "Attempt staging to terminal publication and recovery",
+      "falsifier": "Any retained byte, publication boundary, lock outcome, corruption result or recoverable crash point changes",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-002-PROD-003",
+          "owner": "attempt package persistence, contention, corruption and crash-point tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-002-ASSURE-003",
+          "owner": "independent persistence, fault and retained-evidence inspection"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Native Windows filesystem behaviour remains qualified only on Windows AMD64"
+    }
+  ],
+  "success_semantics": "Accepted means the exact declared source split preserves symbols, tests, record bytes, atomicity, locks, corruption refusal, interruption recovery and state transitions",
+  "refusal_semantics": "An old mixed-responsibility file, missing destination, undeclared sibling, changed inventory, duplicate implementation, wrapper or persistence regression returns a bounded rejection",
+  "failure_semantics": "Malformed policy, parse failure or unavailable required tooling fails the gate",
+  "cancellation_semantics": "Cancellation stops evaluation and cannot produce acceptance",
+  "indeterminate_semantics": "Missing or contradictory evidence cannot produce acceptance",
+  "recovery_semantics": "Rerun from the unchanged tracked inventory; no partial policy result is canonical",
+  "compatibility_or_reset_policy": "Unused pre-release source and formats may be replaced directly; no old reader, writer, migration, wrapper, forwarding file or duplicate implementation is retained",
+  "falsifiers": [
+    "A declaration, test, build constraint or retained record byte changes during the split",
+    "An old mixed-responsibility file remains or a destination file is missing",
+    "An undeclared sibling source or test file appears in the attempt package",
+    "A wrapper, duplicate validator, migration path or order dependency is introduced",
+    "Atomicity, locks, corruption refusal, interruption recovery, state transitions or unsupported-platform refusal change"
+  ],
+  "production_controls": [
+    {
+      "id": "CEL-SPLIT-002-PROD-001",
+      "owner": "source-policy attempt split inventory and declaration fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-002-PROD-002",
+      "owner": "source-policy split inventory and focused record and transition fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-002-PROD-003",
+      "owner": "attempt package persistence, contention, corruption and crash-point tests"
+    }
+  ],
+  "assurance_controls": [
+    {
+      "id": "CEL-SPLIT-002-ASSURE-001",
+      "owner": "independent attempt split inventory and declaration comparison"
+    },
+    {
+      "id": "CEL-SPLIT-002-ASSURE-002",
+      "owner": "independent record and state-transition checks"
+    },
+    {
+      "id": "CEL-SPLIT-002-ASSURE-003",
+      "owner": "independent persistence, fault and retained-evidence inspection"
+    }
+  ],
+  "residual_limitations": [
+    "This structural split does not establish new persistence or operation behaviour",
+    "Native Windows persistence remains separately governed",
+    "Exact-pair sign-off requires committed clean Product and Assurance candidates"
+  ],
+  "non_goals": [
+    "Change record bytes, atomicity, durability, locks, corruption handling, interruption recovery, state transitions or platform refusal",
+    "Create an interface, wrapper, registry, option or duplicate implementation",
+    "Retain an old reader, writer, migration, mixed-responsibility file or forwarding compatibility path",
+    "Move or split another package",
+    "Change admission, transformation, protocol, supervision, worker or operation behaviour"
+  ],
+  "deletion_criteria": [
+    "Delete this slice contract only when a later reviewed contract explicitly supersedes the split inventory"
+  ]
+}
