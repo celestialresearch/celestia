@@ -39,7 +39,7 @@ const (
 	layoutManifestPath    = "docs/contracts/cel_struct_005.json"
 	layoutManifestSHA     = "58b4e70d9b47d907f8b5cbdde163204c82d6633692ac3d7b610f9cd8ff4a8097"
 	splitManifestPath     = "docs/contracts/cel_split_001.json"
-	splitManifestSHA      = "2993a5adea89382459f33cfcc737a23f981ceb6f93085dab48e854db13d25315"
+	splitManifestSHA      = "7985a96078eecb71200cfe7fabbdc5c8368afd0e7ef17e9d1a996868fc401c5d"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {

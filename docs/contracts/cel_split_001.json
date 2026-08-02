@@ -27,8 +27,8 @@
     "The declared Go and Rust symbol, test, build-tag and artefact inventories are preserved across the split",
     "The Go transformation implementation consists of transform.go, parse.go, host.go and text.go",
     "The Go protocol implementation consists of protocol.go, request.go, response.go and frame.go",
-    "The Rust worker implementation consists of main.rs, protocol.rs and transform.rs",
-    "The Rust unit evidence consists of tests/mod.rs, tests/protocol.rs and tests/transform.rs",
+    "The Rust worker implementation consists of main.rs, request.rs, response.rs, grammar.rs and transform.rs",
+    "The Rust unit evidence consists of tests/mod.rs, tests/request.rs, tests/response.rs, tests/grammar.rs and tests/transform.rs",
     "The Go protocol unit evidence consists of request_test.go, response_test.go, frame_test.go and fuzz_test.go while benchmarks remain in benchmark_test.go"
   ],
   "derived_state": [
