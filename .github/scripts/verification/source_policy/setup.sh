@@ -41,6 +41,7 @@ source_policy_files=(
   tools/sourcepolicy/architecture_imports.go
   tools/sourcepolicy/architecture_inventory.go
   tools/sourcepolicy/architecture_limits.go
+  tools/sourcepolicy/architecture_operation_split.go
   tools/sourcepolicy/architecture_ownership.go
   tools/sourcepolicy/architecture_paths.go
   tools/sourcepolicy/architecture_policy.go

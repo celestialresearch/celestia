@@ -52,6 +52,38 @@ fi
 # shellcheck source=.github/scripts/verification/fixture.sh
 source "$script_dir/fixture.sh"
 
+reject_extra_source() (
+  local fixture_root
+  local fixture_work
+  local output
+  local probe
+  local status
+
+  probe=$(new_verification_work verification-source-inventory)
+  trap 'cleanup_verification "$probe"' EXIT
+  fixture_root="$probe/root"
+  fixture_work="$probe/work"
+  mkdir -p "$fixture_root" "$fixture_work"
+  git -C "$root" archive HEAD | tar -xf - -C "$fixture_root"
+  printf 'package main\n' >"$fixture_root/tools/sourcepolicy/unreviewed.go"
+  git -C "$fixture_root" init -q
+  git -C "$fixture_root" add .
+  set +e
+  output=$("$script_dir_path/setup.sh" "$fixture_root" "$fixture_work" 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'source-policy setup accepted unreviewed source\n' >&2
+    return 1
+  }
+  grep -Fq 'source-policy fixture inventory differs from tracked source' \
+    <<<"$output" || {
+    printf 'source-policy setup omitted the source inventory diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+)
+
 reject_extra_contract() (
   local fixture_root
   local fixture_work
@@ -111,6 +143,7 @@ main() (
   fi
 
   if [[ -z "$fixture_mode" ]]; then
+    reject_extra_source
     reject_extra_contract
   fi
   for script in "${scripts[@]}"; do
