@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build/constraint"
+	"go/doc"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -26,15 +27,14 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
 const (
 	attemptSplitDirectory  = "internal/operation/urlreference/attempt/"
+	maxAttemptSplitBytes   = 16 << 20
 	attemptSplitPackageSHA = "41b08fd475b7651104ebff3d729e86f36dd4d320c5acc096450fcfb67dd32f3e"
-	attemptSplitSourceSHA  = "df172c96f1b8459e9a01cb33a96194f5b5455a4ac92a04e7617fb54eb6ed8239"
-	attemptSplitTargetSHA  = "83647732c94534e08715e7fba2178797aa926f5cb9bc5db44358a688fa742ee9"
+	attemptSplitSourceSHA  = "85bb6616dc77af1b2d11d51c0ee5adf321ecb45f7036c2997eaa12fbee8307f9"
+	attemptSplitTargetSHA  = "f37c7c43363f82ea02f887f4b14964c090fb52d06548df8a25630a22edabe18e"
 )
 
 type attemptSplitInventory struct {
@@ -79,19 +79,25 @@ func attemptSplitInventoryFor(
 	packages := make([]string, 0, len(goFiles))
 	sources := make([]string, 0, len(goFiles)*4)
 	targets := make([]string, 0, len(goFiles))
+	total := 0
 	for _, file := range goFiles {
 		source, err := readFile(file)
 		if err != nil {
 			return attemptSplitInventory{}, fmt.Errorf("read attempt split source %s: %w", file, err)
 		}
-		parsed, err := parser.ParseFile(token.NewFileSet(), file, source, parser.ParseComments)
+		total += len(source)
+		if total > maxAttemptSplitBytes {
+			return attemptSplitInventory{}, fmt.Errorf("attempt split source inventory exceeds bound")
+		}
+		positions := token.NewFileSet()
+		parsed, err := parser.ParseFile(positions, file, source, parser.ParseComments)
 		if err != nil {
 			return attemptSplitInventory{}, fmt.Errorf("parse attempt split source %s: %w", file, err)
 		}
 		if parsed.Name.Name != "attemptstore" {
 			return attemptSplitInventory{}, fmt.Errorf("attempt split source %s uses package %s", file, parsed.Name.Name)
 		}
-		build, err := goBuildConstraint(source)
+		build, err := goBuildConstraint(source, positions, parsed)
 		if err != nil {
 			return attemptSplitInventory{}, fmt.Errorf("parse attempt split build constraint %s: %w", file, err)
 		}
@@ -108,7 +114,15 @@ func attemptSplitInventoryFor(
 				targets = append(targets, file+"\x00"+target)
 			}
 		}
+		for _, example := range doc.Examples(parsed) {
+			if example.Output != "" || example.EmptyOutput {
+				targets = append(targets, file+"\x00Example"+example.Name)
+			}
+		}
 	}
+	sort.Strings(packages)
+	sort.Strings(sources)
+	sort.Strings(targets)
 	return attemptSplitInventory{
 		packages: hashInventory(packages),
 		sources:  hashInventory(sources),
@@ -116,31 +130,41 @@ func attemptSplitInventoryFor(
 	}, nil
 }
 
-func goBuildConstraint(source []byte) (string, error) {
+func goBuildConstraint(source []byte, positions *token.FileSet, parsed *ast.File) (string, error) {
 	var expression string
-	for _, line := range strings.Split(string(source), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "//go:build") {
+	positionFile := positions.File(parsed.Pos())
+	for _, group := range parsed.Comments {
+		for _, comment := range group.List {
+			if comment.Pos() > parsed.Package {
+				continue
+			}
+			if strings.HasPrefix(comment.Text, "// +build") {
+				return "", fmt.Errorf("legacy // +build constraint")
+			}
+			if !strings.HasPrefix(comment.Text, "//go:build") {
+				continue
+			}
 			if expression != "" {
 				return "", fmt.Errorf("multiple //go:build lines")
 			}
-			expression = trimmed
-		}
-		if strings.HasPrefix(trimmed, "// +build") {
-			return "", fmt.Errorf("legacy // +build constraint")
-		}
-		if strings.HasPrefix(trimmed, "package ") {
-			break
+			tail := bytes.ReplaceAll(
+				source[positionFile.Offset(comment.End()):positionFile.Offset(parsed.Package)],
+				[]byte("\r\n"), []byte("\n"),
+			)
+			if !bytes.HasPrefix(tail, []byte("\n\n")) {
+				return "", fmt.Errorf("//go:build constraint is not followed by a blank line")
+			}
+			expression = comment.Text
 		}
 	}
 	if expression == "" {
 		return "portable", nil
 	}
-	parsed, err := constraint.Parse(expression)
+	expressionValue, err := constraint.Parse(expression)
 	if err != nil {
 		return "", err
 	}
-	return parsed.String(), nil
+	return expressionValue.String(), nil
 }
 
 func goSplitDeclarationInventory(file string, declaration ast.Decl) ([]string, string, error) {
@@ -201,18 +225,12 @@ func goSplitSpecificationInventory(kind string, specification ast.Spec) ([]strin
 }
 
 func isGoTestTarget(name string) bool {
-	for _, prefix := range []string{"Test", "Fuzz", "Benchmark"} {
-		if !strings.HasPrefix(name, prefix) {
-			continue
-		}
-		remainder := strings.TrimPrefix(name, prefix)
-		if remainder == "" {
-			return true
-		}
-		next, _ := utf8.DecodeRuneInString(remainder)
-		return !unicode.IsLower(next)
-	}
-	return false
+	return name == "TestMain" || validGoTestName(name) || validGoBenchmarkName(name)
+}
+
+func validGoBenchmarkName(name string) bool {
+	return strings.HasPrefix(name, "Benchmark") &&
+		validGoTestName("Test"+strings.TrimPrefix(name, "Benchmark"))
 }
 
 func renderGoNode(node any) (string, error) {

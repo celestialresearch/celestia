@@ -12,7 +12,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"go/parser"
+	"go/token"
 	"strings"
 	"testing"
 )
@@ -140,17 +143,82 @@ func TestAttemptSplitInventoryIgnoresFunctionBodies(t *testing.T) {
 	}
 }
 
+func TestAttemptSplitInventoryIgnoresDeclarationOrder(t *testing.T) {
+	t.Parallel()
+	file := attemptSplitDirectory + "record.go"
+	first := []byte("package attemptstore\ntype Record struct{}\nfunc validateRecord() {}\n")
+	second := []byte("package attemptstore\nfunc validateRecord() {}\ntype Record struct{}\n")
+	want, err := attemptSplitInventoryFor([]string{file}, fixtureReader(map[string][]byte{file: first}))
+	if err != nil {
+		t.Fatalf("baseline inventory: %v", err)
+	}
+	got, err := attemptSplitInventoryFor([]string{file}, fixtureReader(map[string][]byte{file: second}))
+	if err != nil {
+		t.Fatalf("reordered inventory: %v", err)
+	}
+	if got != want {
+		t.Fatalf("declaration order changed structural inventory: got %+v want %+v", got, want)
+	}
+}
+
+func TestAttemptSplitInventoryBoundsAggregateSource(t *testing.T) {
+	t.Parallel()
+	file := attemptSplitDirectory + "record.go"
+	source := append([]byte("package attemptstore\n/*"), bytes.Repeat([]byte("a"), maxAttemptSplitBytes)...)
+	source = append(source, []byte("*/\n")...)
+	_, err := attemptSplitInventoryFor([]string{file}, fixtureReader(map[string][]byte{file: source}))
+	if err == nil || !strings.Contains(err.Error(), "exceeds bound") {
+		t.Fatalf("error = %v, want aggregate bound rejection", err)
+	}
+}
+
 func TestGoTestTargetBoundary(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"TestRecord", "FuzzRecord", "BenchmarkRecord", "Test"} {
+	for _, name := range []string{"TestRecord", "FuzzRecord", "BenchmarkRecord", "TestMain"} {
 		if !isGoTestTarget(name) {
 			t.Fatalf("%s was not recognised as a test target", name)
 		}
 	}
-	for _, name := range []string{"Testimony", "Fuzzy", "Benchmarking", "helper"} {
+	for _, name := range []string{"Test", "Fuzz", "Benchmark", "Testimony", "Fuzzy", "Benchmarking", "helper"} {
 		if isGoTestTarget(name) {
 			t.Fatalf("%s was incorrectly recognised as a test target", name)
 		}
+	}
+}
+
+func TestAttemptSplitInventoryTracksExecutableExamples(t *testing.T) {
+	t.Parallel()
+	file := attemptSplitDirectory + "example_test.go"
+	withOutput := []byte("package attemptstore\nfunc ExampleRecord() {\n// Output: ok\n}\n")
+	withoutOutput := []byte("package attemptstore\nfunc ExampleRecord() {}\n")
+	first, err := attemptSplitInventoryFor(
+		[]string{file}, fixtureReader(map[string][]byte{file: withOutput}),
+	)
+	if err != nil {
+		t.Fatalf("inventory executable example: %v", err)
+	}
+	second, err := attemptSplitInventoryFor(
+		[]string{file}, fixtureReader(map[string][]byte{file: withoutOutput}),
+	)
+	if err != nil {
+		t.Fatalf("inventory non-executable example: %v", err)
+	}
+	if first.targets == second.targets {
+		t.Fatal("executable example did not change target inventory")
+	}
+}
+
+func TestAttemptBuildConstraintIgnoresBlockComment(t *testing.T) {
+	t.Parallel()
+	source := []byte("/*\n//go:build windows\n\n*/\npackage attemptstore\n")
+	positions := token.NewFileSet()
+	parsed, err := parser.ParseFile(positions, "fixture.go", source, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	constraint, err := goBuildConstraint(source, positions, parsed)
+	if err != nil || constraint != "portable" {
+		t.Fatalf("constraint = %q, %v, want portable", constraint, err)
 	}
 }
 
@@ -194,6 +262,9 @@ func TestAttemptSplitInventoryFailsClosed(t *testing.T) {
 		},
 		"legacy build": func(string) ([]byte, error) {
 			return []byte("// +build windows\n\npackage attemptstore\n"), nil
+		},
+		"misplaced build": func(string) ([]byte, error) {
+			return []byte("//go:build windows\npackage attemptstore\n"), nil
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
