@@ -307,6 +307,7 @@ func architectureFindings(
 		return nil, err
 	}
 	findings := architecturePathFindings(files, executables, policy)
+	findings = append(findings, missingSplitSourceFindings(files)...)
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
@@ -385,7 +386,7 @@ func architecturePathFindings(
 	scripts := stringSet(policy.Scripts)
 	prohibited := stringSet(policy.Prohibited)
 	prohibitedPaths := stringSet(policy.ProhibitedPaths)
-	var findings []string
+	findings := splitSourcePathFindings(files)
 	for _, file := range files {
 		_, executable := executables[file]
 		findings = append(findings, architectureFileFindings(

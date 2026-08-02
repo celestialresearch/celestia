@@ -525,6 +525,7 @@ EOF
     "$root/tools/sourcepolicy/architecture_paths.go" \
     "$root/tools/sourcepolicy/architecture_rust.go" \
     "$root/tools/sourcepolicy/architecture_scripts.go" \
+    "$root/tools/sourcepolicy/architecture_split.go" \
     "$root/tools/sourcepolicy/architecture_values.go" \
     "$root/tools/sourcepolicy/executable_inventory.go" \
     "$root/tools/sourcepolicy/gobuildtags.go" \
@@ -548,6 +549,7 @@ EOF
     "$root/docs/contracts/cel_struct_004d.json" \
     "$root/docs/contracts/cel_struct_004e.json" \
     "$root/docs/contracts/cel_struct_005.json" \
+    "$root/docs/contracts/cel_split_001.json" \
     "$work_dir/docs/contracts/"
 
   architecture_dir="$work_dir/architecture-repo"
@@ -773,7 +775,7 @@ EOF
   for manifest in governed_url_reference_v1.json cel_struct_001.json \
     cel_struct_003.json cel_struct_004a.json cel_struct_004b.json \
     cel_struct_004c.json cel_struct_004d.json cel_struct_004e.json \
-    cel_struct_005.json; do
+    cel_struct_005.json cel_split_001.json; do
     printf '\n' >>"$work_dir/docs/contracts/$manifest"
     set +e
     output=$(cd "$work_dir" &&
