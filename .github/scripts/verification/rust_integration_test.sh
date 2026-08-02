@@ -108,17 +108,6 @@ if grep -Fq 'Verification Scripts' <<<"$output" ||
   return 1
 fi
 rm -rf -- "$work_dir/ambient"
-fake_bin="$work_dir/config-bin"
-mkdir -p "$fake_bin"
-cat >"$fake_bin/go" <<'EOF'
-#!/bin/sh
-if [ "$1" = tool ] && [ "$2" = actionlint ]; then
-: >"$CELESTIA_ACTIONLINT_MARKER"
-exit
-fi
-exec "$CELESTIA_REAL_GO" "$@"
-EOF
-chmod +x "$fake_bin/go"
 )
 
 main
