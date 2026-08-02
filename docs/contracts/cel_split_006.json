@@ -445,6 +445,7 @@
   "residual_limitations": [
     "This structural split does not establish new workflow or verification behaviour",
     "The manifest does not prove the correctness of external tools invoked by each family",
+    "Verification-family process groups provide lifecycle cleanup, not security containment; tracked family code can create a new session and must execute within an operator-owned or disposable CI environment",
     "Windows AMD64 remains the native Product and Assurance qualification boundary",
     "Exact-pair sign-off requires committed clean Product and Assurance candidates"
   ],
