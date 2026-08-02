@@ -10,7 +10,6 @@
 #
 # See the LICENSE file at the repository root for the complete terms.
 
-
 set -euo pipefail
 export GOWORK=off
 
