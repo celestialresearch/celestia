@@ -70,6 +70,7 @@ func TestAttemptSplitInventorySeparatesDimensions(t *testing.T) {
 		"package":   []byte("//go:build windows\n\npackage evidence\nconst limit = 1\nfunc TestRecord(t *testing.T) {}\n"),
 		"signature": []byte("//go:build windows\n\npackage attemptstore\nconst limit = 1\nfunc TestRecord(t *testing.T, value string) {}\n"),
 		"target":    []byte("//go:build windows\n\npackage attemptstore\nconst limit = 1\nfunc TestRenamed(t *testing.T) {}\n"),
+		"import":    []byte("//go:build windows\n\npackage attemptstore\nimport _ \"example.test/sideeffect\"\nconst limit = 1\nfunc TestRecord(t *testing.T) {}\n"),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -90,7 +91,7 @@ func TestAttemptSplitInventorySeparatesDimensions(t *testing.T) {
 				if got.packages == want.packages {
 					t.Fatal("build change was accepted")
 				}
-			case "signature":
+			case "signature", "import":
 				if got.sources == want.sources {
 					t.Fatal("signature change was accepted")
 				}
@@ -190,6 +191,9 @@ func TestAttemptSplitInventoryFailsClosed(t *testing.T) {
 		},
 		"multiple build": func(string) ([]byte, error) {
 			return []byte("//go:build windows\n//go:build amd64\n\npackage attemptstore\n"), nil
+		},
+		"legacy build": func(string) ([]byte, error) {
+			return []byte("// +build windows\n\npackage attemptstore\n"), nil
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

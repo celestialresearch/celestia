@@ -33,7 +33,7 @@ import (
 const (
 	attemptSplitDirectory  = "internal/operation/urlreference/attempt/"
 	attemptSplitPackageSHA = "41b08fd475b7651104ebff3d729e86f36dd4d320c5acc096450fcfb67dd32f3e"
-	attemptSplitSourceSHA  = "825fb321e885a62a4cdd26eba756a2f9f8358cc7f7c4386ec7252d4843434657"
+	attemptSplitSourceSHA  = "df172c96f1b8459e9a01cb33a96194f5b5455a4ac92a04e7617fb54eb6ed8239"
 	attemptSplitTargetSHA  = "83647732c94534e08715e7fba2178797aa926f5cb9bc5db44358a688fa742ee9"
 )
 
@@ -126,6 +126,9 @@ func goBuildConstraint(source []byte) (string, error) {
 			}
 			expression = trimmed
 		}
+		if strings.HasPrefix(trimmed, "// +build") {
+			return "", fmt.Errorf("legacy // +build constraint")
+		}
 		if strings.HasPrefix(trimmed, "package ") {
 			break
 		}
@@ -191,7 +194,7 @@ func goSplitSpecificationInventory(kind string, specification ast.Spec) ([]strin
 		}
 		return records, nil
 	case *ast.ImportSpec:
-		return nil, nil
+		return []string{"import:" + rendered + "\x00" + rendered}, nil
 	default:
 		return nil, fmt.Errorf("unsupported specification %T", specification)
 	}
