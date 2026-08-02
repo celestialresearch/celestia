@@ -126,7 +126,7 @@ terminate_driver() {
   local pid=$1
 
   if driver_job_owned "$pid"; then
-    kill -TERM -- "-$pid" 2>/dev/null || true
+    kill -TERM "$pid" 2>/dev/null || true
     while driver_job_owned "$pid" && ((attempt < 60)); do
       sleep 0.05
       attempt=$((attempt + 1))
@@ -279,7 +279,7 @@ record_driver_signal() {
     job_owned "$driver_job" "$driver_pid" \
       "$driver_work/driver-signal-job"; then
     driver_signal_forwarded=1
-    kill -"$2" -- "-$driver_pid" 2>/dev/null || true
+    kill -"$2" "$driver_pid" 2>/dev/null || true
   fi
 }
 
@@ -301,7 +301,6 @@ run_family() {
   "$path" 8>&- 9>&- &
   active_family_pid=$!
   active_family_job=%+
-  set +m
   if [[ -n "$pending_family_signal" ]]; then
     signal_status=$pending_family_signal
     pending_family_signal=
@@ -328,10 +327,14 @@ run_family() {
     CELESTIA_VERIFICATION_WAITING_FAMILY_PID=$active_family_pid \
       "$family_wait_checkpoint"
   fi
+  while family_job_owned; do
+    sleep 0.05
+  done
   set +e
   wait "$active_family_pid"
   result=$?
   set -e
+  set +m
   if ! family_job_owned; then
     wait_completed=1
   fi
@@ -622,7 +625,6 @@ if [[ -n "$pending_driver_signal" ]]; then
 fi
 set -m
 main "$driver_work" "$snapshot_root" "$@" 9>&- &
-set +m
 spawned_driver_pid=$!
 driver_job=%+
 if [[ -n "$driver_spawn_checkpoint" ]]; then
@@ -643,10 +645,14 @@ if [[ -n "$driver_wait_checkpoint" ]]; then
   CELESTIA_VERIFICATION_WAITING_DRIVER_PID=$driver_pid \
     "$driver_wait_checkpoint"
 fi
+while driver_job_owned "$driver_pid"; do
+  sleep 0.05
+done
 set +e
 wait "$driver_pid"
 status=$?
 set -e
+set +m
 if [[ -n "$driver_completion_checkpoint" ]]; then
   if ! CELESTIA_VERIFICATION_COMPLETED_DRIVER_PID=$driver_pid \
     "$driver_completion_checkpoint"; then
