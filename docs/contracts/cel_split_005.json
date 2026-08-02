@@ -1,0 +1,451 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-split-005",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Source-policy implementation and tests are split by cohesive policy ownership without changing accepted repositories, diagnostics or command outcomes",
+  "owner": "tools/sourcepolicy",
+  "inputs": [
+    {
+      "id": "CEL-SPLIT-005-INPUT-001",
+      "media_type": "application/vnd.celestia.tracked-source",
+      "maximum_bytes": 16777216,
+      "validation": "Bounded tracked source-policy implementation, test, fixture, build-target and analyser-configuration inventories"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-SPLIT-005-OUTPUT-001",
+      "media_type": "application/vnd.celestia.policy-result",
+      "maximum_bytes": 1048576,
+      "validation": "Deterministic source-policy acceptance or rejection with the existing bounded diagnostic and exit status"
+    }
+  ],
+  "canonical_state": [
+    "Command dispatch, manifest policy, file scanning, bounded source reading, tracked inventory and Rust syntax are owned by main.go, manifest.go, scan.go, source.go, inventory.go and rustsyntax.go",
+    "Go skip detection, target-matrix selection, package loading and CGO policy are owned by goskip.go, gotarget.go, goload.go and gocgo.go",
+    "Go AST inspection, TestMain policy and process-exit detection are owned by goinspect.go, gotestmain.go and goexit.go",
+    "Source suppressions, golangci configuration, Cargo manifest policy and Cargo execution overrides are owned by suppression.go, golangci.go, cargo.go and cargoconfig.go",
+    "Runner tests remain in main_test.go while every other test and fault fixture follows its named production owner",
+    "The architecture checker remains a separate cohesive source-policy file and is not folded into command dispatch"
+  ],
+  "derived_state": [
+    "Focused command, manifest, inventory, bounded-read, Go target, loader, CGO, exit, Rust, Cargo, suppression and independent Assurance verdicts"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-SPLIT-005-EFFECT-001",
+      "kind": "source-policy layout verification result",
+      "authority": "CEL-SPLIT-005-AUTH-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-SPLIT-005-AUTH-001",
+      "owner": "tools/sourcepolicy",
+      "grant": "Accept only the exact declared source-policy split files while preserving bounded fail-closed policy behaviour",
+      "refusal": "Reject a mixed-responsibility file, missing destination, undeclared sibling, duplicated declaration, unbounded read, skipped target or changed policy outcome"
+    },
+    {
+      "id": "CEL-SPLIT-005-AUTH-002",
+      "owner": "internal/architecturecheck",
+      "grant": "Independently compare the exact source-policy inventory and known-bad policy outcomes",
+      "refusal": "Reject changed ownership, bounds, inventory, target, exit, suppression or configuration semantics"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-SPLIT-005-TRUST-001",
+      "source": "tracked repository content",
+      "target": "tools/sourcepolicy",
+      "treatment": "Parse only bounded tracked inputs and compare exact source, declaration, test and fixture ownership with this manifest"
+    },
+    {
+      "id": "CEL-SPLIT-005-TRUST-002",
+      "source": "Production source-policy verdict",
+      "target": "internal/architecturecheck",
+      "treatment": "Challenge Product acceptance using independent inventory, target-matrix and known-bad policy fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-005-TRUST-003",
+      "source": "tool and compiler output",
+      "target": "tools/sourcepolicy",
+      "treatment": "Parse bounded canonical output, preserve failure distinctions and reject missing, malformed, truncated or contradictory results"
+    }
+  ],
+  "bounds": {
+    "processes": 1,
+    "memory_bytes": 67108864,
+    "output_bytes": 1048576,
+    "worker_time_milliseconds": 30000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-SPLIT-005-RESOURCE-001",
+      "kind": "tracked_inventory",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Read one bounded NUL-delimited tracked-file inventory",
+      "bound": "At most 100000 paths, 16777216 aggregate source bytes and 30000 milliseconds",
+      "release": "Release inventory and parsed syntax when policy evaluation returns",
+      "cleanup_failure": "Return an infrastructure error without accepting the tree"
+    },
+    {
+      "id": "CEL-SPLIT-005-RESOURCE-002",
+      "kind": "source_document",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Open only an inventory-selected source, manifest or analyser configuration",
+      "bound": "At most the existing per-file and aggregate byte limits with bounded diagnostics",
+      "release": "Close the file and release decoded syntax before returning",
+      "cleanup_failure": "Return a policy failure without accepting partial evidence"
+    },
+    {
+      "id": "CEL-SPLIT-005-RESOURCE-003",
+      "kind": "policy_process",
+      "owner": "tools/sourcepolicy",
+      "acquisition": "Start only an existing enumerated Go or Cargo inspection command",
+      "bound": "One bounded command invocation per declared control with inherited cancellation",
+      "release": "Wait for the process and retain its bounded outcome before returning",
+      "cleanup_failure": "Return an infrastructure error without converting failure to acceptance"
+    },
+    {
+      "id": "CEL-SPLIT-005-RESOURCE-004",
+      "kind": "policy_document",
+      "owner": "internal/architecturecheck",
+      "acquisition": "Read one bounded strict architecture policy document and its declared fixtures",
+      "bound": "At most 1048576 bytes per inventory or fixture",
+      "release": "Release decoded policy when independent evaluation returns",
+      "cleanup_failure": "Return an assurance error without accepting the tree"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native Production and Assurance policy execution"
+    }
+  ],
+  "states": [
+    {
+      "id": "proposed",
+      "kind": "intermediate"
+    },
+    {
+      "id": "accepted",
+      "kind": "success"
+    },
+    {
+      "id": "rejected",
+      "kind": "refusal"
+    },
+    {
+      "id": "failed",
+      "kind": "failure"
+    },
+    {
+      "id": "cancelled",
+      "kind": "cancellation"
+    },
+    {
+      "id": "indeterminate",
+      "kind": "indeterminate"
+    }
+  ],
+  "allowed_transitions": [
+    {
+      "from": "proposed",
+      "to": "accepted"
+    },
+    {
+      "from": "proposed",
+      "to": "rejected"
+    },
+    {
+      "from": "proposed",
+      "to": "failed"
+    },
+    {
+      "from": "proposed",
+      "to": "cancelled"
+    },
+    {
+      "from": "proposed",
+      "to": "indeterminate"
+    }
+  ],
+  "prohibited_transitions": [
+    {
+      "from": "accepted",
+      "to": "proposed"
+    },
+    {
+      "from": "accepted",
+      "to": "rejected"
+    },
+    {
+      "from": "accepted",
+      "to": "failed"
+    },
+    {
+      "from": "accepted",
+      "to": "cancelled"
+    },
+    {
+      "from": "accepted",
+      "to": "indeterminate"
+    },
+    {
+      "from": "rejected",
+      "to": "proposed"
+    },
+    {
+      "from": "rejected",
+      "to": "accepted"
+    },
+    {
+      "from": "rejected",
+      "to": "failed"
+    },
+    {
+      "from": "rejected",
+      "to": "cancelled"
+    },
+    {
+      "from": "rejected",
+      "to": "indeterminate"
+    },
+    {
+      "from": "failed",
+      "to": "proposed"
+    },
+    {
+      "from": "failed",
+      "to": "accepted"
+    },
+    {
+      "from": "failed",
+      "to": "rejected"
+    },
+    {
+      "from": "failed",
+      "to": "cancelled"
+    },
+    {
+      "from": "failed",
+      "to": "indeterminate"
+    },
+    {
+      "from": "cancelled",
+      "to": "proposed"
+    },
+    {
+      "from": "cancelled",
+      "to": "accepted"
+    },
+    {
+      "from": "cancelled",
+      "to": "rejected"
+    },
+    {
+      "from": "cancelled",
+      "to": "failed"
+    },
+    {
+      "from": "cancelled",
+      "to": "indeterminate"
+    },
+    {
+      "from": "indeterminate",
+      "to": "proposed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "accepted"
+    },
+    {
+      "from": "indeterminate",
+      "to": "rejected"
+    },
+    {
+      "from": "indeterminate",
+      "to": "failed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "cancelled"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-SPLIT-005-INV-001",
+      "statement": "Every source-policy declaration, test, fixture and command remains owned by exactly one declared cohesive destination",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Tracked source-policy file to declared responsibility",
+      "falsifier": "A declaration, test or fixture is missing, duplicated, left in a mixed-responsibility file or moved beneath the wrong owner",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-005-PROD-001",
+          "owner": "exact source-policy file, declaration, test and fixture inventory"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-005-ASSURE-001",
+          "owner": "independent source-policy ownership and inventory comparison"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Structural ownership does not itself prove policy semantic equivalence"
+    },
+    {
+      "id": "CEL-SPLIT-005-INV-002",
+      "statement": "Tracked inventory, manifest, source and analyser-configuration parsing remains bounded and fails closed",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Untrusted repository or tool bytes to policy decision",
+      "falsifier": "An oversized, truncated, malformed, non-canonical, untracked or unreadable input yields acceptance or an unbounded diagnostic",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-005-PROD-002",
+          "owner": "bounded source, inventory, manifest and parser fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-005-ASSURE-002",
+          "owner": "independent malformed, oversized, truncation and inventory fixtures"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "The configured bounds limit inspected material and cannot establish absence outside the governed tracked inventory"
+    },
+    {
+      "id": "CEL-SPLIT-005-INV-003",
+      "statement": "Go skip, target-matrix, package-load, CGO, TestMain and process-exit policy outcomes remain unchanged",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Go source and tool output to governed test and build inventory",
+      "falsifier": "A governed target or test is skipped, a forbidden CGO or process-exit path passes or tool failure is treated as absence",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-005-PROD-003",
+          "owner": "Go skip, target, loader, CGO, TestMain and exit-policy fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-005-ASSURE-003",
+          "owner": "independent build-constraint, inventory and exit-status challenges"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Cross-target static analysis does not constitute native platform execution"
+    },
+    {
+      "id": "CEL-SPLIT-005-INV-004",
+      "statement": "Rust syntax, Cargo manifests, Cargo execution overrides and source-suppression policy remain fail closed and semantically unchanged",
+      "owner": "tools/sourcepolicy",
+      "severity": "high",
+      "boundary": "Rust, Cargo and analyser configuration to repository policy verdict",
+      "falsifier": "A hidden target, execution override, conditional suppression, malformed attribute or analyser exclusion passes policy",
+      "production_controls": [
+        {
+          "id": "CEL-SPLIT-005-PROD-004",
+          "owner": "Rust syntax, Cargo and suppression policy fixtures"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-SPLIT-005-ASSURE-004",
+          "owner": "independent Rust, Cargo and suppression known-bad fixtures"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Textual configuration inspection proves only the maintained declared forms"
+    }
+  ],
+  "success_semantics": "Accepted means the exact declared source-policy split preserves command results, bounded parsing, governed inventories, target selection, process-exit distinctions and analyser controls",
+  "refusal_semantics": "A mixed owner, missing destination, undeclared sibling, changed inventory, unbounded input, skipped governed target or policy bypass returns a bounded rejection",
+  "failure_semantics": "Malformed policy, read or parse failure, unavailable required tooling, abnormal tool exit or incomplete evidence fails the gate",
+  "cancellation_semantics": "Cancellation stops owned inspection work and cannot produce acceptance",
+  "indeterminate_semantics": "Missing, contradictory, truncated or unavailable required evidence cannot produce acceptance",
+  "recovery_semantics": "Rerun from the unchanged tracked inventory; no partial source-policy result is canonical or retained",
+  "compatibility_or_reset_policy": "Unused pre-release source is split directly; the original mixed files are deleted and no wrapper, forwarding file, duplicate implementation or compatibility surface is retained",
+  "falsifiers": [
+    "A declaration, test, fixture or exact command changes ownership during the split",
+    "An original mixed-responsibility file remains or a declared destination is missing",
+    "An undeclared sibling source or test file appears beneath tools/sourcepolicy",
+    "An oversized, malformed, truncated, non-canonical or unreadable input produces acceptance",
+    "A governed Go target, package, test, CGO case or process-exit path escapes inspection",
+    "A Rust attribute, Cargo target, execution override, suppression or analyser exclusion escapes policy",
+    "A tool failure, cancellation or incomplete inventory is converted into absence or acceptance",
+    "The architecture checker is folded into command dispatch or Product becomes dependent on Assurance"
+  ],
+  "production_controls": [
+    {
+      "id": "CEL-SPLIT-005-PROD-001",
+      "owner": "exact source-policy file, declaration, test and fixture inventory"
+    },
+    {
+      "id": "CEL-SPLIT-005-PROD-002",
+      "owner": "bounded source, inventory, manifest and parser fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-005-PROD-003",
+      "owner": "Go skip, target, loader, CGO, TestMain and exit-policy fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-005-PROD-004",
+      "owner": "Rust syntax, Cargo and suppression policy fixtures"
+    }
+  ],
+  "assurance_controls": [
+    {
+      "id": "CEL-SPLIT-005-ASSURE-001",
+      "owner": "independent source-policy ownership and inventory comparison"
+    },
+    {
+      "id": "CEL-SPLIT-005-ASSURE-002",
+      "owner": "independent malformed, oversized, truncation and inventory fixtures"
+    },
+    {
+      "id": "CEL-SPLIT-005-ASSURE-003",
+      "owner": "independent build-constraint, inventory and exit-status challenges"
+    },
+    {
+      "id": "CEL-SPLIT-005-ASSURE-004",
+      "owner": "independent Rust, Cargo and suppression known-bad fixtures"
+    }
+  ],
+  "residual_limitations": [
+    "This structural split does not establish new repository policy",
+    "The source-policy tool remains Product code and cannot provide its own independent verdict",
+    "Native Windows execution remains separately governed",
+    "Exact-pair sign-off requires committed clean Product and Assurance candidates"
+  ],
+  "non_goals": [
+    "Change any accepted or rejected repository state, diagnostic or exit status",
+    "Add a source language, analyser, suppression form, build target or policy rule",
+    "Create an interface, wrapper, registry, option or duplicate implementation",
+    "Fold the architecture checker into command dispatch",
+    "Delete, weaken or replace a known-bad fixture",
+    "Move or split another package",
+    "Change operation, protocol, persistence, supervision, worker or platform behaviour"
+  ],
+  "deletion_criteria": [
+    "Delete this slice contract only when a later reviewed contract explicitly supersedes the source-policy split inventory"
+  ]
+}
