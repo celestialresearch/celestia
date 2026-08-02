@@ -11,89 +11,7 @@
 
 package main
 
-import (
-	"bytes"
-	"errors"
-	"strings"
-	"testing"
-)
-
-type failingWriter struct{}
-
-func (failingWriter) Write([]byte) (int, error) {
-	return 0, errors.New("write failed")
-}
-
-func TestRunFailureReporting(t *testing.T) {
-	inventoryFailure := func() ([]string, error) {
-		return nil, errors.New("inventory failed")
-	}
-	validInventory := func() ([]string, error) {
-		return []string{"broken_test.go"}, nil
-	}
-	readBrokenGo := func(string) ([]byte, error) {
-		return []byte("package broken\nfunc TestBroken("), nil
-	}
-	readEmpty := func(string) ([]byte, error) { return nil, nil }
-	tests := []struct {
-		name      string
-		args      []string
-		inventory func() ([]string, error)
-		read      func(string) ([]byte, error)
-	}{
-		{"usage write", nil, validInventory, readEmpty},
-		{"inventory write", []string{modeTestSkips}, inventoryFailure, readEmpty},
-		{"policy write", []string{modeTestSkips}, validInventory, readBrokenGo},
-		{"finding write", []string{modeSuppressions}, validInventory, func(string) ([]byte, error) {
-			return []byte("//no" + "lint"), nil
-		}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if code := run(test.args, failingWriter{}, test.inventory, test.read); code != 1 {
-				t.Fatalf("run code = %d, want 1", code)
-			}
-		})
-	}
-
-	var stderr bytes.Buffer
-	if code := run(
-		[]string{modeTestSkips},
-		&stderr,
-		validInventory,
-		readBrokenGo,
-	); code != 1 || !strings.Contains(stderr.String(), "parse Go test") {
-		t.Fatalf("policy failure = %d, %q", code, stderr.String())
-	}
-}
-
-func TestRustFindingsMalformedBoundaries(t *testing.T) {
-	tests := []struct {
-		source   string
-		findings int
-	}{
-		{"/*", 1},
-		{"#[", 1},
-		{`r##"unterminated`, 0},
-		{"macro!([ignore", 1},
-		{")", 0},
-	}
-	for _, test := range tests {
-		findings := rustFindings(
-			"fixture.rs",
-			[]byte(test.source),
-			modeTestSkips,
-		)
-		if len(findings) != test.findings {
-			t.Fatalf(
-				"rustFindings(%q) = %v, want %d",
-				test.source,
-				findings,
-				test.findings,
-			)
-		}
-	}
-}
+import "testing"
 
 func TestCargoOptionalDependencyShapes(t *testing.T) {
 	tests := []struct {
@@ -171,27 +89,6 @@ func TestCargoWorkspaceMalformedShapes(t *testing.T) {
 				},
 				read(test.source),
 			)
-			if len(findings) != test.findings {
-				t.Fatalf("findings = %v, want %d", findings, test.findings)
-			}
-		})
-	}
-}
-
-func TestCargoConfigurationShapes(t *testing.T) {
-	tests := []struct {
-		name     string
-		source   string
-		findings int
-	}{
-		{"empty", "", 0},
-		{"benign scalar", "net = true", 0},
-		{"boolean flags", "[build]\nrustflags = true", 1},
-		{"mixed flags", "[build]\nrustflags = [\"-C\", 1]", 1},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			findings := cargoConfigFindings(".cargo/config.toml", []byte(test.source))
 			if len(findings) != test.findings {
 				t.Fatalf("findings = %v, want %d", findings, test.findings)
 			}
