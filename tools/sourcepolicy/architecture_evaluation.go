@@ -133,11 +133,16 @@ func splitDeclarationFindings(
 	if err != nil {
 		return nil, err
 	}
-	actionPolicy, err := actionPolicySplitDeclarationFindings(files, readFile)
+	sourcePolicy, err := sourcePolicySplitDeclarationFindings(files, readFile)
 	if err != nil {
 		return nil, err
 	}
 	findings := append(append(attempt, supervision...), operation...)
+	findings = append(findings, sourcePolicy...)
+	actionPolicy, err := actionPolicySplitDeclarationFindings(files, readFile)
+	if err != nil {
+		return nil, err
+	}
 	return append(findings, actionPolicy...), nil
 }
 
