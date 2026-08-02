@@ -75,7 +75,7 @@ func architectureFindings(
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil
 	}
-	declarations, err := attemptSplitDeclarationFindings(files, readFile)
+	declarations, err := splitDeclarationFindings(files, readFile)
 	if err != nil {
 		return nil, err
 	}
@@ -115,6 +115,21 @@ func architectureFindings(
 	findings = boundedArchitectureFindings(findings)
 	sort.Strings(findings)
 	return findings, nil
+}
+
+func splitDeclarationFindings(
+	files []string,
+	readFile func(string) ([]byte, error),
+) ([]string, error) {
+	attempt, err := attemptSplitDeclarationFindings(files, readFile)
+	if err != nil {
+		return nil, err
+	}
+	supervision, err := supervisionSplitDeclarationFindings(files, readFile)
+	if err != nil {
+		return nil, err
+	}
+	return append(attempt, supervision...), nil
 }
 
 func architectureFindingsFull(findings []string) bool {

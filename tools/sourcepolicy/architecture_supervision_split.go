@@ -1,0 +1,211 @@
+// Copyright © 2026 @sudocelestia. All rights reserved.
+//
+// PROPRIETARY AND CONFIDENTIAL SOURCE CODE.
+//
+// No licence, permission or authorisation is granted to use, copy, modify,
+// compile, execute, distribute, publish, sublicense or otherwise exploit this
+// file, except to the limited extent unavoidably permitted by applicable law
+// or GitHub's Terms of Service.
+//
+// See the LICENSE file at the repository root for the complete terms.
+
+package main
+
+import (
+	"fmt"
+	"go/ast"
+	"go/doc"
+	"go/parser"
+	"go/token"
+	"path"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+const (
+	supervisionSplitDirectory  = "internal/execution/supervision/"
+	maxSupervisionSplitBytes   = 16 << 20
+	supervisionSplitPackageSHA = "eb7c1708a470fd614025a75081168a20efbd51f2207d003d29e57a97eaa41843"
+	supervisionSplitSourceSHA  = "f39ebaa7e9bdeb127980b66926c6f3a6a159ed8da3f2d1ad8b17a9a164e68871"
+	supervisionSplitTargetSHA  = "d1a257b599cd2a7eb2367b7f26ef81e99f0aedcd36548d1e71e7090536d7ad31"
+)
+
+var supervisionSplitOwners = map[string]string{
+	"cleanup_windows.go":                  "cleanup",
+	"cleanup_windows_test.go":             "cleanup",
+	"container_errors_windows_test.go":    "launch",
+	"container_fault_windows_test.go":     "launch",
+	"doc.go":                              "contract",
+	"environment_windows_test.go":         "launch",
+	"image_errors_windows_test.go":        "image",
+	"image_windows.go":                    "image",
+	"image_windows_test.go":               "image",
+	"launch_preparation_windows_test.go":  "launch",
+	"launch_windows.go":                   "launch",
+	"native_fault_windows_test.go":        "native",
+	"native_layout_windows_test.go":       "native",
+	"native_pointer_windows.go":           "native",
+	"native_stream_windows_test.go":       "native",
+	"native_test_helpers_windows_test.go": "native",
+	"native_wait_windows_test.go":         "native",
+	"native_windows.go":                   "native",
+	"observation_windows.go":              "observation",
+	"outcome_windows.go":                  "outcome",
+	"outcome_windows_test.go":             "outcome",
+	"pipes_windows.go":                    "streams",
+	"process_start_fault_windows_test.go": "startup",
+	"process_start_windows.go":            "startup",
+	"process_tree_windows_test.go":        "qualification",
+	"resource_close_windows_test.go":      "resources",
+	"resources_windows.go":                "resources",
+	"runtime_windows.go":                  "launch",
+	"startup_cleanup_windows_test.go":     "cleanup",
+	"stream_result_windows_test.go":       "streams",
+	"stream_windows.go":                   "streams",
+	"supervisor.go":                       "contract",
+	"supervisor_unsupported.go":           "platform",
+	"supervisor_unsupported_test.go":      "platform",
+	"supervisor_windows.go":               "orchestration",
+	"supervisor_windows_test.go":          "qualification",
+	"timing_windows.go":                   "timing",
+	"wait_windows.go":                     "wait",
+	"wait_windows_test.go":                "wait",
+}
+
+func supervisionSplitDeclarationFindings(
+	files []string,
+	readFile func(string) ([]byte, error),
+) ([]string, error) {
+	inventory, err := supervisionSplitInventoryFor(files, readFile, supervisionSplitOwners)
+	if err != nil {
+		return nil, err
+	}
+	var findings []string
+	for label, pair := range map[string][2]string{
+		"package, build and owner": {inventory.packages, supervisionSplitPackageSHA},
+		"source":                   {inventory.sources, supervisionSplitSourceSHA},
+		"test target":              {inventory.targets, supervisionSplitTargetSHA},
+	} {
+		if pair[0] != pair[1] {
+			findings = append(findings, fmt.Sprintf(
+				"%s: %s inventory differs: %s",
+				strings.TrimSuffix(supervisionSplitDirectory, "/"), label, pair[0],
+			))
+		}
+	}
+	sort.Strings(findings)
+	return findings, nil
+}
+
+func supervisionSplitInventoryFor(
+	files []string,
+	readFile func(string) ([]byte, error),
+	owners map[string]string,
+) (attemptSplitInventory, error) {
+	goFiles := slices.DeleteFunc(slices.Clone(files), func(file string) bool {
+		return !strings.HasPrefix(file, supervisionSplitDirectory)
+	})
+	sort.Strings(goFiles)
+	if len(goFiles) != len(owners) {
+		return attemptSplitInventory{
+			packages: hashInventory([]string{inventoryRecord("file-count", strconv.Itoa(len(goFiles)))}),
+		}, nil
+	}
+	packages := make([]string, 0, len(goFiles))
+	sources := make([]string, 0, len(goFiles)*4)
+	targets := make([]string, 0, len(goFiles))
+	total := 0
+	for _, file := range goFiles {
+		name := strings.TrimPrefix(file, supervisionSplitDirectory)
+		owner, ok := owners[name]
+		if !ok || path.Ext(file) != ".go" {
+			return attemptSplitInventory{
+				packages: hashInventory([]string{inventoryRecord("unexpected-file", file)}),
+			}, nil
+		}
+		inventory, err := supervisionSplitFileInventoryFor(file, owner, readFile)
+		if err != nil {
+			return attemptSplitInventory{}, err
+		}
+		total += inventory.bytes
+		if total > maxSupervisionSplitBytes {
+			return attemptSplitInventory{}, fmt.Errorf("supervision split source inventory exceeds bound")
+		}
+		packages = append(packages, inventory.packages...)
+		sources = append(sources, inventory.sources...)
+		targets = append(targets, inventory.targets...)
+	}
+	sort.Strings(packages)
+	sort.Strings(sources)
+	sort.Strings(targets)
+	return attemptSplitInventory{
+		packages: hashInventory(packages),
+		sources:  hashInventory(sources),
+		targets:  hashInventory(targets),
+	}, nil
+}
+
+func supervisionSplitFileInventoryFor(
+	file string,
+	owner string,
+	readFile func(string) ([]byte, error),
+) (attemptSplitFileInventory, error) {
+	source, err := readFile(file)
+	if err != nil {
+		return attemptSplitFileInventory{}, fmt.Errorf(
+			"read supervision split source %q: %w", file, quotedDiagnostic(err),
+		)
+	}
+	positions := token.NewFileSet()
+	parsed, err := parser.ParseFile(positions, strconv.Quote(file), source, parser.ParseComments)
+	if err != nil {
+		return attemptSplitFileInventory{}, fmt.Errorf(
+			"parse supervision split source %q: %w", file, quotedDiagnostic(err),
+		)
+	}
+	if parsed.Name.Name != "supervision" && parsed.Name.Name != "supervision_test" {
+		return attemptSplitFileInventory{}, fmt.Errorf(
+			"supervision split source %q uses package %s", file, parsed.Name.Name,
+		)
+	}
+	build, err := goBuildConstraint(source, positions, parsed)
+	if err != nil {
+		return attemptSplitFileInventory{}, fmt.Errorf(
+			"parse supervision split build constraint %q: %w", file, quotedDiagnostic(err),
+		)
+	}
+	inventory := attemptSplitFileInventory{
+		packages: []string{inventoryRecord("package", file, owner, parsed.Name.Name, build)},
+		bytes:    len(source),
+	}
+	return supervisionSplitDeclarations(file, parsed, inventory)
+}
+
+func supervisionSplitDeclarations(
+	file string,
+	parsed *ast.File,
+	inventory attemptSplitFileInventory,
+) (attemptSplitFileInventory, error) {
+	for _, declaration := range parsed.Decls {
+		records, target, inventoryErr := goSplitDeclarationInventory(file, declaration)
+		if inventoryErr != nil {
+			return attemptSplitFileInventory{}, inventoryErr
+		}
+		for _, record := range records {
+			inventory.sources = append(inventory.sources, inventoryRecord("source", file, record))
+		}
+		if target != "" {
+			inventory.targets = append(inventory.targets, inventoryRecord("target", file, target))
+		}
+	}
+	for _, example := range doc.Examples(parsed) {
+		if example.Output != "" || example.EmptyOutput {
+			inventory.targets = append(
+				inventory.targets, inventoryRecord("example-target", file, example.Name),
+			)
+		}
+	}
+	return inventory, nil
+}

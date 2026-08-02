@@ -43,6 +43,8 @@ var sourcePolicySplitInventory = []string{
 	"architecture_source_policy.go",
 	"architecture_split_test.go",
 	"architecture_split.go",
+	"architecture_supervision_split.go",
+	"architecture_supervision_split_test.go",
 	"architecture_values.go",
 	"architecture.go",
 	"cargo_failures_test.go",
