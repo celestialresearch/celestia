@@ -32,6 +32,7 @@ var sourcePolicySplitInventory = []string{
 	"architecture_limits.go",
 	"architecture_ownership_test.go",
 	"architecture_paths.go",
+	"architecture_policy.go",
 	"architecture_rust_test.go",
 	"architecture_rust.go",
 	"architecture_scripts_test.go",
