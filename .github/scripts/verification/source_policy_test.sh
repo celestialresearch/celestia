@@ -66,6 +66,24 @@ source_policy_files=(
   tools/sourcepolicy/suppression.go
   tools/sourcepolicy/testinventory.go
 )
+governed_manifests=(
+  docs/contracts/governed_url_reference_v1.json
+  docs/contracts/cel_struct_001.json
+  docs/contracts/cel_struct_003.json
+  docs/contracts/cel_struct_004a.json
+  docs/contracts/cel_struct_004b.json
+  docs/contracts/cel_struct_004c.json
+  docs/contracts/cel_struct_004d.json
+  docs/contracts/cel_struct_004e.json
+  docs/contracts/cel_struct_005.json
+  docs/contracts/cel_split_001.json
+  docs/contracts/cel_split_002.json
+  docs/contracts/cel_split_003.json
+  docs/contracts/cel_split_004.json
+  docs/contracts/cel_split_005.json
+  docs/contracts/cel_split_006.json
+  docs/contracts/cel_split_007.json
+)
 mkdir -p \
   "$work_dir/.github/scripts" \
   "$work_dir/a" \
@@ -86,19 +104,15 @@ fi
 for source_policy_file in "${source_policy_files[@]}"; do
   cp -- "$root/$source_policy_file" "$work_dir/tools/sourcepolicy/"
 done
-cp "$root/docs/contracts/governed_url_reference_v1.json" \
-  "$root/docs/contracts/cel_struct_001.json" \
-  "$root/docs/contracts/cel_struct_003.json" \
-  "$root/docs/contracts/cel_struct_004a.json" \
-  "$root/docs/contracts/cel_struct_004b.json" \
-  "$root/docs/contracts/cel_struct_004c.json" \
-  "$root/docs/contracts/cel_struct_004d.json" \
-  "$root/docs/contracts/cel_struct_004e.json" \
-  "$root/docs/contracts/cel_struct_005.json" \
-  "$root/docs/contracts/cel_split_001.json" \
-  "$root/docs/contracts/cel_split_002.json" \
-  "$root/docs/contracts/cel_split_003.json" \
-  "$work_dir/docs/contracts/"
+if ! diff -u \
+  <(printf '%s\n' "${governed_manifests[@]}" | LC_ALL=C sort) \
+  <(git -C "$root" ls-files -- 'docs/contracts/*.json' | LC_ALL=C sort); then
+  printf 'governed manifest fixture inventory differs from tracked contracts\n' >&2
+  return 1
+fi
+for governed_manifest in "${governed_manifests[@]}"; do
+  cp -- "$root/$governed_manifest" "$work_dir/docs/contracts/"
+done
 
 architecture_dir="$work_dir/architecture-repo"
 mkdir -p "$architecture_dir"
@@ -365,11 +379,8 @@ for omission in \
     return 1
   }
 done
-for manifest in governed_url_reference_v1.json cel_struct_001.json \
-  cel_struct_003.json cel_struct_004a.json cel_struct_004b.json \
-  cel_struct_004c.json cel_struct_004d.json cel_struct_004e.json \
-  cel_struct_005.json cel_split_001.json cel_split_002.json \
-  cel_split_003.json; do
+for governed_manifest in "${governed_manifests[@]}"; do
+  manifest=${governed_manifest##*/}
   printf '\n' >>"$work_dir/docs/contracts/$manifest"
   set +e
   output=$(cd "$work_dir" &&
