@@ -22,6 +22,7 @@ var sourcePolicySplitInventory = []string{
 	"architecture_attempt_split.go",
 	"architecture_bounds_test.go",
 	"architecture_documentation_test.go",
+	"architecture_evaluation.go",
 	"architecture_fixture_evaluation_test.go",
 	"architecture_fixtures_test.go",
 	"architecture_imports_test.go",
