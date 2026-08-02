@@ -98,6 +98,18 @@ main() (
   trap '[[ $- != *e* ]] || printf "verification-source-policy failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
   trap 'exit 1' HUP INT TERM
 
+  printf '%s\n' "${scripts[@]/#/$script_prefix\/}" | LC_ALL=C sort \
+    >"$work_dir/expected-scripts"
+  if ! git -C "$script_repo" ls-files -- "$script_prefix/*.sh" \
+    | LC_ALL=C sort >"$work_dir/tracked-scripts"; then
+    printf 'failed to inventory source-policy scripts\n' >&2
+    return 1
+  fi
+  if ! diff -u "$work_dir/expected-scripts" "$work_dir/tracked-scripts"; then
+    printf 'source-policy script inventory differs from its reviewed form\n' >&2
+    return 1
+  fi
+
   if [[ -z "$fixture_mode" ]]; then
     reject_extra_contract
   fi

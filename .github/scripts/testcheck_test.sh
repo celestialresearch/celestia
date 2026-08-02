@@ -349,6 +349,23 @@ if ! cmp -s <(printf '%s\n' "$source_policy_scripts") "$source_policy_log"; then
   exit 1
 fi
 
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$source_policy_dir/unexpected.sh"
+chmod +x "$source_policy_dir/unexpected.sh"
+git -C "$source_policy_repo" add -f source-policy/unexpected.sh
+git -C "$source_policy_repo" update-index --chmod=+x \
+  source-policy/unexpected.sh
+if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null 2>&1; then
+  printf 'source-policy driver accepted an unexpected script\n' >&2
+  exit 1
+fi
+git -C "$source_policy_repo" rm -q -f source-policy/unexpected.sh
+
 rm -- "$source_policy_dir/architecture.sh"
 if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
   CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
