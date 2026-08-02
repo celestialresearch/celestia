@@ -67,6 +67,29 @@ action_family_identity() {
   printf '%s\n' "$working_object"
 }
 
+snapshot_size() {
+  local size
+
+  size=$(wc -c <"$1") || return 1
+  size=${size//[[:space:]]/}
+  [[ "$size" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$size"
+}
+
+snapshot_matches() {
+  local path=$1
+  local expected_size=$2
+  local expected_identity=$3
+  local identity
+  local size
+
+  [[ ! -L "$path" && -f "$path" ]] || return 1
+  size=$(snapshot_size "$path") || return 1
+  [[ "$size" == "$expected_size" ]] || return 1
+  identity=$(git hash-object --no-filters -- "$path") || return 1
+  [[ "$identity" == "$expected_identity" ]]
+}
+
 # shellcheck disable=SC2329 # Invoked by registered signal and exit traps.
 finish_action_driver() {
   local status=$1
@@ -88,19 +111,22 @@ finish_action_driver() {
 main() (
   local executed
   local family
+  local family_index
   local identity
-  local identities
+  local -a identities
   local planned
   local run_root
   local snapshot
+  local snapshot_identity
   local snapshot_path
+  local snapshot_size_value
 
   executed="$action_temp_root/executed"
   planned="$action_temp_root/planned"
-  identities="$action_temp_root/identities"
   snapshot="$action_temp_root/snapshot.tar"
+  family_index=0
+  identities=()
   run_root=
-  mkdir -- "$identities"
   printf '%s\n' "$families" >"$planned"
   bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$planned" \
     "$family_repo" "$family_prefix"
@@ -109,14 +135,21 @@ main() (
       printf 'action test family is unavailable: %s\n' "$family" >&2
       return 1
     }
-    printf '%s\n' "$identity" >"$identities/$family"
+    identities[${#identities[@]}]=$identity
   done <<<"$families"
   git -C "$family_repo" ls-files -z | \
     tar --null -cf "$snapshot" -C "$family_repo" -T -
+  snapshot_size_value=$(snapshot_size "$snapshot") || return 1
+  snapshot_identity=$(git hash-object --no-filters -- "$snapshot") || return 1
 
   : >"$executed"
   while IFS= read -r family; do
     run_root=$(mktemp -d "$action_temp_root/run.XXXXXX")
+    if ! snapshot_matches "$snapshot" "$snapshot_size_value" \
+      "$snapshot_identity"; then
+      printf 'action test master snapshot identity differs\n' >&2
+      return 1
+    fi
     tar -xf "$snapshot" -C "$run_root"
     git -C "$run_root" init -q
     git -C "$run_root" config core.autocrlf false
@@ -128,7 +161,7 @@ main() (
       return 1
     fi
     identity=$(git hash-object --no-filters -- "$snapshot_path") || return 1
-    if [[ "$identity" != "$(cat "$identities/$family")" ]]; then
+    if [[ "$identity" != "${identities[$family_index]}" ]]; then
       printf 'action test family snapshot identity differs: %s\n' \
         "$family" >&2
       return 1
@@ -140,6 +173,7 @@ main() (
     rm -rf -- "$run_root"
     run_root=
     printf '%s\n' "$family" >>"$executed"
+    family_index=$((family_index + 1))
   done <<<"$families"
 
   bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$executed" \

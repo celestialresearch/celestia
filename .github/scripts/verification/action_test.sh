@@ -131,6 +131,51 @@ fi
 require_empty_verification_directory "$snapshot_temp" \
   'action snapshot temporary'
 
+master_marker="$work_dir/action-master-replacement-ran"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >"families/cache_test.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+: >"$CELESTIA_ACTION_MASTER_MARKER"
+SCRIPT
+chmod +x "families/cache_test.sh"
+tar -cf ../snapshot.tar -C "$PWD" .
+mkdir -p ../identities
+git hash-object --no-filters -- "families/cache_test.sh" \
+  >../identities/cache_test.sh
+EOF
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_dir/cache_test.sh"
+chmod +x "$family_dir/remote_release_test.sh" "$family_dir/cache_test.sh"
+git -C "$family_repo" add families/remote_release_test.sh \
+  families/cache_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  families/remote_release_test.sh families/cache_test.sh
+set +e
+output=$(CELESTIA_ACTION_MASTER_MARKER="$master_marker" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
+  2>&1)
+status=$?
+set -e
+if [[ -e "$master_marker" ]]; then
+  printf 'action driver trusted child-replaced master state\n' >&2
+  return 1
+fi
+if [[ "$status" -eq 0 ]]; then
+  printf 'action driver accepted child-replaced master state\n' >&2
+  return 1
+fi
+if [[ "$output" != *"master snapshot identity differs"* ]]; then
+  printf 'action master replacement lost its diagnostic:\n%s\n' \
+    "$output" >&2
+  return 1
+fi
+git -C "$family_repo" checkout-index --force -- \
+  families/remote_release_test.sh families/cache_test.sh
+
 race_marker="$work_dir/action-replacement-ran"
 cat >"$family_dir/remote_release_test.sh" <<'EOF'
 #!/usr/bin/env bash
