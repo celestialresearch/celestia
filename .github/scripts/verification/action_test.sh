@@ -50,10 +50,21 @@ while IFS= read -r family; do
 done <<<"$families"
 cat >"$family_dir/remote_release_test.sh" <<'EOF'
 #!/usr/bin/env bash
+descendant_pid=
+terminate() {
+  trap - TERM
+  if [[ -n "$descendant_pid" ]]; then
+    kill -TERM "$descendant_pid" 2>/dev/null || true
+    wait "$descendant_pid" 2>/dev/null || true
+  fi
+  exit 143
+}
+trap terminate TERM
 printf '%s\n' "$$" >"$CELESTIA_ACTION_FAMILY_PID"
 sleep 60 &
-printf '%s\n' "$!" >"$CELESTIA_ACTION_DESCENDANT_PID"
-wait
+descendant_pid=$!
+printf '%s\n' "$descendant_pid" >"$CELESTIA_ACTION_DESCENDANT_PID"
+wait "$descendant_pid"
 EOF
 chmod +x "$family_dir/remote_release_test.sh"
 git -C "$family_repo" add families/remote_release_test.sh
