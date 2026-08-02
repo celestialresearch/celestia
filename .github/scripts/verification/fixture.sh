@@ -26,6 +26,23 @@ verification_process_running() {
   return 0
 }
 
+create_verification_symlink() {
+  local object
+  local path=$2
+  local repository=$1
+  local target=$3
+
+  git -C "$repository" config core.symlinks true
+  object=$(printf '%s' "$target" | git -C "$repository" hash-object -w --stdin)
+  git -C "$repository" update-index --add \
+    --cacheinfo "120000,$object,$path"
+  git -C "$repository" checkout-index --force -- "$path"
+  [[ -L "$repository/$path" ]] || {
+    printf 'failed to create verification symlink: %s\n' "$path" >&2
+    return 1
+  }
+}
+
 require_empty_verification_directory() {
   local contents
   local directory=$1

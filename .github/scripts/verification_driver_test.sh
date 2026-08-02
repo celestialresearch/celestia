@@ -136,6 +136,18 @@ if bash "$root/.github/scripts/testcheck.sh" verification \
 fi
 git -C "$verification_repo" rm -q -f verification/unexpected_test.sh
 
+create_verification_symlink "$verification_repo" \
+  verification/hidden_test.sh lint_test.sh
+if bash "$root/.github/scripts/testcheck.sh" verification \
+  "$verification_dir" "$work/complete-execution" \
+  "$verification_repo" verification >/dev/null 2>&1; then
+  printf 'verification inventory accepted an undeclared symlink family\n' >&2
+  exit 1
+fi
+rm -- "$verification_dir/hidden_test.sh"
+git -C "$verification_repo" update-index --force-remove \
+  verification/hidden_test.sh
+
 rm -- "$verification_dir/devcheck_config_test.sh"
 if CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \

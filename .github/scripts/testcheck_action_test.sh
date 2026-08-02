@@ -14,6 +14,8 @@ set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/testcheck-action.XXXXXX")
+# shellcheck source=.github/scripts/verification/fixture.sh
+source "$root/.github/scripts/verification/fixture.sh"
 
 cleanup() {
   rm -rf -- "$work"
@@ -64,6 +66,17 @@ if bash "$root/.github/scripts/testcheck.sh" action "$action_dir" \
   exit 1
 fi
 git -C "$action_repo" rm -q -f actioncheck/unexpected_test.sh
+
+create_verification_symlink "$action_repo" \
+  actioncheck/hidden_test.sh cache_test.sh
+if bash "$root/.github/scripts/testcheck.sh" action "$action_dir" \
+  "$work/executed" "$action_repo" actioncheck >/dev/null 2>&1; then
+  printf 'action inventory accepted an undeclared symlink family\n' >&2
+  exit 1
+fi
+rm -- "$action_dir/hidden_test.sh"
+git -C "$action_repo" update-index --force-remove \
+  actioncheck/hidden_test.sh
 
 rm -- "$action_dir/cache_test.sh"
 if bash "$root/.github/scripts/testcheck.sh" action "$action_dir" \

@@ -132,6 +132,33 @@ main() (
 
   printf '%s\n' "${scripts[@]/#/$script_prefix\/}" | LC_ALL=C sort \
     >"$work_dir/expected-scripts"
+  if ! find "$script_dir_path" -name '*.sh' -print0 \
+    >"$work_dir/script-candidates"; then
+    printf 'failed to inventory source-policy script entries\n' >&2
+    return 1
+  fi
+  : >"$work_dir/available-scripts"
+  while IFS= read -r -d '' path; do
+    if [[ -L "$path" || ! -f "$path" ]]; then
+      printf 'source-policy script is unavailable: %s\n' "$path" >&2
+      return 1
+    fi
+    script=${path##*/}
+    case "$script" in
+    *$'\n'* | *$'\r'*)
+      printf 'source-policy script has an unsupported name\n' >&2
+      return 1
+      ;;
+    esac
+    printf '%s\n' "$script" >>"$work_dir/available-scripts"
+  done <"$work_dir/script-candidates"
+  LC_ALL=C sort -o "$work_dir/available-scripts" \
+    "$work_dir/available-scripts"
+  if ! diff -u <(printf '%s\n' "${scripts[@]}" | LC_ALL=C sort) \
+    "$work_dir/available-scripts"; then
+    printf 'source-policy script inventory differs from its reviewed form\n' >&2
+    return 1
+  fi
   if ! git -C "$script_repo" ls-files -- "$script_prefix/*.sh" \
     | LC_ALL=C sort >"$work_dir/tracked-scripts"; then
     printf 'failed to inventory source-policy scripts\n' >&2

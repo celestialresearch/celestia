@@ -85,6 +85,21 @@ if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
 fi
 git -C "$source_policy_repo" rm -q -f source-policy/unexpected.sh
 
+create_verification_symlink "$source_policy_repo" \
+  source-policy/hidden.sh setup.sh
+git -C "$source_policy_repo" update-index --force-remove \
+  source-policy/hidden.sh
+if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture >/dev/null 2>&1; then
+  printf 'source-policy driver accepted an undeclared symlink script\n' >&2
+  exit 1
+fi
+rm -- "$source_policy_dir/hidden.sh"
+
 rm -- "$source_policy_dir/architecture.sh"
 if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
   CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \

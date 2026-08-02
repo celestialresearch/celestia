@@ -168,6 +168,36 @@ rust_tests() {
   rust_command true
 }
 
+family_inventory() {
+  local directory=$1
+  local pattern=$2
+  local output=$3
+  local owner=$4
+  local name
+  local path
+
+  if ! find "$directory" -name "$pattern" -print0 >"$temporary/candidates"; then
+    printf 'failed to inventory %s\n' "$owner" >&2
+    return 1
+  fi
+  : >"$output"
+  while IFS= read -r -d '' path; do
+    if [[ -L "$path" || ! -f "$path" ]]; then
+      printf '%s is unavailable: %s\n' "$owner" "$path" >&2
+      return 1
+    fi
+    name=${path##*/}
+    case "$name" in
+    *$'\n'* | *$'\r'*)
+      printf '%s has an unsupported name\n' "$owner" >&2
+      return 1
+      ;;
+    esac
+    printf '%s\n' "$name" >>"$output"
+  done <"$temporary/candidates"
+  LC_ALL=C sort -o "$output" "$output"
+}
+
 verification_tests() {
   local directory=$profile
   local executed=$fixture_mode
@@ -200,8 +230,8 @@ EOF
       return 1
     fi
   done <"$temporary/expected"
-  find "$directory" -type f -name '*_test.sh' -exec basename {} \; |
-    LC_ALL=C sort >"$temporary/available"
+  family_inventory "$directory" '*_test.sh' "$temporary/available" \
+    'verification family'
   LC_ALL=C sort "$temporary/expected" >"$temporary/expected-sorted"
   if ! cmp -s "$temporary/expected-sorted" "$temporary/available"; then
     printf 'verification family inventory differs\n' >&2
@@ -239,8 +269,8 @@ EOF
       return 1
     fi
   done <"$temporary/expected"
-  find "$directory" -type f -name '*_test.sh' -exec basename {} \; |
-    LC_ALL=C sort >"$temporary/available"
+  family_inventory "$directory" '*_test.sh' "$temporary/available" \
+    'action test family'
   LC_ALL=C sort "$temporary/expected" >"$temporary/expected-sorted"
   if ! cmp -s "$temporary/expected-sorted" "$temporary/available"; then
     printf 'action test family inventory differs\n' >&2
