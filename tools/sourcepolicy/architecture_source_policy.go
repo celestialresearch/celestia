@@ -109,12 +109,15 @@ func readSourcePolicySplitBaseline(
 	if err := expectJSONEnd(decoder); err != nil {
 		return baseline, err
 	}
-	if baseline.Schema != sourcePolicyBaselineSchema ||
+	const reviewedSHA256 = "5b1997444af653009c421e0012bcad9a95cc7822985d099434f7e309b73d3d14"
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != reviewedSHA256 ||
+		baseline.Schema != sourcePolicyBaselineSchema ||
 		!validSHA256Hex(baseline.PackageSHA) ||
 		!validSHA256Hex(baseline.SourceSHA) ||
 		!validSHA256Hex(baseline.TargetSHA) ||
 		!validSHA256Hex(baseline.FixtureSHA256) {
-		return baseline, errors.New("source-policy split inventory is invalid")
+		return baseline, errors.New("source-policy split inventory is invalid or differs from its reviewed form")
 	}
 	return baseline, nil
 }

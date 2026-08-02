@@ -13,6 +13,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -83,6 +86,66 @@ func TestSourcePolicySplitInventoryRejectsDrift(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSourcePolicySplitInventoryRejectsRefreshedBaseline(t *testing.T) {
+	t.Parallel()
+
+	readFile := func(file string) ([]byte, error) {
+		source, err := readSourcePolicyFixture(file)
+		if err != nil || file != "tools/sourcepolicy/cargo.go" {
+			return source, err
+		}
+		return append(source, []byte("\nvar policyInventoryProbe = 1\n")...), nil
+	}
+	baseline := refreshedSourcePolicyBaseline(t, readFile)
+	refreshedReader := func(file string) ([]byte, error) {
+		if file == sourcePolicyBaselinePath {
+			return baseline, nil
+		}
+		return readFile(file)
+	}
+	_, err := sourcePolicySplitDeclarationFindings(expectedSplitFiles(), refreshedReader)
+	if err == nil || !strings.Contains(err.Error(), "differs from its reviewed form") {
+		t.Fatalf("refreshed baseline error = %v", err)
+	}
+}
+
+func refreshedSourcePolicyBaseline(
+	t *testing.T,
+	readFile func(string) ([]byte, error),
+) []byte {
+	t.Helper()
+	goFiles := slices.DeleteFunc(expectedSplitFiles(), func(file string) bool {
+		return filepath.ToSlash(filepath.Dir(file)) != "tools/sourcepolicy" ||
+			filepath.Ext(file) != ".go"
+	})
+	inventory, err := ownedGoSplitInventoryFor(goFiles, readFile, ownedGoSplitSpec{
+		directory: sourcePolicySplitDirectory,
+		packages:  []string{"main"},
+		owners:    sourcePolicySplitOwners(),
+		maxBytes:  maxSourcePolicySplitBytes,
+		label:     "source-policy",
+	})
+	if err != nil {
+		t.Fatalf("ownedGoSplitInventoryFor() error = %v", err)
+	}
+	fixture, err := readFile(sourcePolicyFixturePath)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	fixtureSHA := sha256.Sum256(fixture)
+	baseline, err := json.Marshal(sourcePolicySplitBaseline{
+		Schema:        sourcePolicyBaselineSchema,
+		PackageSHA:    inventory.packages,
+		SourceSHA:     inventory.sources,
+		TargetSHA:     inventory.targets,
+		FixtureSHA256: hex.EncodeToString(fixtureSHA[:]),
+	})
+	if err != nil {
+		t.Fatalf("marshal refreshed baseline: %v", err)
+	}
+	return baseline
 }
 
 func readSourcePolicyFixture(file string) ([]byte, error) {
