@@ -198,28 +198,43 @@ stop_completed_family_group() {
 }
 
 reconcile_active_family() {
+  local completed=${1:-0}
   local cleanup_status
 
-  if family_job_owned; then
-    stop_owned_family
-    return
+  if [[ "$completed" -eq 0 ]] && family_job_owned; then
+    if stop_owned_family; then
+      return 0
+    fi
+    return 2
   fi
   set +e
   stop_completed_family_group
   cleanup_status=$?
   set -e
-  [[ "$cleanup_status" -ne 2 ]]
+  return "$cleanup_status"
 }
 
 # shellcheck disable=SC2329 # Invoked through the registered exit handler.
 finish_main() {
+  local cleanup_status
   local status=$?
 
   trap - EXIT HUP INT TERM
   if [[ -n "$active_family_pid" ]]; then
-    if reconcile_active_family; then
+    set +e
+    reconcile_active_family
+    cleanup_status=$?
+    set -e
+    if [[ "$cleanup_status" -eq 0 ]]; then
       active_family_pid=
       active_family_job=
+    elif [[ "$cleanup_status" -eq 1 ]]; then
+      printf 'verification family left descendant processes\n' >&2
+      active_family_pid=
+      active_family_job=
+      if [[ "$status" -eq 0 ]]; then
+        status=1
+      fi
     else
       printf 'verification family cleanup remained incomplete\n' >&2
       status=1
@@ -290,7 +305,17 @@ run_family() {
   if [[ -n "$pending_family_signal" ]]; then
     signal_status=$pending_family_signal
     pending_family_signal=
-    if ! reconcile_active_family; then
+    set +e
+    reconcile_active_family
+    cleanup_status=$?
+    set -e
+    if [[ "$cleanup_status" -eq 1 ]]; then
+      printf 'verification family left descendant processes: %s\n' \
+        "$family" >&2
+      active_family_pid=
+      active_family_job=
+      return 1
+    elif [[ "$cleanup_status" -eq 2 ]]; then
       printf 'verification family left descendant processes: %s\n' \
         "$family" >&2
       return 1
@@ -312,14 +337,14 @@ run_family() {
   fi
   signal_status=$pending_family_signal
   pending_family_signal=
-  if ! reconcile_active_family; then
+  set +e
+  reconcile_active_family "$wait_completed"
+  cleanup_status=$?
+  set -e
+  if [[ "$cleanup_status" -eq 0 ]] && family_group_running; then
     cleanup_status=2
-  elif family_group_running; then
-    cleanup_status=2
-  else
-    cleanup_status=0
   fi
-  if [[ "$cleanup_status" -eq 0 ]]; then
+  if [[ "$cleanup_status" -ne 2 ]]; then
     active_family_pid=
     active_family_job=
   fi
