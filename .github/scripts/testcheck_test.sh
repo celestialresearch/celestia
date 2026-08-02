@@ -378,13 +378,24 @@ chmod +x "$source_policy_dir/go_execution.sh"
 git -C "$source_policy_repo" add source-policy/go_execution.sh
 git -C "$source_policy_repo" update-index --chmod=+x \
   source-policy/go_execution.sh
-if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
-  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
-  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
-  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+rm -f -- "$source_policy_log"
+set +e
+CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
   bash "$root/.github/scripts/verification/source_policy_test.sh" \
-    --fixture >/dev/null 2>&1; then
-  printf 'source-policy driver accepted a failing script\n' >&2
+    --fixture >/dev/null 2>&1
+status=$?
+set -e
+if [[ "$status" -ne 9 ]]; then
+  printf 'source-policy driver changed script status 9 to %s\n' "$status" >&2
+  exit 1
+fi
+if ! cmp -s \
+  <(printf '%s\n' setup.sh architecture.sh manifests.sh source_bounds.sh) \
+  "$source_policy_log"; then
+  printf 'source-policy driver continued after a failing script\n' >&2
   exit 1
 fi
 
