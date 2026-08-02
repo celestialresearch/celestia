@@ -26,7 +26,7 @@
   "canonical_state": [
     "Action-policy command execution and diagnostics are owned by main_test.go",
     "Action inventory, alias resolution, structural bounds, document output, image inventory, permissions, YAML validation and fuzzing are owned by actions_test.go, aliases_test.go, bounds_test.go, document_test.go, images_test.go, permissions_test.go, yaml_test.go and fuzz_test.go respectively",
-    "The verification driver executes the lint, action, Rust configuration, Rust artefact, coverage, source policy, licence and release artefact families in that exact order",
+    "The verification driver executes the lint, action, development-check configuration, Rust configuration, Rust integration, Rust artefact, coverage, source policy, licence and release artefact families in that exact order",
     "Every declared verification family is a tracked regular executable with Git mode 100755 while the shared fixture helper is not a family",
     "Verification families execute serially and the driver records a family only after it returns success",
     "The first missing, non-executable or failing family prevents later families from executing and makes the parent driver fail",
@@ -120,7 +120,7 @@
       "kind": "temporary_file",
       "owner": "verification driver",
       "acquisition": "Create one unique execution-record path through mktemp",
-      "bound": "At most eight newline-delimited declared family names",
+      "bound": "At most ten newline-delimited declared family names",
       "release": "Remove the execution record through the subshell EXIT trap",
       "cleanup_failure": "Fail the surrounding verification environment without treating the record as maintained evidence"
     },
@@ -320,7 +320,7 @@
     },
     {
       "id": "CEL-SPLIT-006-INV-002",
-      "statement": "The driver executes exactly eight declared executable verification families serially in the declared order",
+      "statement": "The driver executes exactly ten declared executable verification families serially in the declared order",
       "owner": "verification driver",
       "severity": "high",
       "boundary": "Tracked verification-family inventory to direct shell execution",
@@ -391,7 +391,7 @@
       "residual_uncertainty": "Cross-shell invocation evidence is separate from Bash language compatibility"
     }
   ],
-  "success_semantics": "Accepted means the exact action-test ownership and eight-family shell split preserve targets, order, executable modes, serial execution, labels, isolation, cleanup and failure propagation",
+  "success_semantics": "Accepted means the exact action-test ownership and ten-family shell split preserve targets, order, executable modes, serial execution, labels, isolation, cleanup and failure propagation",
   "refusal_semantics": "An old monolith, missing destination, undeclared sibling, changed owner, missing or non-executable family, reordered inventory or weakened failure fixture returns a bounded rejection",
   "failure_semantics": "Malformed policy, parse failure, unavailable required tooling or any family failure fails the parent gate",
   "cancellation_semantics": "Cancellation stops the active policy or family path and cannot produce acceptance",

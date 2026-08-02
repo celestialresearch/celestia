@@ -18,10 +18,24 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 )
+
+type policyTestSplitManifest struct {
+	CanonicalState []string `json:"canonical_state"`
+	Resources      []struct {
+		ID    string `json:"id"`
+		Bound string `json:"bound"`
+	} `json:"resources"`
+	Invariants []struct {
+		ID        string `json:"id"`
+		Statement string `json:"statement"`
+	} `json:"invariants"`
+	Success string `json:"success_semantics"`
+}
 
 func TestRunManifestPolicy(t *testing.T) {
 	t.Parallel()
@@ -115,6 +129,96 @@ func TestAssuranceSplitManifestPreservesCustody(t *testing.T) {
 	if bytes.Contains(data, []byte("source-policy Assurance")) {
 		t.Fatal("Product claims Assurance inventory ownership")
 	}
+}
+
+func TestPolicyTestSplitManifestMatchesVerificationDriver(t *testing.T) {
+	t.Chdir("../..")
+	data, err := os.ReadFile(policyTestSplitPath)
+	if err != nil {
+		t.Fatalf("read policy-test split manifest: %v", err)
+	}
+	var manifest policyTestSplitManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatalf("decode policy-test split manifest: %v", err)
+	}
+	driver, err := os.ReadFile(".github/scripts/verification_test.sh")
+	if err != nil {
+		t.Fatalf("read verification driver: %v", err)
+	}
+	got := verificationDriverFamilies(t, driver)
+	want := []string{
+		"lint_test.sh", "action_test.sh", "devcheck_config_test.sh",
+		"rust_config_test.sh", "rust_integration_test.sh", "rust_artefact_test.sh",
+		"coverage_test.sh", "source_policy_test.sh", "licence_test.sh",
+		"release_artefact_test.sh",
+	}
+	if !equalStrings(got, want) {
+		t.Fatalf("verification driver families = %q, want %q", got, want)
+	}
+	assertVerificationFamilyContract(t, manifest)
+}
+
+func assertVerificationFamilyContract(
+	t *testing.T,
+	manifest policyTestSplitManifest,
+) {
+	t.Helper()
+	const wantState = "The verification driver executes the lint, action, development-check configuration, Rust configuration, Rust integration, Rust artefact, coverage, source policy, licence and release artefact families in that exact order"
+	if !slices.Contains(manifest.CanonicalState, wantState) {
+		t.Fatalf("manifest lacks canonical family order %q", wantState)
+	}
+	const executionRecordID = "CEL-SPLIT-006-RESOURCE-003"
+	foundResource := false
+	for _, resource := range manifest.Resources {
+		if resource.ID == executionRecordID {
+			foundResource = true
+			if resource.Bound != "At most ten newline-delimited declared family names" {
+				t.Fatalf("execution-record bound = %q", resource.Bound)
+			}
+			break
+		}
+	}
+	if !foundResource {
+		t.Fatalf("manifest lacks resource %s", executionRecordID)
+	}
+	const familyInvariantID = "CEL-SPLIT-006-INV-002"
+	for _, invariant := range manifest.Invariants {
+		if invariant.ID == familyInvariantID {
+			if invariant.Statement != "The driver executes exactly ten declared executable verification families serially in the declared order" {
+				t.Fatalf("family invariant = %q", invariant.Statement)
+			}
+			if manifest.Success != "Accepted means the exact action-test ownership and ten-family shell split preserve targets, order, executable modes, serial execution, labels, isolation, cleanup and failure propagation" {
+				t.Fatalf("success semantics = %q", manifest.Success)
+			}
+			return
+		}
+	}
+	t.Fatalf("manifest lacks invariant %s", familyInvariantID)
+}
+
+func verificationDriverFamilies(t *testing.T, source []byte) []string {
+	t.Helper()
+	const start = "families=(\n"
+	const end = ")\n\nfixture_mode="
+	_, after, found := bytes.Cut(source, []byte(start))
+	if !found {
+		t.Fatal("verification driver lacks the family declaration")
+	}
+	block, _, found := bytes.Cut(after, []byte(end))
+	if !found {
+		t.Fatal("verification driver has an unterminated family declaration")
+	}
+	block = bytes.TrimSuffix(block, []byte{'\n'})
+	lines := bytes.Split(block, []byte{'\n'})
+	families := make([]string, 0, len(lines))
+	for _, line := range lines {
+		family := strings.TrimSpace(string(line))
+		if family == "" || !strings.HasSuffix(family, "_test.sh") {
+			t.Fatalf("invalid verification family declaration %q", line)
+		}
+		families = append(families, family)
+	}
+	return families
 }
 
 func reviewedManifestContents(t *testing.T) map[string][]byte {
