@@ -40,6 +40,8 @@ const (
 	layoutManifestSHA     = "58b4e70d9b47d907f8b5cbdde163204c82d6633692ac3d7b610f9cd8ff4a8097"
 	splitManifestPath     = "docs/contracts/cel_split_001.json"
 	splitManifestSHA      = "7985a96078eecb71200cfe7fabbdc5c8368afd0e7ef17e9d1a996868fc401c5d"
+	attemptSplitPath      = "docs/contracts/cel_split_002.json"
+	attemptSplitSHA       = "9c9ccaa4732cb47123e80148d5b7611644c98df7103489c89bd8aa59af997269"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {
@@ -57,6 +59,7 @@ func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) 
 		{operationManifestPath, operationManifestSHA},
 		{layoutManifestPath, layoutManifestSHA},
 		{splitManifestPath, splitManifestSHA},
+		{attemptSplitPath, attemptSplitSHA},
 	}
 	for _, manifest := range manifests {
 		if manifestPolicyStatus(stderr, readFile, manifest.path, manifest.digest) != 0 {

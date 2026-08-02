@@ -93,7 +93,7 @@ func reviewedManifestContents(t *testing.T) map[string][]byte {
 		governedManifestPath, structureManifestPath, executionManifestPath,
 		transformManifestPath, protocolManifestPath, admissionManifestPath,
 		attemptManifestPath, operationManifestPath, layoutManifestPath,
-		splitManifestPath,
+		splitManifestPath, attemptSplitPath,
 	}
 	manifests := make(map[string][]byte, len(paths))
 	for _, path := range paths {
@@ -128,6 +128,8 @@ func readReviewedManifest(path string) ([]byte, error) {
 		return os.ReadFile(layoutManifestPath)
 	case splitManifestPath:
 		return os.ReadFile(splitManifestPath)
+	case attemptSplitPath:
+		return os.ReadFile(attemptSplitPath)
 	default:
 		return nil, errors.New("unexpected manifest")
 	}
