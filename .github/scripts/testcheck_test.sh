@@ -165,6 +165,28 @@ CELESTIA_VERIFICATION_FIXTURE=true \
   CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
   bash "$root/.github/scripts/verification_test.sh" >/dev/null
 
+printf '%s\n' "$families" | sed '$d' >"$work/incomplete-execution"
+if bash "$root/.github/scripts/testcheck.sh" verification \
+  "$verification_dir" "$work/incomplete-execution" \
+  "$verification_repo" verification >/dev/null 2>&1; then
+  printf 'verification inventory accepted omitted execution\n' >&2
+  exit 1
+fi
+
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$verification_dir/unexpected_test.sh"
+git -C "$verification_repo" add -f verification/unexpected_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/unexpected_test.sh
+printf '%s\n' "$families" >"$work/complete-execution"
+if bash "$root/.github/scripts/testcheck.sh" verification \
+  "$verification_dir" "$work/complete-execution" \
+  "$verification_repo" verification >/dev/null 2>&1; then
+  printf 'verification inventory accepted an unexpected family\n' >&2
+  exit 1
+fi
+git -C "$verification_repo" rm -q -f verification/unexpected_test.sh
+
 rm -- "$verification_dir/action_test.sh"
 if CELESTIA_VERIFICATION_FIXTURE=true \
   CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
