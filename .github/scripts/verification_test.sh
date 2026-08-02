@@ -519,6 +519,7 @@ EOF
   cp \
     "$root/tools/sourcepolicy/gofallback.go" \
     "$root/tools/sourcepolicy/architecture.go" \
+    "$root/tools/sourcepolicy/architecture_attempt_split.go" \
     "$root/tools/sourcepolicy/architecture_inventory.go" \
     "$root/tools/sourcepolicy/architecture_limits.go" \
     "$root/tools/sourcepolicy/architecture_imports.go" \
@@ -677,6 +678,28 @@ EOF
       "$output" >&2
     return 1
   }
+  git -C "$architecture_dir" rm -q --cached worker/rogue/main.go
+  rm -f -- "$architecture_dir/worker/rogue/main.go"
+  rmdir "$architecture_dir/worker/rogue"
+  printf '\nvar verificationAttemptDrift = 1\n' \
+    >>"$architecture_dir/internal/operation/urlreference/attempt/contract.go"
+  set +e
+  output=$(cd "$architecture_dir" &&
+    bash .github/scripts/policycheck.sh architecture 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted attempt declaration drift\n' >&2
+    return 1
+  }
+  grep -Fq 'internal/operation/urlreference/attempt: source inventory differs:' \
+    <<<"$output" || {
+    printf 'policy output omitted the attempt inventory diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  git -C "$architecture_dir" checkout -- \
+    internal/operation/urlreference/attempt/contract.go
   printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
     >"$work_dir/.github/.coverage"
   cat >"$work_dir/go.mod" <<'EOF'
