@@ -59,18 +59,12 @@ func TestRunManifestPolicy(t *testing.T) {
 func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
 	t.Chdir("../..")
 
+	manifests := reviewedManifestContents(t)
 	var stderr bytes.Buffer
 	if runManifestPolicy(&stderr, os.ReadFile) != 0 {
 		t.Fatalf("reviewed manifests rejected: %s", stderr.String())
 	}
-	for _, target := range []string{
-		governedManifestPath, structureManifestPath, executionManifestPath,
-		transformManifestPath, protocolManifestPath,
-		admissionManifestPath,
-		attemptManifestPath,
-		operationManifestPath,
-		layoutManifestPath,
-	} {
+	for target := range manifests {
 		for _, missing := range []bool{false, true} {
 			read := func(name string) ([]byte, error) {
 				if name == target {
@@ -79,33 +73,59 @@ func TestRunManifestPolicyGovernsEveryManifest(t *testing.T) {
 					}
 					return []byte(`{"schema_version":"changed"}`), nil
 				}
-				switch name {
-				case governedManifestPath:
-					return os.ReadFile(governedManifestPath)
-				case structureManifestPath:
-					return os.ReadFile(structureManifestPath)
-				case executionManifestPath:
-					return os.ReadFile(executionManifestPath)
-				case transformManifestPath:
-					return os.ReadFile(transformManifestPath)
-				case protocolManifestPath:
-					return os.ReadFile(protocolManifestPath)
-				case admissionManifestPath:
-					return os.ReadFile(admissionManifestPath)
-				case attemptManifestPath:
-					return os.ReadFile(attemptManifestPath)
-				case operationManifestPath:
-					return os.ReadFile(operationManifestPath)
-				case layoutManifestPath:
-					return os.ReadFile(layoutManifestPath)
-				default:
+				data, ok := manifests[name]
+				if !ok {
 					return nil, errors.New("unexpected manifest")
 				}
+				return data, nil
 			}
 			stderr.Reset()
 			if runManifestPolicy(&stderr, read) == 0 {
 				t.Fatalf("changed or missing manifest %s accepted", target)
 			}
 		}
+	}
+}
+
+func reviewedManifestContents(t *testing.T) map[string][]byte {
+	t.Helper()
+	paths := []string{
+		governedManifestPath, structureManifestPath, executionManifestPath,
+		transformManifestPath, protocolManifestPath, admissionManifestPath,
+		attemptManifestPath, operationManifestPath, layoutManifestPath,
+	}
+	manifests := make(map[string][]byte, len(paths))
+	for _, path := range paths {
+		data, err := readReviewedManifest(path)
+		if err != nil {
+			t.Fatalf("read manifest %s: %v", path, err)
+		}
+		manifests[path] = data
+	}
+	return manifests
+}
+
+func readReviewedManifest(path string) ([]byte, error) {
+	switch path {
+	case governedManifestPath:
+		return os.ReadFile(governedManifestPath)
+	case structureManifestPath:
+		return os.ReadFile(structureManifestPath)
+	case executionManifestPath:
+		return os.ReadFile(executionManifestPath)
+	case transformManifestPath:
+		return os.ReadFile(transformManifestPath)
+	case protocolManifestPath:
+		return os.ReadFile(protocolManifestPath)
+	case admissionManifestPath:
+		return os.ReadFile(admissionManifestPath)
+	case attemptManifestPath:
+		return os.ReadFile(attemptManifestPath)
+	case operationManifestPath:
+		return os.ReadFile(operationManifestPath)
+	case layoutManifestPath:
+		return os.ReadFile(layoutManifestPath)
+	default:
+		return nil, errors.New("unexpected manifest")
 	}
 }
