@@ -128,7 +128,11 @@ terminate_driver() {
   local pid=$1
 
   if driver_job_owned "$pid"; then
-    kill -TERM "$pid" 2>/dev/null || true
+    if [[ -n "$driver_signal_pid" ]]; then
+      kill -TERM "$driver_signal_pid" 2>/dev/null || true
+    else
+      kill -TERM -- "-$pid" 2>/dev/null || true
+    fi
     while driver_job_owned "$pid" && ((attempt < 60)); do
       sleep 0.05
       attempt=$((attempt + 1))
@@ -174,6 +178,26 @@ read_driver_status() {
   driver_child_status=$reported_status
 }
 
+read_driver_identity() {
+  local attempt=0
+  local reported_pid=
+
+  while ! IFS= read -r reported_pid <&9; do
+    if ((attempt >= 200)); then
+      printf 'verification driver identity is invalid\n' >&2
+      return 1
+    fi
+    sleep 0.05 || true
+    attempt=$((attempt + 1))
+  done
+  if [[ ! "$reported_pid" =~ ^[1-9][0-9]*$ ]] ||
+    [[ "${#reported_pid}" -gt 10 ]]; then
+    printf 'verification driver identity is invalid\n' >&2
+    return 1
+  fi
+  driver_signal_pid=$reported_pid
+}
+
 family_group_running() {
   kill -0 -- "-$active_family_pid" 2>/dev/null
 }
@@ -209,17 +233,18 @@ reconcile_active_family() {
     fi
     return 2
   fi
-  set +e
-  stop_completed_family_group
-  cleanup_status=$?
-  set -e
+  if stop_completed_family_group; then
+    cleanup_status=0
+  else
+    cleanup_status=$?
+  fi
   return "$cleanup_status"
 }
 
 # shellcheck disable=SC2329 # Invoked through the registered exit handler.
 finish_main() {
-  local cleanup_status
   local status=$?
+  local cleanup_status
 
   trap - EXIT HUP INT TERM
   if [[ -n "$active_family_pid" ]]; then
@@ -272,17 +297,19 @@ record_family_signal() {
     family_signal_forwarded=1
     kill -"$2" -- "-$active_family_pid" 2>/dev/null || true
   fi
+  return 0
 }
 
 # shellcheck disable=SC2329 # Invoked by registered signal traps.
 record_driver_signal() {
   pending_driver_signal=$1
-  if [[ -n "$driver_pid" ]] &&
+  if [[ -n "$driver_pid" && -n "$driver_signal_pid" ]] &&
     job_owned "$driver_job" "$driver_pid" \
       "$driver_work/driver-signal-job"; then
     driver_signal_forwarded=1
-    kill -"$2" "$driver_pid" 2>/dev/null || true
+    kill -"$2" "$driver_signal_pid" 2>/dev/null || true
   fi
+  return 0
 }
 
 run_family() {
@@ -306,10 +333,11 @@ run_family() {
   if [[ -n "$pending_family_signal" ]]; then
     signal_status=$pending_family_signal
     pending_family_signal=
-    set +e
-    reconcile_active_family
-    cleanup_status=$?
-    set -e
+    if reconcile_active_family; then
+      cleanup_status=0
+    else
+      cleanup_status=$?
+    fi
     if [[ "$cleanup_status" -eq 1 ]]; then
       printf 'verification family left descendant processes: %s\n' \
         "$family" >&2
@@ -330,22 +358,24 @@ run_family() {
       "$family_wait_checkpoint"
   fi
   while family_job_owned; do
-    sleep 0.05
+    sleep 0.05 || true
   done
-  set +e
-  wait "$active_family_pid"
-  result=$?
-  set -e
+  if wait "$active_family_pid"; then
+    result=0
+  else
+    result=$?
+  fi
   set +m
-  if ! family_job_owned; then
+  if [[ -z "$pending_family_signal" ]] || ! family_job_owned; then
     wait_completed=1
   fi
   signal_status=$pending_family_signal
   pending_family_signal=
-  set +e
-  reconcile_active_family "$wait_completed"
-  cleanup_status=$?
-  set -e
+  if reconcile_active_family "$wait_completed"; then
+    cleanup_status=0
+  else
+    cleanup_status=$?
+  fi
   if [[ "$cleanup_status" -eq 0 ]] && family_group_running; then
     cleanup_status=2
   fi
@@ -395,6 +425,7 @@ finish_driver() {
       status=1
     fi
     driver_pid=
+    driver_signal_pid=
   fi
   if ! cleanup_driver; then
     status=1
@@ -557,6 +588,8 @@ main() (
   trap 'record_family_signal 130 INT' INT
   trap 'record_family_signal 143 TERM' TERM
 
+  printf '%s\n' "$BASHPID" >&8
+
   declared="$work/declared"
   bindings="$work/bindings"
   executed="$work/executed"
@@ -612,6 +645,7 @@ driver_child_status=0
 driver_work=
 driver_status=
 driver_signal_forwarded=
+driver_signal_pid=
 pending_driver_signal=
 snapshot_root=
 spawn_checkpoint_status=0
@@ -634,13 +668,16 @@ set -m
 main "$driver_work" "$snapshot_root" "$@" 9>&- &
 spawned_driver_pid=$!
 driver_job=%+
+driver_pid=$spawned_driver_pid
+if ! read_driver_identity; then
+  exit 1
+fi
 if [[ -n "$driver_spawn_checkpoint" ]]; then
   if ! CELESTIA_VERIFICATION_SPAWNED_DRIVER_PID=$spawned_driver_pid \
     "$driver_spawn_checkpoint"; then
     spawn_checkpoint_status=1
   fi
 fi
-driver_pid=$spawned_driver_pid
 exec 8>&-
 if [[ "$spawn_checkpoint_status" -ne 0 ]]; then
   exit 1
@@ -653,12 +690,13 @@ if [[ -n "$driver_wait_checkpoint" ]]; then
     "$driver_wait_checkpoint"
 fi
 while driver_job_owned "$driver_pid"; do
-  sleep 0.05
+  sleep 0.05 || true
 done
-set +e
-wait "$driver_pid"
-status=$?
-set -e
+if wait "$driver_pid"; then
+  status=0
+else
+  status=$?
+fi
 set +m
 if [[ -n "$driver_completion_checkpoint" ]]; then
   if ! CELESTIA_VERIFICATION_COMPLETED_DRIVER_PID=$driver_pid \
@@ -673,5 +711,6 @@ if [[ -n "$pending_driver_signal" ]] &&
 fi
 driver_pid=
 driver_job=
+driver_signal_pid=
 exec 9<&-
 exit "$status"

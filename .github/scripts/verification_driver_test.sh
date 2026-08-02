@@ -365,8 +365,8 @@ for driver_status_failure in '' 1 missing leading-zero out-of-range extra-line; 
     bash "$root/.github/scripts/verification_test.sh" --fixture \
     >"$cancellation_output" 2>&1 &
   verification_pid=$!
-  for _ in {1..100}; do
-    [[ -s "$work/family.pid" ]] && break
+  for _ in {1..300}; do
+    [[ -s "$work/family.pid" && -s "$work/descendant.pid" ]] && break
     sleep 0.1
   done
   [[ -s "$work/family.pid" ]] || {
@@ -485,10 +485,9 @@ for wait_boundary in driver family; do
   wait_temp="$work/$wait_boundary-wait-temp"
   wait_output="$work/$wait_boundary-wait-output"
   wait_variable=CELESTIA_VERIFICATION_DRIVER_WAIT_CHECKPOINT
-  expected_status=1
+  expected_status=143
   if [[ "$wait_boundary" == family ]]; then
     wait_variable=CELESTIA_VERIFICATION_FAMILY_WAIT_CHECKPOINT
-    expected_status=143
   fi
   mkdir "$wait_temp"
   rm -f -- "$work/family.pid" "$work/descendant.pid"
@@ -508,11 +507,6 @@ for wait_boundary in driver family; do
     printf 'verification %s wait cancellation returned %d, want %d\n' \
       "$wait_boundary" "$status" "$expected_status" >&2
     cat "$wait_output" >&2
-    exit 1
-  fi
-  if [[ "$wait_boundary" == driver ]] &&
-    ! grep -Fq 'verification driver status is invalid' "$wait_output"; then
-    printf 'verification driver wait accepted a missing status\n' >&2
     exit 1
   fi
   family_pid=$(cat "$work/family.pid")
