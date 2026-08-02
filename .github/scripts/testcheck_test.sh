@@ -306,6 +306,9 @@ git -C "$action_repo" update-index --chmod=-x \
 if bash "$root/.github/scripts/testcheck.sh" action "$action_dir" \
   "$work/action-executed" "$action_repo" actioncheck >/dev/null 2>&1; then
   printf 'action inventory accepted a non-executable family\n' >&2
+  exit 1
+fi
+
 source_policy_repo="$work/source-policy-repo"
 source_policy_dir="$source_policy_repo/source-policy"
 source_policy_log="$work/source-policy.log"
