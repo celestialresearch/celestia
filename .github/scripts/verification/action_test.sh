@@ -70,11 +70,13 @@ chmod +x "$family_dir/remote_release_test.sh"
 git -C "$family_repo" add families/remote_release_test.sh
 git -C "$family_repo" update-index --chmod=+x \
   families/remote_release_test.sh
+mkdir -- "$work_dir/action-cancellation-temp"
 CELESTIA_ACTION_DESCENDANT_PID="$work_dir/action-descendant.pid" \
   CELESTIA_ACTION_FAMILY_PID="$work_dir/action-family.pid" \
   CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
   CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
   CELESTIA_ACTION_FAMILY_PREFIX=families \
+  TMPDIR="$work_dir/action-cancellation-temp" \
   bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
   >/dev/null 2>&1 &
 action_driver_pid=$!
@@ -90,8 +92,15 @@ done
 action_family_pid=$(cat "$work_dir/action-family.pid")
 action_descendant_pid=$(cat "$work_dir/action-descendant.pid")
 kill -TERM "$action_driver_pid"
-wait "$action_driver_pid" 2>/dev/null || true
+set +e
+wait "$action_driver_pid" 2>/dev/null
+status=$?
+set -e
 action_driver_pid=
+if [[ "$status" -ne 143 ]]; then
+  printf 'action cancellation returned status %d, want 143\n' "$status" >&2
+  return 1
+fi
 for pid in "$action_family_pid" "$action_descendant_pid"; do
   if verification_process_running "$pid"; then
     printf 'action cancellation retained process %s\n' "$pid" >&2
@@ -99,6 +108,8 @@ for pid in "$action_family_pid" "$action_descendant_pid"; do
     return 1
   fi
 done
+require_empty_verification_directory "$work_dir/action-cancellation-temp" \
+  'action cancellation temporary'
 snapshot_temp="$work_dir/action-snapshot-temp"
 mkdir -p "$snapshot_temp"
 printf 'tracked\n' >"$family_repo/missing-snapshot-input"

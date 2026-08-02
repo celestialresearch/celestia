@@ -71,12 +71,16 @@ action_family_identity() {
 finish_action_driver() {
   local status=$1
 
-  trap - EXIT HUP INT TERM
+  trap - EXIT
+  trap '' HUP INT TERM
   if [[ -n "${driver_pid:-}" ]]; then
     kill -TERM -- "-$driver_pid" 2>/dev/null || true
     kill -KILL -- "-$driver_pid" 2>/dev/null || true
     wait "$driver_pid" 2>/dev/null || true
     driver_pid=
+  fi
+  if ! rm -rf -- "$action_temp_root"; then
+    status=1
   fi
   exit "$status"
 }
@@ -91,13 +95,12 @@ main() (
   local snapshot
   local snapshot_path
 
-  executed=$(mktemp "${TMPDIR:-/tmp}/celestia-action-families.XXXXXX")
-  planned="$executed.planned"
-  identities="$executed.identities"
-  snapshot="$executed.snapshot.tar"
+  executed="$action_temp_root/executed"
+  planned="$action_temp_root/planned"
+  identities="$action_temp_root/identities"
+  snapshot="$action_temp_root/snapshot.tar"
   run_root=
   mkdir -- "$identities"
-  trap 'rm -rf -- "$executed" "$planned" "$identities" "$snapshot"; if [[ -n "$run_root" ]]; then rm -rf -- "$run_root"; fi' EXIT
   printf '%s\n' "$families" >"$planned"
   bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$planned" \
     "$family_repo" "$family_prefix"
@@ -113,7 +116,7 @@ main() (
 
   : >"$executed"
   while IFS= read -r family; do
-    run_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-action-run.XXXXXX")
+    run_root=$(mktemp -d "$action_temp_root/run.XXXXXX")
     tar -xf "$snapshot" -C "$run_root"
     git -C "$run_root" init -q
     git -C "$run_root" config core.autocrlf false
@@ -143,6 +146,7 @@ main() (
     "$family_repo" "$family_prefix"
 )
 
+action_temp_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-action.XXXXXX")
 driver_pid=
 trap 'finish_action_driver $?' EXIT
 trap 'finish_action_driver 129' HUP
@@ -156,5 +160,4 @@ set +e
 wait "$driver_pid"
 status=$?
 set -e
-driver_pid=
 exit "$status"
