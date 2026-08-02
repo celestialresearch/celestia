@@ -23,24 +23,10 @@ import (
 	"time"
 )
 
-var errStreamLimit = errors.New("process stream limit exceeded")
-
 type Supervisor struct {
 	workerPath string
 	workerHash [32]byte
 	limits     Limits
-}
-
-type streamResult struct {
-	data       []byte
-	err        error
-	cleanupErr error
-}
-
-type inputResult struct {
-	err        error
-	cleanupErr error
-	joinErr    error
 }
 
 type supervisorCreationOperations struct {

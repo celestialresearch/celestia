@@ -20,6 +20,20 @@ import (
 	"time"
 )
 
+var errStreamLimit = errors.New("process stream limit exceeded")
+
+type streamResult struct {
+	data       []byte
+	err        error
+	cleanupErr error
+}
+
+type inputResult struct {
+	err        error
+	cleanupErr error
+	joinErr    error
+}
+
 func finishOutcome(
 	process *launchedProcess,
 	status Status,
