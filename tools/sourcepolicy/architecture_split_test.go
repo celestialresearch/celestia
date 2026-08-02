@@ -123,7 +123,7 @@ func TestArchitectureRequiresPolicyDestination(t *testing.T) {
 
 	files := expectedSplitFiles()
 	files = slices.DeleteFunc(files, func(file string) bool {
-		return file == "tools/sourcepolicy/goexit.go"
+		return file == "tools/sourcepolicy/architecture_evaluation.go"
 	})
 	findings := missingSplitSourceFindings(files)
 	if !slices.ContainsFunc(findings, func(finding string) bool {
@@ -147,6 +147,35 @@ func TestArchitectureRejectsUndeclaredPolicySource(t *testing.T) {
 
 	files := append(expectedSplitFiles(), "tools/sourcepolicy/misc.go")
 	assertSplitFinding(t, files, "undeclared split source")
+}
+
+func TestArchitectureRejectsMovedPolicyOwner(t *testing.T) {
+	t.Parallel()
+
+	files := slices.DeleteFunc(expectedSplitFiles(), func(file string) bool {
+		return file == "tools/sourcepolicy/architecture_policy.go"
+	})
+	files = append(files, "tools/sourcepolicy/architecture_schema.go")
+	assertSplitFinding(t, files, "undeclared split source")
+	findings := missingSplitSourceFindings(files)
+	if !slices.ContainsFunc(findings, func(finding string) bool {
+		return strings.Contains(finding, "architecture_policy.go: required split source is missing")
+	}) {
+		t.Fatalf("findings = %v, want moved owner missing", findings)
+	}
+}
+
+func TestArchitectureRejectsDuplicateDestination(t *testing.T) {
+	t.Parallel()
+
+	directories := []splitDirectory{{
+		path:  "tools/sourcepolicy",
+		files: []string{"architecture_policy.go", "architecture_policy.go"},
+	}}
+	findings := splitDirectoryFindings(directories)
+	if len(findings) != 1 || !strings.Contains(findings[0], "declared more than once") {
+		t.Fatalf("findings = %v, want duplicate destination", findings)
+	}
 }
 
 func assertSplitFinding(t *testing.T, files []string, fragment string) {

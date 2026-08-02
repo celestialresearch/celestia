@@ -69,7 +69,8 @@ func architectureFindings(
 	if err := validateCurrentModule(readFile, policy.ModulePath); err != nil {
 		return nil, err
 	}
-	findings := architecturePathFindings(files, executables, policy)
+	findings := splitDirectoryFindings(splitDirectories())
+	findings = append(findings, architecturePathFindings(files, executables, policy)...)
 	findings = append(findings, missingSplitSourceFindings(files)...)
 	if architectureFindingsFull(findings) {
 		return boundedArchitectureFindings(findings), nil

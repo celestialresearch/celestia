@@ -11,7 +11,10 @@
 
 package main
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 type splitDirectory struct {
 	path  string
@@ -138,6 +141,23 @@ func missingSplitSourceFindings(files []string) []string {
 	for file := range splitSourceSet() {
 		if _, exists := tracked[file]; !exists {
 			findings = append(findings, file+": required split source is missing")
+		}
+	}
+	return boundedArchitectureFindings(findings)
+}
+
+func splitDirectoryFindings(directories []splitDirectory) []string {
+	seen := make(map[string]struct{})
+	var findings []string
+	for _, directory := range directories {
+		for _, file := range directory.files {
+			declared := directory.path + "/" + file
+			if _, exists := seen[declared]; exists {
+				findings = append(findings,
+					fmt.Sprintf("%s: split source is declared more than once", declared),
+				)
+			}
+			seen[declared] = struct{}{}
 		}
 	}
 	return boundedArchitectureFindings(findings)
