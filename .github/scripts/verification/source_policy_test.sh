@@ -83,20 +83,6 @@ active_script_group_running() {
   kill -0 -- "-$active_script_pid" 2>/dev/null
 }
 
-linux_script_group_zombies() {
-  local state
-  local states
-
-  [[ -z "$group_probe" ]] || return 1
-  [[ "$(uname -s 2>/dev/null)" == Linux ]] || return 1
-  states=$(ps -o stat= --pgroup "$active_script_pid" 2>/dev/null) || return 1
-  [[ -n "$states" && "${#states}" -le 4096 ]] || return 1
-  while IFS= read -r state; do
-    state=${state//[[:space:]]/}
-    [[ "$state" == Z* ]] || return 1
-  done <<<"$states"
-}
-
 stop_completed_group() {
   local attempt
 
@@ -121,7 +107,9 @@ stop_completed_group() {
       attempt=$((attempt + 1))
     done
   fi
-  if active_script_group_running && ! linux_script_group_zombies; then
+  if active_script_group_running &&
+    { [[ -n "$group_probe" ]] ||
+      ! verification_group_zombies "$active_script_pid"; }; then
     printf 'source-policy script retained a live process group\n' >&2
     return 2
   fi

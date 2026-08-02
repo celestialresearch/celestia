@@ -26,6 +26,20 @@ verification_process_running() {
   return 0
 }
 
+verification_group_zombies() {
+  local state
+  local states
+  local pid=$1
+
+  [[ "$(uname -s 2>/dev/null)" == Linux ]] || return 1
+  states=$(ps -o stat= --pgroup "$pid" 2>/dev/null) || return 1
+  [[ -n "$states" && "${#states}" -le 4096 ]] || return 1
+  while IFS= read -r state; do
+    state=${state//[[:space:]]/}
+    [[ "$state" == Z* ]] || return 1
+  done <<<"$states"
+}
+
 create_verification_symlink() {
   local object
   local path=$2
