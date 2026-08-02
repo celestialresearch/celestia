@@ -14,6 +14,25 @@ set -euo pipefail
 
 verification_temp_root=${CELESTIA_VERIFICATION_TMPDIR:-${TMPDIR:-/tmp}}
 
+require_empty_verification_directory() {
+  local contents
+  local directory=$1
+  local owner=$2
+
+  [[ -d "$directory" ]] || {
+    printf '%s directory is unavailable\n' "$owner" >&2
+    return 1
+  }
+  contents=$(find "$directory" -mindepth 1 -print -quit) || {
+    printf '%s directory is uninspectable\n' "$owner" >&2
+    return 1
+  }
+  [[ -z "$contents" ]] || {
+    printf '%s retained temporary state after failure\n' "$owner" >&2
+    return 1
+  }
+}
+
 new_verification_work() {
   local name=$1
   local root

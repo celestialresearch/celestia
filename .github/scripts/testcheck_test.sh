@@ -14,6 +14,8 @@ set -euo pipefail
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 work=$(mktemp -d "${TMPDIR:-/tmp}/testcheck-test.XXXXXX")
+# shellcheck source=.github/scripts/verification/fixture.sh
+source "$root/.github/scripts/verification/fixture.sh"
 
 cleanup() {
   rm -rf -- "$work"
@@ -364,6 +366,12 @@ source_policy_log="$work/source-policy.log"
 source_policy_temp="$work/source-policy-temp"
 mkdir -p "$source_policy_dir"
 mkdir -p "$source_policy_temp"
+if require_empty_verification_directory "$work/missing-source-policy-temp" \
+  'source-policy temporary' \
+  >/dev/null 2>&1; then
+  printf 'source-policy driver accepted missing cleanup state\n' >&2
+  exit 1
+fi
 git -C "$source_policy_repo" init -q
 git -C "$source_policy_repo" config core.autocrlf false
 source_policy_scripts='setup.sh
@@ -464,10 +472,8 @@ if [[ "$status" -ne 9 ]]; then
   printf 'source-policy driver changed script status 9 to %s\n' "$status" >&2
   exit 1
 fi
-if find "$source_policy_temp" -mindepth 1 -print -quit | grep -q .; then
-  printf 'source-policy driver retained failed fixture state\n' >&2
-  exit 1
-fi
+require_empty_verification_directory "$source_policy_temp" \
+  'source-policy temporary'
 if ! cmp -s \
   <(printf '%s\n' setup.sh architecture.sh manifests.sh source_bounds.sh) \
   "$source_policy_log"; then

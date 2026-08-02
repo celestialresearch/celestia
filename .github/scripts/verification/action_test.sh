@@ -62,6 +62,12 @@ if [[ "$status" -ne 2 ||
 fi
 driver_temp="$work_dir/action-driver-temp"
 mkdir -p "$driver_temp"
+if require_empty_verification_directory "$work_dir/missing-driver-temp" \
+  'action test driver temporary' \
+  >/dev/null 2>&1; then
+  printf 'action test driver accepted missing cleanup state\n' >&2
+  return 1
+fi
 if TMPDIR="$driver_temp" CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
   CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
   CELESTIA_ACTION_FAMILY_PREFIX=families \
@@ -70,10 +76,8 @@ if TMPDIR="$driver_temp" CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
   printf 'action test driver accepted a failing family\n' >&2
   return 1
 fi
-if find "$driver_temp" -mindepth 1 -print -quit | grep -q .; then
-  printf 'action test driver retained temporary state after failure\n' >&2
-  return 1
-fi
+require_empty_verification_directory "$driver_temp" \
+  'action test driver temporary'
 repo_dir="$work_dir/repo"
 mkdir -p "$repo_dir"
 tar -cf - -C "$root" \
