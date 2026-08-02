@@ -12,42 +12,10 @@
 package urlreference
 
 import (
-	"errors"
-	"fmt"
 	"net/netip"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 )
-
-const (
-	MaxInputBytes     = 4096
-	MaxReferenceBytes = 8192
-)
-
-type Mode string
-
-const (
-	Fang   Mode = "fang"
-	Defang Mode = "defang"
-)
-
-var ErrInvalid = errors.New("invalid URL reference")
-
-type state uint8
-
-const (
-	active state = iota
-	defanged
-)
-
-type reference struct {
-	schemeEnd int
-	hostStart int
-	hostEnd   int
-	state     state
-	hostKind  hostKind
-}
 
 type hostKind uint8
 
@@ -56,151 +24,6 @@ const (
 	hostDNS
 	hostIPv4
 )
-
-func ValidateInput(input string) error {
-	if len(input) > MaxInputBytes {
-		return invalid("original input length")
-	}
-	_, err := parse(input)
-	return err
-}
-
-func Transform(input string, mode Mode) (string, error) {
-	if mode != Fang && mode != Defang {
-		return "", invalid("unsupported mode")
-	}
-
-	ref, err := parse(input)
-	if err != nil {
-		return "", err
-	}
-
-	target := active
-	if mode == Defang {
-		target = defanged
-	}
-	if ref.state == target {
-		return input, nil
-	}
-
-	scheme := input[:ref.schemeEnd]
-	if target == active {
-		scheme = strings.Replace(scheme, "xx", "tt", 1)
-	} else {
-		scheme = strings.Replace(scheme, "tt", "xx", 1)
-	}
-
-	host := input[ref.hostStart:ref.hostEnd]
-	if ref.hostKind != hostNeutral {
-		if target == active {
-			host = strings.ReplaceAll(host, "[.]", ".")
-		} else {
-			host = strings.ReplaceAll(host, ".", "[.]")
-		}
-	}
-
-	output := scheme + input[ref.schemeEnd:ref.hostStart] + host + input[ref.hostEnd:]
-	if len(output) > MaxReferenceBytes {
-		return "", invalid("output length")
-	}
-	return output, nil
-}
-
-func parse(input string) (reference, error) {
-	if err := validateInput(input); err != nil {
-		return reference{}, err
-	}
-
-	schemeEnd := strings.Index(input, "://")
-	if schemeEnd < 0 {
-		return reference{}, invalid("scheme delimiter")
-	}
-	schemeState, ok := schemeClass(input[:schemeEnd])
-	if !ok {
-		return reference{}, invalid("scheme")
-	}
-	return parseReference(input, schemeEnd, schemeState)
-}
-
-func validateInput(input string) error {
-	if len(input) == 0 || len(input) > MaxReferenceBytes {
-		return invalid("input length")
-	}
-	if !utf8.ValidString(input) {
-		return invalid("UTF-8")
-	}
-	for _, r := range input {
-		if r < 0x20 || r == 0x7f || rejectedSpace(r) {
-			return invalid("control or whitespace")
-		}
-	}
-	return nil
-}
-
-func parseReference(input string, schemeEnd int, schemeState state) (reference, error) {
-	authorityStart := schemeEnd + 3
-	authorityEnd := suffixStart(input, authorityStart)
-	if authorityEnd == authorityStart {
-		return reference{}, invalid("empty authority")
-	}
-	if err := validateSuffix(input[authorityEnd:]); err != nil {
-		return reference{}, err
-	}
-
-	hostText, hostStart, hostEnd, err := splitAuthority(input, authorityStart, authorityEnd)
-	if err != nil {
-		return reference{}, err
-	}
-	hostState, kind, err := classifyHost(hostText)
-	if err != nil {
-		return reference{}, err
-	}
-	if kind != hostNeutral && hostState != schemeState {
-		return reference{}, invalid("mixed transformation state")
-	}
-
-	return reference{
-		schemeEnd: schemeEnd,
-		hostStart: hostStart,
-		hostEnd:   hostEnd,
-		state:     schemeState,
-		hostKind:  kind,
-	}, nil
-}
-
-func schemeClass(scheme string) (state, bool) {
-	switch scheme {
-	case "http", "https":
-		return active, true
-	case "hxxp", "hxxps":
-		return defanged, true
-	default:
-		return 0, false
-	}
-}
-
-func suffixStart(input string, start int) int {
-	end := len(input)
-	for _, delimiter := range []byte{'/', '?', '#'} {
-		if index := strings.IndexByte(input[start:], delimiter); index >= 0 {
-			end = min(end, start+index)
-		}
-	}
-	return end
-}
-
-func validateSuffix(suffix string) error {
-	for index := 0; index < len(suffix); index++ {
-		if suffix[index] != '%' {
-			continue
-		}
-		if index+2 >= len(suffix) || !isHex(suffix[index+1]) || !isHex(suffix[index+2]) {
-			return invalid("percent triplet")
-		}
-		index += 2
-	}
-	return nil
-}
 
 func splitAuthority(input string, start, end int) (string, int, int, error) {
 	authority := input[start:end]
@@ -279,7 +102,6 @@ func classifyHost(host string) (state, hostKind, error) {
 	if strings.HasPrefix(host, "[") {
 		return active, hostNeutral, nil
 	}
-
 	labels, trailingRoot, hostState, err := splitHost(host)
 	if err != nil {
 		return 0, 0, err
@@ -363,8 +185,7 @@ func validateIPv4(labels []string) error {
 		if len(label) > 1 && label[0] == '0' {
 			return invalid("IPv4 leading zero")
 		}
-		_, err := strconv.ParseUint(label, 10, 8)
-		if err != nil {
+		if _, err := strconv.ParseUint(label, 10, 8); err != nil {
 			return invalid("IPv4 octet")
 		}
 	}
@@ -378,36 +199,4 @@ func decimal(value string) bool {
 		}
 	}
 	return true
-}
-
-func rejectedSpace(r rune) bool {
-	return r == 0x20 ||
-		r == 0x85 ||
-		r == 0xA0 ||
-		r == 0x1680 ||
-		r >= 0x2000 && r <= 0x200A ||
-		r == 0x2028 ||
-		r == 0x2029 ||
-		r == 0x202F ||
-		r == 0x205F ||
-		r == 0x3000 ||
-		r == 0xFEFF
-}
-
-func isASCIIAlpha(value byte) bool {
-	return value >= 'A' && value <= 'Z' || value >= 'a' && value <= 'z'
-}
-
-func isDigit(value byte) bool {
-	return value >= '0' && value <= '9'
-}
-
-func isHex(value byte) bool {
-	return isDigit(value) ||
-		value >= 'A' && value <= 'F' ||
-		value >= 'a' && value <= 'f'
-}
-
-func invalid(reason string) error {
-	return fmt.Errorf("%w: %s", ErrInvalid, reason)
 }
