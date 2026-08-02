@@ -49,7 +49,7 @@ const (
 	sourcePolicySplitPath = "docs/contracts/cel_split_005.json"
 	sourcePolicySplitSHA  = "7df8b83274019cc1e857bd1707f5b436c8eb8e28341cb0344aaddee6697afcb9"
 	policyTestSplitPath   = "docs/contracts/cel_split_006.json"
-	policyTestSplitSHA    = "672a46fcd3fd6685a69bd02e5a564b5b5deec87d5a9f810dfeab34cb1c9c116d"
+	policyTestSplitSHA    = "c84189634b24f886bdbbc662b4879a37eea066668aebb59c067e5c8f577bec2c"
 	assuranceSplitPath    = "docs/contracts/cel_split_007.json"
 	assuranceSplitSHA     = "9c4f5785d284471430c5045d50ebcafd14f7f64dfc6c704c6799985b769bddd2"
 	freezeSplitPath       = "docs/contracts/cel_split_008.json"
