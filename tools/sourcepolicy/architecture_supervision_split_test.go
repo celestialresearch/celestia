@@ -135,3 +135,48 @@ func TestSupervisionSplitInventoryBindsOwner(t *testing.T) {
 		t.Fatal("owner mutation survived")
 	}
 }
+
+func TestSupervisionSplitBindsSuspendedStart(t *testing.T) {
+	t.Chdir("../..")
+	files, err := sourceFiles()
+	if err != nil {
+		t.Fatalf("inventory source: %v", err)
+	}
+	mutated := func(path string) ([]byte, error) {
+		source, readErr := readSource(path)
+		if readErr != nil || path != supervisionStartFile {
+			return source, readErr
+		}
+		before := []byte("extendedStartupInfoPresent|createSuspended|createNoWindow")
+		after := []byte("extendedStartupInfoPresent|createNoWindow")
+		changed := bytes.Replace(source, before, after, 1)
+		if bytes.Equal(changed, source) {
+			t.Fatal("suspended creation mutation did not change source")
+		}
+		return changed, nil
+	}
+	findings, err := supervisionSplitDeclarationFindings(files, mutated)
+	if err != nil {
+		t.Fatalf("inspect mutated supervision declaration: %v", err)
+	}
+	if len(findings) != 1 || !strings.Contains(findings[0], "suspended start body differs") {
+		t.Fatalf("findings = %v, want suspended start body rejection", findings)
+	}
+}
+
+func TestSupervisionSplitRequiresStartBody(t *testing.T) {
+	t.Chdir("../..")
+	readFile := func(path string) ([]byte, error) {
+		source, err := readSource(path)
+		if err == nil && path == supervisionStartFile {
+			source = bytes.Replace(
+				source, []byte("func startSuspendedWith("), []byte("func removedStart("), 1,
+			)
+		}
+		return source, err
+	}
+	_, err := supervisionStartBodyInventory(readFile)
+	if err == nil || !strings.Contains(err.Error(), "declaration is missing") {
+		t.Fatalf("missing declaration error = %v", err)
+	}
+}

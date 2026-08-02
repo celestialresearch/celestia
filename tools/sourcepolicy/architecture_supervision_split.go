@@ -12,6 +12,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/doc"
@@ -30,6 +31,9 @@ const (
 	supervisionSplitPackageSHA = "eb7c1708a470fd614025a75081168a20efbd51f2207d003d29e57a97eaa41843"
 	supervisionSplitSourceSHA  = "f39ebaa7e9bdeb127980b66926c6f3a6a159ed8da3f2d1ad8b17a9a164e68871"
 	supervisionSplitTargetSHA  = "d1a257b599cd2a7eb2367b7f26ef81e99f0aedcd36548d1e71e7090536d7ad31"
+	supervisionStartBodySHA    = "8d88e58ec4bc67bb6e6cac752d6bda1d5e6cc4411b4c2531cc3ea0583c523485"
+	supervisionStartFile       = supervisionSplitDirectory + "process_start_windows.go"
+	supervisionStartFunction   = "startSuspendedWith"
 )
 
 var supervisionSplitOwners = map[string]string{
@@ -95,8 +99,51 @@ func supervisionSplitDeclarationFindings(
 			))
 		}
 	}
+	bodySHA, err := supervisionStartBodyInventory(readFile)
+	if err != nil {
+		return nil, err
+	}
+	if bodySHA != supervisionStartBodySHA {
+		findings = append(findings, fmt.Sprintf(
+			"%s: suspended start body differs: %s",
+			strings.TrimSuffix(supervisionSplitDirectory, "/"), bodySHA,
+		))
+	}
 	sort.Strings(findings)
 	return findings, nil
+}
+
+func supervisionStartBodyInventory(readFile func(string) ([]byte, error)) (string, error) {
+	source, err := readFile(supervisionStartFile)
+	if err != nil {
+		return "", fmt.Errorf("read supervision start source: %w", quotedDiagnostic(err))
+	}
+	parsed, err := parser.ParseFile(
+		token.NewFileSet(), strconv.Quote(supervisionStartFile), source, 0,
+	)
+	if err != nil {
+		return "", fmt.Errorf("parse supervision start source: %w", quotedDiagnostic(err))
+	}
+	var body string
+	for _, declaration := range parsed.Decls {
+		function, ok := declaration.(*ast.FuncDecl)
+		if !ok || function.Name.Name != supervisionStartFunction {
+			continue
+		}
+		if body != "" || function.Body == nil {
+			return "", errors.New("supervision start declaration is invalid")
+		}
+		body, err = renderGoNode(function.Body)
+		if err != nil {
+			return "", fmt.Errorf("render supervision start body: %w", err)
+		}
+	}
+	if body == "" {
+		return "", errors.New("supervision start declaration is missing")
+	}
+	return hashInventory([]string{
+		inventoryRecord("declaration-body", supervisionStartFile, supervisionStartFunction, body),
+	}), nil
 }
 
 func supervisionSplitInventoryFor(

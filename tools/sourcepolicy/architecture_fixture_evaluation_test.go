@@ -206,6 +206,19 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 			return bytes.Replace(source, []byte("t.Errorf"), []byte("t.Logf"), 1)
 		})
 	},
+	"supervision-suspended-start-weakened": func(architecturePolicy) bool {
+		return supervisionSplitMutationRejected(
+			"internal/execution/supervision/process_start_windows.go",
+			func(source []byte) []byte {
+				return bytes.Replace(
+					source,
+					[]byte("extendedStartupInfoPresent|createSuspended|createNoWindow"),
+					[]byte("extendedStartupInfoPresent|createNoWindow"),
+					1,
+				)
+			},
+		)
+	},
 }
 
 func sourcePolicySplitMutationRejected(path string, mutate func([]byte) []byte) bool {
@@ -229,6 +242,18 @@ func actionPolicySplitMutationRejected(path string, mutate func([]byte) []byte) 
 		return mutate(source), nil
 	}
 	findings, err := actionPolicySplitDeclarationFindings(expectedSplitFiles(), readFile)
+	return err == nil && len(findings) != 0
+}
+
+func supervisionSplitMutationRejected(path string, mutate func([]byte) []byte) bool {
+	readFile := func(file string) ([]byte, error) {
+		source, err := readArchitectureFile(file)
+		if err != nil || file != path {
+			return source, err
+		}
+		return mutate(source), nil
+	}
+	findings, err := supervisionSplitDeclarationFindings(expectedSplitFiles(), readFile)
 	return err == nil && len(findings) != 0
 }
 
