@@ -1,0 +1,237 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-split-008",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Freeze the reviewed Product and Assurance structure against exact source, proof and artefact identities",
+  "owner": "internal/structurefreeze",
+  "inputs": [
+    {
+      "id": "CEL-SPLIT-008-INPUT-001",
+      "media_type": "application/vnd.celestia.structure-evidence",
+      "maximum_bytes": 67108864,
+      "validation": "Canonical bounded snapshots, comparisons, sign-off report and artefacts from exact commits"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-SPLIT-008-OUTPUT-001",
+      "media_type": "application/vnd.celestia.structure-freeze+json",
+      "maximum_bytes": 1048576,
+      "validation": "Canonical freeze record whose complete evidence graph regenerates from the named repositories"
+    }
+  ],
+  "canonical_state": [
+    "Before and after Product and Assurance structure snapshots",
+    "Statement, decision, mutation, suppression and architecture-exception comparisons",
+    "Cohesive ownership decisions for every reviewed file split",
+    "Threshold-file reasons and renewed-review triggers",
+    "Exact-pair sign-off report and reported Product artefacts"
+  ],
+  "derived_state": [
+    "Trusted-root verification result for the complete freeze graph"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-SPLIT-008-EFFECT-001",
+      "kind": "structure verification result",
+      "authority": "CEL-SPLIT-008-AUTH-002"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-SPLIT-008-AUTH-001",
+      "owner": "tools/sourcepolicy",
+      "grant": "Accept only the exact reviewed CEL-SPLIT-008 declaration bytes",
+      "refusal": "Reject a missing, additional or changed CEL-SPLIT-008 declaration"
+    },
+    {
+      "id": "CEL-SPLIT-008-AUTH-002",
+      "owner": "internal/structurefreeze",
+      "grant": "Verify the freeze against exact repositories, source records, sign-off and artefacts",
+      "refusal": "Reject missing, substituted, contradictory, non-canonical or unbound evidence"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-SPLIT-008-TRUST-001",
+      "source": "tracked Product CEL-SPLIT-008 declaration",
+      "target": "tools/sourcepolicy",
+      "treatment": "Compare the declaration bytes with the exact reviewed digest"
+    },
+    {
+      "id": "CEL-SPLIT-008-TRUST-002",
+      "source": "candidate repositories and retained evidence",
+      "target": "internal/structurefreeze",
+      "treatment": "Read bounded canonical records, regenerate inventories and bind all comparisons to exact source identities"
+    }
+  ],
+  "bounds": {
+    "processes": 4,
+    "memory_bytes": 1073741824,
+    "output_bytes": 67108864,
+    "worker_time_milliseconds": 1800000,
+    "persistence_bytes": 1073741824
+  },
+  "resources": [
+    {
+      "id": "CEL-SPLIT-008-RESOURCE-001",
+      "kind": "process",
+      "owner": "internal/structurefreeze",
+      "acquisition": "Run bounded Git and Go inspection commands against exact commits",
+      "bound": "At most four processes and 1800000 milliseconds",
+      "release": "Join every inspection command before returning",
+      "cleanup_failure": "Return a verification error without accepting the freeze",
+      "cancellation": "Cancel owned commands when the verification context ends",
+      "join": "Observe every owned command exit before returning"
+    },
+    {
+      "id": "CEL-SPLIT-008-RESOURCE-002",
+      "kind": "durable",
+      "owner": "cmd/assure",
+      "acquisition": "Create bounded evidence outputs beneath an operator-selected absolute root",
+      "bound": "At most 1073741824 retained bytes",
+      "release": "Publish each complete canonical record atomically",
+      "cleanup_failure": "Leave no accepted freeze and report the failed publication",
+      "recovery": "Regenerate unpublished records from the unchanged exact commits"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native exact-pair structure verification and sign-off"
+    }
+  ],
+  "states": [
+    { "id": "proposed", "kind": "intermediate" },
+    { "id": "accepted", "kind": "success" },
+    { "id": "rejected", "kind": "refusal" },
+    { "id": "failed", "kind": "failure" },
+    { "id": "cancelled", "kind": "cancellation" },
+    { "id": "indeterminate", "kind": "indeterminate" }
+  ],
+  "allowed_transitions": [
+    { "from": "proposed", "to": "accepted" },
+    { "from": "proposed", "to": "rejected" },
+    { "from": "proposed", "to": "failed" },
+    { "from": "proposed", "to": "cancelled" },
+    { "from": "proposed", "to": "indeterminate" }
+  ],
+  "prohibited_transitions": [
+    { "from": "accepted", "to": "proposed" },
+    { "from": "accepted", "to": "rejected" },
+    { "from": "accepted", "to": "failed" },
+    { "from": "accepted", "to": "cancelled" },
+    { "from": "accepted", "to": "indeterminate" },
+    { "from": "rejected", "to": "proposed" },
+    { "from": "rejected", "to": "accepted" },
+    { "from": "rejected", "to": "failed" },
+    { "from": "rejected", "to": "cancelled" },
+    { "from": "rejected", "to": "indeterminate" },
+    { "from": "failed", "to": "proposed" },
+    { "from": "failed", "to": "accepted" },
+    { "from": "failed", "to": "rejected" },
+    { "from": "failed", "to": "cancelled" },
+    { "from": "failed", "to": "indeterminate" },
+    { "from": "cancelled", "to": "proposed" },
+    { "from": "cancelled", "to": "accepted" },
+    { "from": "cancelled", "to": "rejected" },
+    { "from": "cancelled", "to": "failed" },
+    { "from": "cancelled", "to": "indeterminate" },
+    { "from": "indeterminate", "to": "proposed" },
+    { "from": "indeterminate", "to": "accepted" },
+    { "from": "indeterminate", "to": "rejected" },
+    { "from": "indeterminate", "to": "failed" },
+    { "from": "indeterminate", "to": "cancelled" }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-SPLIT-008-INV-001",
+      "statement": "Every accepted structural claim is bound to exact Product and Assurance source identities",
+      "owner": "internal/structurefreeze",
+      "severity": "high",
+      "boundary": "retained evidence to immutable repository commits",
+      "falsifier": "A substituted source, report, observation, comparison record or executable identity is accepted",
+      "production_controls": [
+        { "id": "CEL-SPLIT-008-PROD-001", "owner": "source-policy exact CEL-SPLIT-008 declaration digest" }
+      ],
+      "assurance_controls": [
+        { "id": "CEL-SPLIT-008-ASSURE-001", "owner": "trusted-root structure verification and source-binding mutations" }
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "The freeze proves the recorded structure and evidence graph, not future code correctness"
+    },
+    {
+      "id": "CEL-SPLIT-008-INV-002",
+      "statement": "Every remaining threshold file has one cohesive owner and a concrete renewed-review trigger",
+      "owner": "internal/structurefreeze",
+      "severity": "medium",
+      "boundary": "after snapshot to threshold rationale",
+      "falsifier": "A governed file at or above the threshold is absent, arbitrarily split or justified without an owner and trigger",
+      "production_controls": [
+        { "id": "CEL-SPLIT-008-PROD-001", "owner": "source-policy exact CEL-SPLIT-008 declaration digest" }
+      ],
+      "assurance_controls": [
+        { "id": "CEL-SPLIT-008-ASSURE-002", "owner": "threshold-file inventory and rationale validation" }
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "Cohesion is a reviewed engineering judgement constrained by the recorded inventory"
+    },
+    {
+      "id": "CEL-SPLIT-008-INV-003",
+      "statement": "The accepted freeze uses a passing exact-pair sign-off and the exact reported artefact bytes",
+      "owner": "internal/structurefreeze",
+      "severity": "high",
+      "boundary": "sign-off report and artefacts to freeze acceptance",
+      "falsifier": "A failed, unsigned, mismatched or altered report or artefact is accepted",
+      "production_controls": [
+        { "id": "CEL-SPLIT-008-PROD-001", "owner": "source-policy exact CEL-SPLIT-008 declaration digest" }
+      ],
+      "assurance_controls": [
+        { "id": "CEL-SPLIT-008-ASSURE-003", "owner": "sign-off identity and artefact hash verification" }
+      ],
+      "platforms": ["windows/amd64"],
+      "residual_uncertainty": "An authorised same-user rewrite of the evidence root remains outside the proof"
+    }
+  ],
+  "success_semantics": "Accepted means every snapshot, comparison, threshold reason, sign-off identity and artefact hash verifies against the exact named pair",
+  "refusal_semantics": "Missing, additional, stale, substituted, contradictory, oversized or non-canonical evidence is rejected",
+  "failure_semantics": "Unavailable required tooling, source materialisation failure or evidence read failure cannot produce acceptance",
+  "cancellation_semantics": "Cancellation joins owned inspection commands and cannot produce acceptance",
+  "indeterminate_semantics": "Incomplete or contradictory evidence remains explicitly unaccepted",
+  "recovery_semantics": "Regenerate unpublished records from unchanged exact commits then verify the complete graph again",
+  "compatibility_or_reset_policy": "This unused pre-release freeze format has no compatibility obligation and may be reset coherently",
+  "falsifiers": [
+    "A changed repository, report, observation, comparison record or executable retains acceptance",
+    "A threshold file lacks a cohesive owner or renewed-review trigger",
+    "A failed sign-off or altered Product artefact is accepted",
+    "An unbound comparison digest is accepted as semantic evidence"
+  ],
+  "production_controls": [
+    { "id": "CEL-SPLIT-008-PROD-001", "owner": "source-policy exact CEL-SPLIT-008 declaration digest" }
+  ],
+  "assurance_controls": [
+    { "id": "CEL-SPLIT-008-ASSURE-001", "owner": "trusted-root structure verification and source-binding mutations" },
+    { "id": "CEL-SPLIT-008-ASSURE-002", "owner": "threshold-file inventory and rationale validation" },
+    { "id": "CEL-SPLIT-008-ASSURE-003", "owner": "sign-off identity and artefact hash verification" }
+  ],
+  "residual_limitations": [
+    "The freeze records structure and evidence identity; it does not prove all runtime semantics",
+    "Native exact-pair sign-off remains qualified only on Windows AMD64",
+    "The evidence root is trusted against authorised same-user replacement"
+  ],
+  "non_goals": [
+    "Change Product runtime, protocol, persistence or containment behaviour",
+    "Create compatibility aliases, wrappers, registries or general architecture machinery",
+    "Treat file count or test count as evidence of correctness",
+    "Accept a freeze before exact-pair sign-off and trusted-root verification pass"
+  ],
+  "deletion_criteria": [
+    "Delete this declaration only when a later reviewed structure contract explicitly supersedes every recorded invariant"
+  ]
+}
