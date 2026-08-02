@@ -170,6 +170,21 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"undeclared-policy-extensionless": func(architecturePolicy) bool {
 		return hasUndeclaredSplitSourceFinding("tools/sourcepolicy/Makefile")
 	},
+	"source-policy-declaration-drift": func(architecturePolicy) bool {
+		return sourcePolicySplitMutationRejected("tools/sourcepolicy/cargo.go", func(source []byte) []byte {
+			return append(source, []byte("\nvar policyInventoryProbe = 1\n")...)
+		})
+	},
+	"source-policy-test-target-drift": func(architecturePolicy) bool {
+		return sourcePolicySplitMutationRejected("tools/sourcepolicy/cargo_test.go", func(source []byte) []byte {
+			return bytes.Replace(source, []byte("func TestCargo"), []byte("func CheckCargo"), 1)
+		})
+	},
+	"source-policy-fixture-drift": func(architecturePolicy) bool {
+		return sourcePolicySplitMutationRejected(sourcePolicyFixturePath, func(source []byte) []byte {
+			return append(slices.Clone(source), '\n')
+		})
+	},
 	"undeclared-action-policy-test": func(architecturePolicy) bool {
 		files := append(expectedSplitFiles(), "tools/actionpolicy/rogue_test.go")
 		return slices.ContainsFunc(splitSourcePathFindings(files), func(finding string) bool {
@@ -186,6 +201,18 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 			return bytes.Replace(source, []byte("func Fuzz"), []byte("func Check"), 1)
 		})
 	},
+}
+
+func sourcePolicySplitMutationRejected(path string, mutate func([]byte) []byte) bool {
+	readFile := func(file string) ([]byte, error) {
+		source, err := readSourcePolicyFixture(file)
+		if err != nil || file != path {
+			return source, err
+		}
+		return mutate(source), nil
+	}
+	findings, err := sourcePolicySplitDeclarationFindings(expectedSplitFiles(), readFile)
+	return err == nil && len(findings) != 0
 }
 
 func actionPolicySplitMutationRejected(path string, mutate func([]byte) []byte) bool {
