@@ -399,7 +399,13 @@ stop_timed_out_family() {
 }
 
 stop_completed_family_group() {
+  local accept_zombies=${1:-0}
+
   family_group_running || return 0
+  if [[ "$accept_zombies" -eq 1 ]] &&
+    verification_group_zombies "$active_family_pid"; then
+    return 0
+  fi
   if ! stop_owned_family; then
     printf 'verification family retained a live process group\n' >&2
     return 2
@@ -409,6 +415,7 @@ stop_completed_family_group() {
 
 reconcile_active_family() {
   local completed=${1:-0}
+  local accept_zombies=${2:-0}
   local cleanup_status
 
   if [[ "$completed" -eq 0 ]] && family_job_owned; then
@@ -417,7 +424,7 @@ reconcile_active_family() {
     fi
     return 2
   fi
-  if stop_completed_family_group; then
+  if stop_completed_family_group "$accept_zombies"; then
     cleanup_status=0
   else
     cleanup_status=$?
@@ -612,7 +619,7 @@ run_family() {
   fi
   signal_status=$pending_family_signal
   pending_family_signal=
-  if reconcile_active_family "$wait_completed"; then
+  if reconcile_active_family "$wait_completed" "$timed_out"; then
     cleanup_status=0
   else
     cleanup_status=$?
