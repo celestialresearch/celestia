@@ -485,15 +485,15 @@ git -C "$verification_repo" checkout -- verification
 
 linked_source="$work/linked-source"
 linked_repo="$work/linked-repo"
-mv -- "$verification_dir" "$linked_source"
-mkdir -- "$linked_repo"
+mkdir -- "$linked_source" "$linked_repo"
+mv -- "$verification_repo" "$linked_source/repo"
 git -C "$linked_repo" init -q
-if ! create_verification_symlink "$linked_repo" verification \
-  ../linked-source; then
+if ! create_verification_symlink "$linked_repo" repo \
+  ../linked-source/repo; then
   printf 'verification ancestor fixture could not create its link\n' >&2
   exit 1
 fi
-mv -- "$linked_repo/verification" "$verification_dir"
+mv -- "$linked_repo/repo" "$verification_repo"
 set +e
 output=$(run_initial_driver 2>&1)
 status=$?
@@ -504,8 +504,8 @@ if [[ "$status" -eq 0 ||
     "$output" >&2
   exit 1
 fi
-rm -- "$verification_dir"
-mv -- "$linked_source" "$verification_dir"
+rm -- "$verification_repo"
+mv -- "$linked_source/repo" "$verification_repo"
 
 cat >"$verification_dir/lint_test.sh" <<'EOF'
 #!/usr/bin/env bash
