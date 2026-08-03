@@ -64,6 +64,7 @@ func expectedScripts() []string {
 		".github/scripts/source_policy_driver_test.sh",
 		".github/scripts/testcheck_action_test.sh",
 		".github/scripts/testcheck_modes_test.sh",
+		".github/scripts/verification_driver_boundary_cases.sh",
 		".github/scripts/verification_driver_test.sh",
 		".github/scripts/verification/action_test.sh",
 		".github/scripts/verification/coverage_test.sh",
