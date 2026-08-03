@@ -48,6 +48,23 @@ git -C "$family_repo" add -f families
 while IFS= read -r family; do
   git -C "$family_repo" update-index --chmod=+x "families/$family"
 done <<<"$families"
+printf '%s\n' 'exit 0' >"$family_repo/helper.sh"
+git -C "$family_repo" add helper.sh
+git -C "$family_repo" update-index --chmod=+x helper.sh
+chmod -x "$family_repo/helper.sh"
+set +e
+output=$(CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture 2>&1)
+status=$?
+set -e
+if [[ "$status" -eq 0 ||
+  "$output" != *"action snapshot source is not executable: helper.sh"* ]]; then
+  printf 'action executable-mode rejection lost its diagnostic:\n%s\n' \
+    "$output" >&2
+  return 1
+fi
 dependency_marker="$work_dir/action-linked-dependency-ran"
 dependency_target="$work_dir/action-linked-dependency.sh"
 cat >"$dependency_target" <<'EOF'

@@ -182,6 +182,10 @@ snapshot_source_available() {
   [[ ! -L "$current" && -f "$current" ]]
 }
 
+snapshot_source_mode_matches() {
+  [[ "$1" != 100755 || -x "$2" ]]
+}
+
 snapshot_sources() {
   local indexed_object
   local indexed_path
@@ -217,6 +221,11 @@ snapshot_sources() {
     source="$family_repo/$indexed_path"
     if ! snapshot_source_available "$indexed_path"; then
       printf 'action snapshot source is unavailable: %s\n' \
+        "$indexed_path" >&2
+      return 1
+    fi
+    if ! snapshot_source_mode_matches "$mode" "$source"; then
+      printf 'action snapshot source is not executable: %s\n' \
         "$indexed_path" >&2
       return 1
     fi
@@ -256,6 +265,12 @@ snapshot_live_objects() {
     source=${snapshot_source_paths[$index]}
     if ! snapshot_source_available "${snapshot_paths[$index]}"; then
       printf 'action snapshot source changed during binding: %s\n' \
+        "${snapshot_paths[$index]}" >&2
+      return 1
+    fi
+    if ! snapshot_source_mode_matches "${snapshot_modes[$index]}" \
+      "$source"; then
+      printf 'action snapshot source mode changed during binding: %s\n' \
         "${snapshot_paths[$index]}" >&2
       return 1
     fi
