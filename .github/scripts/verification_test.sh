@@ -693,7 +693,7 @@ snapshot_family_tree() {
     target="$destination/$relative"
     binding="$bindings/$binding_index/object"
     binding_index=$((binding_index + 1))
-    if [[ -L "$source" || ! -f "$source" ]]; then
+    if ! snapshot_source_available "$family_repo" "$path"; then
       printf 'verification snapshot source is unavailable: %s\n' \
         "$relative" >&2
       return 1
@@ -706,7 +706,7 @@ snapshot_family_tree() {
     mkdir -p -- "${target%/*}"
     mkdir -- "${binding%/*}"
     if ! cat -- "$source" >"$binding" ||
-      [[ -L "$source" || ! -f "$source" ]] ||
+      ! snapshot_source_available "$family_repo" "$path" ||
       ! cmp -s -- "$source" "$binding"; then
       printf 'verification snapshot source changed: %s\n' "$relative" >&2
       return 1
@@ -726,7 +726,7 @@ snapshot_family_tree() {
         "$CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT"
     fi
     copied_size=$(wc -c <"$binding")
-    if [[ -L "$source" || ! -f "$source" ]] ||
+    if ! snapshot_source_available "$family_repo" "$path" ||
       [[ "$copied_size" != "$binding_size" ]] ||
       ! cmp -s -- "$source" "$binding" ||
       ! cp -- "$binding" "$target"; then
@@ -749,6 +749,31 @@ snapshot_family_tree() {
     fi
   done <"$manifest"
   find "$destination" -type d -exec chmod 500 {} +
+}
+
+snapshot_source_available() {
+  local component
+  local current=$1
+  local path=$2
+  local remainder=$2
+  local visited=0
+
+  [[ ! -L "$current" && -d "$current" ]] || return 1
+  [[ -n "$path" && "${#path}" -le 4096 ]] || return 1
+  while [[ "$remainder" == */* ]]; do
+    component=${remainder%%/*}
+    remainder=${remainder#*/}
+    [[ -n "$component" && "$component" != . && "$component" != .. ]] ||
+      return 1
+    current="$current/$component"
+    [[ ! -L "$current" && -d "$current" ]] || return 1
+    visited=$((visited + 1))
+    ((visited <= 128)) || return 1
+  done
+  [[ -n "$remainder" && "$remainder" != . && "$remainder" != .. ]] ||
+    return 1
+  current="$current/$remainder"
+  [[ ! -L "$current" && -f "$current" ]]
 }
 
 snapshot_size() {

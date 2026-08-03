@@ -483,6 +483,28 @@ if [[ -e "$work/replacement-ran" ]]; then
 fi
 git -C "$verification_repo" checkout -- verification
 
+linked_source="$work/linked-source"
+linked_tree=$(git -C "$verification_repo" write-tree)
+mv -- "$verification_dir" "$linked_source"
+if ! create_verification_symlink "$verification_repo" verification \
+  ../linked-source; then
+  printf 'verification ancestor fixture could not create its link\n' >&2
+  exit 1
+fi
+git -C "$verification_repo" read-tree "$linked_tree"
+set +e
+output=$(run_initial_driver 2>&1)
+status=$?
+set -e
+if [[ "$status" -eq 0 ||
+  "$output" != *"verification snapshot source is unavailable: lint_test.sh"* ]]; then
+  printf 'verification driver accepted a linked source ancestor:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+rm -- "$verification_dir"
+mv -- "$linked_source" "$verification_dir"
+
 cat >"$verification_dir/lint_test.sh" <<'EOF'
 #!/usr/bin/env bash
 rm -- "$CELESTIA_REPLACED_FAMILY"
