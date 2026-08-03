@@ -48,6 +48,158 @@ git -C "$family_repo" add -f families
 while IFS= read -r family; do
   git -C "$family_repo" update-index --chmod=+x "families/$family"
 done <<<"$families"
+dependency_marker="$work_dir/action-linked-dependency-ran"
+dependency_target="$work_dir/action-linked-dependency.sh"
+cat >"$dependency_target" <<'EOF'
+#!/usr/bin/env bash
+: >"$CELESTIA_ACTION_DEPENDENCY_MARKER"
+EOF
+chmod +x "$dependency_target"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_repo/helper.sh"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+source helper.sh
+EOF
+chmod +x "$family_repo/helper.sh" "$family_dir/remote_release_test.sh"
+git -C "$family_repo" add helper.sh families/remote_release_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  helper.sh families/remote_release_test.sh
+helper_object=$(git -C "$family_repo" rev-parse :helper.sh)
+create_verification_symlink "$family_repo" helper.sh "$dependency_target"
+git -C "$family_repo" update-index --cacheinfo \
+  "100755,$helper_object,helper.sh"
+set +e
+output=$(CELESTIA_ACTION_DEPENDENCY_MARKER="$dependency_marker" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture 2>&1)
+status=$?
+set -e
+if [[ -e "$dependency_marker" ]]; then
+  printf 'action driver executed a linked dependency\n' >&2
+  return 1
+fi
+if [[ "$status" -eq 0 ||
+  "$output" != *"action snapshot source is unavailable: helper.sh"* ]]; then
+  printf 'action dependency rejection lost its diagnostic:\n%s\n' \
+    "$output" >&2
+  return 1
+fi
+git -C "$family_repo" checkout-index --force -- \
+  helper.sh families/remote_release_test.sh
+dependency_dir="$work_dir/action-linked-dependency-dir"
+mkdir -- "$dependency_dir" "$family_repo/deps"
+cat >"$dependency_dir/helper.sh" <<'EOF'
+#!/usr/bin/env bash
+: >"$CELESTIA_ACTION_DEPENDENCY_MARKER"
+EOF
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_repo/deps/helper.sh"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+source deps/helper.sh
+EOF
+chmod +x "$dependency_dir/helper.sh" "$family_repo/deps/helper.sh" \
+  "$family_dir/remote_release_test.sh"
+git -C "$family_repo" add deps/helper.sh families/remote_release_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  deps/helper.sh families/remote_release_test.sh
+helper_object=$(git -C "$family_repo" rev-parse :deps/helper.sh)
+git -C "$family_repo" update-index --force-remove deps/helper.sh
+rm -- "$family_repo/deps/helper.sh"
+rmdir -- "$family_repo/deps"
+create_verification_symlink "$family_repo" deps "$dependency_dir"
+git -C "$family_repo" update-index --force-remove deps
+git -C "$family_repo" update-index --add --cacheinfo \
+  "100755,$helper_object,deps/helper.sh"
+set +e
+output=$(CELESTIA_ACTION_DEPENDENCY_MARKER="$dependency_marker" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture 2>&1)
+status=$?
+set -e
+if [[ -e "$dependency_marker" ]]; then
+  printf 'action driver executed a dependency through a linked directory\n' >&2
+  return 1
+fi
+if [[ "$status" -eq 0 ||
+  "$output" != *"action snapshot source is unavailable: deps/helper.sh"* ]]; then
+  printf 'action dependency ancestor rejection lost its diagnostic:\n%s\n' \
+    "$output" >&2
+  return 1
+fi
+rm -- "$family_repo/deps"
+mkdir -- "$family_repo/deps"
+git -C "$family_repo" checkout-index --force -- \
+  deps/helper.sh families/remote_release_test.sh
+snapshot_race_bin="$work_dir/action-snapshot-race-bin"
+snapshot_race_marker="$work_dir/action-snapshot-race-ran"
+snapshot_race_ready="$work_dir/action-snapshot-race-ready"
+mkdir -p "$snapshot_race_bin"
+cat >"$snapshot_race_bin/git" <<'EOF'
+#!/usr/bin/env bash
+hash_object=0
+last=
+write_object=0
+for argument do
+  last=$argument
+  case "$argument" in
+  hash-object) hash_object=1 ;;
+  -w) write_object=1 ;;
+  esac
+done
+if [[ "$hash_object" -eq 1 && "$write_object" -eq 1 &&
+  "$last" == "$CELESTIA_ACTION_SNAPSHOT_RACE_SOURCE" ]]; then
+  identity=$("$CELESTIA_REAL_GIT" "$@") || exit $?
+  printf '%s\n' '#!/usr/bin/env bash' \
+    ': >"$CELESTIA_ACTION_SNAPSHOT_RACE_MARKER"' >"$last"
+  : >"$CELESTIA_ACTION_SNAPSHOT_RACE_READY"
+  printf '%s\n' "$identity"
+  exit
+fi
+exec "$CELESTIA_REAL_GIT" "$@"
+EOF
+chmod +x "$snapshot_race_bin/git"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$family_repo/helper.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$family_dir/inventory_test.sh"
+cat >"$family_dir/remote_release_test.sh" <<'EOF'
+#!/usr/bin/env bash
+source helper.sh
+EOF
+chmod +x "$family_repo/helper.sh" "$family_dir/inventory_test.sh" \
+  "$family_dir/remote_release_test.sh"
+git -C "$family_repo" add helper.sh families/remote_release_test.sh
+git -C "$family_repo" update-index --chmod=+x \
+  helper.sh families/remote_release_test.sh
+set +e
+output=$(CELESTIA_ACTION_SNAPSHOT_RACE_MARKER="$snapshot_race_marker" \
+  CELESTIA_ACTION_SNAPSHOT_RACE_READY="$snapshot_race_ready" \
+  CELESTIA_ACTION_SNAPSHOT_RACE_SOURCE="$family_repo/helper.sh" \
+  CELESTIA_ACTION_FAMILY_DIR="$family_dir" \
+  CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
+  CELESTIA_ACTION_FAMILY_PREFIX=families \
+  CELESTIA_REAL_GIT="$(command -v git)" \
+  PATH="$snapshot_race_bin:$PATH" \
+  bash "$root/.github/scripts/actioncheck_test.sh" --fixture 2>&1)
+status=$?
+set -e
+if [[ "$status" -ne 0 || ! -e "$snapshot_race_ready" ]]; then
+  printf 'action snapshot replacement fixture did not complete (%s, %s):\n%s\n' \
+    "$status" "$([[ -e "$snapshot_race_ready" ]] && printf ready || printf missing)" \
+    "$output" >&2
+  return 1
+fi
+if [[ -e "$snapshot_race_marker" ]]; then
+  printf 'action driver executed a post-binding replacement\n' >&2
+  return 1
+fi
+git -C "$family_repo" checkout-index --force -- \
+  helper.sh families/inventory_test.sh families/remote_release_test.sh
 cat >"$family_dir/remote_release_test.sh" <<'EOF'
 #!/usr/bin/env bash
 descendant_pid=

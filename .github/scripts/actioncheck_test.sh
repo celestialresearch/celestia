@@ -164,6 +164,169 @@ snapshot_matches() {
   [[ "$identity" == "$expected_identity" ]]
 }
 
+snapshot_source_available() {
+  local component
+  local current=$family_repo
+  local path=$1
+
+  while [[ "$path" == */* ]]; do
+    component=${path%%/*}
+    path=${path#*/}
+    [[ -n "$component" && "$component" != . && "$component" != .. ]] ||
+      return 1
+    current="$current/$component"
+    [[ ! -L "$current" && -d "$current" ]] || return 1
+  done
+  [[ -n "$path" && "$path" != . && "$path" != .. ]] || return 1
+  current="$current/$path"
+  [[ ! -L "$current" && -f "$current" ]]
+}
+
+snapshot_sources() {
+  local indexed_object
+  local indexed_path
+  local inventory=$1
+  local metadata
+  local mode
+  local record
+  local source
+  local stage
+  local unexpected
+
+  snapshot_modes=()
+  snapshot_paths=()
+  snapshot_source_paths=()
+  git -C "$family_repo" ls-files --stage -z >"$inventory" || return 1
+  while IFS= read -r -d '' record; do
+    [[ "$record" == *$'\t'* ]] || return 1
+    metadata=${record%%$'\t'*}
+    indexed_path=${record#*$'\t'}
+    IFS=' ' read -r mode indexed_object stage unexpected <<<"$metadata"
+    case "$mode" in
+    100644|100755) ;;
+    *)
+      printf 'action snapshot index mode is unsupported: %s\n' \
+        "$indexed_path" >&2
+      return 1
+      ;;
+    esac
+    [[ "$indexed_object" =~ ^[0-9a-f]{40}$ && "$stage" == 0 &&
+      -z "$unexpected" &&
+      -n "$indexed_path" ]] || return 1
+    git -C "$family_repo" cat-file -e "$indexed_object^{blob}" || return 1
+    source="$family_repo/$indexed_path"
+    if ! snapshot_source_available "$indexed_path"; then
+      printf 'action snapshot source is unavailable: %s\n' \
+        "$indexed_path" >&2
+      return 1
+    fi
+    snapshot_modes[${#snapshot_modes[@]}]=$mode
+    snapshot_paths[${#snapshot_paths[@]}]=$indexed_path
+    snapshot_source_paths[${#snapshot_source_paths[@]}]=$source
+  done <"$inventory"
+  ((${#snapshot_paths[@]} > 0))
+}
+
+snapshot_live_objects() {
+  local -a chunk
+  local count=${#snapshot_source_paths[@]}
+  local hashes=$2
+  local identity
+  local index=0
+  local object_store=$1
+  local source
+
+  snapshot_identities=()
+  : >"$hashes" || return 1
+  git init --bare -q "$object_store" || return 1
+  GIT_DIR="$object_store" git config core.autocrlf false || return 1
+  while ((index < count)); do
+    chunk=("${snapshot_source_paths[@]:index:64}")
+    GIT_DIR="$object_store" git hash-object -w --no-filters -- \
+      "${chunk[@]}" >>"$hashes" || return 1
+    index=$((index + ${#chunk[@]}))
+  done
+  while IFS= read -r identity; do
+    [[ "$identity" =~ ^[0-9a-f]{40}$ ]] || return 1
+    snapshot_identities[${#snapshot_identities[@]}]=$identity
+  done <"$hashes"
+  ((${#snapshot_identities[@]} == count)) || return 1
+  index=0
+  while ((index < count)); do
+    source=${snapshot_source_paths[$index]}
+    if ! snapshot_source_available "${snapshot_paths[$index]}"; then
+      printf 'action snapshot source changed during binding: %s\n' \
+        "${snapshot_paths[$index]}" >&2
+      return 1
+    fi
+    index=$((index + 1))
+  done
+}
+
+snapshot_entries_match() {
+  local -a chunk
+  local -a sources
+  local count=${#snapshot_paths[@]}
+  local hashes=$2
+  local identity
+  local index=0
+  local path
+  local root=$1
+
+  sources=()
+  : >"$hashes" || return 1
+  while ((index < count)); do
+    path="$root/${snapshot_paths[$index]}"
+    if [[ -L "$path" || ! -f "$path" ]]; then
+      printf 'action snapshot entry is unavailable: %s\n' \
+        "${snapshot_paths[$index]}" >&2
+      return 1
+    fi
+    sources[${#sources[@]}]=$path
+    index=$((index + 1))
+  done
+  index=0
+  while ((index < count)); do
+    chunk=("${sources[@]:index:64}")
+    git hash-object --no-filters -- "${chunk[@]}" >>"$hashes" || return 1
+    index=$((index + ${#chunk[@]}))
+  done
+  index=0
+  while IFS= read -r identity; do
+    if [[ "$identity" != "${snapshot_identities[$index]:-}" ]]; then
+      printf 'action snapshot entry identity differs: %s\n' \
+        "${snapshot_paths[$index]:-unknown}" >&2
+      return 1
+    fi
+    index=$((index + 1))
+  done <"$hashes"
+  ((index == count))
+}
+
+write_action_snapshot() {
+  local index=0
+  local index_file=$2
+  local index_records=$3
+  local object_store=$1
+  local snapshot=$4
+  local tree
+
+  : >"$index_records" || return 1
+  while ((index < ${#snapshot_paths[@]})); do
+    printf '%s %s 0\t%s\0' "${snapshot_modes[$index]}" \
+      "${snapshot_identities[$index]}" "${snapshot_paths[$index]}" \
+      >>"$index_records" || return 1
+    index=$((index + 1))
+  done
+  GIT_DIR="$object_store" GIT_INDEX_FILE="$index_file" \
+    git update-index -z --index-info <"$index_records" || return 1
+  tree=$(GIT_DIR="$object_store" GIT_INDEX_FILE="$index_file" \
+    git write-tree) || return 1
+  [[ "$tree" =~ ^[0-9a-f]{40}$ ]] || return 1
+  GIT_DIR="$object_store" git archive --format=tar --output="$snapshot" \
+    "$tree"
+}
+
 action_family_group_running() {
   kill -0 -- "-$active_family_pid" 2>/dev/null
 }
@@ -475,15 +638,33 @@ main() (
   local pending_family_signal
   local run_root
   local snapshot
+  local snapshot_entry_hashes
+  local snapshot_hashes
   local snapshot_identity
+  local snapshot_index
+  local snapshot_inventory
+  local snapshot_index_records
+  local snapshot_object_store
   local snapshot_path
   local snapshot_size_value
+  local snapshot_validation
+  local -a snapshot_identities
+  local -a snapshot_modes
+  local -a snapshot_paths
+  local -a snapshot_source_paths
   local starting_family
 
   active_family_pid=
   executed="$action_temp_root/executed"
   planned="$action_temp_root/planned"
   snapshot="$action_temp_root/snapshot.tar"
+  snapshot_entry_hashes="$action_temp_root/snapshot-entry-hashes"
+  snapshot_hashes="$action_temp_root/snapshot-hashes"
+  snapshot_index="$action_temp_root/snapshot-index-file"
+  snapshot_inventory="$action_temp_root/snapshot-index"
+  snapshot_index_records="$action_temp_root/snapshot-index-records"
+  snapshot_object_store="$action_temp_root/snapshot-objects"
+  snapshot_validation="$action_temp_root/snapshot-validation"
   family_index=0
   identities=()
   pending_family_signal=
@@ -515,10 +696,18 @@ main() (
     }
     identities[${#identities[@]}]=$identity
   done <<<"$families"
-  git -C "$family_repo" ls-files -z | \
-    tar --null -cf "$snapshot" -C "$family_repo" -T -
+  snapshot_sources "$snapshot_inventory" || return 1
+  snapshot_live_objects "$snapshot_object_store" "$snapshot_hashes" ||
+    return 1
+  write_action_snapshot "$snapshot_object_store" "$snapshot_index" \
+    "$snapshot_index_records" "$snapshot" || return 1
   snapshot_size_value=$(snapshot_size "$snapshot") || return 1
   snapshot_identity=$(git hash-object --no-filters -- "$snapshot") || return 1
+  mkdir -- "$snapshot_validation" || return 1
+  tar -xf "$snapshot" -C "$snapshot_validation" || return 1
+  snapshot_entries_match "$snapshot_validation" "$snapshot_entry_hashes" ||
+    return 1
+  rm -rf -- "$snapshot_validation" || return 1
 
   : >"$executed"
   while IFS= read -r family; do
