@@ -18,7 +18,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$script_dir/fixture.sh"
 
 main() (
-root=$(cd -- "$script_dir/../../.." && pwd)
+root=${CELESTIA_VERIFICATION_ROOT:-$(cd -- "$script_dir/../../.." && pwd)}
 change_pid=
 currency_pid=
 work_dir=$(new_verification_work verification-lint)

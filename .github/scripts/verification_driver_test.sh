@@ -54,6 +54,24 @@ run_initial_driver() {
     CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
     bash "$root/.github/scripts/verification_test.sh" --fixture
 }
+repository_temp_output="$work/repository-temp-output"
+set +e
+TMPDIR="$root/.github/scripts" run_initial_driver \
+  >"$repository_temp_output" 2>&1
+repository_temp_status=$?
+set -e
+if [[ "$repository_temp_status" -eq 0 ]] ||
+  ! grep -Fq 'verification temporary root is inside the repository' \
+    "$repository_temp_output"; then
+  printf 'verification driver accepted a repository temporary root:\n' >&2
+  cat "$repository_temp_output" >&2
+  exit 1
+fi
+if find "$root/.github/scripts" -maxdepth 1 -type d \
+  -name 'celestia-verification-driver.*' -print -quit | grep -q .; then
+  printf 'verification temporary-root refusal retained repository state\n' >&2
+  exit 1
+fi
 case "$(uname -s 2>/dev/null)" in
 CYGWIN* | MINGW* | MSYS*)
   if ! run_initial_driver >"$initial_output" 2>&1; then
@@ -375,6 +393,7 @@ git -C "$verification_repo" checkout -- verification
 cat >"$verification_dir/lint_test.sh" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$$" >"$CELESTIA_FAMILY_PID"
+printf '%s\n' "${BASH_SOURCE[0]%/*}" >"$CELESTIA_SNAPSHOT_PATH"
 sleep 60 &
 printf '%s\n' "$!" >"$CELESTIA_DESCENDANT_PID"
 wait
@@ -392,11 +411,13 @@ for driver_status_failure in '' 1 missing leading-zero out-of-range extra-line; 
   fi
   cancellation_temp="$work/cancellation-$cancellation_case-temp"
   cancellation_output="$work/cancellation-$cancellation_case-output"
+  cancellation_snapshot="$work/cancellation-$cancellation_case-snapshot"
   rm -f -- "$work/family.pid" "$work/descendant.pid"
   mkdir "$cancellation_temp"
   TMPDIR="$cancellation_temp" \
     CELESTIA_DESCENDANT_PID="$work/descendant.pid" \
     CELESTIA_FAMILY_PID="$work/family.pid" \
+    CELESTIA_SNAPSHOT_PATH="$cancellation_snapshot" \
     CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
     CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
     CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
@@ -418,8 +439,21 @@ for driver_status_failure in '' 1 missing leading-zero out-of-range extra-line; 
     cat "$cancellation_output" >&2
     exit 1
   }
+  [[ -s "$cancellation_snapshot" ]] || {
+    printf 'verification cancellation fixture omitted its snapshot path\n' >&2
+    exit 1
+  }
   family_pid=$(cat "$work/family.pid")
   descendant_pid=$(cat "$work/descendant.pid")
+  snapshot_path=$(cat "$cancellation_snapshot")
+  case "$snapshot_path" in
+  "$cancellation_temp"/celestia-verification-driver.*/snapshot) ;;
+  *)
+    printf 'verification cancellation snapshot escaped owned state: %s\n' \
+      "$snapshot_path" >&2
+    exit 1
+    ;;
+  esac
   if find "$root/.github/scripts" -maxdepth 1 -type d \
     -name '.verification-family.*' -print -quit | grep -q .; then
     printf 'verification cancellation staged snapshot in the repository\n' >&2
@@ -455,6 +489,10 @@ for driver_status_failure in '' 1 missing leading-zero out-of-range extra-line; 
   fi
   require_empty_verification_directory "$cancellation_temp" \
     'verification cancellation temporary'
+  if [[ -e "$snapshot_path" ]]; then
+    printf 'verification cancellation retained its snapshot path\n' >&2
+    exit 1
+  fi
   if find "$root/.github/scripts" -maxdepth 1 -type d \
     -name '.verification-family.*' -print -quit | grep -q .; then
     printf 'verification cancellation retained snapshot state\n' >&2

@@ -18,7 +18,7 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 source "$script_dir/fixture.sh"
 
 main() (
-root=$(cd -- "$script_dir/../../.." && pwd)
+root=${CELESTIA_VERIFICATION_ROOT:-$(cd -- "$script_dir/../../.." && pwd)}
 work_dir=$(new_verification_work verification-devcheck-config)
 trap 'cleanup_verification "$work_dir"' EXIT
 trap '[[ $- != *e* ]] || printf "verification-devcheck-config failed at line %d: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR

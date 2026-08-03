@@ -13,7 +13,7 @@
 set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-root=$(cd -- "$script_dir/../../.." && pwd)
+root=${CELESTIA_VERIFICATION_ROOT:-$(cd -- "$script_dir/../../.." && pwd)}
 script_dir_path="$script_dir/source_policy"
 script_repo=$root
 script_prefix=.github/scripts/verification/source_policy

@@ -98,6 +98,19 @@ terminate_family() {
   ! kill -0 -- "-$pid" 2>/dev/null || verification_group_zombies "$pid"
 }
 
+path_is_within() {
+  local candidate=$1
+  local parent
+  local root_path=$2
+
+  while :; do
+    [[ "$candidate" -ef "$root_path" ]] && return 0
+    parent=$(cd -- "$candidate/.." && pwd -P) || return 1
+    [[ "$parent" -ef "$candidate" ]] && return 1
+    candidate=$parent
+  done
+}
+
 # shellcheck disable=SC2329 # Invoked through registered exit handlers.
 job_owned() {
   local job=$1
@@ -328,7 +341,7 @@ run_family() {
     return "$signal_status"
   fi
   set -m
-  "$path" 8>&- 9>&- &
+  CELESTIA_VERIFICATION_ROOT="$root" "$path" 8>&- 9>&- &
   active_family_pid=$!
   active_family_job=%+
   if [[ -n "$pending_family_signal" ]]; then
@@ -650,11 +663,21 @@ driver_signal_pid=
 pending_driver_signal=
 snapshot_root=
 spawn_checkpoint_status=0
+driver_temp_root=
 trap 'finish_driver $?' EXIT
 trap 'record_driver_signal 129 HUP' HUP
 trap 'record_driver_signal 130 INT' INT
 trap 'record_driver_signal 143 TERM' TERM
-driver_work=$(mktemp -d "${TMPDIR:-/tmp}/celestia-verification-driver.XXXXXX")
+driver_temp_root=$(cd -- "${TMPDIR:-/tmp}" && pwd -P) || {
+  printf 'verification temporary root is unavailable\n' >&2
+  exit 1
+}
+if path_is_within "$driver_temp_root" "$root"; then
+  printf 'verification temporary root is inside the repository\n' >&2
+  exit 1
+fi
+driver_work=$(mktemp -d \
+  "$driver_temp_root/celestia-verification-driver.XXXXXX")
 snapshot_root="$driver_work/snapshot"
 mkdir -- "$snapshot_root"
 driver_status="$driver_work/status"
