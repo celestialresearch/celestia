@@ -483,29 +483,38 @@ if [[ -e "$work/replacement-ran" ]]; then
 fi
 git -C "$verification_repo" checkout -- verification
 
+mkdir -- "$verification_dir/nested"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$verification_dir/nested/helper.sh"
+chmod +x "$verification_dir/nested/helper.sh"
+git -C "$verification_repo" add verification/nested/helper.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/nested/helper.sh
 linked_source="$work/linked-source"
 linked_repo="$work/linked-repo"
-mkdir -- "$linked_source" "$linked_repo"
-mv -- "$verification_repo" "$linked_source/repo"
+mv -- "$verification_dir/nested" "$linked_source"
+mkdir -- "$linked_repo"
 git -C "$linked_repo" init -q
-if ! create_verification_symlink "$linked_repo" repo \
-  ../linked-source/repo; then
+if ! create_verification_symlink "$linked_repo" nested \
+  ../../linked-source; then
   printf 'verification ancestor fixture could not create its link\n' >&2
   exit 1
 fi
-mv -- "$linked_repo/repo" "$verification_repo"
+mv -- "$linked_repo/nested" "$verification_dir/nested"
 set +e
 output=$(run_initial_driver 2>&1)
 status=$?
 set -e
 if [[ "$status" -eq 0 ||
-  "$output" != *"verification snapshot source is unavailable: lint_test.sh"* ]]; then
+  "$output" != *"verification snapshot source is unavailable: nested/helper.sh"* ]]; then
   printf 'verification driver accepted a linked source ancestor:\n%s\n' \
     "$output" >&2
   exit 1
 fi
-rm -- "$verification_repo"
-mv -- "$linked_source/repo" "$verification_repo"
+rm -- "$verification_dir/nested"
+mv -- "$linked_source" "$verification_dir/nested"
+git -C "$verification_repo" rm -q --cached verification/nested/helper.sh
+rm -rf -- "$verification_dir/nested"
 
 cat >"$verification_dir/lint_test.sh" <<'EOF'
 #!/usr/bin/env bash
