@@ -808,7 +808,7 @@ git -C "$family_repo" add families/remote_release_test.sh \
 git -C "$family_repo" update-index --chmod=+x \
   families/remote_release_test.sh families/cache_test.sh
 set +e
-CELESTIA_ACTION_LATER_FAMILY="$family_dir/cache_test.sh" \
+output=$(CELESTIA_ACTION_LATER_FAMILY="$family_dir/cache_test.sh" \
   CELESTIA_ACTION_LINK_MARKER="$link_marker" \
   CELESTIA_ACTION_RACE_MARKER="$race_marker" \
   CELESTIA_ACTION_SYMLINK_TARGET="$symlink_target" \
@@ -816,7 +816,7 @@ CELESTIA_ACTION_LATER_FAMILY="$family_dir/cache_test.sh" \
   CELESTIA_ACTION_FAMILY_REPO="$family_repo" \
   CELESTIA_ACTION_FAMILY_PREFIX=families \
   bash "$root/.github/scripts/actioncheck_test.sh" --fixture \
-  >/dev/null 2>&1
+  2>&1)
 status=$?
 set -e
 if [[ ! -e "$link_marker" ]]; then
@@ -828,7 +828,8 @@ if [[ -e "$race_marker" ]]; then
   return 1
 fi
 if [[ "$status" -ne 0 ]]; then
-  printf 'action driver rejected its symlink-safe snapshot\n' >&2
+  printf 'action driver rejected its symlink-safe snapshot:\n%s\n' \
+    "$output" >&2
   return 1
 fi
 git -C "$family_repo" checkout-index --force -- \
