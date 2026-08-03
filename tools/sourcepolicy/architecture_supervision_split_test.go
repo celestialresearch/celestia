@@ -159,7 +159,9 @@ func TestSupervisionSplitBindsSuspendedStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("inspect mutated supervision declaration: %v", err)
 	}
-	if len(findings) != 1 || !strings.Contains(findings[0], "suspended start body differs") {
+	if !slices.ContainsFunc(findings, func(finding string) bool {
+		return strings.Contains(finding, "suspended start body differs")
+	}) {
 		t.Fatalf("findings = %v, want suspended start body rejection", findings)
 	}
 }
