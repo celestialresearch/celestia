@@ -625,8 +625,7 @@ run_family() {
     cleanup_status=$?
   fi
   if [[ "$cleanup_status" -eq 0 ]] && family_group_running &&
-    { [[ "$timed_out" -ne 1 ]] ||
-      ! verification_group_zombies "$active_family_pid"; }; then
+    ! { [[ "$timed_out" -eq 1 ]] && verification_group_zombies "$active_family_pid"; }; then
     cleanup_status=2
   fi
   if [[ "$cleanup_status" -ne 2 ]]; then
