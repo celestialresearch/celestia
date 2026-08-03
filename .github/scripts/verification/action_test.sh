@@ -226,6 +226,7 @@ terminate() {
     kill -TERM "$descendant_pid" 2>/dev/null || true
     wait "$descendant_pid" 2>/dev/null || true
   fi
+  sleep 4
   exit 143
 }
 trap terminate TERM

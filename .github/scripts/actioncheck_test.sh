@@ -548,7 +548,7 @@ await_cancelled_action_driver() {
       timed_out=1
     fi
   elif [[ "$driver_signalled" -eq 1 ]]; then
-    while action_driver_owned && [[ "$attempt" -lt 300 ]]; do
+    while action_driver_owned && [[ "$attempt" -lt 1200 ]]; do
       if IFS= read -r main_status <&8; then
         status_received=1
         break
@@ -815,7 +815,6 @@ if ! wait_at_action_checkpoint "$prewait_checkpoint_ready" \
   "$prewait_checkpoint_release"; then
   request_action_driver_stop 1
 fi
-driver_signalled=$driver_signal_sent
 status=0
 if [[ -z "$pending_driver_status" ]]; then
   set +e
@@ -829,6 +828,7 @@ if [[ -z "$pending_driver_status" ]]; then
 fi
 if [[ -n "$pending_driver_status" ]]; then
   trap '' HUP INT TERM
+  driver_signalled=$driver_signal_sent
   if [[ "$gate_cancelled" -eq 0 && "$driver_signalled" -eq 0 ]] &&
     signal_owned_action_driver; then
     driver_signalled=1
