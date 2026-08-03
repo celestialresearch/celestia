@@ -486,6 +486,7 @@ git -C "$verification_repo" checkout -- verification
 linked_source="$work/linked-source"
 linked_tree=$(git -C "$verification_repo" write-tree)
 mv -- "$verification_dir" "$linked_source"
+git -C "$verification_repo" rm -q -r --cached -- verification
 if ! create_verification_symlink "$verification_repo" verification \
   ../linked-source; then
   printf 'verification ancestor fixture could not create its link\n' >&2
