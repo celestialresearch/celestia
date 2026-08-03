@@ -384,7 +384,8 @@ main() {
   for script in "${scripts[@]}"; do
     path="$script_dir_path/$script"
     mode=$(git -C "$script_repo" ls-files --stage -- "$script_prefix/$script")
-    if [[ -L "$path" || ! -f "$path" || "${mode%% *}" != 100755 ]]; then
+    if [[ -L "$path" || ! -f "$path" || ! -x "$path" ||
+      "${mode%% *}" != 100755 ]]; then
       printf 'source-policy script is unavailable: %s\n' "$script" >&2
       return 1
     fi

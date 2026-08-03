@@ -331,6 +331,20 @@ fi
 git -C "$source_policy_repo" update-index --chmod=+x \
   source-policy/manifests.sh
 
+chmod 644 -- "$source_policy_dir/architecture.sh"
+if [[ ! -x "$source_policy_dir/architecture.sh" ]]; then
+  if CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+    CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+    bash "$root/.github/scripts/verification/source_policy_test.sh" \
+      --fixture >/dev/null 2>&1; then
+    printf 'source-policy driver accepted a non-executable working script\n' >&2
+    exit 1
+  fi
+fi
+chmod +x "$source_policy_dir/architecture.sh"
+
 cat >"$source_policy_dir/go_execution.sh" <<'EOF'
 #!/usr/bin/env bash
 exit 9
