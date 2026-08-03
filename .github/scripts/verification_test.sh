@@ -158,14 +158,21 @@ terminate_family() {
 path_is_within() {
   local candidate=$1
   local parent
+  local previous=
   local root_path=$2
+  local visited=0
 
-  while :; do
-    [[ "$candidate" -ef "$root_path" ]] && return 0
+  candidate=$(cd -- "$candidate" && pwd -P) || return 1
+  root_path=$(cd -- "$root_path" && pwd -P) || return 1
+  while ((visited < 128)); do
+    [[ "$candidate" == "$root_path" ]] && return 0
     parent=$(cd -- "$candidate/.." && pwd -P) || return 1
-    [[ "$parent" -ef "$candidate" ]] && return 1
+    [[ "$parent" != "$candidate" && "$parent" != "$previous" ]] || return 1
+    previous=$candidate
     candidate=$parent
+    visited=$((visited + 1))
   done
+  return 1
 }
 
 # shellcheck disable=SC2329 # Invoked through registered exit handlers.
