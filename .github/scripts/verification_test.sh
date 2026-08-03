@@ -110,6 +110,37 @@ if [[ "$fixture_mode" != --fixture ]] &&
   exit 2
 fi
 
+verify_group_zombie_classifier() (
+  local ps_status=0
+
+  uname() {
+    printf 'Linux\n'
+  }
+  ps() {
+    [[ "$*" == '-eo pgid=,stat=' ]] || return 2
+    ((ps_status == 0)) || return "$ps_status"
+    printf '%s\n' '42 Z' '420 R' '43 S' '42 Z+'
+  }
+  verification_group_zombies 42 || return 1
+  verification_group_zombies 420 && return 1
+  ps() {
+    printf '%s\n' '42 Z' '42 S'
+  }
+  verification_group_zombies 42 && return 1
+  ps_status=2
+  ps() {
+    return "$ps_status"
+  }
+  ! verification_group_zombies 42
+)
+
+if [[ "$fixture_mode" != --fixture ]]; then
+  verify_group_zombie_classifier || {
+    printf 'verification group-state classifier failed\n' >&2
+    exit 1
+  }
+fi
+
 # shellcheck disable=SC2329 # Invoked by registered signal and exit traps.
 terminate_family() {
   local attempt

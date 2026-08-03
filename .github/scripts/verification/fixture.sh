@@ -32,7 +32,9 @@ verification_group_zombies() {
   local pid=$1
 
   [[ "$(uname -s 2>/dev/null)" == Linux ]] || return 1
-  states=$(ps -o stat= --pgroup "$pid" 2>/dev/null) || return 1
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+  states=$(ps -eo pgid=,stat= 2>/dev/null |
+    awk -v pgid="$pid" '$1 == pgid { print $2 }') || return 1
   [[ -n "$states" && "${#states}" -le 4096 ]] || return 1
   while IFS= read -r state; do
     state=${state//[[:space:]]/}
