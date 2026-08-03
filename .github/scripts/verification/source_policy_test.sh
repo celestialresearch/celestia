@@ -17,6 +17,7 @@ root=${CELESTIA_VERIFICATION_ROOT:-$(cd -- "$script_dir/../../.." && pwd)}
 script_dir_path="$script_dir/source_policy"
 script_repo=$root
 script_prefix=.github/scripts/verification/source_policy
+expected_script_dir=$script_dir_path
 scripts=(
   setup.sh
   architecture.sh
@@ -38,6 +39,7 @@ case "$fixture_mode" in
   script_dir_path=${CELESTIA_SOURCE_POLICY_SCRIPT_DIR:?}
   script_repo=${CELESTIA_SOURCE_POLICY_SCRIPT_REPO:?}
   script_prefix=${CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX:?}
+  expected_script_dir="$script_repo/$script_prefix"
   fixture_path=${CELESTIA_SOURCE_POLICY_FIXTURE_PATH:-$fixture_path}
   snapshot_checkpoint=${CELESTIA_SOURCE_POLICY_SNAPSHOT_CHECKPOINT:-}
   group_probe=${CELESTIA_SOURCE_POLICY_GROUP_PROBE:-}
@@ -308,7 +310,6 @@ snapshot_script() {
 main() {
   local binding_dir
   local executed
-  local expected_script_dir
   local fixture_hash
   local fixture_size
   local index
@@ -329,7 +330,6 @@ main() {
   trap 'stop_active_script 130' INT
   trap 'stop_active_script 143' TERM
 
-  expected_script_dir="$script_repo/$script_prefix"
   if [[ "$script_dir_path" != "$expected_script_dir" ]] ||
     ! verification_snapshot_source_available "$script_repo" \
       "$script_prefix/setup.sh"; then
