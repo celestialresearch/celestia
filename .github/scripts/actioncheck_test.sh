@@ -319,20 +319,13 @@ snapshot_entries_match() {
 }
 
 write_action_snapshot() {
-  local index=0
   local index_file=$2
   local index_records=$3
   local object_store=$1
   local snapshot=$4
   local tree
 
-  : >"$index_records" || return 1
-  while ((index < ${#snapshot_paths[@]})); do
-    printf '%s %s 0\t%s\0' "${snapshot_modes[$index]}" \
-      "${snapshot_identities[$index]}" "${snapshot_paths[$index]}" \
-      >>"$index_records" || return 1
-    index=$((index + 1))
-  done
+  write_snapshot_index_records "$index_records" || return 1
   GIT_DIR="$object_store" GIT_INDEX_FILE="$index_file" \
     git update-index -z --index-info <"$index_records" || return 1
   tree=$(GIT_DIR="$object_store" GIT_INDEX_FILE="$index_file" \
@@ -340,6 +333,19 @@ write_action_snapshot() {
   [[ "$tree" =~ ^[0-9a-f]{40}$ ]] || return 1
   GIT_DIR="$object_store" git archive --format=tar --output="$snapshot" \
     "$tree"
+}
+
+write_snapshot_index_records() {
+  local index=0
+  local records=$1
+
+  : >"$records" || return 1
+  while ((index < ${#snapshot_paths[@]})); do
+    printf '%s %s 0\t%s\0' "${snapshot_modes[$index]}" \
+      "${snapshot_identities[$index]}" "${snapshot_paths[$index]}" \
+      >>"$records" || return 1
+    index=$((index + 1))
+  done
 }
 
 action_family_group_running() {
@@ -722,11 +728,7 @@ main() (
   tar -xf "$snapshot" -C "$snapshot_validation" || return 1
   snapshot_entries_match "$snapshot_validation" "$snapshot_entry_hashes" ||
     return 1
-  git -C "$snapshot_validation" init -q || return 1
-  git -C "$snapshot_validation" config core.autocrlf false || return 1
-  git -C "$snapshot_validation" add -f . || return 1
-  git -C "$snapshot_validation" update-index -z --index-info \
-    <"$snapshot_index_records" || return 1
+  rm -rf -- "$snapshot_validation" || return 1
 
   : >"$executed"
   while IFS= read -r family; do
@@ -759,8 +761,16 @@ main() (
     family_index=$((family_index + 1))
   done <<<"$families"
 
+  snapshot_matches "$snapshot" "$snapshot_size_value" \
+    "$snapshot_identity" || return 1
+  mkdir -- "$snapshot_validation" || return 1
+  tar -xf "$snapshot" -C "$snapshot_validation" || return 1
   snapshot_entries_match "$snapshot_validation" "$snapshot_entry_hashes" ||
     return 1
+  git -C "$snapshot_validation" init -q || return 1
+  git -C "$snapshot_validation" config core.autocrlf false || return 1
+  git -C "$snapshot_validation" add -f . || return 1
+  write_snapshot_index_records "$snapshot_index_records" || return 1
   git -C "$snapshot_validation" update-index -z --index-info \
     <"$snapshot_index_records" || return 1
   bash "$root/.github/scripts/testcheck.sh" action \
