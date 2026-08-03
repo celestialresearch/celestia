@@ -810,7 +810,7 @@ main() (
   local executed
   local family
   local family_job_record
-  local family_controller_pid=$BASHPID
+  local family_controller_pid=
   local family_deadline_marker
   local family_signal_job_record
   local family_signal_forwarded=
@@ -831,7 +831,16 @@ main() (
   trap 'record_family_signal 143 TERM' TERM
   trap record_family_timeout ALRM
 
-  printf '%s\n' "$BASHPID" >&8
+  if ! bash --noprofile --norc -c 'printf "%s\n" "$PPID"' \
+    >"$work/controller-pid" ||
+    ! IFS= read -r family_controller_pid <"$work/controller-pid" ||
+    [[ ! "$family_controller_pid" =~ ^[1-9][0-9]*$ ]] ||
+    [[ "${#family_controller_pid}" -gt 10 ]]; then
+    printf 'verification driver identity is invalid\n' >&2
+    return 1
+  fi
+  rm -- "$work/controller-pid"
+  printf '%s\n' "$family_controller_pid" >&8
 
   declared="$work/declared"
   bindings="$work/bindings"
