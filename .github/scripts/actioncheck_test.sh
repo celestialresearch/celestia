@@ -722,7 +722,11 @@ main() (
   tar -xf "$snapshot" -C "$snapshot_validation" || return 1
   snapshot_entries_match "$snapshot_validation" "$snapshot_entry_hashes" ||
     return 1
-  rm -rf -- "$snapshot_validation" || return 1
+  git -C "$snapshot_validation" init -q || return 1
+  git -C "$snapshot_validation" config core.autocrlf false || return 1
+  git -C "$snapshot_validation" add -f . || return 1
+  git -C "$snapshot_validation" update-index -z --index-info \
+    <"$snapshot_index_records" || return 1
 
   : >"$executed"
   while IFS= read -r family; do
@@ -755,8 +759,10 @@ main() (
     family_index=$((family_index + 1))
   done <<<"$families"
 
-  bash "$root/.github/scripts/testcheck.sh" action "$family_dir" "$executed" \
-    "$family_repo" "$family_prefix"
+  bash "$root/.github/scripts/testcheck.sh" action \
+    "$snapshot_validation/$family_prefix" "$executed" \
+    "$snapshot_validation" "$family_prefix" || return 1
+  rm -rf -- "$snapshot_validation"
 )
 
 action_temp_root=$(mktemp -d "${TMPDIR:-/tmp}/celestia-action.XXXXXX")
