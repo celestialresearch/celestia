@@ -336,6 +336,25 @@ action_family_group_running() {
   kill -0 -- "-$active_family_pid" 2>/dev/null
 }
 
+wait_action_family() {
+  local reaped_status
+  local reported_status
+
+  while ! IFS= read -r reported_status <&6; do
+    sleep 0.01
+  done
+  exec 6<&-
+  wait "$active_family_pid"
+  reaped_status=$?
+  if [[ ! "$reported_status" =~ ^(0|[1-9][0-9]{0,2})$ ]] ||
+    ((reported_status > 255)) ||
+    [[ "$reported_status" -ne "$reaped_status" ]]; then
+    printf 'action test family status is invalid\n' >&2
+    return 1
+  fi
+  return "$reported_status"
+}
+
 stop_completed_action_family() {
   local attempt
 
@@ -416,14 +435,24 @@ run_action_family() {
   local path=$1
   local result
   local run_root=$2
+  local status_path
 
   starting_family=1
+  status_path=$(mktemp "$action_temp_root/family-status.XXXXXX") || return 1
+  exec 6<"$status_path"
+  exec 7>"$status_path"
+  rm -- "$status_path" || return 1
   set -m
   (
     cd -- "$run_root"
-    bash "$path" 8<&- 9>&-
+    set +e
+    bash "$path" 6<&- 7>&- 8<&- 9>&-
+    result=$?
+    printf '%d\n' "$result" >&7 || exit 1
+    exit "$result"
   ) &
   active_family_pid=$!
+  exec 7>&-
   set +m
   starting_family=
   if [[ -n "$pending_family_signal" ]]; then
@@ -432,7 +461,7 @@ run_action_family() {
     stop_active_action_family "$result"
   fi
   set +e
-  wait "$active_family_pid"
+  wait_action_family
   result=$?
   stop_completed_action_family
   cleanup_status=$?
