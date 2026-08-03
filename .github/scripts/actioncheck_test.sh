@@ -759,6 +759,10 @@ main() (
     family_index=$((family_index + 1))
   done <<<"$families"
 
+  snapshot_entries_match "$snapshot_validation" "$snapshot_entry_hashes" ||
+    return 1
+  git -C "$snapshot_validation" update-index -z --index-info \
+    <"$snapshot_index_records" || return 1
   bash "$root/.github/scripts/testcheck.sh" action \
     "$snapshot_validation/$family_prefix" "$executed" \
     "$snapshot_validation" "$family_prefix" || return 1
