@@ -37,6 +37,10 @@ driver_spawn_checkpoint=
 driver_completion_checkpoint=
 driver_wait_checkpoint=
 family_wait_checkpoint=
+family_deadline_checkpoint=
+family_timeout_seconds=600
+deadline_marker_failure=
+deadline_notify_failure=
 case "$fixture_mode" in
 "") ;;
 --fixture)
@@ -48,6 +52,10 @@ case "$fixture_mode" in
   driver_completion_checkpoint=${CELESTIA_VERIFICATION_DRIVER_COMPLETION_CHECKPOINT:-}
   driver_wait_checkpoint=${CELESTIA_VERIFICATION_DRIVER_WAIT_CHECKPOINT:-}
   family_wait_checkpoint=${CELESTIA_VERIFICATION_FAMILY_WAIT_CHECKPOINT:-}
+  family_deadline_checkpoint=${CELESTIA_VERIFICATION_FAMILY_DEADLINE_CHECKPOINT:-}
+  family_timeout_seconds=${CELESTIA_VERIFICATION_FAMILY_TIMEOUT_SECONDS:-600}
+  deadline_marker_failure=${CELESTIA_VERIFICATION_DEADLINE_MARKER_FAILURE:-}
+  deadline_notify_failure=${CELESTIA_VERIFICATION_DEADLINE_NOTIFY_FAILURE:-}
   [[ -z "$driver_status_failure" || "$driver_status_failure" == 1 ||
     "$driver_status_failure" == missing ||
     "$driver_status_failure" == leading-zero ||
@@ -57,13 +65,27 @@ case "$fixture_mode" in
     exit 2
   }
   for checkpoint in "$driver_spawn_checkpoint" "$driver_completion_checkpoint" \
-    "$driver_wait_checkpoint" "$family_wait_checkpoint"; do
+    "$driver_wait_checkpoint" "$family_wait_checkpoint" \
+    "$family_deadline_checkpoint"; do
     if [[ -n "$checkpoint" ]] &&
       [[ -L "$checkpoint" || ! -f "$checkpoint" || ! -x "$checkpoint" ]]; then
       printf 'verification lifecycle checkpoint is unavailable\n' >&2
       exit 2
     fi
   done
+  if [[ ! "$family_timeout_seconds" =~ ^[1-9][0-9]*$ ]] ||
+    [[ "${#family_timeout_seconds}" -gt 4 ]] ||
+    ((family_timeout_seconds > 3600)); then
+    printf 'verification family timeout fixture is invalid\n' >&2
+    exit 2
+  fi
+  if [[ -n "$deadline_marker_failure" &&
+    "$deadline_marker_failure" != 1 ]] ||
+    [[ -n "$deadline_notify_failure" &&
+      "$deadline_notify_failure" != once ]]; then
+    printf 'verification family deadline failure fixture is invalid\n' >&2
+    exit 2
+  fi
   ;;
 *)
   printf 'Usage: verification_test.sh [--fixture]\n' >&2
@@ -79,7 +101,11 @@ if [[ "$fixture_mode" != --fixture ]] &&
     -n "${CELESTIA_VERIFICATION_DRIVER_SPAWN_CHECKPOINT+x}" ||
     -n "${CELESTIA_VERIFICATION_DRIVER_COMPLETION_CHECKPOINT+x}" ||
     -n "${CELESTIA_VERIFICATION_DRIVER_WAIT_CHECKPOINT+x}" ||
-    -n "${CELESTIA_VERIFICATION_FAMILY_WAIT_CHECKPOINT+x}" ]]; then
+    -n "${CELESTIA_VERIFICATION_FAMILY_WAIT_CHECKPOINT+x}" ||
+    -n "${CELESTIA_VERIFICATION_FAMILY_DEADLINE_CHECKPOINT+x}" ||
+    -n "${CELESTIA_VERIFICATION_FAMILY_TIMEOUT_SECONDS+x}" ||
+    -n "${CELESTIA_VERIFICATION_DEADLINE_MARKER_FAILURE+x}" ||
+    -n "${CELESTIA_VERIFICATION_DEADLINE_NOTIFY_FAILURE+x}" ]]; then
   printf 'verification family overrides require fixture mode\n' >&2
   exit 2
 fi
@@ -228,6 +254,112 @@ stop_owned_family() {
   terminate_family "$pid"
 }
 
+start_family_deadline() {
+  local controller_pid=$family_controller_pid
+
+  rm -f -- "$family_deadline_marker"
+  (
+    local attempt=0
+    local status=0
+
+    set +e
+    sleep "$family_timeout_seconds"
+    # Publishing the marker commits timeout before notifying the controller.
+    if [[ "$deadline_marker_failure" == 1 ]] ||
+      ! printf '%s\n' "$controller_pid" >"$family_deadline_marker"; then
+      status=1
+    fi
+    if [[ -n "$family_deadline_checkpoint" ]]; then
+      CELESTIA_VERIFICATION_FAMILY_CONTROLLER_PID=$controller_pid \
+        "$family_deadline_checkpoint" || status=1
+    fi
+    while :; do
+      if [[ "$deadline_notify_failure" == once && "$attempt" -eq 0 ]]; then
+        status=1
+      elif kill -ALRM "$controller_pid" 2>/dev/null; then
+        break
+      fi
+      attempt=$((attempt + 1))
+      ((attempt < 40)) || exit 1
+      sleep 0.05
+    done
+    exit "$status"
+  ) &
+  active_family_deadline_pid=$!
+}
+
+stop_family_deadline() {
+  local deadline_pid=$active_family_deadline_pid
+
+  [[ -n "$deadline_pid" ]] || return 0
+  kill -KILL -- "-$deadline_pid" 2>/dev/null || true
+  wait "$deadline_pid" 2>/dev/null || true
+  active_family_deadline_pid=
+  ! kill -0 "$deadline_pid" 2>/dev/null
+}
+
+join_family_deadline() {
+  local attempt=0
+  local deadline_pid=$active_family_deadline_pid
+  local status
+
+  while :; do
+    if wait "$deadline_pid" 2>/dev/null; then
+      status=0
+    else
+      status=$?
+    fi
+    if [[ "$status" -eq 0 || "$status" -eq 1 ]]; then
+      return "$status"
+    fi
+    ((status > 128)) || return 1
+    attempt=$((attempt + 1))
+    ((attempt < 4)) || return 1
+  done
+}
+
+settle_family_deadline() {
+  local deadline_status
+
+  [[ -n "$active_family_deadline_pid" ]] || return 0
+  if [[ -n "$family_event_status" && "$family_event_status" -ne 124 ]]; then
+    stop_family_deadline || return 1
+    rm -f -- "$family_deadline_marker"
+    return 0
+  fi
+  if [[ "$family_timeout_pending" -eq 1 ||
+    -f "$family_deadline_marker" ]]; then
+    if join_family_deadline; then
+      deadline_status=0
+    else
+      deadline_status=$?
+    fi
+    active_family_deadline_pid=
+    if [[ "$deadline_status" -ne 0 ||
+      ! -f "$family_deadline_marker" ]]; then
+      rm -f -- "$family_deadline_marker"
+      return 125
+    fi
+    rm -f -- "$family_deadline_marker"
+    return 124
+  fi
+  stop_family_deadline || return 1
+  if [[ -f "$family_deadline_marker" ]]; then
+    rm -f -- "$family_deadline_marker"
+    return 124
+  fi
+}
+
+stop_timed_out_family() {
+  local pid=$active_family_pid
+
+  kill -TERM -- "-$pid" 2>/dev/null || true
+  sleep 1
+  kill -KILL -- "-$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  terminate_family "$pid"
+}
+
 stop_completed_family_group() {
   family_group_running || return 0
   if ! stop_owned_family; then
@@ -259,8 +391,23 @@ reconcile_active_family() {
 finish_main() {
   local status=$?
   local cleanup_status
+  local deadline_status
 
   trap - EXIT HUP INT TERM
+  set +e
+  settle_family_deadline
+  deadline_status=$?
+  family_timeout_pending=0
+  set -e
+  if [[ "$deadline_status" -eq 124 ]]; then
+    status=124
+  elif [[ "$deadline_status" -eq 125 ]]; then
+    printf 'verification family deadline mechanism failed\n' >&2
+    status=1
+  elif [[ "$deadline_status" -ne 0 ]]; then
+    printf 'verification family deadline cleanup remained incomplete\n' >&2
+    status=1
+  fi
   if [[ -n "$active_family_pid" ]]; then
     set +e
     reconcile_active_family
@@ -304,12 +451,29 @@ finish_main() {
 
 # shellcheck disable=SC2329 # Invoked by registered signal traps.
 record_family_signal() {
-  pending_family_signal=$1
-  if [[ -n "$active_family_pid" ]] &&
+  if [[ -z "$family_event_status" ]]; then
+    if [[ -f "$family_deadline_marker" ]]; then
+      family_event_status=124
+      family_timeout_pending=1
+    else
+      family_event_status=$1
+      pending_family_signal=$1
+    fi
+  fi
+  if [[ "$family_event_status" -eq "$1" && -n "$active_family_pid" ]] &&
     job_owned "$active_family_job" "$active_family_pid" \
       "$family_signal_job_record"; then
     family_signal_forwarded=1
     kill -"$2" -- "-$active_family_pid" 2>/dev/null || true
+  fi
+  return 0
+}
+
+# shellcheck disable=SC2329 # Invoked by the registered deadline trap.
+record_family_timeout() {
+  family_timeout_pending=1
+  if [[ -z "$family_event_status" && -f "$family_deadline_marker" ]]; then
+    family_event_status=124
   fi
   return 0
 }
@@ -328,13 +492,18 @@ record_driver_signal() {
 
 run_family() {
   local cleanup_status
+  local deadline_status
   local family=$2
   local path=$1
   local result
   local signal_status=
+  local deadline_failed=0
+  local timed_out=0
   local wait_completed=0
 
   family_signal_forwarded=
+  family_timeout_pending=0
+  family_event_status=
   if [[ -n "$pending_family_signal" ]]; then
     signal_status=$pending_family_signal
     pending_family_signal=
@@ -343,10 +512,16 @@ run_family() {
   set -m
   CELESTIA_VERIFICATION_ROOT="$root" "$path" 8>&- 9>&- &
   active_family_pid=$!
-  active_family_job=%+
+  active_family_job=$active_family_pid
+  start_family_deadline
   if [[ -n "$pending_family_signal" ]]; then
     signal_status=$pending_family_signal
     pending_family_signal=
+    if ! stop_family_deadline; then
+      printf 'verification family deadline cleanup remained incomplete: %s\n' \
+        "$family" >&2
+      return 1
+    fi
     if reconcile_active_family; then
       cleanup_status=0
     else
@@ -369,15 +544,29 @@ run_family() {
   fi
   if [[ -n "$family_wait_checkpoint" ]]; then
     CELESTIA_VERIFICATION_WAITING_FAMILY_PID=$active_family_pid \
+      CELESTIA_VERIFICATION_FAMILY_CONTROLLER_PID=$family_controller_pid \
       "$family_wait_checkpoint"
   fi
-  while family_job_owned; do
-    sleep 0.05 || true
-  done
-  if wait "$active_family_pid"; then
-    result=0
-  else
-    result=$?
+  set +e
+  wait "$active_family_pid"
+  result=$?
+  if [[ "$family_timeout_pending" -eq 1 ]]; then
+    if ! stop_timed_out_family; then
+      printf 'verification timed-out family cleanup remained incomplete: %s\n' \
+        "$family" >&2
+      return 1
+    fi
+    wait_completed=1
+  fi
+  settle_family_deadline
+  deadline_status=$?
+  family_timeout_pending=0
+  set -e
+  if [[ "$deadline_status" -ne 0 && "$deadline_status" -ne 124 ]]; then
+    deadline_failed=1
+  fi
+  if [[ "$deadline_status" -eq 124 ]]; then
+    timed_out=1
   fi
   set +m
   if [[ -z "$pending_family_signal" ]] || ! family_job_owned; then
@@ -399,6 +588,15 @@ run_family() {
   fi
   if [[ "$cleanup_status" -ne 0 ]]; then
     printf 'verification family left descendant processes: %s\n' \
+      "$family" >&2
+    return 1
+  fi
+  if [[ "$timed_out" -eq 1 ]]; then
+    printf 'verification family timed out: %s\n' "$family" >&2
+    return 124
+  fi
+  if [[ "$deadline_failed" -eq 1 ]]; then
+    printf 'verification family deadline mechanism failed: %s\n' \
       "$family" >&2
     return 1
   fi
@@ -577,6 +775,7 @@ snapshot_matches() {
 }
 
 main() (
+  local active_family_deadline_pid=
   local active_family_job=
   local active_family_pid=
   local work=$1
@@ -586,8 +785,12 @@ main() (
   local executed
   local family
   local family_job_record
+  local family_controller_pid=$BASHPID
+  local family_deadline_marker
   local family_signal_job_record
   local family_signal_forwarded=
+  local family_event_status=
+  local family_timeout_pending=0
   local manifest
   local master
   local master_identity
@@ -601,6 +804,7 @@ main() (
   trap 'record_family_signal 129 HUP' HUP
   trap 'record_family_signal 130 INT' INT
   trap 'record_family_signal 143 TERM' TERM
+  trap record_family_timeout ALRM
 
   printf '%s\n' "$BASHPID" >&8
 
@@ -608,6 +812,7 @@ main() (
   bindings="$work/bindings"
   executed="$work/executed"
   family_job_record="$work/family-job"
+  family_deadline_marker="$work/family-deadline"
   family_signal_job_record="$work/family-signal-job"
   manifest="$work/manifest"
   master="$work/source.tar"

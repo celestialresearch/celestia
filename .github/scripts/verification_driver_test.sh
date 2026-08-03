@@ -109,6 +109,126 @@ CYGWIN* | MINGW* | MSYS*)
   ;;
 esac
 
+cat >"$verification_dir/lint_test.sh" <<'EOF'
+#!/usr/bin/env bash
+trap ': >"$CELESTIA_TIMEOUT_SIGNAL_LEAK"' ALRM
+trap '' TERM
+printf '%s\n' "$$" >"$CELESTIA_TIMEOUT_FAMILY_PID"
+sleep 4 &
+printf '%s\n' "$!" >"$CELESTIA_TIMEOUT_DESCENDANT_PID"
+wait
+EOF
+chmod +x "$verification_dir/lint_test.sh"
+git -C "$verification_repo" add verification/lint_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/lint_test.sh
+cat >"$verification_dir/action_test.sh" <<'EOF'
+#!/usr/bin/env bash
+printf reached >"$CELESTIA_TIMEOUT_LATER_FAMILY"
+EOF
+chmod +x "$verification_dir/action_test.sh"
+git -C "$verification_repo" add verification/action_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/action_test.sh
+timeout_temp="$work/family-timeout-temp"
+timeout_output="$work/family-timeout-output"
+mkdir "$timeout_temp"
+set +e
+CELESTIA_TIMEOUT_DESCENDANT_PID="$work/timeout-descendant.pid" \
+  CELESTIA_TIMEOUT_FAMILY_PID="$work/timeout-family.pid" \
+  CELESTIA_TIMEOUT_LATER_FAMILY="$work/timeout-later-family" \
+  CELESTIA_TIMEOUT_SIGNAL_LEAK="$work/timeout-signal-leak" \
+  CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+  CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+  CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+  CELESTIA_VERIFICATION_FAMILY_TIMEOUT_SECONDS=1 \
+  TMPDIR="$timeout_temp" \
+  bash "$root/.github/scripts/verification_test.sh" --fixture \
+  >"$timeout_output" 2>&1
+status=$?
+set -e
+if [[ "$status" -ne 124 ]] ||
+  ! grep -Fq 'verification family timed out: lint_test.sh' \
+    "$timeout_output"; then
+  printf 'verification driver did not bound a sleeping family:\n' >&2
+  cat "$timeout_output" >&2
+  exit 1
+fi
+if [[ -e "$work/timeout-later-family" ]]; then
+  printf 'verification driver continued after a family timeout\n' >&2
+  exit 1
+fi
+if [[ -e "$work/timeout-signal-leak" ]]; then
+  printf 'verification watchdog signalled the family process group\n' >&2
+  exit 1
+fi
+for pid_file in "$work/timeout-family.pid" \
+  "$work/timeout-descendant.pid"; do
+  [[ -s "$pid_file" ]] || {
+    printf 'verification timeout fixture omitted a process identity\n' >&2
+    exit 1
+  }
+  if verification_process_running "$(cat "$pid_file")"; then
+    printf 'verification timeout retained process %s\n' \
+      "$(cat "$pid_file")" >&2
+    exit 1
+  fi
+done
+require_empty_verification_directory "$timeout_temp" \
+  'verification timeout temporary'
+for deadline_failure in marker notify; do
+  failure_temp="$work/deadline-$deadline_failure-temp"
+  failure_output="$work/deadline-$deadline_failure-output"
+  failure_variable=CELESTIA_VERIFICATION_DEADLINE_MARKER_FAILURE
+  failure_value=1
+  if [[ "$deadline_failure" == notify ]]; then
+    failure_variable=CELESTIA_VERIFICATION_DEADLINE_NOTIFY_FAILURE
+    failure_value=once
+  fi
+  mkdir "$failure_temp"
+  rm -f -- "$work/timeout-descendant.pid" "$work/timeout-family.pid" \
+    "$work/timeout-later-family" "$work/timeout-signal-leak"
+  set +e
+  env "$failure_variable=$failure_value" \
+    CELESTIA_TIMEOUT_DESCENDANT_PID="$work/timeout-descendant.pid" \
+    CELESTIA_TIMEOUT_FAMILY_PID="$work/timeout-family.pid" \
+    CELESTIA_TIMEOUT_LATER_FAMILY="$work/timeout-later-family" \
+    CELESTIA_TIMEOUT_SIGNAL_LEAK="$work/timeout-signal-leak" \
+    CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+    CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+    CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+    CELESTIA_VERIFICATION_FAMILY_TIMEOUT_SECONDS=1 \
+    TMPDIR="$failure_temp" \
+    bash "$root/.github/scripts/verification_test.sh" --fixture \
+    >"$failure_output" 2>&1
+  status=$?
+  set -e
+  if [[ "$status" -ne 1 ]] ||
+    ! grep -Fq 'verification family deadline mechanism failed: lint_test.sh' \
+      "$failure_output"; then
+    printf 'verification accepted a %s deadline failure:\n' \
+      "$deadline_failure" >&2
+    cat "$failure_output" >&2
+    exit 1
+  fi
+  if [[ -e "$work/timeout-later-family" ]]; then
+    printf 'verification continued after a %s deadline failure\n' \
+      "$deadline_failure" >&2
+    exit 1
+  fi
+  for pid_file in "$work/timeout-family.pid" \
+    "$work/timeout-descendant.pid"; do
+    if verification_process_running "$(cat "$pid_file")"; then
+      printf 'verification %s deadline failure retained process %s\n' \
+        "$deadline_failure" "$(cat "$pid_file")" >&2
+      exit 1
+    fi
+  done
+  require_empty_verification_directory "$failure_temp" \
+    "verification $deadline_failure deadline failure temporary"
+done
+git -C "$verification_repo" checkout -- verification
+
 descendant_pid_file="$work/success-descendant.pid"
 descendant_later_marker="$work/success-descendant-later-ran"
 cat >"$verification_dir/lint_test.sh" <<'EOF'
@@ -418,9 +538,11 @@ for driver_status_failure in '' 1 missing leading-zero out-of-range extra-line; 
     CELESTIA_DESCENDANT_PID="$work/descendant.pid" \
     CELESTIA_FAMILY_PID="$work/family.pid" \
     CELESTIA_SNAPSHOT_PATH="$cancellation_snapshot" \
+    CELESTIA_VERIFICATION_DEADLINE_MARKER_FAILURE=1 \
     CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
     CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
     CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+    CELESTIA_VERIFICATION_FAMILY_TIMEOUT_SECONDS=3 \
     CELESTIA_VERIFICATION_DRIVER_STATUS_FAILURE="$driver_status_failure" \
     bash "$root/.github/scripts/verification_test.sh" --fixture \
     >"$cancellation_output" 2>&1 &
@@ -472,6 +594,11 @@ for driver_status_failure in '' 1 missing leading-zero out-of-range extra-line; 
     cat "$cancellation_output" >&2
     exit 1
   fi
+  if grep -Fq 'verification family deadline mechanism failed' \
+    "$cancellation_output"; then
+    printf 'verification cancellation activated a deadline failure\n' >&2
+    exit 1
+  fi
   if [[ "$driver_status_failure" == 1 ]] &&
     ! grep -Fq 'verification driver inner cleanup failed' \
       "$cancellation_output"; then
@@ -505,6 +632,68 @@ for driver_status_failure in '' 1 missing leading-zero out-of-range extra-line; 
       exit 1
     fi
   done
+done
+
+family_event_checkpoint="$work/family-event-checkpoint.sh"
+cat >"$family_event_checkpoint" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+kill -TERM "$CELESTIA_VERIFICATION_FAMILY_CONTROLLER_PID"
+EOF
+chmod +x "$family_event_checkpoint"
+for family_event_order in cancellation-first timeout-first; do
+  event_temp="$work/$family_event_order-temp"
+  event_output="$work/$family_event_order-output"
+  event_checkpoint_variable=CELESTIA_VERIFICATION_FAMILY_WAIT_CHECKPOINT
+  expected_event_status=143
+  expected_event_message=
+  if [[ "$family_event_order" == timeout-first ]]; then
+    event_checkpoint_variable=CELESTIA_VERIFICATION_FAMILY_DEADLINE_CHECKPOINT
+    expected_event_status=124
+    expected_event_message='verification family timed out: lint_test.sh'
+  fi
+  rm -f -- "$work/family.pid" "$work/descendant.pid"
+  mkdir "$event_temp"
+  set +e
+  env "$event_checkpoint_variable=$family_event_checkpoint" \
+    CELESTIA_DESCENDANT_PID="$work/descendant.pid" \
+    CELESTIA_FAMILY_PID="$work/family.pid" \
+    CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+    CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+    CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+    CELESTIA_VERIFICATION_FAMILY_TIMEOUT_SECONDS=1 \
+    TMPDIR="$event_temp" \
+    bash "$root/.github/scripts/verification_test.sh" --fixture \
+    >"$event_output" 2>&1
+  status=$?
+  set -e
+  if [[ "$status" -ne "$expected_event_status" ]]; then
+    printf 'verification misclassified %s arbitration:\n' \
+      "$family_event_order" >&2
+    cat "$event_output" >&2
+    exit 1
+  fi
+  if [[ -n "$expected_event_message" ]] &&
+    ! grep -Fq "$expected_event_message" "$event_output"; then
+    printf 'verification omitted %s arbitration diagnostic:\n' \
+      "$family_event_order" >&2
+    cat "$event_output" >&2
+    exit 1
+  fi
+  for pid_file in "$work/family.pid" "$work/descendant.pid"; do
+    [[ -s "$pid_file" ]] || {
+      printf 'verification %s fixture omitted a process identity\n' \
+        "$family_event_order" >&2
+      exit 1
+    }
+    if verification_process_running "$(cat "$pid_file")"; then
+      printf 'verification %s retained process %s\n' \
+        "$family_event_order" "$(cat "$pid_file")" >&2
+      exit 1
+    fi
+  done
+  require_empty_verification_directory "$event_temp" \
+    "verification $family_event_order temporary"
 done
 
 spawn_checkpoint="$work/driver-spawn-checkpoint.sh"
@@ -656,6 +845,30 @@ if [[ "$status" -ne 2 ]] ||
 fi
 
 set +e
+output=$(CELESTIA_VERIFICATION_DEADLINE_MARKER_FAILURE=1 \
+  bash "$root/.github/scripts/verification_test.sh" 2>&1)
+status=$?
+set -e
+if [[ "$status" -ne 2 ]] ||
+  [[ "$output" != *"overrides require fixture mode"* ]]; then
+  printf 'verification driver accepted an ambient deadline failure:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+
+set +e
+output=$(CELESTIA_VERIFICATION_FAMILY_TIMEOUT_SECONDS=1 \
+  bash "$root/.github/scripts/verification_test.sh" 2>&1)
+status=$?
+set -e
+if [[ "$status" -ne 2 ]] ||
+  [[ "$output" != *"overrides require fixture mode"* ]]; then
+  printf 'verification driver accepted an ambient family timeout:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+
+set +e
 output=$(CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT="$snapshot_checkpoint" \
   bash "$root/.github/scripts/verification_test.sh" 2>&1)
 status=$?
@@ -683,6 +896,42 @@ if [[ "$status" -ne 2 ]] ||
     "$output" >&2
   exit 1
 fi
+
+for invalid_timeout in 0 invalid 3601; do
+  set +e
+  output=$(CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+    CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+    CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+    CELESTIA_VERIFICATION_FAMILY_TIMEOUT_SECONDS="$invalid_timeout" \
+    bash "$root/.github/scripts/verification_test.sh" --fixture 2>&1)
+  status=$?
+  set -e
+  if [[ "$status" -ne 2 ]] ||
+    [[ "$output" != *"family timeout fixture is invalid"* ]]; then
+    printf 'verification driver accepted family timeout %s:\n%s\n' \
+      "$invalid_timeout" "$output" >&2
+    exit 1
+  fi
+done
+
+for failure_fixture in \
+  CELESTIA_VERIFICATION_DEADLINE_MARKER_FAILURE=invalid \
+  CELESTIA_VERIFICATION_DEADLINE_NOTIFY_FAILURE=invalid; do
+  set +e
+  output=$(env "$failure_fixture" \
+    CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
+    CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
+    CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
+    bash "$root/.github/scripts/verification_test.sh" --fixture 2>&1)
+  status=$?
+  set -e
+  if [[ "$status" -ne 2 ]] ||
+    [[ "$output" != *"deadline failure fixture is invalid"* ]]; then
+    printf 'verification driver accepted failure fixture %s:\n%s\n' \
+      "$failure_fixture" "$output" >&2
+    exit 1
+  fi
+done
 
 printf '%s\n' "$families" | sed '$d' >"$work/incomplete-execution"
 if bash "$root/.github/scripts/testcheck.sh" verification \
