@@ -484,15 +484,16 @@ fi
 git -C "$verification_repo" checkout -- verification
 
 linked_source="$work/linked-source"
-linked_tree=$(git -C "$verification_repo" write-tree)
+linked_repo="$work/linked-repo"
 mv -- "$verification_dir" "$linked_source"
-git -C "$verification_repo" rm -q -r --cached -- verification
-if ! create_verification_symlink "$verification_repo" verification \
+mkdir -- "$linked_repo"
+git -C "$linked_repo" init -q
+if ! create_verification_symlink "$linked_repo" verification \
   ../linked-source; then
   printf 'verification ancestor fixture could not create its link\n' >&2
   exit 1
 fi
-git -C "$verification_repo" read-tree "$linked_tree"
+mv -- "$linked_repo/verification" "$verification_dir"
 set +e
 output=$(run_initial_driver 2>&1)
 status=$?
