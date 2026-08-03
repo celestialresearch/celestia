@@ -308,6 +308,7 @@ snapshot_script() {
 main() {
   local binding_dir
   local executed
+  local expected_script_dir
   local fixture_hash
   local fixture_size
   local index
@@ -328,6 +329,13 @@ main() {
   trap 'stop_active_script 130' INT
   trap 'stop_active_script 143' TERM
 
+  expected_script_dir="$script_repo/$script_prefix"
+  if [[ "$script_dir_path" != "$expected_script_dir" ]] ||
+    ! verification_snapshot_source_available "$script_repo" \
+      "$script_prefix/setup.sh"; then
+    printf 'source-policy script directory is unavailable\n' >&2
+    return 1
+  fi
   printf '%s\n' "${scripts[@]/#/$script_prefix\/}" | LC_ALL=C sort \
     >"$work_dir/expected-scripts"
   if ! find "$script_dir_path" -name '*.sh' -print0 \
@@ -337,7 +345,8 @@ main() {
   fi
   : >"$work_dir/available-scripts"
   while IFS= read -r -d '' path; do
-    if [[ -L "$path" || ! -f "$path" ]]; then
+    if ! verification_snapshot_source_available "$script_repo" \
+      "$script_prefix/${path##*/}"; then
       printf 'source-policy script is unavailable: %s\n' "$path" >&2
       return 1
     fi
@@ -384,8 +393,9 @@ main() {
   for script in "${scripts[@]}"; do
     path="$script_dir_path/$script"
     mode=$(git -C "$script_repo" ls-files --stage -- "$script_prefix/$script")
-    if [[ -L "$path" || ! -f "$path" || ! -x "$path" ||
-      "${mode%% *}" != 100755 ]]; then
+    if ! verification_snapshot_source_available "$script_repo" \
+      "$script_prefix/$script" ||
+      [[ ! -x "$path" || "${mode%% *}" != 100755 ]]; then
       printf 'source-policy script is unavailable: %s\n' "$script" >&2
       return 1
     fi

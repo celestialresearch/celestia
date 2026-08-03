@@ -164,24 +164,6 @@ snapshot_matches() {
   [[ "$identity" == "$expected_identity" ]]
 }
 
-snapshot_source_available() {
-  local component
-  local current=$family_repo
-  local path=$1
-
-  while [[ "$path" == */* ]]; do
-    component=${path%%/*}
-    path=${path#*/}
-    [[ -n "$component" && "$component" != . && "$component" != .. ]] ||
-      return 1
-    current="$current/$component"
-    [[ ! -L "$current" && -d "$current" ]] || return 1
-  done
-  [[ -n "$path" && "$path" != . && "$path" != .. ]] || return 1
-  current="$current/$path"
-  [[ ! -L "$current" && -f "$current" ]]
-}
-
 snapshot_source_mode_matches() {
   [[ "$1" != 100755 || -x "$2" ]]
 }
@@ -219,7 +201,8 @@ snapshot_sources() {
       -n "$indexed_path" ]] || return 1
     git -C "$family_repo" cat-file -e "$indexed_object^{blob}" || return 1
     source="$family_repo/$indexed_path"
-    if ! snapshot_source_available "$indexed_path"; then
+    if ! verification_snapshot_source_available "$family_repo" \
+      "$indexed_path"; then
       printf 'action snapshot source is unavailable: %s\n' \
         "$indexed_path" >&2
       return 1
@@ -263,7 +246,8 @@ snapshot_live_objects() {
   index=0
   while ((index < count)); do
     source=${snapshot_source_paths[$index]}
-    if ! snapshot_source_available "${snapshot_paths[$index]}"; then
+    if ! verification_snapshot_source_available "$family_repo" \
+      "${snapshot_paths[$index]}"; then
       printf 'action snapshot source changed during binding: %s\n' \
         "${snapshot_paths[$index]}" >&2
       return 1

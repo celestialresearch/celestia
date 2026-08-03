@@ -82,6 +82,37 @@ if ! cmp -s <(printf '%s\n' "$source_policy_scripts") "$source_policy_log"; then
   exit 1
 fi
 
+linked_records="$work/linked-source-policy-records"
+linked_source="$work/linked-source-policy"
+owned_source="$work/owned-source-policy"
+cp -R -- "$source_policy_dir" "$linked_source"
+git -C "$source_policy_repo" ls-files --stage -z -- source-policy \
+  >"$linked_records"
+git -C "$source_policy_repo" rm --cached -r -q source-policy
+mv -- "$source_policy_dir" "$owned_source"
+create_verification_symlink "$source_policy_repo" source-policy \
+  "$linked_source"
+git -C "$source_policy_repo" update-index --force-remove source-policy
+git -C "$source_policy_repo" update-index --add -z --index-info \
+  <"$linked_records"
+set +e
+output=$(CELESTIA_SOURCE_POLICY_LOG="$source_policy_log" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_DIR="$source_policy_dir" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_REPO="$source_policy_repo" \
+  CELESTIA_SOURCE_POLICY_SCRIPT_PREFIX=source-policy \
+  bash "$root/.github/scripts/verification/source_policy_test.sh" \
+    --fixture 2>&1)
+status=$?
+set -e
+if [[ "$status" -eq 0 ||
+  "$output" != *'source-policy script directory is unavailable'* ]]; then
+  printf 'source-policy driver accepted a linked script ancestor:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+rm -- "$source_policy_dir"
+mv -- "$owned_source" "$source_policy_dir"
+
 snapshot_checkpoint="$work/snapshot-checkpoint.sh"
 snapshot_fixture="$work/fixture.sh"
 snapshot_target="$work/snapshot-target.sh"

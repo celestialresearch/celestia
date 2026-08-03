@@ -42,6 +42,31 @@ verification_group_zombies() {
   done <<<"$states"
 }
 
+verification_snapshot_source_available() {
+  local component
+  local current=$1
+  local path=$2
+  local remainder=$2
+  local visited=0
+
+  [[ ! -L "$current" && -d "$current" ]] || return 1
+  [[ -n "$path" && "${#path}" -le 4096 ]] || return 1
+  while [[ "$remainder" == */* ]]; do
+    component=${remainder%%/*}
+    remainder=${remainder#*/}
+    [[ -n "$component" && "$component" != . && "$component" != .. ]] ||
+      return 1
+    current="$current/$component"
+    [[ ! -L "$current" && -d "$current" ]] || return 1
+    visited=$((visited + 1))
+    ((visited <= 128)) || return 1
+  done
+  [[ -n "$remainder" && "$remainder" != . && "$remainder" != .. ]] ||
+    return 1
+  current="$current/$remainder"
+  [[ ! -L "$current" && -f "$current" ]]
+}
+
 create_verification_symlink() {
   local object
   local path=$2
