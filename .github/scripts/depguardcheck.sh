@@ -285,7 +285,7 @@ run_suite() {
   set +e
   output=$(cd "$suite_root" && GOOS=windows GOARCH=amd64 \
     "$lint" run --allow-parallel-runners --enable-only=depguard \
-    --config .golangci.yml --output.text.print-issued-lines=false ./... 2>&1)
+    --config .golangci.yml ./... 2>&1)
   status=$?
   set -e
   output=${output//\\//}
@@ -294,7 +294,8 @@ run_suite() {
     return 1
   fi
   while IFS=$'\t' read -r importer message; do
-    line=$(grep -F "$importer:" <<<"$output" || true)
+    line=$(grep -F '(depguard)' <<<"$output" | \
+      grep -F "$importer:" || true)
     if [[ "$line" != *"$message"* ]] || [[ $(wc -l <<<"$line") -ne 1 ]]; then
       printf '%s lacked its forbidden-import diagnostic:\n%s\n' \
         "$importer" "$output" >&2
