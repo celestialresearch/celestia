@@ -206,144 +206,169 @@ trap 'rm -rf -- "$work"' EXIT
 lint=$(cd "$root" && go tool -n golangci-lint)
 go_version=$(awk '$1 == "go" { print $2; exit }' "$root/go.mod")
 
-check_case() {
-  name=$1
-  importer=$2
-  imported=$3
-  want=$4
-  message=$5
-  case_root="$work/$name"
-  mkdir -p "$case_root/$(dirname -- "$importer")"
-  cp "$root/.golangci.yml" "$case_root/.golangci.yml"
-  printf 'module celestia.research/celestia\n\ngo %s\n' "$go_version" >"$case_root/go.mod"
+prepare_suite() {
+  local suite_root=$1
+  mkdir -p "$suite_root"
+  cp "$root/.golangci.yml" "$suite_root/.golangci.yml"
+  printf 'module celestia.research/celestia\n\ngo %s\n' "$go_version" >"$suite_root/go.mod"
+}
+
+add_case() {
+  local base
+  local directory
+  local importer=$3
+  local imported=$4
+  local message=${5:-}
+  local name=$2
+  local suite_root=$1
+  local target
+
+  directory=$(dirname -- "$importer")
+  base=${importer##*/}
+  if [[ "$base" != supervisor_windows_test.go ]]; then
+    base="${name//-/_}_$base"
+  fi
+  importer="$directory/$base"
+  mkdir -p "$suite_root/$directory"
 
   case "$imported" in
-    celestia.research/assurance)
-      mkdir -p "$case_root/assurance"
+  celestia.research/assurance)
+    if [[ ! -f "$suite_root/assurance/go.mod" ]]; then
+      mkdir -p "$suite_root/assurance"
       printf 'module celestia.research/assurance\n\ngo %s\n' "$go_version" \
-        >"$case_root/assurance/go.mod"
-      printf 'package assurance\n' >"$case_root/assurance/assurance.go"
+        >"$suite_root/assurance/go.mod"
+      printf 'package assurance\n' >"$suite_root/assurance/assurance.go"
       printf '\nrequire celestia.research/assurance v0.0.0\n' \
-        >>"$case_root/go.mod"
+        >>"$suite_root/go.mod"
       printf 'replace celestia.research/assurance => ./assurance\n' \
-        >>"$case_root/go.mod"
-      ;;
-    celestia.research/celestia/*)
-      target=${imported#celestia.research/celestia/}
-      mkdir -p "$case_root/$target"
-      printf 'package target\n' >"$case_root/$target/target.go"
-      ;;
+        >>"$suite_root/go.mod"
+    fi
+    ;;
+  celestia.research/celestia/*)
+    target=${imported#celestia.research/celestia/}
+    mkdir -p "$suite_root/$target"
+    if [[ ! -f "$suite_root/$target/target.go" ]]; then
+      printf 'package fixture\n' >"$suite_root/$target/target.go"
+    fi
+    ;;
   esac
-  cat >"$case_root/$importer" <<EOF
+  cat >"$suite_root/$importer" <<EOF
 package fixture
 
 import _ "$imported"
 EOF
+  if [[ -n "$message" ]]; then
+    printf '%s\t%s\n' "$importer" "$message" >>"$suite_root/expected"
+  fi
+}
+
+run_suite() {
+  local expected
+  local findings
+  local importer
+  local line
+  local message
+  local output
+  local status
+  local suite_root=$1
+  local want=$2
 
   set +e
-  case "$importer" in
-    *_windows_test.go)
-      output=$(cd "$case_root" && GOOS=windows GOARCH=amd64 \
-        "$lint" run --allow-parallel-runners --enable-only=depguard \
-        --config .golangci.yml ./... 2>&1)
-      ;;
-    *)
-      output=$(cd "$case_root" && \
-        "$lint" run --allow-parallel-runners --enable-only=depguard \
-        --config .golangci.yml ./... 2>&1)
-      ;;
-  esac
+  output=$(cd "$suite_root" && GOOS=windows GOARCH=amd64 \
+    "$lint" run --allow-parallel-runners --enable-only=depguard \
+    --config .golangci.yml ./... 2>&1)
   status=$?
   set -e
-  if [[ "$want" == pass && "$status" -ne 0 ]]; then
-    printf '%s rejected an allowed import:\n%s\n' "$name" "$output" >&2
-    exit 1
-  fi
-  if [[ "$want" == reject ]] &&
-    { [[ "$status" -eq 0 ]] || [[ "$output" != *"$message"* ]]; }; then
-    printf '%s accepted a forbidden import:\n%s\n' "$name" "$output" >&2
-    exit 1
-  fi
-}
-
-case_pids=
-case_count=0
-
-wait_cases() {
-  local pid
-  local result=0
-
-  for pid in $case_pids; do
-    if ! wait "$pid"; then
-      result=1
+  output=${output//\\//}
+  if [[ "$want" == pass ]]; then
+    if [[ "$status" -ne 0 ]]; then
+      printf 'depguard rejected an allowed import:\n%s\n' "$output" >&2
+      return 1
     fi
-  done
-  case_pids=
-  case_count=0
-  return "$result"
-}
-
-run_case() {
-  check_case "$@" &
-  case_pids="$case_pids $!"
-  case_count=$((case_count + 1))
-  if [[ "$case_count" -ge 12 ]]; then
-    wait_cases
+    return
+  fi
+  if [[ "$status" -eq 0 ]]; then
+    printf 'depguard accepted forbidden imports\n' >&2
+    return 1
+  fi
+  while IFS=$'\t' read -r importer message; do
+    line=$(grep -F "$importer:" <<<"$output" || true)
+    if [[ "$line" != *"$message"* ]] || [[ $(wc -l <<<"$line") -ne 1 ]]; then
+      printf '%s lacked its forbidden-import diagnostic:\n%s\n' \
+        "$importer" "$output" >&2
+      return 1
+    fi
+  done <"$suite_root/expected"
+  findings=$(grep -c '(depguard)' <<<"$output" || true)
+  expected=$(wc -l <"$suite_root/expected")
+  findings=${findings//[[:space:]]/}
+  expected=${expected//[[:space:]]/}
+  if [[ "$findings" -ne "$expected" ]]; then
+    printf 'depguard produced %s findings, want %s:\n%s\n' \
+      "$findings" "$expected" "$output" >&2
+    return 1
   fi
 }
 
-run_case production-allow internal/example/example.go fmt pass ''
-run_case production-reject internal/example/example.go \
-  celestia.research/celestia/tools/sourcepolicy reject \
+allowed="$work/allowed"
+forbidden="$work/forbidden"
+prepare_suite "$allowed"
+prepare_suite "$forbidden"
+
+add_case "$allowed" production-allow internal/example/example.go fmt
+add_case "$forbidden" production-reject internal/example/example.go \
+  celestia.research/celestia/tools/sourcepolicy \
   'Production runtime must not import repository tools'
-run_case production-assurance-reject internal/example/example.go \
-  celestia.research/assurance reject \
+add_case "$forbidden" production-assurance-reject internal/example/example.go \
+  celestia.research/assurance \
   'Production must not import Assurance'
-run_case production-worker-reject internal/example/example.go \
-  celestia.research/celestia/worker/url-reference reject \
+add_case "$forbidden" production-worker-reject internal/example/example.go \
+  celestia.research/celestia/worker/url-reference \
   'Production runtime must not import worker source'
-run_case execution-allow internal/execution/supervision/example.go fmt pass ''
-run_case execution-reject internal/execution/supervision/example.go \
-  celestia.research/celestia/internal/operation/urlreference reject \
+add_case "$allowed" execution-allow internal/execution/supervision/example.go fmt
+add_case "$forbidden" execution-reject internal/execution/supervision/example.go \
+  celestia.research/celestia/internal/operation/urlreference \
   'execution packages must not import operation packages'
-run_case execution-test-reject internal/execution/supervision/rogue_test.go \
-  celestia.research/celestia/internal/operation/urlreference reject \
+add_case "$forbidden" execution-test-reject internal/execution/supervision/rogue_test.go \
+  celestia.research/celestia/internal/operation/urlreference \
   'execution packages must not import operation packages'
-run_case execution-integration-allow \
+add_case "$allowed" execution-integration-allow \
   internal/execution/supervision/supervisor_windows_test.go \
-  celestia.research/celestia/internal/operation/urlreference/admission pass ''
-run_case execution-integration-reject \
+  celestia.research/celestia/internal/operation/urlreference/admission
+add_case "$forbidden" execution-integration-reject \
   internal/execution/supervision/supervisor_windows_test.go \
-  celestia.research/celestia/internal/operation/urlreference reject \
+  celestia.research/celestia/internal/operation/urlreference \
   'supervision qualification test imports only declared dependencies'
-run_case command-allow cmd/example/main.go \
-  celestia.research/celestia/internal/operation/urlreference pass ''
-run_case command-reject cmd/example/main.go \
-  celestia.research/celestia/internal/operation/urlreference/transform reject \
+add_case "$allowed" command-allow cmd/example/main.go \
+  celestia.research/celestia/internal/operation/urlreference
+add_case "$forbidden" command-reject cmd/example/main.go \
+  celestia.research/celestia/internal/operation/urlreference/transform \
   'commands import declared operation roots only'
-run_case operation-allow internal/operation/urlreference/example.go \
-  celestia.research/celestia/internal/operation/urlreference/admission pass ''
-run_case operation-reject internal/operation/urlreference/example.go \
-  celestia.research/celestia/internal/operation/other reject \
+add_case "$allowed" operation-allow internal/operation/urlreference/example.go \
+  celestia.research/celestia/internal/operation/urlreference/admission
+add_case "$forbidden" operation-reject internal/operation/urlreference/example.go \
+  celestia.research/celestia/internal/operation/other \
   'operation roots import only their own declared subpackages'
-run_case attempt-allow internal/operation/urlreference/attempt/example.go \
-  celestia.research/celestia/internal/operation/urlreference/protocol pass ''
-run_case attempt-reject internal/operation/urlreference/attempt/example.go \
-  celestia.research/celestia/internal/execution/supervision reject \
+add_case "$allowed" attempt-allow internal/operation/urlreference/attempt/example.go \
+  celestia.research/celestia/internal/operation/urlreference/protocol
+add_case "$forbidden" attempt-reject internal/operation/urlreference/attempt/example.go \
+  celestia.research/celestia/internal/execution/supervision \
   'attempt evidence imports only lower URL-reference owners'
-run_case admission-allow internal/operation/urlreference/admission/example.go \
-  celestia.research/celestia/internal/operation/urlreference/protocol pass ''
-run_case admission-reject internal/operation/urlreference/admission/example.go \
-  celestia.research/celestia/internal/operation/urlreference/attempt reject \
+add_case "$allowed" admission-allow internal/operation/urlreference/admission/example.go \
+  celestia.research/celestia/internal/operation/urlreference/protocol
+add_case "$forbidden" admission-reject internal/operation/urlreference/admission/example.go \
+  celestia.research/celestia/internal/operation/urlreference/attempt \
   'admission imports only protocol and transformation'
-run_case protocol-allow internal/operation/urlreference/protocol/example.go \
-  celestia.research/celestia/internal/operation/urlreference/transform pass ''
-run_case protocol-reject \
+add_case "$allowed" protocol-allow internal/operation/urlreference/protocol/example.go \
+  celestia.research/celestia/internal/operation/urlreference/transform
+add_case "$forbidden" protocol-reject \
   internal/operation/urlreference/protocol/example.go \
-  celestia.research/celestia/internal/operation/urlreference/admission reject \
+  celestia.research/celestia/internal/operation/urlreference/admission \
   'protocol imports only transformation'
-run_case transform-allow internal/operation/urlreference/transform/example.go fmt pass ''
-run_case transform-reject internal/operation/urlreference/transform/example.go \
-  celestia.research/celestia/internal/execution/supervision reject \
+add_case "$allowed" transform-allow internal/operation/urlreference/transform/example.go fmt
+add_case "$forbidden" transform-reject internal/operation/urlreference/transform/example.go \
+  celestia.research/celestia/internal/execution/supervision \
   'transformation must not import other Production internals'
-wait_cases
+
+run_suite "$allowed" pass
+run_suite "$forbidden" reject
