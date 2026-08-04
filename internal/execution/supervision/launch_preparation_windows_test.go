@@ -87,7 +87,7 @@ func TestNewSupervisorReportsMeasurementFailures(t *testing.T) {
 				return errors.Join(closeErr, failure)
 			},
 		})
-		if !errors.Is(err, ErrInvalid) || !errors.Is(err, failure) {
+		if !errors.Is(err, errInvalid) || !errors.Is(err, failure) {
 			t.Fatalf("hash-failure=%t error=%v", failHash, err)
 		}
 	}

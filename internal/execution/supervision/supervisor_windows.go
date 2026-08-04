@@ -59,17 +59,17 @@ func newSupervisorWith(
 	operations supervisorCreationOperations,
 ) (*Supervisor, error) {
 	if !validWorkerPath(workerPath) || !validLimits(limits) {
-		return nil, fmt.Errorf("%w: worker path or limits", ErrInvalid)
+		return nil, fmt.Errorf("%w: worker path or limits", errInvalid)
 	}
 	cleanPath := filepath.Clean(workerPath)
 	worker, err := operations.open(cleanPath)
 	if err != nil {
-		return nil, fmt.Errorf("%w: open worker: %w", ErrInvalid, err)
+		return nil, fmt.Errorf("%w: open worker: %w", errInvalid, err)
 	}
 	hash, hashErr := operations.hash(worker)
 	closeErr := operations.close(worker)
 	if err := errors.Join(hashErr, closeErr); err != nil {
-		return nil, fmt.Errorf("%w: measure worker: %w", ErrInvalid, err)
+		return nil, fmt.Errorf("%w: measure worker: %w", errInvalid, err)
 	}
 	return &Supervisor{
 		workerPath: cleanPath,
@@ -114,7 +114,7 @@ func (supervisor *Supervisor) run(
 		startDeadline.IsZero() ||
 		len(frame) == 0 ||
 		len(frame) > supervisor.limits.InputBytes {
-		outcome := failedOutcome(StartFailed, started, fmt.Errorf("%w: context or frame", ErrInvalid))
+		outcome := failedOutcome(StartFailed, started, fmt.Errorf("%w: context or frame", errInvalid))
 		outcome.WorkerSHA256 = supervisor.workerHash
 		outcome.CleanupComplete = true
 		return outcome
