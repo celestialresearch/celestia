@@ -52,8 +52,8 @@ func TestValidateRequestRejects(t *testing.T) {
 			t.Parallel()
 			request := valid
 			test.mutate(&request)
-			if _, err := ValidateRequest(request, testAdmittedAt()); !errors.Is(err, ErrProtocol) {
-				t.Fatalf("ValidateRequest() error = %v, want ErrProtocol", err)
+			if _, err := validateRequest(request, testAdmittedAt()); !errors.Is(err, ErrProtocol) {
+				t.Fatalf("validateRequest() error = %v, want ErrProtocol", err)
 			}
 		})
 	}

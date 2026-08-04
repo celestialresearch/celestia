@@ -25,7 +25,7 @@ import (
 )
 
 func EncodeRequest(request Request, admittedAt time.Time) ([]byte, Correlation, error) {
-	correlation, err := ValidateRequest(request, admittedAt)
+	correlation, err := validateRequest(request, admittedAt)
 	if err != nil {
 		return nil, Correlation{}, err
 	}
@@ -52,14 +52,14 @@ func DecodeRequest(data []byte, admittedAt time.Time) (Request, Correlation, err
 	if err := decoder.Decode(&request); err != nil {
 		return Request{}, Correlation{}, protocolError("decode request")
 	}
-	correlation, err := ValidateRequest(request, admittedAt)
+	correlation, err := validateRequest(request, admittedAt)
 	if err != nil {
 		return Request{}, Correlation{}, err
 	}
 	return request, correlation, nil
 }
 
-func ValidateRequest(request Request, admittedAt time.Time) (Correlation, error) {
+func validateRequest(request Request, admittedAt time.Time) (Correlation, error) {
 	if err := validateRequestConstants(request); err != nil {
 		return Correlation{}, err
 	}

@@ -332,7 +332,7 @@ func testResponse(request Request) Response {
 }
 func testCorrelation(tb testing.TB, request Request) Correlation {
 	tb.Helper()
-	correlation, err := ValidateRequest(request, testAdmittedAt())
+	correlation, err := validateRequest(request, testAdmittedAt())
 	if err != nil {
 		tb.Fatal(err)
 	}
