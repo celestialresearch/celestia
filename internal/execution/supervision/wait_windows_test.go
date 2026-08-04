@@ -22,6 +22,20 @@ import (
 	"time"
 )
 
+func awaitProcess(
+	ctx context.Context,
+	timeout <-chan time.Time,
+	poll <-chan time.Time,
+	complete func() (bool, error),
+	overflow <-chan Status,
+	input <-chan inputResult,
+) (Status, error) {
+	status, cause, _ := awaitProcessWithInput(
+		ctx, timeout, poll, complete, overflow, input,
+	)
+	return status, cause
+}
+
 func TestAwaitProcessStates(t *testing.T) {
 	t.Run("wait error", func(t *testing.T) {
 		status, err := awaitProcess(context.Background(), make(chan time.Time), make(chan time.Time), func() (bool, error) {
