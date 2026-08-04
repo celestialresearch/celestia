@@ -20,9 +20,13 @@ source "$script_dir/fixture.sh"
 main() (
   local devcheck_profile
   local fake_bin
+  local indexed_path
+  local metadata
+  local mode
   local output
   local real_bash
   local real_go
+  local record
   local repo_dir
   local root
   local status
@@ -33,24 +37,26 @@ main() (
   trap 'cleanup_verification "$work_dir"' EXIT
   trap 'exit 1' HUP INT TERM
 
-  CELESTIA_VERIFICATION_FAMILY_DIR="$root/.github/scripts/actioncheck" \
-    CELESTIA_VERIFICATION_FAMILY_REPO="$root" \
-    CELESTIA_VERIFICATION_FAMILY_PREFIX=.github/scripts/actioncheck \
-    CELESTIA_VERIFICATION_FAMILY_KIND=action \
-    bash "$root/.github/scripts/verification_test.sh" --fixture
-
   repo_dir="$work_dir/repo"
   mkdir -p "$repo_dir"
-  tar -cf - -C "$root" \
-    .github/codeql .github/scripts .github/workflows \
-    .github/.coverage .github/.currency .github/dependabot.yml \
-    docs internal policies tools worker \
-    .editorconfig .gitattributes .gitignore .golangci.yml \
-    AGENTS.md Cargo.lock Cargo.toml deny.toml go.mod go.sum LICENSE README.md \
-    rust-toolchain.toml | tar -xf - -C "$repo_dir"
+  git -C "$root" archive --format=tar HEAD | tar -xf - -C "$repo_dir"
   git -C "$repo_dir" init -q
   git -C "$repo_dir" config core.autocrlf false
   git -C "$repo_dir" add -A
+  while IFS= read -r -d '' record; do
+    metadata=${record%%$'\t'*}
+    indexed_path=${record#*$'\t'}
+    mode=${metadata%% *}
+    if [[ "$mode" == 100755 ]]; then
+      git -C "$repo_dir" update-index --chmod=+x -- "$indexed_path"
+    fi
+  done < <(git -C "$root" ls-files --stage -z)
+
+  CELESTIA_VERIFICATION_FAMILY_DIR="$repo_dir/.github/scripts/actioncheck" \
+    CELESTIA_VERIFICATION_FAMILY_REPO="$repo_dir" \
+    CELESTIA_VERIFICATION_FAMILY_PREFIX=.github/scripts/actioncheck \
+    CELESTIA_VERIFICATION_FAMILY_KIND=action \
+    bash "$repo_dir/.github/scripts/verification_test.sh" --fixture
 
   fake_bin="$work_dir/config-bin"
   mkdir -p "$fake_bin"
