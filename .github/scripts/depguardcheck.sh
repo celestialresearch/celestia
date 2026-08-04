@@ -210,7 +210,16 @@ prepare_suite() {
   local suite_root=$1
   mkdir -p "$suite_root"
   cp "$root/.golangci.yml" "$suite_root/.golangci.yml"
-  printf '\nissues:\n  generated: disable\n' >>"$suite_root/.golangci.yml"
+  awk '
+    $0 == "linters:" {
+      print
+      print "  exclusions:"
+      print "    generated: disable"
+      next
+    }
+    { print }
+  ' "$suite_root/.golangci.yml" >"$suite_root/.golangci.tmp"
+  mv -- "$suite_root/.golangci.tmp" "$suite_root/.golangci.yml"
   printf 'module celestia.research/celestia\n\ngo %s\n' "$go_version" >"$suite_root/go.mod"
 }
 
@@ -272,7 +281,6 @@ run_suite() {
   local output
   local status
   local suite_root=$1
-  local want=$2
 
   set +e
   output=$(cd "$suite_root" && GOOS=windows GOARCH=amd64 \
@@ -281,13 +289,6 @@ run_suite() {
   status=$?
   set -e
   output=${output//\\//}
-  if [[ "$want" == pass ]]; then
-    if [[ "$status" -ne 0 ]]; then
-      printf 'depguard rejected an allowed import:\n%s\n' "$output" >&2
-      return 1
-    fi
-    return
-  fi
   if [[ "$status" -eq 0 ]]; then
     printf 'depguard accepted forbidden imports\n' >&2
     return 1
@@ -311,65 +312,46 @@ run_suite() {
   fi
 }
 
-allowed="$work/allowed"
-forbidden="$work/forbidden"
-prepare_suite "$allowed"
-prepare_suite "$forbidden"
+suite="$work/suite"
+prepare_suite "$suite"
 
-add_case "$allowed" production-allow internal/example/example.go fmt
-add_case "$forbidden" production-reject internal/example/example.go \
+add_case "$suite" production-reject internal/example/example.go \
   celestia.research/celestia/tools/sourcepolicy \
   'Production runtime must not import repository tools'
-add_case "$forbidden" production-assurance-reject internal/example/example.go \
+add_case "$suite" production-assurance-reject internal/example/example.go \
   celestia.research/assurance \
   'Production must not import Assurance'
-add_case "$forbidden" production-worker-reject internal/example/example.go \
+add_case "$suite" production-worker-reject internal/example/example.go \
   celestia.research/celestia/worker/url-reference \
   'Production runtime must not import worker source'
-add_case "$allowed" execution-allow internal/execution/supervision/example.go fmt
-add_case "$forbidden" execution-reject internal/execution/supervision/example.go \
+add_case "$suite" execution-reject internal/execution/supervision/example.go \
   celestia.research/celestia/internal/operation/urlreference \
   'execution packages must not import operation packages'
-add_case "$forbidden" execution-test-reject internal/execution/supervision/rogue_test.go \
+add_case "$suite" execution-test-reject internal/execution/supervision/rogue_test.go \
   celestia.research/celestia/internal/operation/urlreference \
   'execution packages must not import operation packages'
-add_case "$allowed" execution-integration-allow \
-  internal/execution/supervision/supervisor_windows_test.go \
-  celestia.research/celestia/internal/operation/urlreference/admission
-add_case "$forbidden" execution-integration-reject \
+add_case "$suite" execution-integration-reject \
   internal/execution/supervision/supervisor_windows_test.go \
   celestia.research/celestia/internal/operation/urlreference \
   'supervision qualification test imports only declared dependencies'
-add_case "$allowed" command-allow cmd/example/main.go \
-  celestia.research/celestia/internal/operation/urlreference
-add_case "$forbidden" command-reject cmd/example/main.go \
+add_case "$suite" command-reject cmd/example/main.go \
   celestia.research/celestia/internal/operation/urlreference/transform \
   'commands import declared operation roots only'
-add_case "$allowed" operation-allow internal/operation/urlreference/example.go \
-  celestia.research/celestia/internal/operation/urlreference/admission
-add_case "$forbidden" operation-reject internal/operation/urlreference/example.go \
+add_case "$suite" operation-reject internal/operation/urlreference/example.go \
   celestia.research/celestia/internal/operation/other \
   'operation roots import only their own declared subpackages'
-add_case "$allowed" attempt-allow internal/operation/urlreference/attempt/example.go \
-  celestia.research/celestia/internal/operation/urlreference/protocol
-add_case "$forbidden" attempt-reject internal/operation/urlreference/attempt/example.go \
+add_case "$suite" attempt-reject internal/operation/urlreference/attempt/example.go \
   celestia.research/celestia/internal/execution/supervision \
   'attempt evidence imports only lower URL-reference owners'
-add_case "$allowed" admission-allow internal/operation/urlreference/admission/example.go \
-  celestia.research/celestia/internal/operation/urlreference/protocol
-add_case "$forbidden" admission-reject internal/operation/urlreference/admission/example.go \
+add_case "$suite" admission-reject internal/operation/urlreference/admission/example.go \
   celestia.research/celestia/internal/operation/urlreference/attempt \
   'admission imports only protocol and transformation'
-add_case "$allowed" protocol-allow internal/operation/urlreference/protocol/example.go \
-  celestia.research/celestia/internal/operation/urlreference/transform
-add_case "$forbidden" protocol-reject \
+add_case "$suite" protocol-reject \
   internal/operation/urlreference/protocol/example.go \
   celestia.research/celestia/internal/operation/urlreference/admission \
   'protocol imports only transformation'
-add_case "$allowed" transform-allow internal/operation/urlreference/transform/example.go fmt
-add_case "$forbidden" transform-reject internal/operation/urlreference/transform/example.go \
+add_case "$suite" transform-reject internal/operation/urlreference/transform/example.go \
   celestia.research/celestia/internal/execution/supervision \
   'transformation must not import other Production internals'
 
-run_suite "$allowed" pass
-run_suite "$forbidden" reject
+run_suite "$suite"
