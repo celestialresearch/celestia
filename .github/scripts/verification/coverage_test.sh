@@ -123,6 +123,32 @@ grep -Eq 'celestia\.research/coverage/b[[:space:]]+50\.00%' \
     "$output" >&2
   return 1
 }
+(
+  cd "$work_dir"
+  go test -covermode=atomic -coverprofile="$work_dir/under.out" ./...
+) >/dev/null
+set +e
+output=$(cd "$work_dir" && \
+  bash .github/scripts/coveragecheck.sh enforce "$work_dir/under.out" 2>&1)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'coverage enforcement accepted an under-covered profile\n' >&2
+  return 1
+}
+sed '1s/atomic/count/' "$work_dir/under.out" >"$work_dir/non-atomic.out"
+set +e
+output=$(cd "$work_dir" && \
+  bash .github/scripts/coveragecheck.sh enforce \
+    "$work_dir/non-atomic.out" 2>&1)
+status=$?
+set -e
+if [[ "$status" -eq 0 ]] ||
+  [[ "$output" != *'coverage profile is not atomic'* ]]; then
+  printf 'coverage enforcement accepted a non-atomic profile:\n%s\n' \
+    "$output" >&2
+  return 1
+fi
 
 cat >>"$work_dir/b/b_test.go" <<'EOF'
 
@@ -150,6 +176,17 @@ output=$(
 ) || {
   printf 'coverage check rejected the fully covered fixture:\n%s\n' \
     "$output" >&2
+  return 1
+}
+(
+  cd "$work_dir"
+  go test -covermode=atomic -coverprofile="$work_dir/complete.out" ./...
+) >/dev/null
+(
+  cd "$work_dir"
+  bash .github/scripts/coveragecheck.sh enforce "$work_dir/complete.out"
+) >/dev/null || {
+  printf 'coverage enforcement rejected a complete profile\n' >&2
   return 1
 }
 if [[ $(grep -c '^test ' "$work_dir/go-calls") -ne 1 ]] ||

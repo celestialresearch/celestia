@@ -28,6 +28,9 @@ if [[ "${SIGNAL_PARENT:-false}" == true ]]; then
   kill -TERM "${SIGNAL_TARGET_PID:?}"
   exit 0
 fi
+if [[ -n "${GO_CALLS:-}" ]]; then
+  printf '%s\n' "$*" >>"$GO_CALLS"
+fi
 printf '%s\n' \
   '{"Action":"run","Package":"fixture.invalid/test","Test":"TestMustRun"}'
 if [[ "${COMPLETE_TEST:-false}" == true ]]; then
@@ -40,6 +43,11 @@ chmod +x "$work/bin/go"
 cat >"$work/bin/testinventory" <<EOF
 #!/usr/bin/env bash
 if [[ "\$1" == go ]]; then
+  if [[ "\${UNSORTED_INVENTORY:-false}" == true ]]; then
+    printf '%s\\t%s\\n' 'fixture.invalid/z' 'TestZ'
+    printf '%s\\t%s\\n' 'fixture.invalid/a' 'TestA'
+    exit
+  fi
   printf '%s\\t%s\\n' 'fixture.invalid/test' 'TestMustRun'
 else
   printf '%s\\t%s\\n' '$work/package' '$work/bin/rust-test'
@@ -94,6 +102,32 @@ fi
 PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
   COMPLETE_TEST=true \
   bash "$root/.github/scripts/testcheck.sh" go quick --fixture >/dev/null
+
+GO_CALLS="$work/go-calls" PATH="$work/bin:$PATH" \
+  TESTINVENTORY_BIN="$work/bin/testinventory" COMPLETE_TEST=true \
+  bash "$root/.github/scripts/testcheck.sh" go standard \
+    "$work/coverage.out" --fixture >/dev/null
+if ! grep -Fq -- '-count=1 -shuffle=on -covermode=atomic' "$work/go-calls" ||
+  ! grep -Fq -- "-coverprofile=$work/coverage.out" "$work/go-calls"; then
+  printf 'standard completion check omitted atomic coverage:\n' >&2
+  cat "$work/go-calls" >&2
+  exit 1
+fi
+
+set +e
+output=$(
+  UNSORTED_INVENTORY=true PATH="$work/bin:$PATH" \
+    TESTINVENTORY_BIN="$work/bin/testinventory" COMPLETE_TEST=true \
+    bash "$root/.github/scripts/testcheck.sh" go quick --fixture 2>&1
+)
+status=$?
+set -e
+if [[ "$status" -eq 0 ]] ||
+  [[ "$output" != *'Go test inventory comparison failed'* ]]; then
+  printf 'Go completion check accepted an unsorted inventory:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
 
 set +e
 output=$(

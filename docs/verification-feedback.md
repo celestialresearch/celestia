@@ -30,7 +30,7 @@ Go Build and Static | Go build, fix, format, vet and lint | Go source, build tag
 Go Platform Lint | `platformlint.sh` | Go source and `.golangci.yml` | Go and linter caches | Shared sequential caches | Linux, AIX and Plan 9 targets | Full; Linux AMD64 CI owner
 Go Test | `testcheck.sh go` | Compiled test inventory and Go source | Isolated completion inventory and Go cache | Go | Host | Quick or full
 Go Race | `testcheck.sh go race` | Go tests and race-enabled binaries | Isolated completion inventory and Go cache | Go | Supported CGO host | Full
-Go Coverage | `coveragecheck.sh verify` | Policy and package tests | Isolated temporary profiles | None | Host | Full
+Go Coverage | `testcheck.sh go standard` then `coveragecheck.sh enforce` | Standard tests and package floors | Isolated atomic profile | None | Host | Full
 Go Fuzz | `fuzz_smoke` | Discovered fuzz targets and seed corpora | Go fuzz and build caches | Go | Host | Full
 Go Vulnerabilities | `govulncheck` | Go dependency graph and vulnerability database | Go vulnerability cache | Go | Networked host | Full
 Rust Static | Cargo check, format and clippy | Workspace, worker source and lockfile | Cargo target and registry state | Cargo | Host | Quick and full
@@ -208,6 +208,12 @@ lines with Bash built-ins. Three equivalent warm Windows observations fell
 from 30.0, 30.1 and 31.2 seconds to 0.83, 0.87 and 0.90 seconds. Diff, repair,
 cache and malformed-header behaviour remains owned by the hostile licence
 family.
+
+Standard Go tests now emit the atomic coverage profile consumed by the package
+floor check. On the same Windows host, separate warm standard and coverage
+executions took 51.1 and 64.2 seconds. The combined execution and enforcement
+took 60.4 and 1.8 seconds, removing one complete package-test pass while
+retaining shuffled terminal-outcome and package-floor checks.
 
 Fuzz discovery previously ran `go test -list` once per package. The governed
 test inventory now emits its fuzz-only view from one bounded `go list` pass.

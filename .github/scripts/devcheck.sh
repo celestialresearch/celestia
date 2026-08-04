@@ -47,6 +47,13 @@ esac
 check_names=()
 check_statuses=()
 check_outputs=()
+coverage_profile=
+
+cleanup_devcheck() {
+  [[ -z "$coverage_profile" ]] || rm -f -- "$coverage_profile"
+}
+trap cleanup_devcheck EXIT
+trap 'exit 130' HUP INT TERM
 
 section() {
   printf '\n==> %s\n' "$1"
@@ -381,9 +388,14 @@ if has_go_packages; then
     else
       skip_check 'Go Platform Lint' 'Owned by Linux AMD64'
     fi
-    run_check 'Go Test' bash ./.github/scripts/testcheck.sh go standard
+    coverage_profile=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage.XXXXXX")
+    run_check 'Go Test' bash ./.github/scripts/testcheck.sh go standard \
+      "$coverage_profile"
+    run_check 'Go Coverage' bash ./.github/scripts/coveragecheck.sh enforce \
+      "$coverage_profile"
+    rm -f -- "$coverage_profile"
+    coverage_profile=
     run_check 'Go Race' bash ./.github/scripts/testcheck.sh go race
-    run_check 'Go Coverage' bash ./.github/scripts/coveragecheck.sh verify
     run_check 'Go Fuzz' fuzz_smoke
     run_check 'Go Vulnerabilities' go tool govulncheck ./...
   fi

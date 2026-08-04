@@ -17,9 +17,10 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
 policy=.github/.coverage
 max_failure_output_bytes=65536
+max_profile_bytes=67108864
 
 usage() {
-  printf 'Usage: %s verify\n' "${0##*/}" >&2
+  printf 'Usage: %s verify|enforce PROFILE\n' "${0##*/}" >&2
 }
 
 load_policy() {
@@ -100,6 +101,18 @@ create_report() {
     rm -f -- "$package_file"
     return 1
   fi
+  report_profile "$profile" "$report" "$package_file" || {
+    rm -f -- "$package_file"
+    return 1
+  }
+  rm -f -- "$package_file"
+}
+
+report_profile() {
+  local profile=$1
+  local report=$2
+  local package_file=$3
+
   awk -v package_file="$package_file" '
     BEGIN {
       while ((getline package < package_file) > 0) {
@@ -139,11 +152,7 @@ create_report() {
       }
       exit failed
     }
-  ' "$profile" >"$report" || {
-    rm -f -- "$package_file"
-    return 1
-  }
-  rm -f -- "$package_file"
+  ' "$profile" >"$report" || return 1
   sort -o "$report" "$report"
 }
 
@@ -210,7 +219,45 @@ run_check() {
   trap - EXIT
 }
 
-if (($# != 1)); then
+enforce_profile() (
+  local package_file
+  local packages
+  local profile=$1
+  local profile_mode
+  local report
+
+  [[ -f "$profile" && ! -L "$profile" ]] || {
+    printf 'coverage profile is unavailable\n' >&2
+    return 1
+  }
+  [[ $(wc -c <"$profile") -le $max_profile_bytes ]] || {
+    printf 'coverage profile exceeds the size limit\n' >&2
+    return 1
+  }
+  IFS= read -r profile_mode <"$profile" || profile_mode=
+  [[ "$profile_mode" == 'mode: atomic' ]] || {
+    printf 'coverage profile is not atomic\n' >&2
+    return 1
+  }
+  packages=$(go list -f '{{if or .GoFiles .CgoFiles}}{{.ImportPath}}{{end}}' \
+    ./... | sed '/^[[:space:]]*$/d') || {
+    printf 'coverage package inventory failed\n' >&2
+    return 1
+  }
+  [[ -n "$packages" ]] || {
+    printf 'No Go packages exist\n'
+    return
+  }
+  report=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage-report.XXXXXX")
+  package_file=$report.packages
+  trap 'rm -f -- "$report" "$package_file"' EXIT
+  printf '%s\n' "$packages" >"$package_file"
+  report_profile "$profile" "$report" "$package_file"
+  enforce_report "$report"
+  rm -f -- "$report" "$package_file"
+)
+
+if (($# < 1 || $# > 2)); then
   usage
   exit 2
 fi
@@ -218,7 +265,12 @@ fi
 load_policy
 case "$1" in
 verify)
+  (($# == 1)) || { usage; exit 2; }
   run_check
+  ;;
+enforce)
+  (($# == 2)) || { usage; exit 2; }
+  enforce_profile "$2"
   ;;
 *)
   usage

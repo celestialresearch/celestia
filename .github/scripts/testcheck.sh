@@ -20,6 +20,11 @@ profile=${2:-}
 fixture_mode=${3:-}
 verification_repo=${4:-}
 verification_prefix=${5:-}
+go_coverage_profile=
+if [[ "$mode" == go && "$profile" == standard && "$fixture_mode" != --fixture ]]; then
+  go_coverage_profile=$fixture_mode
+  fixture_mode=${4:-}
+fi
 cargo_bin=cargo
 if [[ "$mode" == rust && "$fixture_mode" == --fixture ]]; then
   cargo_bin=${CARGO_BIN:-cargo}
@@ -66,6 +71,7 @@ shell_path() {
 }
 
 go_tests() {
+  local coverage_profile=$go_coverage_profile
   local finished
   local arguments=()
   local missing
@@ -73,7 +79,15 @@ go_tests() {
 
   case "$profile" in
   quick) arguments=(-p=2) ;;
-  standard) arguments=(-p=2 -count=1 -shuffle=on) ;;
+  standard)
+    arguments=(-p=2 -count=1 -shuffle=on)
+    if [[ -n "$coverage_profile" ]]; then
+      case "$(uname -s 2>/dev/null)" in
+      CYGWIN*) coverage_profile=$(cygpath -w "$coverage_profile") ;;
+      esac
+      arguments+=(-covermode=atomic "-coverprofile=$coverage_profile")
+    fi
+    ;;
   race) arguments=(-p=2 -race -count=1 -shuffle=on) ;;
   *)
     printf 'Usage: testcheck.sh go quick|race|standard\n' >&2
@@ -133,7 +147,11 @@ go_tests() {
   printf '        %-34s[PASS] %ss\n' 'Go Test Execution' \
     "$((finished - started))"
   LC_ALL=C sort -u "$temporary/observed" -o "$temporary/observed"
-  missing=$(LC_ALL=C comm -23 "$temporary/expected" "$temporary/observed")
+  if ! missing=$(LC_ALL=C comm -23 \
+    "$temporary/expected" "$temporary/observed"); then
+    printf 'Go test inventory comparison failed\n' >&2
+    return 1
+  fi
   if [[ -n "$missing" ]]; then
     printf 'Go tests lacked terminal outcomes:\n%s\n' "$missing" >&2
     return 1
