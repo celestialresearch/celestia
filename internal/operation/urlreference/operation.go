@@ -15,13 +15,7 @@ import (
 	"errors"
 
 	"celestia.research/celestia/internal/execution/supervision"
-	"celestia.research/celestia/internal/operation/urlreference/attempt"
 	"celestia.research/celestia/internal/operation/urlreference/protocol"
-)
-
-const (
-	VerifierID      = attemptstore.URLVerifierID
-	VerifierVersion = attemptstore.URLVerifierVersion
 )
 
 var (

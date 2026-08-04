@@ -19,6 +19,7 @@ import (
 
 	"celestia.research/celestia/internal/execution/supervision"
 	"celestia.research/celestia/internal/operation/urlreference/admission"
+	"celestia.research/celestia/internal/operation/urlreference/attempt"
 	"celestia.research/celestia/internal/operation/urlreference/protocol"
 	"celestia.research/celestia/internal/operation/urlreference/transform"
 )
@@ -48,8 +49,8 @@ func evaluateResponse(
 		Response:    &response,
 		Diagnostics: diagnostics,
 		Verification: Verification{
-			VerifierID:      VerifierID,
-			VerifierVersion: VerifierVersion,
+			VerifierID:      attemptstore.URLVerifierID,
+			VerifierVersion: attemptstore.URLVerifierVersion,
 		},
 	}
 	expected, err := urlreference.Transform(
