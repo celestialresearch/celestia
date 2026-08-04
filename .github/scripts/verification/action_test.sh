@@ -21,6 +21,7 @@ main() (
   local devcheck_profile
   local fake_bin
   local indexed_path
+  local inventory
   local metadata
   local mode
   local output
@@ -38,8 +39,10 @@ main() (
   trap 'exit 1' HUP INT TERM
 
   repo_dir="$work_dir/repo"
+  inventory="$work_dir/repo-inventory"
   mkdir -p "$repo_dir"
-  git -C "$root" archive --format=tar HEAD | tar -xf - -C "$repo_dir"
+  git -C "$root" ls-files -co --exclude-standard -z >"$inventory"
+  tar -C "$root" --null -T "$inventory" -cf - | tar -xf - -C "$repo_dir"
   git -C "$repo_dir" init -q
   git -C "$repo_dir" config core.autocrlf false
   git -C "$repo_dir" add -A
