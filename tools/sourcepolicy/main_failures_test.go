@@ -80,7 +80,9 @@ func TestRunChecksStopsAtFirstFailure(t *testing.T) {
 		{"First", func(io.Writer) int { runs++; return 0 }},
 		{"Second", func(output io.Writer) int {
 			runs++
-			_, _ = fmt.Fprintln(output, "second failed")
+			if _, err := fmt.Fprintln(output, "second failed"); err != nil {
+				return 1
+			}
 			return 7
 		}},
 		{"Third", func(io.Writer) int { runs++; return 0 }},
@@ -108,7 +110,9 @@ func TestRunChecksRejectsOutputFailure(t *testing.T) {
 		t.Fatalf("runChecks output failure = %d, want 1", code)
 	}
 	checks[0].run = func(output io.Writer) int {
-		_, _ = fmt.Fprint(output, "diagnostic")
+		if _, err := fmt.Fprint(output, "diagnostic"); err != nil {
+			return 1
+		}
 		return 1
 	}
 	if code := runChecks(io.Discard, failingWriter{}, checks); code != 1 {
