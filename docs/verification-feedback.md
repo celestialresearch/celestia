@@ -220,6 +220,10 @@ The green `b34f75d` run spent 317 seconds on that campaign before beginning the
 remaining Product controls; the independent job removes that serial dependency
 without changing local full verification or the campaign's family inventory.
 
+Go linting owns `govet` and its deliberately defective fixture. The separate
+`go vet` invocation repeated the same analyser immediately before that gate and
+was removed; `govet` remains blocking through the pinned linter configuration.
+
 Fuzz discovery previously ran `go test -list` once per package. The governed
 test inventory now emits its fuzz-only view from one bounded `go list` pass.
 One equivalent warm comparison fell from 20.3 seconds to 3.5 seconds. Active

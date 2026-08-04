@@ -313,6 +313,7 @@ package linterfixture
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 )
 
 type owner struct{}
@@ -353,6 +354,7 @@ func Use() {
 	_, _ = maybe()
 	_ = unused(1)
 	encode()
+	fmt.Printf("%d", "not a number")
 	café()
 }
 EOF
@@ -379,7 +381,7 @@ if [[ "$status" -eq 0 ]]; then
   return 1
 fi
 for linter in \
-  asciicheck contextcheck errcheck godox nilnil recvcheck tparallel unparam; do
+  asciicheck contextcheck errcheck godox govet nilnil recvcheck tparallel unparam; do
   if ! grep -Fq "($linter)" <<<"$output"; then
     printf '%s did not reject its defective fixture:\n%s\n' \
       "$linter" "$output" >&2

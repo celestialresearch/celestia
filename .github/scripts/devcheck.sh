@@ -373,7 +373,6 @@ if has_go_packages; then
   fi
   run_no_output 'Go Fix' go fix -diff ./...
   run_no_output 'Go Format' go tool golangci-lint fmt --diff
-  run_check 'Go Vet' go vet ./...
   run_check 'Go Lint' go tool golangci-lint run
   if [[ "$profile" == quick ]]; then
     run_check 'Go Test' bash ./.github/scripts/testcheck.sh go quick
