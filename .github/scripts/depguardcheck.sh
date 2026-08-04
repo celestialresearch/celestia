@@ -210,6 +210,7 @@ prepare_suite() {
   local suite_root=$1
   mkdir -p "$suite_root"
   cp "$root/.golangci.yml" "$suite_root/.golangci.yml"
+  printf '\nissues:\n  generated: disable\n' >>"$suite_root/.golangci.yml"
   printf 'module celestia.research/celestia\n\ngo %s\n' "$go_version" >"$suite_root/go.mod"
 }
 
