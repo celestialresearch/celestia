@@ -67,6 +67,23 @@ grep -Fq 'Invalid platform-lint selection: invalid' <<<"$output" || {
 set +e
 output=$(
   cd "$root" &&
+    DEVCHECK_GO_CAMPAIGN=invalid DEVCHECK_PROFILE=config \
+      bash .github/scripts/devcheck.sh 2>&1
+)
+status=$?
+set -e
+[[ "$status" -eq 2 ]] || {
+  printf 'devcheck accepted an invalid Go campaign selection\n' >&2
+  return 1
+}
+grep -Fq 'Invalid Go campaign selection: invalid' <<<"$output" || {
+  printf 'Go campaign rejection omitted the diagnostic:\n%s\n' "$output" >&2
+  return 1
+}
+
+set +e
+output=$(
+  cd "$root" &&
     GOFLAGS='-run=^$' DEVCHECK_PROFILE=config \
       bash .github/scripts/devcheck.sh 2>&1
 )

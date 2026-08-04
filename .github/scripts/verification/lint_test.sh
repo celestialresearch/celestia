@@ -220,6 +220,18 @@ if grep -Fq "self-test: 'true'" "$root/.github/workflows/main.yml" ||
   printf 'main verification does not isolate its script campaign\n' >&2
   return 1
 fi
+grep -Fq "DEVCHECK_GO_CAMPAIGN: 'false'" \
+  "$root/.github/workflows/main.yml" || {
+  printf 'main verification does not delegate the Go campaign\n' >&2
+  return 1
+}
+[[ $(grep -Fc 'bash ./.github/scripts/testcheck.sh go race' \
+  "$root/.github/workflows/main.yml") -eq 1 &&
+  $(grep -Fc 'bash ./.github/scripts/testcheck.sh go fuzz' \
+    "$root/.github/workflows/main.yml") -eq 1 ]] || {
+  printf 'main verification does not own one complete Go campaign\n' >&2
+  return 1
+}
 mkdir -p "$work_dir/type-assertion"
 cp "$root/.golangci.yml" "$work_dir/.golangci.yml"
 cp "$root/.golangci.yml" "$work_dir/type-assertion/.golangci.yml"

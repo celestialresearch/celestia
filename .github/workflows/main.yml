@@ -111,6 +111,7 @@ jobs:
         shell: bash
         env:
           DEVCHECK_CURRENCY: ${{ matrix.currency }}
+          DEVCHECK_GO_CAMPAIGN: 'false'
           DEVCHECK_OUTPUT: failed
           DEVCHECK_PLATFORM_LINT: ${{ matrix.platform-lint }}
           DEVCHECK_PROFILE: ${{ needs.classify.outputs.full == 'true' && 'full' || 'quick' }}
@@ -118,6 +119,56 @@ jobs:
           DEVCHECK_SUPPLY_CHAIN: ${{ matrix.supply-chain }}
           GOFLAGS: ${{ matrix.go-flags }}
         run: bash ./.github/scripts/devcheck.sh
+
+  go-campaign:
+    name: Go Campaign (${{ matrix.name }})
+    needs: classify
+    if: needs.classify.outputs.full == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux AMD64
+            runner: ubuntu-24.04
+            go-flags: ''
+          - name: Linux ARM64
+            runner: ubuntu-24.04-arm
+            go-flags: ''
+          - name: Windows AMD64
+            runner: windows-2025
+            go-flags: -p=1
+          - name: macOS ARM64
+            runner: macos-15
+            go-flags: ''
+          - name: macOS Intel
+            runner: macos-15-intel
+            go-flags: ''
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Setup Rust
+        uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
+        with:
+          tool: rust@1.97.1
+      - name: Verify Race
+        shell: bash
+        env:
+          GOFLAGS: ${{ matrix.go-flags }}
+        run: bash ./.github/scripts/testcheck.sh go race
+      - name: Verify Fuzz
+        shell: bash
+        env:
+          GOFLAGS: ${{ matrix.go-flags }}
+        run: bash ./.github/scripts/testcheck.sh go fuzz
 
   verification-scripts:
     name: Verification Scripts

@@ -29,6 +29,7 @@ export GOENV=off
 
 profile=${DEVCHECK_PROFILE:-full}
 platform_lint=${DEVCHECK_PLATFORM_LINT:-true}
+go_campaign=${DEVCHECK_GO_CAMPAIGN:-true}
 case "$profile" in
   config | full | quick | shell) ;;
   *)
@@ -40,6 +41,13 @@ case "$platform_lint" in
   false | true) ;;
   *)
     printf 'Invalid platform-lint selection: %s\n' "$platform_lint" >&2
+    exit 2
+    ;;
+esac
+case "$go_campaign" in
+  false | true) ;;
+  *)
+    printf 'Invalid Go campaign selection: %s\n' "$go_campaign" >&2
     exit 2
     ;;
 esac
@@ -211,51 +219,6 @@ check_shell() (
   return "$status"
 )
 
-discover_fuzz_targets() {
-  go run ./tools/sourcepolicy go-fuzz-inventory
-}
-
-fuzz_smoke() {
-  local count=0
-  local discovery_output
-  local discovery_started
-  local finished
-  local fuzz_time=${DEVCHECK_FUZZTIME:-1000x}
-  local package
-  local started
-  local target
-  local timeout=${DEVCHECK_FUZZ_TIMEOUT:-60s}
-
-  discovery_started=$(date +%s)
-  if ! discovery_output=$(discover_fuzz_targets); then
-    printf 'Go fuzz-target discovery failed.\n'
-    return 1
-  fi
-  finished=$(date +%s)
-  printf '        %-34s[PASS] %ss\n' 'Fuzz Discovery' \
-    "$((finished - discovery_started))"
-  if [[ -z "$discovery_output" ]]; then
-    printf 'No Go fuzz targets discovered.\n'
-    return
-  fi
-  while IFS= read -r entry; do
-    [[ -n "$entry" ]] || continue
-    count=$((count + 1))
-    IFS=$'\t' read -r package target <<<"$entry"
-    started=$(date +%s)
-    if go test -run '^$' -fuzz "^${target}$" -fuzztime "$fuzz_time" \
-      -timeout "$timeout" "$package"; then
-      printf '        %-34s[PASS] %ss\n' "$target" \
-        "$(($(date +%s) - started))"
-    else
-      printf '        %-34s[FAIL] %ss\n' "$target" \
-        "$(($(date +%s) - started))"
-      return 1
-    fi
-  done <<<"$discovery_output"
-  printf 'Discovered %s Go fuzz target(s).\n' "$count"
-}
-
 finish() {
   local failed=0
   local index
@@ -394,8 +357,13 @@ if has_go_packages; then
       "$coverage_profile"
     rm -f -- "$coverage_profile"
     coverage_profile=
-    run_check 'Go Race' bash ./.github/scripts/testcheck.sh go race
-    run_check 'Go Fuzz' fuzz_smoke
+    if [[ "$go_campaign" == true ]]; then
+      run_check 'Go Race' bash ./.github/scripts/testcheck.sh go race
+      run_check 'Go Fuzz' bash ./.github/scripts/testcheck.sh go fuzz
+    else
+      skip_check 'Go Race' 'Owned by Go campaign'
+      skip_check 'Go Fuzz' 'Owned by Go campaign'
+    fi
     run_check 'Go Vulnerabilities' go tool govulncheck ./...
   fi
 else

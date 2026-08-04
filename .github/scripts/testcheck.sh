@@ -158,6 +158,46 @@ go_tests() {
   fi
 }
 
+go_fuzz() {
+  local count=0
+  local discovery_output
+  local discovery_started
+  local entry
+  local fuzz_time=${DEVCHECK_FUZZTIME:-1000x}
+  local package
+  local started
+  local target
+  local timeout=${DEVCHECK_FUZZ_TIMEOUT:-60s}
+
+  discovery_started=$(date +%s)
+  if ! discovery_output=$(go run ./tools/sourcepolicy go-fuzz-inventory); then
+    printf 'Go fuzz-target discovery failed.\n'
+    return 1
+  fi
+  printf '        %-34s[PASS] %ss\n' 'Fuzz Discovery' \
+    "$(($(date +%s) - discovery_started))"
+  if [[ -z "$discovery_output" ]]; then
+    printf 'No Go fuzz targets discovered.\n'
+    return
+  fi
+  while IFS= read -r entry; do
+    [[ -n "$entry" ]] || continue
+    count=$((count + 1))
+    IFS=$'\t' read -r package target <<<"$entry"
+    started=$(date +%s)
+    if go test -run '^$' -fuzz "^${target}$" -fuzztime "$fuzz_time" \
+      -timeout "$timeout" "$package"; then
+      printf '        %-34s[PASS] %ss\n' "$target" \
+        "$(($(date +%s) - started))"
+    else
+      printf '        %-34s[FAIL] %ss\n' "$target" \
+        "$(($(date +%s) - started))"
+      return 1
+    fi
+  done <<<"$discovery_output"
+  printf 'Discovered %s Go fuzz target(s).\n' "$count"
+}
+
 rust_tests() {
   local arguments=(test --workspace --all-features --all-targets --locked --no-run --message-format=json)
   local directory
@@ -320,12 +360,18 @@ EOF
 }
 
 case "$mode" in
-go) go_tests ;;
+go)
+  if [[ "$profile" == fuzz ]]; then
+    go_fuzz
+  else
+    go_tests
+  fi
+  ;;
 rust) rust_tests ;;
 verification) verification_tests ;;
 action) action_tests ;;
 *)
-  printf 'Usage: testcheck.sh go quick|race|standard | rust | verification FAMILY_DIR EXECUTED | action FAMILY_DIR EXECUTED REPO PREFIX\n' >&2
+  printf 'Usage: testcheck.sh go fuzz|quick|race|standard | rust | verification FAMILY_DIR EXECUTED | action FAMILY_DIR EXECUTED REPO PREFIX\n' >&2
   exit 2
   ;;
 esac
