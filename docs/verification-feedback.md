@@ -26,12 +26,12 @@ Modules | `modcheck.sh verify` | Go and Cargo manifests and lockfiles | Isolated
 Currency Exceptions | `currencycheck.sh verify` | `.github/.currency` and governed manifests | Temporary inventories | None | Host | Full and quick profiles
 Licence Headers | `licencecheck.sh verify` | Eligible tracked and untracked source | Temporary inventories | Optional digest cache | Host | Full and quick profiles
 Currency | Module, action and version currency commands | Manifests, actions, tools and remote release state | `.cache` entries and temporary inventories | Bounded repository caches | Networked host | Selected full jobs and nightly
-Go Build and Static | Go build, fix, format, vet and lint | Go source, build tags and linter policy | Go and linter caches | Go and linter caches | Host | Quick or full according to stage
+Go Build and Static | Go build, fix, format and lint | Go source, build tags and linter policy | Go and linter caches | Go and linter caches | Host | Quick or full according to stage
 Go Platform Lint | `platformlint.sh` | Go source and `.golangci.yml` | Go and linter caches | Shared sequential caches | Linux, AIX and Plan 9 targets | Full; Linux AMD64 CI owner
 Go Test | `testcheck.sh go` | Compiled test inventory and Go source | Isolated completion inventory and Go cache | Go | Host | Quick or full
-Go Race | `testcheck.sh go race` | Go tests and race-enabled binaries | Isolated completion inventory and Go cache | Go | Supported CGO host | Full
+Go Race | `testcheck.sh go race` | Go tests and race-enabled binaries | Isolated completion inventory and Go cache | Go | Supported CGO host | Local full and blocking CI campaign
 Go Coverage | `testcheck.sh go standard` then `coveragecheck.sh enforce` | Standard tests and package floors | Isolated atomic profile | None | Host | Full
-Go Fuzz | `fuzz_smoke` | Discovered fuzz targets and seed corpora | Go fuzz and build caches | Go | Host | Full
+Go Fuzz | `testcheck.sh go fuzz` | Discovered fuzz targets and seed corpora | Go fuzz and build caches | Go | Host | Local full and blocking CI campaign
 Go Vulnerabilities | `govulncheck` | Go dependency graph and vulnerability database | Go vulnerability cache | Go | Networked host | Full
 Rust Static | Cargo check, format and clippy | Workspace, worker source and lockfile | Cargo target and registry state | Cargo | Host | Quick and full
 Rust Test | `rustcheck.sh tests` | Workspace tests and executable inventory | Cargo target plus isolated completion inventory | Cargo | Host | Quick and full
