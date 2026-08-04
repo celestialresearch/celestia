@@ -143,25 +143,66 @@ has_go_packages() {
 }
 
 check_config() {
-  local script_list
-  local scripts=()
-
   run_subcheck 'Go Lint Config' go tool golangci-lint config verify || return
   run_subcheck 'Action Policy' \
     bash ./.github/scripts/actioncheck.sh verify || return
   run_subcheck 'Workflow Syntax' go tool actionlint || return
   run_subcheck 'Rust Config' \
     bash ./.github/scripts/rustcheck.sh config || return
+  run_subcheck 'Shell Syntax and Style' check_shell || return
+}
+
+check_shell() (
+  local base=()
+  local finished
+  local output_dir
+  local pid
+  local pids=()
+  local script_list
+  local status=0
+  local verification=()
+
   script_list=$(find .github/scripts -type f -name '*.sh' -print | sort) ||
     return
   while IFS= read -r script; do
     [[ -n "$script" ]] || continue
-    scripts+=("$script")
+    case "$script" in
+      .github/scripts/verification/*)
+        verification+=("$script")
+        ;;
+      .github/scripts/actioncheck/* | .github/scripts/*.sh)
+        base+=("$script")
+        ;;
+      *)
+        printf 'Unassigned shell source: %s\n' "$script" >&2
+        return 1
+        ;;
+    esac
   done <<<"$script_list"
-  ((${#scripts[@]} > 0)) || return 1
-  run_subcheck 'Shell Syntax and Style' \
-    go tool shellcheck --severity=style "${scripts[@]}" || return
-}
+  ((${#base[@]} > 0 && ${#verification[@]} > 0)) || return 1
+
+  # Root tests source the verification fixture, so both analysis groups need it.
+  base+=(.github/scripts/verification/fixture.sh)
+  output_dir=$(mktemp -d "${TMPDIR:-/tmp}/celestia-shellcheck.XXXXXX") ||
+    return 1
+  trap 'rm -rf -- "$output_dir"' EXIT
+  trap 'exit 1' HUP INT TERM
+
+  go tool shellcheck --severity=style "${base[@]}" \
+    >"$output_dir/base" 2>&1 &
+  pids+=("$!")
+  go tool shellcheck --severity=style "${verification[@]}" \
+    >"$output_dir/verification" 2>&1 &
+  pids+=("$!")
+
+  for pid in "${pids[@]}"; do
+    wait "$pid" || status=1
+  done
+  for finished in base verification; do
+    [[ ! -s "$output_dir/$finished" ]] || cat -- "$output_dir/$finished"
+  done
+  return "$status"
+)
 
 discover_fuzz_targets() {
   go run ./tools/sourcepolicy go-fuzz-inventory

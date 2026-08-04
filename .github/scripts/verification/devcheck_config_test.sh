@@ -111,6 +111,56 @@ if [[ "$status" -ne 0 || ! -e "$work_dir/policy" ||
   printf 'bounded devcheck did not run only policy:\n%s\n' "$output" >&2
   return 1
 fi
+
+rm -- "$fake_bin/bash"
+real_go=$(command -v go)
+cat >"$fake_bin/go" <<'EOF'
+#!/bin/sh
+if [ "$1" = tool ] && [ "$2" = shellcheck ]; then
+  shift 2
+  printf '%s\n' "$*" >>"$CELESTIA_SHELLCHECK_LOG"
+  case "$*" in
+    *"$CELESTIA_SHELLCHECK_FAILURE"*)
+      printf 'controlled ShellCheck failure: %s\n' \
+        "$CELESTIA_SHELLCHECK_FAILURE" >&2
+      exit 1
+      ;;
+  esac
+  exit
+fi
+exec "$CELESTIA_REAL_GO" "$@"
+EOF
+chmod +x "$fake_bin/go"
+for failed_path in \
+  .github/scripts/actioncheck/cache_test.sh \
+  .github/scripts/verification/coverage_test.sh; do
+  shellcheck_log="$work_dir/shellcheck.log"
+  : >"$shellcheck_log"
+  set +e
+  output=$(
+    cd "$root" &&
+      CELESTIA_REAL_GO="$real_go" \
+      CELESTIA_SHELLCHECK_FAILURE="$failed_path" \
+      CELESTIA_SHELLCHECK_LOG="$shellcheck_log" \
+      PATH="$fake_bin:$PATH" DEVCHECK_PROFILE=config \
+        "$real_bash" .github/scripts/devcheck.sh 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Config accepted a failed ShellCheck group: %s\n' "$failed_path" >&2
+    return 1
+  }
+  grep -Fq "controlled ShellCheck failure: $failed_path" <<<"$output" || {
+    printf 'Config omitted the ShellCheck failure: %s\n%s\n' \
+      "$failed_path" "$output" >&2
+    return 1
+  }
+  [[ $(wc -l <"$shellcheck_log") -eq 2 ]] || {
+    printf 'Config did not run both ShellCheck groups: %s\n' "$failed_path" >&2
+    return 1
+  }
+done
 )
 
 main

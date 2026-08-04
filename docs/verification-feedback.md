@@ -196,6 +196,13 @@ After source-policy consolidation, one equivalent warm Policy observation was
 Test Skips and less than one second for its other four checks. This single
 observation demonstrates removed orchestration but is not a stable benchmark.
 
+ShellCheck now analyses two dependency-complete groups concurrently. The root
+and action-policy group includes the shared verification fixture; the
+verification group retains its complete fixture closure. On the same Windows
+host, one sequential warm observation took 62 seconds and the two-group form
+took 22 seconds. Three complete warm Config observations after the change took
+33.3, 34.9 and 36.3 seconds. Both groups have controlled failure evidence.
+
 Fuzz discovery previously ran `go test -list` once per package. The governed
 test inventory now emits its fuzz-only view from one bounded `go list` pass.
 One equivalent warm comparison fell from 20.3 seconds to 3.5 seconds. Active
