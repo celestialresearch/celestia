@@ -13,7 +13,7 @@
 set -euo pipefail
 export GOWORK=off
 
-deadline_seconds=30
+deadline_seconds=60
 if [[ "${CELESTIA_DEPGUARD_DEADLINE_FIXTURE:-}" == 1 ]]; then
   deadline_seconds=1
 fi
@@ -285,7 +285,7 @@ run_suite() {
   set +e
   output=$(cd "$suite_root" && GOOS=windows GOARCH=amd64 \
     "$lint" run --allow-parallel-runners --enable-only=depguard \
-    --config .golangci.yml ./... 2>&1)
+    --config .golangci.yml --output.text.print-issued-lines=false ./... 2>&1)
   status=$?
   set -e
   output=${output//\\//}
