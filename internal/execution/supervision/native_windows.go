@@ -287,10 +287,6 @@ func createJobWith(
 	return job, true, nil
 }
 
-func failedJob(job windows.Handle, operationErr error) (windows.Handle, bool, error) {
-	return failedJobWith(job, operationErr, windows.CloseHandle)
-}
-
 func failedJobWith(
 	job windows.Handle,
 	operationErr error,

@@ -65,7 +65,7 @@ func TestJobCloseReportsFailure(t *testing.T) {
 		t.Fatalf("close event: %v", err)
 	}
 	operationErr := errors.New("injected job configuration failure")
-	job, complete, err := failedJob(handle, operationErr)
+	job, complete, err := failedJobWith(handle, operationErr, windows.CloseHandle)
 	if job != 0 || complete || !errors.Is(err, operationErr) {
 		t.Fatalf("job=%v complete=%t error=%v", job, complete, err)
 	}
