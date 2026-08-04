@@ -57,35 +57,30 @@ jobs:
           - name: Linux AMD64
             runner: ubuntu-24.04
             currency: 'true'
-            self-test: 'true'
             platform-lint: 'true'
             supply-chain: 'true'
             go-flags: ''
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
             currency: 'false'
-            self-test: 'false'
             platform-lint: 'false'
             supply-chain: 'false'
             go-flags: ''
           - name: Windows AMD64
             runner: windows-2025
             currency: 'false'
-            self-test: 'false'
             platform-lint: 'false'
             supply-chain: 'false'
             go-flags: -p=1
           - name: macOS ARM64
             runner: macos-15
             currency: 'false'
-            self-test: 'false'
             platform-lint: 'false'
             supply-chain: 'false'
             go-flags: ''
           - name: macOS Intel
             runner: macos-15-intel
             currency: 'false'
-            self-test: 'false'
             platform-lint: 'false'
             supply-chain: 'false'
             go-flags: ''
@@ -119,10 +114,36 @@ jobs:
           DEVCHECK_OUTPUT: failed
           DEVCHECK_PLATFORM_LINT: ${{ matrix.platform-lint }}
           DEVCHECK_PROFILE: ${{ needs.classify.outputs.full == 'true' && 'full' || 'quick' }}
-          DEVCHECK_SELF_TEST: ${{ matrix.self-test }}
+          DEVCHECK_SELF_TEST: 'false'
           DEVCHECK_SUPPLY_CHAIN: ${{ matrix.supply-chain }}
           GOFLAGS: ${{ matrix.go-flags }}
         run: bash ./.github/scripts/devcheck.sh
+
+  verification-scripts:
+    name: Verification Scripts
+    needs: classify
+    if: needs.classify.outputs.full == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Setup Rust
+        uses: taiki-e/install-action@67729d5c413db75907f0ad1e39bb04b9c868ff60 # v2.85.7
+        with:
+          tool: |
+            rust@1.97.1 + rustfmt + clippy + llvm-tools-preview
+            cargo-llvm-cov@0.8.7
+      - name: Verify
+        shell: bash
+        run: bash ./.github/scripts/verification_test.sh
 
   verify-bounded:
     name: Verify (Bounded)

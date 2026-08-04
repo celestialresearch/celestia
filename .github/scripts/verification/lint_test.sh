@@ -214,11 +214,12 @@ grep -Fq "DEVCHECK_PROFILE: \${{ needs.classify.outputs.full == 'true' && 'full'
   printf 'main verification does not select quick conservatively\n' >&2
   return 1
 }
-[[ $(grep -Fc "self-test: 'true'" \
-  "$root/.github/workflows/main.yml") -eq 1 ]] || {
-  printf 'main verification has more than one self-test owner\n' >&2
+if grep -Fq "self-test: 'true'" "$root/.github/workflows/main.yml" ||
+  [[ $(grep -Fc 'bash ./.github/scripts/verification_test.sh' \
+    "$root/.github/workflows/main.yml") -ne 1 ]]; then
+  printf 'main verification does not isolate its script campaign\n' >&2
   return 1
-}
+fi
 mkdir -p "$work_dir/type-assertion"
 cp "$root/.golangci.yml" "$work_dir/.golangci.yml"
 cp "$root/.golangci.yml" "$work_dir/type-assertion/.golangci.yml"
