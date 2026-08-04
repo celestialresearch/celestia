@@ -24,7 +24,7 @@ func FuzzDecodeResponse(f *testing.F) {
 	f.Add([]byte(`{"a":[{"b":1}]}`), 0)
 
 	f.Fuzz(func(t *testing.T, data []byte, exitCode int) {
-		response, err := DecodeResponse(data, correlation, exitCode)
+		response, err := decodeResponse(data, correlation, exitCode)
 		if err != nil {
 			return
 		}
@@ -32,7 +32,7 @@ func FuzzDecodeResponse(f *testing.F) {
 		if err != nil {
 			t.Fatalf("marshal accepted response: %v", err)
 		}
-		if _, err := DecodeResponse(encoded, correlation, exitCode); err != nil {
+		if _, err := decodeResponse(encoded, correlation, exitCode); err != nil {
 			t.Fatalf("round-trip response rejected: %v", err)
 		}
 	})

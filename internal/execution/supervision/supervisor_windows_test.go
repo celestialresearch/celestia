@@ -119,7 +119,9 @@ func TestSupervisorRunsWorker(t *testing.T) {
 	if outcome.Status != supervision.Completed {
 		t.Fatalf("run worker: status=%s error=%v stderr=%q", outcome.Status, outcome.Err, outcome.Stderr)
 	}
-	if _, err := workerprotocol.DecodeResponse(outcome.Stdout, correlation(t, accepted), int(outcome.ExitCode)); err != nil {
+	if _, err := workerprotocol.DecodeResponseForRequestCorrelation(
+		outcome.Stdout, accepted.Request, int(outcome.ExitCode),
+	); err != nil {
 		t.Fatalf("validate response: %v", err)
 	}
 	if !outcome.CleanupComplete {
@@ -153,9 +155,9 @@ func TestSupervisorAllowsProtocolExits(t *testing.T) {
 		if outcome.Status != supervision.Completed || outcome.ExitCode != 2 {
 			t.Fatalf("status=%s exit=%d error=%v", outcome.Status, outcome.ExitCode, outcome.Err)
 		}
-		if _, err := workerprotocol.DecodeResponse(
+		if _, err := workerprotocol.DecodeResponseForRequestCorrelation(
 			outcome.Stdout,
-			correlation(t, accepted),
+			accepted.Request,
 			int(outcome.ExitCode),
 		); err != nil {
 			t.Fatalf("decode rejected response: %v", err)
@@ -166,9 +168,9 @@ func TestSupervisorAllowsProtocolExits(t *testing.T) {
 		if outcome.Status != supervision.Completed || outcome.ExitCode != 3 {
 			t.Fatalf("status=%s exit=%d error=%v", outcome.Status, outcome.ExitCode, outcome.Err)
 		}
-		_, err := workerprotocol.DecodeResponse(
+		_, err := workerprotocol.DecodeResponseForRequestCorrelation(
 			outcome.Stdout,
-			correlation(t, accepted),
+			accepted.Request,
 			int(outcome.ExitCode),
 		)
 		if !errors.Is(err, workerprotocol.ErrProtocol) {
@@ -466,29 +468,6 @@ func repositoryRoot() (string, error) {
 		return "", fmt.Errorf("locate repository root: %w", err)
 	}
 	return root, nil
-}
-
-func correlation(t *testing.T, accepted urladmission.Accepted) workerprotocol.Correlation {
-	t.Helper()
-	_, correlation, err := workerprotocol.DecodeRequest(
-		accepted.Frame,
-		admittedAt(t, accepted),
-	)
-	if err != nil {
-		t.Fatalf("decode admitted request: %v", err)
-	}
-	return correlation
-}
-
-func admittedAt(t *testing.T, accepted urladmission.Accepted) time.Time {
-	t.Helper()
-	deadline, err := time.Parse(time.RFC3339Nano, accepted.Request.Deadline)
-	if err != nil {
-		t.Fatalf("parse admitted deadline: %v", err)
-	}
-	return deadline.Add(
-		-time.Duration(workerprotocol.StartTimeoutMS) * time.Millisecond,
-	)
 }
 
 func workerRejectedFrame(t *testing.T, accepted urladmission.Accepted) []byte {

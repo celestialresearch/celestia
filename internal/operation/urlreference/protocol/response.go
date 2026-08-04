@@ -19,7 +19,7 @@ import (
 	"unicode/utf8"
 )
 
-func DecodeResponse(data []byte, correlation Correlation, exitCode int) (Response, error) {
+func decodeResponse(data []byte, correlation Correlation, exitCode int) (Response, error) {
 	if len(data) == 0 || len(data) > MaxResponseBytes || !utf8.Valid(data) {
 		return Response{}, protocolError("response bounds or UTF-8")
 	}
@@ -52,7 +52,7 @@ func DecodeResponseForRequestCorrelation(
 		request.InputMediaType != MediaType {
 		return Response{}, protocolError("request correlation")
 	}
-	return DecodeResponse(data, correlationFor(request), exitCode)
+	return decodeResponse(data, correlationFor(request), exitCode)
 }
 
 func validateResponse(response Response, correlation Correlation, exitCode int) error {

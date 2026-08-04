@@ -33,12 +33,12 @@ func TestDecodeResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	actual, err := DecodeResponse(data, correlation, 0)
+	actual, err := decodeResponse(data, correlation, 0)
 	if err != nil {
-		t.Fatalf("DecodeResponse() error = %v", err)
+		t.Fatalf("decodeResponse() error = %v", err)
 	}
 	if actual.Output == nil || *actual.Output != *response.Output {
-		t.Fatalf("DecodeResponse() output = %v", actual.Output)
+		t.Fatalf("decodeResponse() output = %v", actual.Output)
 	}
 }
 func TestDecodeResponseForRequestCorrelation(t *testing.T) {
@@ -133,9 +133,9 @@ func TestDecodeResponseRejects(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := DecodeResponse([]byte(test.data), correlation, test.exitCode)
+			_, err := decodeResponse([]byte(test.data), correlation, test.exitCode)
 			if !errors.Is(err, ErrProtocol) {
-				t.Fatalf("DecodeResponse() error = %v, want ErrProtocol", err)
+				t.Fatalf("decodeResponse() error = %v, want ErrProtocol", err)
 			}
 		})
 	}
@@ -175,11 +175,11 @@ func TestDecodeResponseRejectsCorrelation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := DecodeResponse(
+			if _, err := decodeResponse(
 				data, test.correlation, 0,
 			); !errors.Is(err, ErrProtocol) {
 				t.Fatalf(
-					"DecodeResponse() error = %v, want ErrProtocol", err,
+					"decodeResponse() error = %v, want ErrProtocol", err,
 				)
 			}
 		})
@@ -230,12 +230,12 @@ func TestDecodeResponseStatuses(t *testing.T) {
 			if test.name == "null message" {
 				data = []byte(strings.Replace(string(data), `"message":"worker failed"`, `"message":null`, 1))
 			}
-			_, err = DecodeResponse(data, correlation, test.exitCode)
+			_, err = decodeResponse(data, correlation, test.exitCode)
 			if test.wantError && !errors.Is(err, ErrProtocol) {
-				t.Fatalf("DecodeResponse() error = %v, want ErrProtocol", err)
+				t.Fatalf("decodeResponse() error = %v, want ErrProtocol", err)
 			}
 			if !test.wantError && err != nil {
-				t.Fatalf("DecodeResponse() error = %v", err)
+				t.Fatalf("decodeResponse() error = %v", err)
 			}
 		})
 	}
@@ -291,12 +291,12 @@ func TestDecodeResponseRejectsDiagnosticFields(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if _, err := DecodeResponse(
+			if _, err := decodeResponse(
 				[]byte(test.data),
 				correlation,
 				3,
 			); !errors.Is(err, ErrProtocol) {
-				t.Fatalf("DecodeResponse() error = %v, want ErrProtocol", err)
+				t.Fatalf("decodeResponse() error = %v, want ErrProtocol", err)
 			}
 		})
 	}

@@ -47,7 +47,7 @@ func BenchmarkDecodeResponse(b *testing.B) {
 	}
 	b.ResetTimer()
 	for range b.N {
-		if _, err := DecodeResponse(response, correlation, 0); err != nil {
+		if _, err := decodeResponse(response, correlation, 0); err != nil {
 			b.Fatalf("decode response: %v", err)
 		}
 	}
