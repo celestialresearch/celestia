@@ -78,7 +78,7 @@ source_policy_files=(
   tools/sourcepolicy/source_open_other.go
   tools/sourcepolicy/source_open_unix.go
   tools/sourcepolicy/source.go
-  tools/sourcepolicy/sourcefiles.go
+  tools/sourcepolicy/source_files.go
   tools/sourcepolicy/suppression.go
   tools/sourcepolicy/testinventory.go
 )
