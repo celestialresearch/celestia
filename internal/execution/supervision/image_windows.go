@@ -132,10 +132,6 @@ func stageImageWith(
 	return image, hash, path, true, nil
 }
 
-func closeFiles(files ...*os.File) error {
-	return closeFilesWith((*os.File).Close, files...)
-}
-
 func closeFilesWith(close func(*os.File) error, files ...*os.File) error {
 	var closeErr error
 	for _, file := range files {

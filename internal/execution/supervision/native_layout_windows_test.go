@@ -48,7 +48,7 @@ func TestNativeHelpersRejectInvalidState(t *testing.T) {
 		if err := file.Close(); err != nil {
 			t.Fatalf("close file: %v", err)
 		}
-		if err := closeFiles(file); err == nil {
+		if err := closeFilesWith((*os.File).Close, file); err == nil {
 			t.Fatal("failed file cleanup was reported complete")
 		}
 	})
