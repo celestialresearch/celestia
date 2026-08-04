@@ -281,7 +281,7 @@ set +e
 output=$(
   cd "$work_dir/type-assertion" &&
     env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-      GOLANGCI_LINT_CACHE="$work_dir/lint-type-bad" \
+      GOLANGCI_LINT_CACHE="$work_dir/lint-cache" \
       "$golangci_lint" run ./... 2>&1
 )
 status=$?
@@ -309,7 +309,7 @@ EOF
 (
   cd "$work_dir/type-assertion"
   env GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-    GOLANGCI_LINT_CACHE="$work_dir/lint-type-good" \
+    GOLANGCI_LINT_CACHE="$work_dir/lint-cache" \
     "$golangci_lint" run ./...
 ) || {
   printf 'errcheck rejected a checked type assertion\n' >&2
@@ -383,7 +383,7 @@ EOF
 set +e
 output=$(
   cd "$work_dir/linter-policy" &&
-    GOLANGCI_LINT_CACHE="$work_dir/lint-policy-bad" \
+    GOLANGCI_LINT_CACHE="$work_dir/lint-cache" \
       "$golangci_lint" run ./... 2>&1
 )
 status=$?
@@ -403,7 +403,7 @@ done
 set +e
 output=$(
   cd "$work_dir/linter-policy" &&
-    GOLANGCI_LINT_CACHE="$work_dir/lint-errchkjson" \
+    GOLANGCI_LINT_CACHE="$work_dir/lint-cache" \
       "$golangci_lint" run \
       --enable-only=errchkjson ./... 2>&1
 )
@@ -479,7 +479,7 @@ func TestParallel(t *testing.T) {
 EOF
 (
   cd "$work_dir/linter-policy"
-  GOLANGCI_LINT_CACHE="$work_dir/lint-policy-good" \
+  GOLANGCI_LINT_CACHE="$work_dir/lint-cache" \
     "$golangci_lint" run ./...
 ) || {
   printf 'admitted linters rejected correct fixtures\n' >&2

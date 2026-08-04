@@ -230,6 +230,11 @@ green `b34f75d` run spent 93 seconds on race and 15 seconds on fuzz for Linux
 AMD64 plus 138 seconds on race and 51 seconds on fuzz for Windows AMD64; the
 campaign matrix removes those serial dependencies from Product verification.
 
+The linter self-test uses one run-local content-addressed analyser cache across
+its sequential defective and correct fixture states. Every state is still
+executed and asserted; changing a fixture from rejected to accepted also proves
+that the shared cache does not retain the earlier source result.
+
 Fuzz discovery previously ran `go test -list` once per package. The governed
 test inventory now emits its fuzz-only view from one bounded `go list` pass.
 One equivalent warm comparison fell from 20.3 seconds to 3.5 seconds. Active
