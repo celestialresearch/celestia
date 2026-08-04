@@ -42,7 +42,6 @@ var (
 	ErrUncommitted = errors.New("attempt staging did not commit")
 	ErrRelease     = errors.New("attempt ownership release failed")
 	ErrPublication = errors.New("attempt publication failed")
-	ErrUnsupported = errors.New("attempt evidence is unsupported")
 )
 
 type Admitted struct {
