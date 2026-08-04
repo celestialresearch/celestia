@@ -124,28 +124,6 @@ verify_header() {
   exec 3<&-
 }
 
-current_header() {
-  local count=0
-  local file=$1
-  local first
-  local line
-
-  IFS= read -r first <"$file" || true
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    if ((count == 0)) && [[ "$first" == '#!'* ]]; then
-      count=$((count + 1))
-      continue
-    fi
-    printf '%s\n' "$line"
-    count=$((count + 1))
-    if [[ "$first" == '#!'* ]]; then
-      ((count <= 10)) || break
-    else
-      ((count < 10)) || break
-    fi
-  done <"$file"
-}
-
 render_header() {
   local line
   local prefix
@@ -205,7 +183,7 @@ diff_files() {
 
   while IFS= read -r -d '' file; do
     style_for "$file"
-    [[ "$(current_header "$file")" != "$(render_header "$style")" ]] || continue
+    verify_header "$file" "$style" && continue
     if has_notice_marker "$file"; then
       printf '%s: malformed proprietary header requires manual correction\n' \
         "$file" >&2
@@ -231,7 +209,7 @@ update_files() {
 
   while IFS= read -r -d '' file; do
     style_for "$file"
-    [[ "$(current_header "$file")" != "$(render_header "$style")" ]] || continue
+    verify_header "$file" "$style" && continue
     if has_notice_marker "$file"; then
       printf '%s: malformed proprietary header requires manual correction\n' \
         "$file" >&2
@@ -241,7 +219,7 @@ update_files() {
 
   while IFS= read -r -d '' file; do
     style_for "$file"
-    [[ "$(current_header "$file")" != "$(render_header "$style")" ]] || continue
+    verify_header "$file" "$style" && continue
     directory=$(dirname -- "$file")
     temporary=$(mktemp "$directory/.licencecheck.XXXXXX")
     render_file "$file" "$style" >"$temporary"
@@ -259,8 +237,8 @@ cache_key() {
     while IFS= read -r -d '' file; do
       style_for "$file"
       printf '%s\0%s\0' "$file" "$style"
-      "$git_bin" hash-object -- "$file"
     done <"$eligible_inventory"
+    xargs -0 "$git_bin" hash-object -- <"$eligible_inventory"
     "$git_bin" hash-object .github/scripts/licencecheck.sh
   } | "$git_bin" hash-object --stdin
 }
