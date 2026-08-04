@@ -213,11 +213,16 @@ rather than encoding every condition in the function name.
 Test files must follow the production intent they verify. Do not collect
 unrelated failures into broad coverage or regression files.
 
-An ordinary test file approaching or exceeding 1,000 lines requires a
-structural review. First split independently reviewable behaviours into
-intent-named files. If the remaining cases are cohesive residual branches or
-error paths that would otherwise fragment the primary behavioural tests, place
-them in a narrowly named file such as `decoder_coverage_test.go`.
+An ordinary test file approaching or exceeding 1,000 lines requires an
+ownership review, not an automatic split. Keep it intact when it owns one
+reviewable behaviour, state machine, process lifecycle, trap set, descriptor
+graph or ordered verification protocol and splitting would obscure that
+ownership. Split independently changing behaviours into intent-named files.
+
+A test file approaching 5,000 lines is presumed to contain mixed ownership.
+Keeping it intact requires concrete evidence that it still has one reason to
+change and that splitting would make its execution order, state or resource
+ownership harder to verify.
 
 A residual coverage file must:
 - name the production intent it covers;
@@ -298,8 +303,9 @@ Stop and review the design when:
 - a function has more than four positional parameters;
 - nesting reaches three levels;
 - a test file begins accumulating unrelated scenarios;
-- a test file approaches or exceeds 1,000 lines without a documented
-  intent-based split;
+- a test file exceeds 1,000 lines without an ownership review;
+- a test file approaches 5,000 lines without an intent-based split or concrete
+  evidence that it remains one cohesive owner;
 - a residual coverage file gains a second responsibility;
 - a comment explains ordinary syntax;
 - a new abstraction has one implementation;
