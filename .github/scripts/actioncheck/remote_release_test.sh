@@ -114,8 +114,23 @@ tag_sha() {
   esac
 }
 latest_tag() {
+  printf 'called\n' >>"$work_dir/latest-calls"
   printf 'v1.0.0\n'
 }
+cat >"$action_file" <<'EOF'
+jobs:
+  first:
+    uses: example/action@0000000000000000000000000000000000000002 # v1.0.0
+EOF
+: >"$work_dir/latest-calls"
+if check_actions true >/dev/null 2>&1; then
+  printf 'action currency accepted a mismatched release SHA\n' >&2
+  exit 1
+fi
+if [[ -s "$work_dir/latest-calls" ]]; then
+  printf 'action currency continued after a release SHA failure\n' >&2
+  exit 1
+fi
 cat >"$action_file" <<'EOF'
 jobs:
   first:
@@ -123,6 +138,7 @@ jobs:
   second:
     uses: example/action@0000000000000000000000000000000000000002 # v1.0.0
 EOF
+: >"$work_dir/latest-calls"
 if check_actions true >/dev/null 2>&1; then
   printf 'action currency accepted a mismatched repeated release SHA\n' >&2
   exit 1

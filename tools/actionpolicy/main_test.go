@@ -38,6 +38,7 @@ func TestRun(t *testing.T) {
 	}{
 		{name: "actions", args: []string{actionsMode}},
 		{name: "permissions", args: []string{permissionsMode}},
+		{name: "verify", args: []string{verifyMode}},
 		{name: "missing", wantStatus: 2, wantError: "Usage:"},
 		{
 			name:       "unknown",
@@ -76,6 +77,30 @@ func TestRun(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestVerifyModeOwnsActionsAndPermissions(t *testing.T) {
+	t.Parallel()
+
+	const action = "example/action@0000000000000000000000000000000000000001"
+	data := []byte("permissions: read-all\njobs:\n  build:\n    steps:\n      - uses: " + action + "\n")
+	var output bytes.Buffer
+	if err := inspect(document{path: ".github/workflows/main.yml", data: data}, verifyMode, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), action) {
+		t.Fatalf("verify output = %q", output.String())
+	}
+
+	data = []byte("permissions: write-all\njobs:\n  build:\n    steps:\n      - uses: " + action + "\n")
+	output.Reset()
+	err := inspect(document{path: ".github/workflows/main.yml", data: data}, verifyMode, &output)
+	if err == nil || !strings.Contains(err.Error(), "write-all is prohibited") {
+		t.Fatalf("verify error = %v", err)
+	}
+	if !strings.Contains(output.String(), action) {
+		t.Fatalf("verify failure output = %q", output.String())
 	}
 }
 

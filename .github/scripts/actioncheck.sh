@@ -82,6 +82,7 @@ toolchain_fingerprint() {
 
 remote_actions() (
   local inventory
+  local mode=${1:-actions}
 
   inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-actions.XXXXXX")
   trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
@@ -90,7 +91,7 @@ remote_actions() (
   fi
 
   action_documents "$inventory" |
-    go run "./$action_policy_dir" actions
+    go run "./$action_policy_dir" "$mode"
 )
 
 check_permissions() (
@@ -227,22 +228,22 @@ latest_tag() {
 
 check_actions() (
   local check_currency=$1
+  local mode=${2:-actions}
   local tag_cache latest_cache
-  local entries entry expected latest status=0
+  local entries entry expected latest
   local key
 
   tag_cache=$(mktemp "${TMPDIR:-/tmp}/celestia-action-tags.XXXXXX")
   latest_cache=$(mktemp "${TMPDIR:-/tmp}/celestia-action-latest.XXXXXX")
   trap 'rm -f -- "$tag_cache" "$latest_cache"' EXIT HUP INT TERM
 
-  if ! entries=$(remote_actions); then
+  if ! entries=$(remote_actions "$mode"); then
     return 1
   fi
   while IFS= read -r entry; do
     [[ -n "$entry" ]] || continue
     if ! parse_action "$entry"; then
-      status=1
-      continue
+      return 1
     fi
 
     if [[ "$check_currency" == true && "$ACTION_KIND" == github ]]; then
@@ -250,15 +251,14 @@ check_actions() (
       expected=$(awk -F '|' -v key="$key" '$1 == key { print $2; exit }' "$tag_cache")
       if [[ -z "$expected" ]]; then
         if ! expected=$(tag_sha "$ACTION_REPOSITORY" "$ACTION_TAG"); then
-          status=1
-          continue
+          return 1
         fi
         printf '%s|%s\n' "$key" "$expected" >>"$tag_cache"
       fi
       if [[ -z "$expected" || "$expected" != "$ACTION_SHA" ]]; then
         printf '%s@%s does not resolve to %s\n' \
           "$ACTION_REPOSITORY" "$ACTION_TAG" "$ACTION_SHA" >&2
-        status=1
+        return 1
       fi
       latest=$(
         awk -F '|' -v repository="$ACTION_REPOSITORY" \
@@ -266,15 +266,14 @@ check_actions() (
       )
       if [[ -z "$latest" ]]; then
         if ! latest=$(latest_tag "$ACTION_REPOSITORY"); then
-          status=1
-          continue
+          return 1
         fi
         printf '%s|%s\n' "$ACTION_REPOSITORY" "$latest" >>"$latest_cache"
       fi
       if [[ -z "$latest" ]]; then
         printf '%s has no discoverable stable semantic release\n' \
           "$ACTION_REPOSITORY" >&2
-        status=1
+        return 1
       elif [[ "$latest" != "$ACTION_TAG" ]]; then
         if bash "$currency_script" \
           allows action "$ACTION_REPOSITORY" "$ACTION_TAG"; then
@@ -283,39 +282,34 @@ check_actions() (
         else
           printf '%s uses %s; latest stable release is %s\n' \
             "$ACTION_REPOSITORY" "$ACTION_TAG" "$latest" >&2
-          status=1
+          return 1
         fi
       fi
     fi
   done <<<"$entries"
 
-  return "$status"
 )
 
 cache_key() (
-  local file inventory
+  local inventory
 
   inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-action-cache.XXXXXX")
   trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
   if ! action_files >"$inventory"; then
     return 1
   fi
+  if ! policy_files >>"$inventory"; then
+    return 1
+  fi
+  printf '%s\0' \
+    .github/scripts/actioncheck.sh \
+    "$currency_file" \
+    "$currency_script" \
+    "$module_file" \
+    "$module_sum_file" >>"$inventory"
 
   {
-    while IFS= read -r -d '' file; do
-      git hash-object -- "$file"
-    done <"$inventory"
-    if ! policy_files >"$inventory"; then
-      return 1
-    fi
-    while IFS= read -r -d '' file; do
-      git hash-object -- "$file"
-    done <"$inventory"
-    git hash-object .github/scripts/actioncheck.sh
-    git hash-object "$currency_file"
-    git hash-object "$currency_script"
-    git hash-object "$module_file"
-    git hash-object "$module_sum_file"
+    xargs -0 git hash-object -- <"$inventory"
     toolchain_fingerprint
     git --version
     date -u +%F
@@ -360,12 +354,10 @@ main() {
     usage
     return 2
   fi
-  action_files >/dev/null
 
-  check_permissions || return
   case "$1" in
   verify)
-    check_actions false
+    check_actions false verify
     ;;
   currency)
     check_actions true

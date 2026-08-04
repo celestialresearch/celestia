@@ -33,6 +33,19 @@ printf 'uses: example/action@0000000000000000000000000000000000000001 # v1.0.0\n
 action_files() {
   printf '%s\0' "$action_file"
 }
+toolchain_dir="$work_dir/toolchain"
+toolchain_value="$toolchain_dir/value"
+mkdir -p "$toolchain_dir"
+cat >"$toolchain_dir/go" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cat -- "$ACTIONCHECK_TEST_TOOLCHAIN_VALUE"
+EOF
+chmod 0700 "$toolchain_dir/go"
+printf 'toolchain-v1\n' >"$toolchain_value"
+original_path=$PATH
+PATH="$toolchain_dir:$PATH"
+export ACTIONCHECK_TEST_TOOLCHAIN_VALUE=$toolchain_value
 first_key=$(cache_key)
 printf 'exceptions-v2\n' >"$currency_file"
 second_key=$(cache_key)
@@ -58,23 +71,9 @@ fifth_key=$(cache_key)
   printf 'action cache ignored the module checksum inventory\n' >&2
   exit 1
 }
-toolchain_dir="$work_dir/toolchain"
-toolchain_value="$toolchain_dir/value"
-mkdir -p "$toolchain_dir"
-cat >"$toolchain_dir/go" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-cat -- "$ACTIONCHECK_TEST_TOOLCHAIN_VALUE"
-EOF
-chmod 0700 "$toolchain_dir/go"
-printf 'toolchain-v1\n' >"$toolchain_value"
-original_path=$PATH
-PATH="$toolchain_dir:$PATH"
-export ACTIONCHECK_TEST_TOOLCHAIN_VALUE=$toolchain_value
-sixth_key=$(cache_key)
 printf 'toolchain-v2\n' >"$toolchain_value"
-seventh_key=$(cache_key)
-[[ "$sixth_key" != "$seventh_key" ]] || {
+sixth_key=$(cache_key)
+[[ "$fifth_key" != "$sixth_key" ]] || {
   printf 'action cache ignored the Go toolchain\n' >&2
   exit 1
 }

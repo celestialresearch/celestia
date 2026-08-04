@@ -25,7 +25,7 @@ func FuzzInspectWorkflow(f *testing.F) {
 		if len(data) > maxActionDocumentBytes {
 			return
 		}
-		for _, mode := range []string{actionsMode, permissionsMode} {
+		for _, mode := range []string{actionsMode, permissionsMode, verifyMode} {
 			firstOutput, firstErr := inspectForFuzz(data, mode)
 			secondOutput, secondErr := inspectForFuzz(data, mode)
 			if firstOutput != secondOutput ||

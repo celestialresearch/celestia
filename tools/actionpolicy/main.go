@@ -20,6 +20,7 @@ import (
 const (
 	actionsMode     = "actions"
 	permissionsMode = "permissions"
+	verifyMode      = "verify"
 
 	maxActionDocuments     = 256
 	maxActionPathBytes     = 4096
@@ -33,10 +34,11 @@ func main() {
 
 func run(args []string, input io.Reader, output io.Writer, errorOutput io.Writer) int {
 	if len(args) != 1 ||
-		(args[0] != actionsMode && args[0] != permissionsMode) {
+		(args[0] != actionsMode && args[0] != permissionsMode &&
+			args[0] != verifyMode) {
 		if _, err := fmt.Fprintln(
 			errorOutput,
-			"Usage: actionpolicy actions|permissions",
+			"Usage: actionpolicy actions|permissions|verify",
 		); err != nil {
 			return 1
 		}

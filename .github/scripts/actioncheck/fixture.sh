@@ -12,7 +12,9 @@
 
 set -euo pipefail
 
-action_test_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)
+action_test_root=${CELESTIA_VERIFICATION_ROOT:-$(
+  cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd
+)}
 
 new_action_test_work() {
   work_dir=$(mktemp -d "${TMPDIR:-/tmp}/celestia-actioncheck.XXXXXX")

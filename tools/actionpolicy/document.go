@@ -55,8 +55,13 @@ func inspect(document document, mode string, output io.Writer) error {
 	if err := validator.validate(root, 0); err != nil {
 		return fmt.Errorf("%s: invalid workflow structure: %w", document.path, err)
 	}
-	if mode == actionsMode {
-		return printActions(output, document.path, root)
+	if mode == actionsMode || mode == verifyMode {
+		if err := printActions(output, document.path, root); err != nil {
+			return err
+		}
+		if mode == actionsMode {
+			return nil
+		}
 	}
 	if isActionMetadata(document.path) {
 		return nil
