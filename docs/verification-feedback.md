@@ -203,6 +203,12 @@ host, one sequential warm observation took 62 seconds and the two-group form
 took 22 seconds. Three complete warm Config observations after the change took
 33.3, 34.9 and 36.3 seconds. Both groups have controlled failure evidence.
 
+Licence verification now classifies files and compares the ten required header
+lines with Bash built-ins. Three equivalent warm Windows observations fell
+from 30.0, 30.1 and 31.2 seconds to 0.83, 0.87 and 0.90 seconds. Diff, repair,
+cache and malformed-header behaviour remains owned by the hostile licence
+family.
+
 Fuzz discovery previously ran `go test -list` once per package. The governed
 test inventory now emits its fuzz-only view from one bounded `go list` pass.
 One equivalent warm comparison fell from 20.3 seconds to 3.5 seconds. Active

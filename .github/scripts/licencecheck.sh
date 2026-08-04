@@ -42,34 +42,86 @@ build_eligible_inventory() {
   while IFS= read -r -d '' file; do
     file=./$file
     [[ -f "$file" ]] || continue
-    [[ -n "$(style_for "$file")" ]] || continue
+    style_for "$file"
+    [[ -n "$style" ]] || continue
     printf '%s\0' "$file"
   done <"$file_inventory"
 }
 
 style_for() {
+  style=
   case "$1" in
   *.go | *.rs | *.s | *.c | *.cc | *.cpp | *.cxx | *.h | *.hh | *.hpp | *.hxx | \
     *.m | *.f | *.F | *.for | *.f90 | *.swig | *.swigcxx | \
     *.java | *.js | *.jsx | *.ts | *.tsx | *.swift | *.kt | *.kts | \
     *.proto | *.zig)
-    printf 'slash\n'
+    style='slash'
     ;;
   *.sql)
-    printf 'dash\n'
+    style='dash'
     ;;
   *.bat | *.cmd)
-    printf 'rem\n'
+    style='rem'
     ;;
   *.sh | *.bash | *.py | *.ps1 | *.rb | *.pl | */Dockerfile | */Makefile)
-    printf 'hash\n'
+    style='hash'
     ;;
   *)
     if IFS= read -r first <"$1" && [[ "$first" == '#!'* ]]; then
-      printf 'hash\n'
+      style='hash'
     fi
     ;;
   esac
+}
+
+verify_header() {
+  local actual
+  local file=$1
+  local first
+  local index
+  local prefix
+  local required=()
+
+  case "$2" in
+  hash) prefix='#' ;;
+  slash) prefix='//' ;;
+  dash) prefix='--' ;;
+  rem) prefix='REM' ;;
+  esac
+  required=(
+    "$prefix Copyright © 2026 @sudocelestia. All rights reserved."
+    "$prefix"
+    "$prefix PROPRIETARY AND CONFIDENTIAL SOURCE CODE."
+    "$prefix"
+    "$prefix No licence, permission or authorisation is granted to use, copy, modify,"
+    "$prefix compile, execute, distribute, publish, sublicense or otherwise exploit this"
+    "$prefix file, except to the limited extent unavoidably permitted by applicable law"
+    "$prefix or GitHub's Terms of Service."
+    "$prefix"
+    "$prefix See the LICENSE file at the repository root for the complete terms."
+  )
+
+  exec 3<"$file" || return 1
+  if ! IFS= read -r first <&3; then
+    exec 3<&-
+    return 1
+  fi
+  index=0
+  if [[ "$first" != '#!'* ]]; then
+    [[ "$first" == "${required[0]}" ]] || {
+      exec 3<&-
+      return 1
+    }
+    index=1
+  fi
+  while ((index < ${#required[@]})); do
+    if ! IFS= read -r actual <&3 || [[ "$actual" != "${required[index]}" ]]; then
+      exec 3<&-
+      return 1
+    fi
+    index=$((index + 1))
+  done
+  exec 3<&-
 }
 
 current_header() {
@@ -139,8 +191,8 @@ verify_files() {
   local file status=0 style
 
   while IFS= read -r -d '' file; do
-    style=$(style_for "$file")
-    if [[ "$(current_header "$file")" != "$(render_header "$style")" ]]; then
+    style_for "$file"
+    if ! verify_header "$file" "$style"; then
       printf '%s: missing or incorrect proprietary header\n' "$file" >&2
       status=1
     fi
@@ -152,7 +204,7 @@ diff_files() {
   local file status=0 style temporary
 
   while IFS= read -r -d '' file; do
-    style=$(style_for "$file")
+    style_for "$file"
     [[ "$(current_header "$file")" != "$(render_header "$style")" ]] || continue
     if has_notice_marker "$file"; then
       printf '%s: malformed proprietary header requires manual correction\n' \
@@ -178,7 +230,7 @@ update_files() {
   local directory file mode style temporary
 
   while IFS= read -r -d '' file; do
-    style=$(style_for "$file")
+    style_for "$file"
     [[ "$(current_header "$file")" != "$(render_header "$style")" ]] || continue
     if has_notice_marker "$file"; then
       printf '%s: malformed proprietary header requires manual correction\n' \
@@ -188,7 +240,7 @@ update_files() {
   done <"$eligible_inventory"
 
   while IFS= read -r -d '' file; do
-    style=$(style_for "$file")
+    style_for "$file"
     [[ "$(current_header "$file")" != "$(render_header "$style")" ]] || continue
     directory=$(dirname -- "$file")
     temporary=$(mktemp "$directory/.licencecheck.XXXXXX")
@@ -205,7 +257,7 @@ cache_key() {
 
   {
     while IFS= read -r -d '' file; do
-      style=$(style_for "$file")
+      style_for "$file"
       printf '%s\0%s\0' "$file" "$style"
       "$git_bin" hash-object -- "$file"
     done <"$eligible_inventory"
