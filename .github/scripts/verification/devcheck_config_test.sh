@@ -25,6 +25,9 @@ trap '[[ $- != *e* ]] || printf "verification-devcheck-config failed at line %d:
 trap 'exit 1' HUP INT TERM
 output=
 status=0
+fake_bin="$work_dir/bin"
+real_bash=$(command -v bash)
+mkdir -p -- "$fake_bin"
 
 set +e
 output=$(
@@ -46,6 +49,24 @@ grep -Fq 'Unknown verification profile: invalid' <<<"$output" || {
 set +e
 output=$(
   cd "$root" &&
+    DEVCHECK_PLATFORM_LINT=invalid DEVCHECK_PROFILE=config \
+      bash .github/scripts/devcheck.sh 2>&1
+)
+status=$?
+set -e
+[[ "$status" -eq 2 ]] || {
+  printf 'devcheck accepted an invalid platform-lint selection\n' >&2
+  return 1
+}
+grep -Fq 'Invalid platform-lint selection: invalid' <<<"$output" || {
+  printf 'platform-lint selection rejection omitted the diagnostic:\n%s\n' \
+    "$output" >&2
+  return 1
+}
+
+set +e
+output=$(
+  cd "$root" &&
     GOFLAGS='-run=^$' DEVCHECK_PROFILE=config \
       bash .github/scripts/devcheck.sh 2>&1
 )
@@ -60,6 +81,36 @@ grep -Fq 'Uncontrolled Go test environment: GOFLAGS' <<<"$output" || {
     "$output" >&2
   return 1
 }
+
+cat >"$fake_bin/bash" <<'EOF'
+#!/bin/sh
+case "$1" in
+*.github/scripts/policycheck.sh)
+  : >"$CELESTIA_POLICY_MARKER"
+  exit
+  ;;
+*)
+  : >"$CELESTIA_UNEXPECTED_SCRIPT_MARKER"
+  exit 99
+  ;;
+esac
+EOF
+chmod +x "$fake_bin/bash"
+set +e
+output=$(
+  cd "$root" &&
+    CELESTIA_POLICY_MARKER="$work_dir/policy" \
+    CELESTIA_UNEXPECTED_SCRIPT_MARKER="$work_dir/unexpected" \
+    PATH="$fake_bin:$PATH" DEVCHECK_PROFILE=shell \
+      "$real_bash" .github/scripts/devcheck.sh 2>&1
+)
+status=$?
+set -e
+if [[ "$status" -ne 0 || ! -e "$work_dir/policy" ||
+  -e "$work_dir/unexpected" ]]; then
+  printf 'bounded devcheck did not run only policy:\n%s\n' "$output" >&2
+  return 1
+fi
 )
 
 main

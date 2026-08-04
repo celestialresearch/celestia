@@ -109,6 +109,46 @@ CYGWIN* | MINGW* | MSYS*)
   ;;
 esac
 
+progress_output="$work/progress-output"
+progress_checkpoint="$work/progress-checkpoint.sh"
+cat >"$verification_dir/lint_test.sh" <<'EOF'
+#!/usr/bin/env bash
+trap 'exit 0' USR1
+while :; do
+  sleep 60
+done
+EOF
+chmod +x "$verification_dir/lint_test.sh"
+git -C "$verification_repo" add verification/lint_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/lint_test.sh
+cat >"$progress_checkpoint" <<'EOF'
+#!/usr/bin/env bash
+set -eu
+kill -USR1 "$CELESTIA_VERIFICATION_WAITING_FAMILY_PID"
+EOF
+chmod +x "$progress_checkpoint"
+CELESTIA_VERIFICATION_FAMILY_WAIT_CHECKPOINT="$progress_checkpoint" \
+  run_initial_driver >"$progress_output" 2>&1
+progress_run_line=$(grep -n -F \
+  'lint_test.sh                      [RUN ]' "$progress_output" | \
+  head -n 1 | cut -d: -f1 || true)
+progress_pass_line=$(grep -n -F \
+  'lint_test.sh                      [PASS]' "$progress_output" | \
+  head -n 1 | cut -d: -f1 || true)
+if [[ -z "$progress_run_line" || -z "$progress_pass_line" ]] ||
+  ((progress_run_line >= progress_pass_line)); then
+  printf 'verification driver omitted completed-family progress:\n' >&2
+  cat "$progress_output" >&2
+  exit 1
+fi
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' \
+  >"$verification_dir/lint_test.sh"
+chmod +x "$verification_dir/lint_test.sh"
+git -C "$verification_repo" add verification/lint_test.sh
+git -C "$verification_repo" update-index --chmod=+x \
+  verification/lint_test.sh
+
 cat >"$verification_dir/lint_test.sh" <<'EOF'
 #!/usr/bin/env bash
 trap ': >"$CELESTIA_TIMEOUT_SIGNAL_LEAK"' ALRM

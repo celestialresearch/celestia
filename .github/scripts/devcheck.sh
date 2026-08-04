@@ -12,6 +12,7 @@
 
 set -euo pipefail
 export GOWORK=off
+exec 5>&1
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
@@ -27,10 +28,18 @@ fi
 export GOENV=off
 
 profile=${DEVCHECK_PROFILE:-full}
+platform_lint=${DEVCHECK_PLATFORM_LINT:-true}
 case "$profile" in
   config | full | quick | shell) ;;
   *)
     printf 'Unknown verification profile: %s\n' "$profile" >&2
+    exit 2
+    ;;
+esac
+case "$platform_lint" in
+  false | true) ;;
+  *)
+    printf 'Invalid platform-lint selection: %s\n' "$platform_lint" >&2
     exit 2
     ;;
 esac
@@ -47,6 +56,12 @@ record_result() {
   check_names+=("$1")
   check_statuses+=("$2")
   check_outputs+=("$3")
+}
+
+stop_failed() {
+  record_result "$1" fail "$2"
+  finish || true
+  exit 1
 }
 
 skip_check() {
@@ -70,7 +85,7 @@ run_check() {
 
   finished=$(date +%s)
   printf '[FAIL] %ss\n' "$((finished - started))"
-  record_result "$1" fail "$output"
+  stop_failed "$1" "$output"
 }
 
 run_no_output() {
@@ -83,19 +98,36 @@ run_no_output() {
   if ! output="$("${@:2}" 2>&1)"; then
     finished=$(date +%s)
     printf '[FAIL] %ss\n' "$((finished - started))"
-    record_result "$1" fail "$output"
-    return
+    stop_failed "$1" "$output"
   fi
   if [[ -n "$output" ]]; then
     finished=$(date +%s)
     printf '[FAIL] %ss\n' "$((finished - started))"
-    record_result "$1" fail "$output"
-    return
+    stop_failed "$1" "$output"
   fi
 
   finished=$(date +%s)
   printf '[PASS] %ss\n' "$((finished - started))"
   record_result "$1" pass ''
+}
+
+run_subcheck() {
+  local finished
+  local output
+  local started
+
+  started=$(date +%s)
+  if output="$("${@:2}" 2>&1)"; then
+    finished=$(date +%s)
+    printf '        %-34s[PASS] %ss\n' "$1" "$((finished - started))"
+    [[ -z "$output" ]] || printf '%s\n' "$output"
+    return
+  fi
+
+  finished=$(date +%s)
+  printf '        %-34s[FAIL] %ss\n' "$1" "$((finished - started))"
+  [[ -z "$output" ]] || printf '%s\n' "$output"
+  return 1
 }
 
 go_packages() {
@@ -114,10 +146,12 @@ check_config() {
   local script_list
   local scripts=()
 
-  go tool golangci-lint config verify || return
-  bash ./.github/scripts/actioncheck.sh verify || return
-  go tool actionlint || return
-  bash ./.github/scripts/rustcheck.sh config || return
+  run_subcheck 'Go Lint Config' go tool golangci-lint config verify || return
+  run_subcheck 'Action Policy' \
+    bash ./.github/scripts/actioncheck.sh verify || return
+  run_subcheck 'Workflow Syntax' go tool actionlint || return
+  run_subcheck 'Rust Config' \
+    bash ./.github/scripts/rustcheck.sh config || return
   script_list=$(find .github/scripts -type f -name '*.sh' -print | sort) ||
     return
   while IFS= read -r script; do
@@ -125,36 +159,33 @@ check_config() {
     scripts+=("$script")
   done <<<"$script_list"
   ((${#scripts[@]} > 0)) || return 1
-  go tool shellcheck --severity=style "${scripts[@]}" || return
+  run_subcheck 'Shell Syntax and Style' \
+    go tool shellcheck --severity=style "${scripts[@]}" || return
 }
 
 discover_fuzz_targets() {
-  local list_output
-  local package
-  local packages
-
-  packages=$(go list ./...) || return 1
-  while IFS= read -r package; do
-    [[ -n "$package" ]] || continue
-    list_output=$(go test -list '^Fuzz' "$package") || return 1
-    awk -v package="$package" '/^Fuzz/ { print package "\t" $0 }' \
-      <<<"$list_output"
-  done <<<"$packages"
+  go run ./tools/sourcepolicy go-fuzz-inventory
 }
 
 fuzz_smoke() {
   local count=0
   local discovery_output
+  local discovery_started
+  local finished
   local fuzz_time=${DEVCHECK_FUZZTIME:-1000x}
   local package
-  local status=0
+  local started
   local target
   local timeout=${DEVCHECK_FUZZ_TIMEOUT:-60s}
 
+  discovery_started=$(date +%s)
   if ! discovery_output=$(discover_fuzz_targets); then
     printf 'Go fuzz-target discovery failed.\n'
     return 1
   fi
+  finished=$(date +%s)
+  printf '        %-34s[PASS] %ss\n' 'Fuzz Discovery' \
+    "$((finished - discovery_started))"
   if [[ -z "$discovery_output" ]]; then
     printf 'No Go fuzz targets discovered.\n'
     return
@@ -163,40 +194,18 @@ fuzz_smoke() {
     [[ -n "$entry" ]] || continue
     count=$((count + 1))
     IFS=$'\t' read -r package target <<<"$entry"
-    printf 'Running %s in %s\n' "$target" "$package"
-    go test -run '^$' -fuzz "^${target}$" -fuzztime "$fuzz_time" \
-      -timeout "$timeout" "$package" || status=1
+    started=$(date +%s)
+    if go test -run '^$' -fuzz "^${target}$" -fuzztime "$fuzz_time" \
+      -timeout "$timeout" "$package"; then
+      printf '        %-34s[PASS] %ss\n' "$target" \
+        "$(($(date +%s) - started))"
+    else
+      printf '        %-34s[FAIL] %ss\n' "$target" \
+        "$(($(date +%s) - started))"
+      return 1
+    fi
   done <<<"$discovery_output"
   printf 'Discovered %s Go fuzz target(s).\n' "$count"
-  return "$status"
-}
-
-go_standard_tests() {
-  bash ./.github/scripts/testcheck.sh go standard
-}
-
-go_quick_tests() {
-  bash ./.github/scripts/testcheck.sh go quick
-}
-
-go_race_tests() {
-  bash ./.github/scripts/testcheck.sh go race
-}
-
-rust_docs() {
-  RUSTDOCFLAGS='-D warnings' \
-    cargo doc --workspace --no-deps --locked
-}
-
-fixture_docs() {
-  RUSTDOCFLAGS='-D warnings' \
-    cargo doc --manifest-path worker/qualification-fixtures/Cargo.toml \
-    --no-deps --locked
-}
-
-rust_coverage() {
-  cargo llvm-cov --workspace --locked \
-    --fail-under-lines 90
 }
 
 finish() {
@@ -249,7 +258,7 @@ printf '    %-16s %s\n' Go "$actual_go_version"
 if [[ -n "$required_go_version" && "$actual_go_version" == "$required_go_version" ]]; then
   record_result 'Go Version' pass ''
 else
-  record_result 'Go Version' fail \
+  stop_failed 'Go Version' \
     "Go version mismatch: required $required_go_version, found $actual_go_version"
 fi
 printf '    %-16s %s/%s\n' Platform "$(go env GOOS)" "$(go env GOARCH)"
@@ -258,7 +267,7 @@ if [[ "$(go env CGO_ENABLED)" == 1 ]]; then
   record_result 'CGO (required)' pass ''
 else
   printf '    %-16s %s\n' 'CGO (required)' 'false [FAIL]'
-  record_result 'CGO (required)' fail \
+  stop_failed 'CGO (required)' \
     'CGO must be enabled for the required race-detector gate.'
 fi
 printf '    %-16s %s\n' golangci-lint \
@@ -277,19 +286,24 @@ if [[ "$profile" == full && -f rust-toolchain.toml ]]; then
 fi
 
 section 'Project'
+if [[ "$profile" == shell ]]; then
+  run_check 'Policy' bash ./.github/scripts/policycheck.sh
+  finish
+  exit $?
+fi
 run_check 'Config' check_config
 if [[ "$profile" == config ]]; then
   finish
   exit $?
 fi
 if [[ "$profile" != quick && "${DEVCHECK_SELF_TEST:-true}" == true ]]; then
-  run_check 'Verification Scripts' bash ./.github/scripts/verification_test.sh
+  run_check 'Verification Scripts' env CELESTIA_PROGRESS_FD=5 \
+    bash ./.github/scripts/verification_test.sh
 else
   skip_check 'Verification Scripts' 'Full profile'
 fi
 run_check 'Policy' bash ./.github/scripts/policycheck.sh
 run_check 'Modules' bash ./.github/scripts/modcheck.sh verify
-run_check 'Actions' bash ./.github/scripts/actioncheck.sh verify
 run_check 'Currency Exceptions' bash ./.github/scripts/currencycheck.sh verify
 run_check 'Licence Headers' bash ./.github/scripts/licencecheck.sh verify
 if [[ "$profile" != quick && "${DEVCHECK_CURRENCY:-true}" == true ]]; then
@@ -300,11 +314,6 @@ else
   skip_check 'Module Currency' 'Disabled for this platform job'
   skip_check 'Action Currency' 'Disabled for this platform job'
   skip_check 'Version Currency' 'Disabled for this platform job'
-fi
-
-if [[ "$profile" == shell ]]; then
-  finish
-  exit
 fi
 
 if has_go_packages; then
@@ -319,24 +328,28 @@ if has_go_packages; then
   run_check 'Go Vet' go vet ./...
   run_check 'Go Lint' go tool golangci-lint run
   if [[ "$profile" == quick ]]; then
-    run_check 'Go Test' go_quick_tests
+    run_check 'Go Test' bash ./.github/scripts/testcheck.sh go quick
     skip_check 'Go Platform Lint' 'Full profile'
     skip_check 'Go Race' 'Full profile'
     skip_check 'Go Coverage' 'Full profile'
     skip_check 'Go Fuzz' 'Full profile'
     skip_check 'Go Vulnerabilities' 'Full profile'
   else
-    run_check 'Go Platform Lint' bash ./.github/scripts/platformlint.sh
-    run_check 'Go Test' go_standard_tests
-    run_check 'Go Race' go_race_tests
-    run_check 'Go Coverage' bash ./.github/scripts/coveragecheck.sh cached
+    if [[ "$platform_lint" == true ]]; then
+      run_check 'Go Platform Lint' bash ./.github/scripts/platformlint.sh
+    else
+      skip_check 'Go Platform Lint' 'Owned by Linux AMD64'
+    fi
+    run_check 'Go Test' bash ./.github/scripts/testcheck.sh go standard
+    run_check 'Go Race' bash ./.github/scripts/testcheck.sh go race
+    run_check 'Go Coverage' bash ./.github/scripts/coveragecheck.sh verify
     run_check 'Go Fuzz' fuzz_smoke
     run_check 'Go Vulnerabilities' go tool govulncheck ./...
   fi
 else
   package_discovery_status=$?
   if ((package_discovery_status == 2)); then
-    record_result 'Go package discovery' fail \
+    stop_failed 'Go package discovery' \
       'go list failed while discovering Go source packages.'
   else
     skip_check 'Go Checks' 'No Go packages exist'
@@ -367,9 +380,13 @@ if [[ -f Cargo.toml ]]; then
     skip_check 'Rust Coverage' 'Full profile'
     skip_check 'Rust Build Outputs' 'Full profile'
   else
-    run_check 'Qualification Fixture Docs' fixture_docs
-    run_check 'Rust Docs' rust_docs
-    run_check 'Rust Coverage' rust_coverage
+    run_check 'Qualification Fixture Docs' env RUSTDOCFLAGS='-D warnings' \
+      cargo doc --manifest-path worker/qualification-fixtures/Cargo.toml \
+      --no-deps --locked
+    run_check 'Rust Docs' env RUSTDOCFLAGS='-D warnings' \
+      cargo doc --workspace --no-deps --locked
+    run_check 'Rust Coverage' cargo llvm-cov --workspace --locked \
+      --fail-under-lines 90
     run_check 'Rust Build Outputs' bash ./.github/scripts/rustcheck.sh artefacts
   fi
   if [[ "$profile" != quick && "${DEVCHECK_SUPPLY_CHAIN:-true}" == true ]]; then

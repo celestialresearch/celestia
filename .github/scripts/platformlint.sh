@@ -26,9 +26,17 @@ aix ppc64
 plan9 amd64'
 
 while read -r goos goarch; do
-  (
+  started=$(date +%s)
+  if (
     cd "$target"
     env GOOS="$goos" GOARCH="$goarch" CGO_ENABLED=0 \
       "$lint" run ./...
-  )
+  ); then
+    printf '        %-34s[PASS] %ss\n' "$goos/$goarch" \
+      "$(($(date +%s) - started))"
+  else
+    printf '        %-34s[FAIL] %ss\n' "$goos/$goarch" \
+      "$(($(date +%s) - started))"
+    exit 1
+  fi
 done <<<"$targets"

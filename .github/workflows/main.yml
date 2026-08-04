@@ -58,30 +58,35 @@ jobs:
             runner: ubuntu-24.04
             currency: 'true'
             self-test: 'true'
+            platform-lint: 'true'
             supply-chain: 'true'
             go-flags: ''
           - name: Linux ARM64
             runner: ubuntu-24.04-arm
             currency: 'false'
             self-test: 'false'
+            platform-lint: 'false'
             supply-chain: 'false'
             go-flags: ''
           - name: Windows AMD64
             runner: windows-2025
             currency: 'false'
             self-test: 'false'
+            platform-lint: 'false'
             supply-chain: 'false'
             go-flags: -p=1
           - name: macOS ARM64
             runner: macos-15
             currency: 'false'
             self-test: 'false'
+            platform-lint: 'false'
             supply-chain: 'false'
             go-flags: ''
           - name: macOS Intel
             runner: macos-15-intel
             currency: 'false'
             self-test: 'false'
+            platform-lint: 'false'
             supply-chain: 'false'
             go-flags: ''
     steps:
@@ -112,6 +117,7 @@ jobs:
         env:
           DEVCHECK_CURRENCY: ${{ matrix.currency }}
           DEVCHECK_OUTPUT: failed
+          DEVCHECK_PLATFORM_LINT: ${{ matrix.platform-lint }}
           DEVCHECK_PROFILE: ${{ needs.classify.outputs.full == 'true' && 'full' || 'quick' }}
           DEVCHECK_SELF_TEST: ${{ matrix.self-test }}
           DEVCHECK_SUPPLY_CHAIN: ${{ matrix.supply-chain }}
