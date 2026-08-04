@@ -203,11 +203,13 @@ expect_toolchain \
   1
 
 set +e
+rm -f -- "$work_dir/cargo-after-rustup"
 result=$(
   RUSTUP_BIN=celestia_test_rustup \
   RUSTUP_TEST_STATUS=1 \
   RUSTUP_TEST_OUTPUT='rustup failed' \
   CARGO_BIN=celestia_test_cargo \
+  CARGO_TEST_LOG="$work_dir/cargo-after-rustup" \
   CARGO_TEST_VERSIONS="$crate_versions" \
     CURRENCY_EXCEPTIONS_FILE="$exceptions" \
     bash "$root/.github/scripts/currencycheck.sh" currency 2>&1
@@ -222,6 +224,10 @@ grep -Fq 'Rust toolchain currency check failed: rustup failed' <<<"$result" || {
   printf 'toolchain currency check hid command failure:\n%s\n' "$result" >&2
   exit 1
 }
+if [[ -e "$work_dir/cargo-after-rustup" ]]; then
+  printf 'currency check continued after toolchain failure\n' >&2
+  exit 1
+fi
 
 manifest_dir="$work_dir/manifest"
 mkdir -p "$manifest_dir/.github/scripts" \

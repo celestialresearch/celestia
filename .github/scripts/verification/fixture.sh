@@ -67,6 +67,29 @@ verification_snapshot_source_available() {
   [[ ! -L "$current" && -f "$current" ]]
 }
 
+verification_snapshot_size() {
+  local size
+
+  size=$(wc -c <"$1") || return 1
+  size=${size//[[:space:]]/}
+  [[ "$size" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$size"
+}
+
+verification_snapshot_matches() {
+  local path=$1
+  local expected_size=$2
+  local expected_identity=$3
+  local identity
+  local size
+
+  [[ ! -L "$path" && -f "$path" ]] || return 1
+  size=$(verification_snapshot_size "$path") || return 1
+  [[ "$size" == "$expected_size" ]] || return 1
+  identity=$(git hash-object --no-filters -- "$path") || return 1
+  [[ "$identity" == "$expected_identity" ]]
+}
+
 create_verification_symlink() {
   local object
   local path=$2

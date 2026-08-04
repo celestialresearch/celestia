@@ -131,6 +131,11 @@ main() {
   done
 
   for path in \
+    .github/scripts/actioncheck/cache_test.sh \
+    .github/scripts/actioncheck/fixture.sh \
+    .github/scripts/actioncheck/inventory_test.sh \
+    .github/scripts/actioncheck/permissions_test.sh \
+    .github/scripts/actioncheck/remote_release_test.sh \
     internal/operation/urlreference/attempt/store.go \
     internal/execution/supervision/supervisor_windows.go \
     internal/operation/urlreference/protocol/protocol.go \

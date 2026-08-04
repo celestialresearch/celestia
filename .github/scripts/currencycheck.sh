@@ -264,9 +264,12 @@ check_crates() {
       printf 'Could not determine latest crate version: %s\n' \
         "$component" >&2
       status=1
-      continue
+      break
     fi
-    accept_or_fail cargo "$component" "$current" "$latest" || status=1
+    if ! accept_or_fail cargo "$component" "$current" "$latest"; then
+      status=1
+      break
+    fi
   done <"$inventory"
   rm -f -- "$inventory"
   return "$status"
@@ -292,22 +295,22 @@ check_helpers() {
       printf 'Could not determine latest Cargo helper version: %s\n' \
         "$component" >&2
       status=1
-      continue
+      break
     fi
-    accept_or_fail rust-tool "$component" "$current" "$latest" || status=1
+    if ! accept_or_fail rust-tool "$component" "$current" "$latest"; then
+      status=1
+      break
+    fi
   done <"$inventory"
   rm -f -- "$inventory"
   return "$status"
 }
 
 currency() {
-  local status=0
-
-  verify || status=1
-  check_toolchain || status=1
-  check_crates || status=1
-  check_helpers || status=1
-  return "$status"
+  verify || return
+  check_toolchain || return
+  check_crates || return
+  check_helpers
 }
 
 case "${1:-}" in

@@ -32,6 +32,13 @@ families=(
 )
 
 fixture_mode=${1:-}
+action_families=(
+  remote_release_test.sh
+  cache_test.sh
+  inventory_test.sh
+  permissions_test.sh
+)
+family_kind=verification
 driver_status_failure=
 driver_spawn_checkpoint=
 driver_completion_checkpoint=
@@ -41,12 +48,14 @@ family_deadline_checkpoint=
 family_timeout_seconds=600
 deadline_marker_failure=
 deadline_notify_failure=
+progress_fd=${CELESTIA_PROGRESS_FD:-1}
 case "$fixture_mode" in
 "") ;;
 --fixture)
   family_dir=${CELESTIA_VERIFICATION_FAMILY_DIR:?}
   family_repo=${CELESTIA_VERIFICATION_FAMILY_REPO:?}
   family_prefix=${CELESTIA_VERIFICATION_FAMILY_PREFIX:?}
+  family_kind=${CELESTIA_VERIFICATION_FAMILY_KIND:-verification}
   driver_status_failure=${CELESTIA_VERIFICATION_DRIVER_STATUS_FAILURE:-}
   driver_spawn_checkpoint=${CELESTIA_VERIFICATION_DRIVER_SPAWN_CHECKPOINT:-}
   driver_completion_checkpoint=${CELESTIA_VERIFICATION_DRIVER_COMPLETION_CHECKPOINT:-}
@@ -92,8 +101,25 @@ case "$fixture_mode" in
   exit 2
   ;;
 esac
+case "$family_kind" in
+action) families=("${action_families[@]}") ;;
+verification) ;;
+*)
+  printf 'verification family kind is invalid\n' >&2
+  exit 2
+  ;;
+esac
+if [[ "$progress_fd" != 1 && "$progress_fd" != 5 ]]; then
+  printf 'verification progress descriptor is invalid\n' >&2
+  exit 2
+fi
+if ! (: >&"$progress_fd") 2>/dev/null; then
+  printf 'verification progress descriptor is unavailable\n' >&2
+  exit 2
+fi
 if [[ "$fixture_mode" != --fixture ]] &&
   [[ -n "${CELESTIA_VERIFICATION_FAMILY_DIR+x}" ||
+    -n "${CELESTIA_VERIFICATION_FAMILY_KIND+x}" ||
     -n "${CELESTIA_VERIFICATION_FAMILY_REPO+x}" ||
     -n "${CELESTIA_VERIFICATION_FAMILY_PREFIX+x}" ||
     -n "${CELESTIA_VERIFICATION_SNAPSHOT_CHECKPOINT+x}" ||
@@ -109,6 +135,14 @@ if [[ "$fixture_mode" != --fixture ]] &&
   printf 'verification family overrides require fixture mode\n' >&2
   exit 2
 fi
+
+progress_running() {
+  printf '        %-34s[RUN ]\n' "$1" >&"$progress_fd"
+}
+
+progress_result() {
+  printf '        %-34s[%s] %ss\n' "$1" "$2" "$3" >&"$progress_fd"
+}
 
 verify_group_zombie_classifier() (
   local ps_status=0
@@ -555,7 +589,8 @@ run_family() {
     return "$signal_status"
   fi
   set -m
-  CELESTIA_VERIFICATION_ROOT="$root" "$path" 8>&- 9>&- &
+  CELESTIA_PROGRESS_FD='' CELESTIA_VERIFICATION_ROOT="$root" \
+    "$path" 8>&- 9>&- &
   active_family_pid=$!
   active_family_job=$active_family_pid
   start_family_deadline
@@ -587,6 +622,7 @@ run_family() {
     active_family_job=
     return "$signal_status"
   fi
+  progress_running "$family"
   if [[ -n "$family_wait_checkpoint" ]]; then
     CELESTIA_VERIFICATION_WAITING_FAMILY_PID=$active_family_pid \
       CELESTIA_VERIFICATION_FAMILY_CONTROLLER_PID=$family_controller_pid \
@@ -797,29 +833,6 @@ snapshot_family_tree() {
   find "$destination" -type d -exec chmod 500 {} +
 }
 
-snapshot_size() {
-  local size
-
-  size=$(wc -c <"$1") || return 1
-  size=${size//[[:space:]]/}
-  [[ "$size" =~ ^[0-9]+$ ]] || return 1
-  printf '%s\n' "$size"
-}
-
-snapshot_matches() {
-  local path=$1
-  local expected_size=$2
-  local expected_identity=$3
-  local identity
-  local size
-
-  [[ ! -L "$path" && -f "$path" ]] || return 1
-  size=$(snapshot_size "$path") || return 1
-  [[ "$size" == "$expected_size" ]] || return 1
-  identity=$(git hash-object --no-filters -- "$path") || return 1
-  [[ "$identity" == "$expected_identity" ]]
-}
-
 main() (
   local active_family_deadline_pid=
   local active_family_job=
@@ -837,12 +850,15 @@ main() (
   local family_signal_forwarded=
   local family_event_status=
   local family_timeout_pending=0
+  local family_finished
+  local family_started
   local manifest
   local master
   local master_identity
   local master_size
   local path
   local pending_family_signal=
+  local preparation_started
   local source
   local status
 
@@ -863,6 +879,7 @@ main() (
   rm -- "$work/controller-pid"
   printf '%s\n' "$family_controller_pid" >&8
 
+  preparation_started=$(date +%s)
   declared="$work/declared"
   bindings="$work/bindings"
   executed="$work/executed"
@@ -874,21 +891,29 @@ main() (
   source="$work/source"
   mkdir -- "$bindings" "$source"
   printf '%s\n' "${families[@]}" >"$declared"
-  bash "$root/.github/scripts/testcheck.sh" verification "$family_dir" \
-    "$declared" "$family_repo" "$family_prefix"
+  if [[ "$family_kind" == action ]]; then
+    bash "$root/.github/scripts/testcheck.sh" action "$family_dir" \
+      "$declared" "$family_repo" "$family_prefix"
+  else
+    bash "$root/.github/scripts/testcheck.sh" verification "$family_dir" \
+      "$declared" "$family_repo" "$family_prefix"
+  fi
   git -C "$family_repo" ls-files --stage -z -- "$family_prefix" >"$manifest"
   snapshot_family_tree "$source" "$manifest" "$bindings"
   tar -cf "$master" -C "$source" .
-  master_size=$(snapshot_size "$master") || return 1
+  master_size=$(verification_snapshot_size "$master") || return 1
   master_identity=$(git hash-object --no-filters -- "$master") || return 1
   chmod 400 -- "$master"
   chmod -R u+w -- "$source" "$bindings"
   rm -rf -- "$source" "$bindings"
+  progress_result 'Immutable Family Setup' PASS \
+    "$(($(date +%s) - preparation_started))"
   for family in "${families[@]}"; do
     chmod -R u+w -- "$snapshot"
     rm -rf -- "$snapshot"
     mkdir -- "$snapshot"
-    if ! snapshot_matches "$master" "$master_size" "$master_identity"; then
+    if ! verification_snapshot_matches \
+      "$master" "$master_size" "$master_identity"; then
       printf 'verification master snapshot identity differs\n' >&2
       return 1
     fi
@@ -898,13 +923,19 @@ main() (
       printf 'verification family is unavailable: %s\n' "$family" >&2
       return 1
     fi
+    family_started=$(date +%s)
     set +e
     run_family "$path" "$family"
     status=$?
     set -e
+    family_finished=$(date +%s)
     if [[ "$status" -ne 0 ]]; then
+      progress_result "$family" FAIL \
+        "$((family_finished - family_started))"
       return "$status"
     fi
+    progress_result "$family" PASS \
+      "$((family_finished - family_started))"
     printf '%s\n' "$family" >>"$executed"
   done
   if ! cmp -s "$declared" "$executed"; then
