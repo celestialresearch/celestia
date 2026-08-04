@@ -20,7 +20,7 @@ status=0
 printf '%s\n' '// probe' >"$work_dir/coverage_test.go"
 set +e
 output=$(cd "$work_dir" &&
-  bash .github/scripts/policycheck.sh source-files 2>&1)
+  "$work_dir/config-bin/sourcepolicy" source-files 2>&1)
 status=$?
 set -e
 [[ "$status" -ne 0 ]] || {

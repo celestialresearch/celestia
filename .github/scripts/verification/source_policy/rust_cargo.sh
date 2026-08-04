@@ -24,7 +24,7 @@ fn ignored() {}
 EOF
 set +e
 output=$(cd "$work_dir" &&
-  bash .github/scripts/policycheck.sh test-skips 2>&1)
+  "$work_dir/config-bin/sourcepolicy" test-skips 2>&1)
 status=$?
 set -e
 [[ "$status" -ne 0 ]] || {
@@ -93,7 +93,7 @@ fn ignored() {}
 EOF
 set +e
 output=$(cd "$work_dir" &&
-  bash .github/scripts/policycheck.sh test-skips 2>&1)
+  "$work_dir/config-bin/sourcepolicy" test-skips 2>&1)
 status=$?
 set -e
 [[ "$status" -ne 0 ]] || {
@@ -129,7 +129,7 @@ fn ignored() {}
 EOF
 set +e
 output=$(cd "$work_dir" &&
-  bash .github/scripts/policycheck.sh test-skips 2>&1)
+  "$work_dir/config-bin/sourcepolicy" test-skips 2>&1)
 status=$?
 set -e
 [[ "$status" -ne 0 ]] || {

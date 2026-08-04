@@ -79,12 +79,13 @@ func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) 
 		{assuranceSplitPath, assuranceSplitSHA},
 		{freezeSplitPath, freezeSplitSHA},
 	}
+	status := 0
 	for _, manifest := range manifests {
 		if manifestPolicyStatus(stderr, readFile, manifest.path, manifest.digest) != 0 {
-			return 1
+			status = 1
 		}
 	}
-	return 0
+	return status
 }
 
 func manifestPolicyStatus(
@@ -95,14 +96,14 @@ func manifestPolicyStatus(
 ) int {
 	data, err := readFile(path)
 	if err != nil {
-		return writeManifestError(stderr, "read governed manifest: "+err.Error())
+		return writeManifestError(stderr, path+": read governed manifest: "+err.Error())
 	}
 	if !json.Valid(data) {
-		return writeManifestError(stderr, "governed manifest is not valid JSON")
+		return writeManifestError(stderr, path+": governed manifest is not valid JSON")
 	}
 	digest := sha256.Sum256(data)
 	if hex.EncodeToString(digest[:]) != expected {
-		return writeManifestError(stderr, "governed manifest differs from its reviewed form")
+		return writeManifestError(stderr, path+": governed manifest differs from its reviewed form")
 	}
 	return 0
 }

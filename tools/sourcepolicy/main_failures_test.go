@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,6 +68,51 @@ func TestRunFailureReporting(t *testing.T) {
 		readBrokenGo,
 	); code != 1 || !strings.Contains(stderr.String(), "parse Go test") {
 		t.Fatalf("policy failure = %d, %q", code, stderr.String())
+	}
+}
+
+func TestRunChecksStopsAtFirstFailure(t *testing.T) {
+	t.Parallel()
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	runs := 0
+	checks := []policyCheck{
+		{"First", func(io.Writer) int { runs++; return 0 }},
+		{"Second", func(output io.Writer) int {
+			runs++
+			_, _ = fmt.Fprintln(output, "second failed")
+			return 7
+		}},
+		{"Third", func(io.Writer) int { runs++; return 0 }},
+	}
+	if code := runChecks(&stdout, &stderr, checks); code != 7 {
+		t.Fatalf("runChecks code = %d, want 7", code)
+	}
+	if runs != 2 {
+		t.Fatalf("runChecks ran %d checks, want 2", runs)
+	}
+	if output := stdout.String(); !strings.Contains(output, "First") ||
+		!strings.Contains(output, "Second") ||
+		strings.Contains(output, "Third") {
+		t.Fatalf("runChecks output = %q", output)
+	}
+	if stderr.String() != "second failed\n" {
+		t.Fatalf("runChecks diagnostic = %q", stderr.String())
+	}
+}
+
+func TestRunChecksRejectsOutputFailure(t *testing.T) {
+	t.Parallel()
+	checks := []policyCheck{{"Check", func(io.Writer) int { return 0 }}}
+	if code := runChecks(failingWriter{}, io.Discard, checks); code != 1 {
+		t.Fatalf("runChecks output failure = %d, want 1", code)
+	}
+	checks[0].run = func(output io.Writer) int {
+		_, _ = fmt.Fprint(output, "diagnostic")
+		return 1
+	}
+	if code := runChecks(io.Discard, failingWriter{}, checks); code != 1 {
+		t.Fatalf("runChecks diagnostic failure = %d, want 1", code)
 	}
 }
 

@@ -53,7 +53,7 @@ func expectedScripts() []string {
 		".github/scripts/actioncheck/inventory_test.sh",
 		".github/scripts/actioncheck/permissions_test.sh",
 		".github/scripts/actioncheck/remote_release_test.sh",
-		".github/scripts/actioncheck.sh", ".github/scripts/actioncheck_test.sh",
+		".github/scripts/actioncheck.sh",
 		".github/scripts/changecheck.sh", ".github/scripts/changecheck_test.sh",
 		".github/scripts/coveragecheck.sh", ".github/scripts/currencycheck.sh",
 		".github/scripts/currencycheck_test.sh", ".github/scripts/depguardcheck.sh",

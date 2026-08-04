@@ -99,7 +99,7 @@ head -c 1048577 /dev/zero | tr '\0' x >"$work_dir/oversized.sh"
 } >"$work_dir/reasoned_broad_multiline_clippy.rs"
 set +e
 output=$(cd "$work_dir" &&
-  bash .github/scripts/policycheck.sh suppressions 2>&1)
+  "$work_dir/config-bin/sourcepolicy" suppressions 2>&1)
 status=$?
 set -e
 [[ "$status" -ne 0 ]] || {
@@ -177,7 +177,7 @@ version = "0.0.0"
 edition = "2024"
 EOF
 output=$(cd "$work_dir" &&
-  bash .github/scripts/policycheck.sh suppressions 2>&1) || {
+  "$work_dir/config-bin/sourcepolicy" suppressions 2>&1) || {
   printf 'policy check rejected narrow suppressions:\n%s\n' "$output" >&2
   return 1
 }

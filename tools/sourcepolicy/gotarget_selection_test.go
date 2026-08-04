@@ -94,6 +94,49 @@ func TestGoBuildSelectionUsesOverlay(t *testing.T) {
 	}
 }
 
+func TestGoBuildUnitsReuseEquivalentContexts(t *testing.T) {
+	root := t.TempDir()
+	ordinary := filepath.Join(root, "ordinary_test.go")
+	race := filepath.Join(root, "race_test.go")
+	cgo := filepath.Join(root, "cgo_test.go")
+	sources := map[string][]byte{
+		ordinary: []byte("package fixture\n"),
+		race:     []byte("//go:build race\n\npackage fixture\n"),
+		cgo:      []byte("//go:build cgo\n\npackage fixture\n"),
+	}
+	for path, source := range sources {
+		if err := os.WriteFile(path, source, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	targets := []buildTarget{
+		{goos: runtime.GOOS, goarch: runtime.GOARCH},
+		{goos: runtime.GOOS, goarch: runtime.GOARCH, race: true},
+		{goos: runtime.GOOS, goarch: runtime.GOARCH, cgo: true},
+	}
+	directories := map[string]bool{root: true}
+
+	units, err := goBuildUnits(
+		[]string{ordinary}, directories, targets, sources,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(units) != 1 {
+		t.Fatalf("equivalent units = %d, want 1", len(units))
+	}
+
+	units, err = goBuildUnits(
+		[]string{ordinary, race, cgo}, directories, targets, sources,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(units) != 3 {
+		t.Fatalf("distinct units = %d, want 3", len(units))
+	}
+}
+
 func TestGoPolicyRejectsTestsOutsideTargetMatrix(t *testing.T) {
 	for _, name := range []string{"hidden_android_test.go", "hidden_386_test.go"} {
 		t.Run(name, func(t *testing.T) {

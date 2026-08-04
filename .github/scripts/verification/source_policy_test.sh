@@ -316,6 +316,9 @@ main() {
   local mode
   local path
   local script
+  local script_finished
+  local script_started
+  local script_status
   local snapshot
   local snapshot_dir
   local -a snapshot_hashes=()
@@ -423,7 +426,20 @@ main() {
       printf 'source-policy script changed before execution: %s\n' "$script" >&2
       return 1
     fi
+    script_started=$(date +%s)
+    set +e
     run_source_policy_script "$snapshot" "$work_dir"
+    script_status=$?
+    set -e
+    script_finished=$(date +%s)
+    if [[ "$script_status" -eq 0 ]]; then
+      printf '        %-34s[PASS] %ss\n' "$script" \
+        "$((script_finished - script_started))"
+    else
+      printf '        %-34s[FAIL] %ss\n' "$script" \
+        "$((script_finished - script_started))"
+      return "$script_status"
+    fi
     printf '%s\n' "$script" >>"$executed"
     index=$((index + 1))
   done

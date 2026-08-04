@@ -74,6 +74,12 @@ for variable in GOFLAGS GOENV; do
     return 1
   }
 done
+mkdir -p "$work_dir/config-bin"
+architecture_policy="$work_dir/config-bin/sourcepolicy"
+(
+  cd "$architecture_dir"
+  go build -o "$architecture_policy" ./tools/sourcepolicy
+)
 set +e
 CELESTIA_DEPGUARD_BOUNDED=1 CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
   bash "$architecture_dir/.github/scripts/depguardcheck.sh"
@@ -89,14 +95,16 @@ TMPDIR="$depguard_cancel_dir" CELESTIA_DEPGUARD_DEADLINE_FIXTURE=1 \
   bash "$architecture_dir/.github/scripts/depguardcheck.sh" &
 depguard_wrapper=$!
 depguard_deadline_root=
-for _ in 1 2 3 4 5; do
+attempt=0
+while ((attempt < 100)); do
   for candidate in "$depguard_cancel_dir"/celestia-depguard-deadline.*; do
     if [[ -f "$candidate/child.pid" && -f "$candidate/watchdog.pid" ]]; then
       depguard_deadline_root=$candidate
       break 2
     fi
   done
-  sleep 1
+  attempt=$((attempt + 1))
+  sleep 0.05
 done
 [[ -n "$depguard_deadline_root" ]] || {
   kill -TERM "$depguard_wrapper" 2>/dev/null || true
@@ -154,7 +162,7 @@ printf 'package rogue\n' >"$architecture_dir/worker/rogue/main.go"
 git -C "$architecture_dir" add worker/rogue/main.go
 set +e
 output=$(cd "$architecture_dir" &&
-  bash .github/scripts/policycheck.sh architecture 2>&1)
+  "$architecture_policy" architecture 2>&1)
 status=$?
 set -e
 [[ "$status" -ne 0 ]] || {
@@ -173,7 +181,7 @@ printf '\nvar verificationAttemptDrift = 1\n' \
   >>"$architecture_dir/internal/operation/urlreference/attempt/contract.go"
 set +e
 output=$(cd "$architecture_dir" &&
-  bash .github/scripts/policycheck.sh architecture 2>&1)
+  "$architecture_policy" architecture 2>&1)
 status=$?
 set -e
 [[ "$status" -ne 0 ]] || {
@@ -195,25 +203,36 @@ for rogue in rogue.s rogue.rs rogue.json rogue.txt Makefile; do
     printf 'fixture\n' >"$architecture_dir/tools/sourcepolicy/$rogue"
   fi
   git -C "$architecture_dir" add "tools/sourcepolicy/$rogue"
-  set +e
-  output=$(cd "$architecture_dir" &&
-    bash .github/scripts/policycheck.sh architecture 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted undeclared source-policy artefact %s\n' \
-      "$rogue" >&2
-    return 1
-  }
+done
+set +e
+output=$(cd "$architecture_dir" &&
+  "$architecture_policy" architecture 2>&1)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'policy check accepted undeclared source-policy artefacts\n' >&2
+  return 1
+}
+for rogue in rogue.s rogue.rs rogue.json rogue.txt Makefile; do
   grep -Fq "\"tools/sourcepolicy/$rogue\": undeclared split source" \
     <<<"$output" || {
     printf 'policy output omitted source-policy inventory diagnostic for %s:\n%s\n' \
       "$rogue" "$output" >&2
-    return 1
+      return 1
   }
-  git -C "$architecture_dir" rm -q --cached "tools/sourcepolicy/$rogue"
-  rm -- "$architecture_dir/tools/sourcepolicy/$rogue"
 done
+git -C "$architecture_dir" rm -q --cached \
+  tools/sourcepolicy/rogue.s \
+  tools/sourcepolicy/rogue.rs \
+  tools/sourcepolicy/rogue.json \
+  tools/sourcepolicy/rogue.txt \
+  tools/sourcepolicy/Makefile
+rm -- \
+  "$architecture_dir/tools/sourcepolicy/rogue.s" \
+  "$architecture_dir/tools/sourcepolicy/rogue.rs" \
+  "$architecture_dir/tools/sourcepolicy/rogue.json" \
+  "$architecture_dir/tools/sourcepolicy/rogue.txt" \
+  "$architecture_dir/tools/sourcepolicy/Makefile"
 awk '
   { print }
   $0 == "\t\tif strings.HasPrefix(file, directory.path+\"/\") {" {

@@ -26,12 +26,30 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 
 status=0
 git_bin=${CELESTIA_GIT_BIN:-git}
-source_inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-policy.XXXXXX")
-trap 'rm -f -- "$source_inventory"' EXIT
 
 fail() {
   printf '%s\n' "$1" >&2
   status=1
+}
+
+start_policy_check() {
+  policy_name=$1
+  status=0
+  policy_started=$(date +%s)
+}
+
+finish_policy_check() {
+  local finished
+
+  finished=$(date +%s)
+  if ((status == 0)); then
+    printf '        %-34s[PASS] %ss\n' \
+      "$policy_name" "$((finished - policy_started))"
+  else
+    printf '        %-34s[FAIL] %ss\n' \
+      "$policy_name" "$((finished - policy_started))"
+  fi
+  return "$status"
 }
 
 git_grep() {
@@ -96,108 +114,31 @@ check_private_keys() {
   }
 }
 
-check_test_skips() {
-  go run ./tools/sourcepolicy test-skips || status=1
+check_source_policy() {
+  if ! go run ./tools/sourcepolicy all; then
+    status=1
+    return
+  fi
+  bash ./.github/scripts/depguardcheck.sh || status=1
 }
-
-check_suppressions() {
-  go run ./tools/sourcepolicy suppressions || status=1
-}
-
-check_manifest() {
-  go run ./tools/sourcepolicy manifest || status=1
-}
-
-check_architecture() {
-	if ! go run ./tools/sourcepolicy architecture; then
-		status=1
-		return
-	fi
-	bash ./.github/scripts/depguardcheck.sh || status=1
-}
-
-is_generated_source() {
-  local count=0
-  local file=$1
-  local line
-
-  while IFS= read -r line; do
-    if [[ "$line" =~ ^//\ Code\ generated\ .*\ DO\ NOT\ EDIT\.$ ]]; then
-      return 0
-    fi
-    count=$((count + 1))
-    ((count < 30)) || break
-  done <"$file"
-  return 1
-}
-
-check_source_files() {
-  local base
-  local file
-  local intent
-  local lines
-  local stem
-
-  while IFS= read -r -d '' file; do
-    file=./$file
-    [[ -f "$file" ]] || continue
-    case "$file" in
-    *.go | *.rs | *.c | *.cc | *.cpp | *.cxx | *.h | *.hh | *.hpp | *.hxx) ;;
-    *) continue ;;
-    esac
-
-    base=${file##*/}
-    stem=${base%.*}
-    intent=${stem%_test}
-
-    case "$intent" in
-    additional | more | extended | misc | extra | helper | helpers | util | \
-      utils | common)
-      fail "$file: vague accumulation filename is prohibited"
-      ;;
-    esac
-
-    if [[ "$base" == coverage_test.go ]]; then
-      fail "$file: use an intent-named residual coverage file"
-    fi
-
-    if is_generated_source "$file"; then
-      continue
-    fi
-
-    lines=$(wc -l <"$file")
-    lines=${lines//[[:space:]]/}
-    case "$base" in
-    *_test.*)
-      if ((lines > 1000)); then
-        fail "$file: test file exceeds the 1,000-line maximum"
-      fi
-      ;;
-    *)
-      if ((lines > 800)); then
-        fail "$file: source file exceeds the 800-line exceptional maximum"
-      fi
-      ;;
-    esac
-  done <"$source_inventory"
-}
-
-if ! "$git_bin" ls-files -co --exclude-standard -z >"$source_inventory"; then
-  printf 'Failed to inventory repository files\n' >&2
-  exit 1
-fi
 
 case "${1:-all}" in
 all)
-  check_architecture
+  start_policy_check 'Source Policy'
+  check_source_policy
+  finish_policy_check || exit 1
+  start_policy_check 'Module'
   check_module
+  finish_policy_check || exit 1
+  start_policy_check 'Workspace'
   check_workspace_files
+  finish_policy_check || exit 1
+  start_policy_check 'Merge Markers'
   check_markers
+  finish_policy_check || exit 1
+  start_policy_check 'Private Keys'
   check_private_keys
-  check_manifest
-  check_test_skips
-  check_suppressions
-  check_source_files
+  finish_policy_check || exit 1
   ;;
 module)
   check_module
@@ -206,22 +147,25 @@ markers)
   check_markers
   ;;
 source-files)
-  check_source_files
+  go run ./tools/sourcepolicy source-files || status=1
   ;;
 suppressions)
-  check_suppressions
+  go run ./tools/sourcepolicy suppressions || status=1
   ;;
 manifest)
-  check_manifest
+  go run ./tools/sourcepolicy manifest || status=1
   ;;
 architecture)
-  check_architecture
+  go run ./tools/sourcepolicy architecture || status=1
+  if ((status == 0)); then
+    bash ./.github/scripts/depguardcheck.sh || status=1
+  fi
   ;;
 workspace)
   check_workspace_files
   ;;
 test-skips)
-  check_test_skips
+  go run ./tools/sourcepolicy test-skips || status=1
   ;;
 *)
   printf 'Usage: %s [all|architecture|manifest|markers|module|source-files|suppressions|test-skips|workspace]\n' \

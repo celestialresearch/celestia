@@ -18,7 +18,7 @@ root=$1
 work_dir=$2
 output=
 status=0
-printf 'default 90\ncache-max-age-minutes 0\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
+printf 'default 90\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
   >"$work_dir/.github/.coverage"
 cat >"$work_dir/go.mod" <<'EOF'
 module celestia.research/coverage
@@ -85,23 +85,25 @@ EOF
 git -C "$work_dir" init -q
 for workspace_file in go.work go.work.sum; do
   printf 'fixture\n' >"$work_dir/$workspace_file"
-  set +e
-  output=$(cd "$work_dir" &&
-    bash .github/scripts/policycheck.sh workspace 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted repository %s\n' "$workspace_file" >&2
-    return 1
-  }
+done
+set +e
+output=$(cd "$work_dir" &&
+  bash .github/scripts/policycheck.sh workspace 2>&1)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'policy check accepted repository workspace files\n' >&2
+  return 1
+}
+for workspace_file in go.work go.work.sum; do
   grep -Fq "$workspace_file: Go workspace files are prohibited" \
     <<<"$output" || {
     printf 'policy output omitted the Go workspace diagnostic:\n%s\n' \
       "$output" >&2
     return 1
   }
-  rm -- "$work_dir/$workspace_file"
 done
+rm -- "$work_dir/go.work" "$work_dir/go.work.sum"
 (
   cd "$work_dir"
   bash .github/scripts/policycheck.sh manifest
@@ -109,28 +111,38 @@ done
   printf 'policy check rejected the reviewed governed manifest\n' >&2
   return 1
 }
-mkdir -p "$work_dir/config-bin"
-(
-  cd "$work_dir"
-  go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
-)
-for omission in \
+if [[ ! -x "$work_dir/config-bin/sourcepolicy" ]]; then
+  mkdir -p "$work_dir/config-bin"
+  (
+    cd "$work_dir"
+    go build -o "$work_dir/config-bin/sourcepolicy" ./tools/sourcepolicy
+  )
+fi
+omissions=(
   'gotarget.go|undefined: buildTarget' \
   'gocgo.go|undefined: cgoPolicyImporter' \
-  'rustsyntax.go|undefined: rustPolicyToken'; do
+  'rustsyntax.go|undefined: rustPolicyToken'
+)
+for omission in "${omissions[@]}"; do
   omitted_file=${omission%%|*}
-  expected_diagnostic=${omission#*|}
   rm -- "$work_dir/tools/sourcepolicy/$omitted_file"
-  set +e
-  output=$(cd "$work_dir" && go build ./tools/sourcepolicy 2>&1)
-  status=$?
-  set -e
+done
+set +e
+output=$(cd "$work_dir" && go build ./tools/sourcepolicy 2>&1)
+status=$?
+set -e
+for omission in "${omissions[@]}"; do
+  omitted_file=${omission%%|*}
   cp -- "$root/tools/sourcepolicy/$omitted_file" \
     "$work_dir/tools/sourcepolicy/"
-  [[ "$status" -ne 0 ]] || {
-    printf 'source-policy fixture built without %s\n' "$omitted_file" >&2
-    return 1
-  }
+done
+[[ "$status" -ne 0 ]] || {
+  printf 'source-policy fixture built without required sources\n' >&2
+  return 1
+}
+for omission in "${omissions[@]}"; do
+  omitted_file=${omission%%|*}
+  expected_diagnostic=${omission#*|}
   grep -Fq "$expected_diagnostic" <<<"$output" || {
     printf 'source-policy fixture omission of %s failed unexpectedly:\n%s\n' \
       "$omitted_file" "$output" >&2
@@ -139,29 +151,39 @@ for omission in \
 done
 while IFS= read -r manifest; do
   printf '\n' >>"$work_dir/$manifest"
-  set +e
-  output=$(cd "$work_dir" &&
-    "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted changed manifest %s\n' "$manifest" >&2
-    return 1
-  }
-  grep -Fq 'governed manifest differs from its reviewed form' <<<"$output" || {
+done <"$work_dir/governed-manifests"
+set +e
+output=$(cd "$work_dir" &&
+  "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'policy check accepted changed manifests\n' >&2
+  return 1
+}
+while IFS= read -r manifest; do
+  grep -Fq "$manifest: governed manifest differs from its reviewed form" \
+    <<<"$output" || {
     printf 'policy output omitted manifest drift for %s:\n%s\n' \
       "$manifest" "$output" >&2
     return 1
   }
   cp -- "$root/$manifest" "$work_dir/$manifest"
   rm -- "$work_dir/$manifest"
-  set +e
-  output=$(cd "$work_dir" &&
-    "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
-  status=$?
-  set -e
-  [[ "$status" -ne 0 ]] || {
-    printf 'policy check accepted missing manifest %s\n' "$manifest" >&2
+done <"$work_dir/governed-manifests"
+set +e
+output=$(cd "$work_dir" &&
+  "$work_dir/config-bin/sourcepolicy" manifest 2>&1)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'policy check accepted missing manifests\n' >&2
+  return 1
+}
+while IFS= read -r manifest; do
+  grep -Fq "$manifest: read governed manifest:" <<<"$output" || {
+    printf 'policy output omitted missing manifest %s:\n%s\n' \
+      "$manifest" "$output" >&2
     return 1
   }
   cp -- "$root/$manifest" "$work_dir/$manifest"

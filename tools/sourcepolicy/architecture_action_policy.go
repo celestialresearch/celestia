@@ -21,8 +21,8 @@ const (
 	actionPolicySplitDirectory  = "tools/actionpolicy/"
 	maxActionPolicySplitBytes   = 4 << 20
 	actionPolicySplitPackageSHA = "99a8a8bb5340b219cc1aed8466305977c0cc3f923b70b4ed5b5567fcac0498a5"
-	actionPolicySplitSourceSHA  = "6978ff6bdf3e1d0e6db88dec83e451840b868ba0948725814ca920664ae16d40"
-	actionPolicySplitTargetSHA  = "ee656553dd0aa93e63b91962246cb285e1db817579312b52eb662e2eb85e66aa"
+	actionPolicySplitSourceSHA  = "f4c8c84d06e77a1063f75b62588fd2ddf73c5ea241a7a2150d6d276609e0a18e"
+	actionPolicySplitTargetSHA  = "430abb6d086ba41d0d92d26a7adbecf81dbe39eee384bc31c5ffcac8461ad01c"
 )
 
 var actionPolicySplitOwners = map[string]string{

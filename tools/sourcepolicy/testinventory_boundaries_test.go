@@ -67,11 +67,20 @@ func TestWriteGoInventory(t *testing.T) {
 			root,
 		))
 		var output bytes.Buffer
-		if err := writeGoInventory(&output); err != nil {
+		if err := writeGoInventory(&output, false); err != nil {
 			t.Fatal(err)
 		}
-		if got, want := output.String(), "example.test/sample\tTestOutput\n"; got != want {
+		want := "example.test/sample\tFuzzInput\n" +
+			"example.test/sample\tTestOutput\n"
+		if got := output.String(); got != want {
 			t.Fatalf("output = %q, want %q", got, want)
+		}
+		output.Reset()
+		if err := writeGoInventory(&output, true); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := output.String(), "example.test/sample\tFuzzInput\n"; got != want {
+			t.Fatalf("fuzz output = %q, want %q", got, want)
 		}
 	})
 	tests := []struct {
@@ -94,7 +103,7 @@ func TestWriteGoInventory(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			setFixture(t, test.output)
-			if err := writeGoInventory(&bytes.Buffer{}); err == nil ||
+			if err := writeGoInventory(&bytes.Buffer{}, false); err == nil ||
 				!strings.Contains(err.Error(), test.err) {
 				t.Fatalf("writeGoInventory() error = %v, want %q", err, test.err)
 			}
@@ -106,7 +115,7 @@ func TestWriteGoInventory(t *testing.T) {
 				`"TestGoFiles":["sample_test.go"]}`,
 			writeInventoryTestFile(t),
 		))
-		if err := writeGoInventory(rejectedWrite{}); err == nil ||
+		if err := writeGoInventory(rejectedWrite{}, false); err == nil ||
 			!strings.Contains(err.Error(), "write rejected") {
 			t.Fatalf("writeGoInventory() error = %v", err)
 		}
@@ -238,7 +247,9 @@ func main() {
 func writeInventoryTestFile(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
-	source := "package sample\nimport \"testing\"\nfunc TestOutput(*testing.T) {}\n"
+	source := "package sample\nimport \"testing\"\n" +
+		"func TestOutput(*testing.T) {}\n" +
+		"func FuzzInput(*testing.F) {}\n"
 	if err := os.WriteFile(
 		filepath.Join(root, "sample_test.go"),
 		[]byte(source),

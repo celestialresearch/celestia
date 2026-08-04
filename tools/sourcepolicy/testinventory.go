@@ -34,6 +34,7 @@ import (
 
 const (
 	modeGoTestInventory    = "go-test-inventory"
+	modeGoFuzzInventory    = "go-fuzz-inventory"
 	modeCargoTestInventory = "cargo-test-inventory"
 
 	maxTestInventoryBytes   = 16 << 20
@@ -70,12 +71,13 @@ func runTestInventory(
 ) (bool, int) {
 	if len(args) != 1 ||
 		(args[0] != modeGoTestInventory &&
+			args[0] != modeGoFuzzInventory &&
 			args[0] != modeCargoTestInventory) {
 		return false, 0
 	}
 	var err error
-	if args[0] == modeGoTestInventory {
-		err = writeGoInventory(output)
+	if args[0] == modeGoTestInventory || args[0] == modeGoFuzzInventory {
+		err = writeGoInventory(output, args[0] == modeGoFuzzInventory)
 	} else {
 		err = writeCargoExecutables(input, output)
 	}
@@ -88,7 +90,7 @@ func runTestInventory(
 	return true, 0
 }
 
-func writeGoInventory(output io.Writer) error {
+func writeGoInventory(output io.Writer, fuzzOnly bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), testInventoryTimeout)
 	defer cancel()
 	command := exec.CommandContext(ctx, "go", "list", "-json", "./...")
@@ -121,6 +123,9 @@ func writeGoInventory(output io.Writer) error {
 	}
 	sort.Strings(inventory)
 	for _, entry := range inventory {
+		if fuzzOnly && !strings.Contains(entry, "\tFuzz") {
+			continue
+		}
 		if _, err := fmt.Fprintln(output, entry); err != nil {
 			return err
 		}

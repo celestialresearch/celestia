@@ -121,6 +121,7 @@ func goBuildUnits(
 	overlay map[string][]byte,
 ) ([]goBuildUnit, error) {
 	var units []goBuildUnit
+	seen := make(map[string]bool)
 	for _, target := range targets {
 		patterns, err := goBuildSelection(paths, directories, target, overlay)
 		if err != nil {
@@ -129,11 +130,48 @@ func goBuildUnits(
 		if len(patterns) == 0 {
 			continue
 		}
+		identity, err := goBuildIdentity(paths, patterns, target, overlay)
+		if err != nil {
+			return nil, err
+		}
+		if seen[identity] {
+			continue
+		}
+		seen[identity] = true
 		units = append(units, goBuildUnit{
 			target: target, patterns: patterns, overlay: overlay,
 		})
 	}
 	return units, nil
+}
+
+func goBuildIdentity(
+	paths, patterns []string,
+	target buildTarget,
+	overlay map[string][]byte,
+) (string, error) {
+	context := policyBuildContext(target, overlay)
+	selected := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if filepath.Ext(path) != ".go" {
+			continue
+		}
+		matched, err := context.MatchFile(filepath.Dir(path), filepath.Base(path))
+		if err != nil {
+			return "", fmt.Errorf(
+				"%s: match Go build constraints: %w", path, err,
+			)
+		}
+		if matched {
+			selected = append(selected, filepath.ToSlash(filepath.Clean(path)))
+		}
+	}
+	slices.Sort(selected)
+	identity := []string{target.goos, target.goarch}
+	identity = append(identity, patterns...)
+	identity = append(identity, "")
+	identity = append(identity, selected...)
+	return strings.Join(identity, "\x00"), nil
 }
 
 func goBuildSelection(
