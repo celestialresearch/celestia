@@ -15,6 +15,7 @@ export GOWORK=off
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
+git_hash_bin=${ACTIONCHECK_GIT_HASH_BIN:-git}
 currency_file=${ACTIONCHECK_CURRENCY_FILE:-.github/.currency}
 currency_script=${ACTIONCHECK_CURRENCY_SCRIPT:-.github/scripts/currencycheck.sh}
 module_file=${ACTIONCHECK_MODULE_FILE:-go.mod}
@@ -309,7 +310,7 @@ cache_key() (
     "$module_sum_file" >>"$inventory"
 
   {
-    xargs -0 git hash-object -- <"$inventory"
+    xargs -0 "$git_hash_bin" hash-object -- <"$inventory"
     toolchain_fingerprint
     git --version
     date -u +%F
