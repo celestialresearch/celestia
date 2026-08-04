@@ -13,23 +13,19 @@
 set -euo pipefail
 export GOWORK=off
 
-git_bin=${CELESTIA_GIT_BIN:-git}
-
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
-cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
 policy=.github/.coverage
 max_failure_output_bytes=65536
 
 usage() {
-  printf 'Usage: %s verify|cached\n' "${0##*/}" >&2
+  printf 'Usage: %s verify\n' "${0##*/}" >&2
 }
 
 load_policy() {
   local configured first second third extra
 
   default_floor=
-  cache_max_age=
   package_floors=
   while read -r first second third extra; do
     [[ -n "${first:-}" ]] || continue
@@ -42,10 +38,6 @@ load_policy() {
     default)
       [[ -z "${third:-}" && -z "$default_floor" ]] || return 2
       default_floor=$second
-      ;;
-    cache-max-age-minutes)
-      [[ -z "${third:-}" && -z "$cache_max_age" ]] || return 2
-      cache_max_age=$second
       ;;
     package)
       [[ -n "${second:-}" && -n "${third:-}" ]] || return 2
@@ -67,10 +59,6 @@ load_policy() {
   done <"$policy"
 
   validate_percentage "$default_floor" default
-  [[ "$cache_max_age" =~ ^[0-9]+$ ]] || {
-    printf '%s: cache age must be a non-negative integer\n' "$policy" >&2
-    return 2
-  }
   while read -r first second; do
     [[ -n "${first:-}" ]] || continue
     validate_percentage "$second" "$first"
@@ -89,64 +77,73 @@ validate_percentage() {
   }
 }
 
-cache_key() (
-  local file
-  local inventory
-
-  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage.XXXXXX")
-  trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
-  if ! "$git_bin" ls-files -co --exclude-standard -z >"$inventory"; then
-    printf 'Failed to inventory coverage inputs\n' >&2
-    return 1
-  fi
-
-  {
-    while IFS= read -r -d '' file; do
-      [[ -f "$file" ]] || continue
-      printf '%s\0' "$file"
-      "$git_bin" hash-object -- "$file"
-    done <"$inventory"
-    go env GOVERSION GOOS GOARCH CGO_ENABLED CC CXX GOFLAGS
-  } | "$git_bin" hash-object --stdin
-)
-
 create_report() {
   local profile=$1
   local report=$2
   local packages=$3
   local failure_output=$4
   local go_profile=$profile
-  local package
+  local package_file
 
   case "$(uname -s 2>/dev/null)" in
   CYGWIN*) go_profile=$(cygpath -w "$profile") ;;
   esac
   : >"$report"
-  while IFS= read -r package; do
-    [[ -n "$package" ]] || continue
-    if ! go test -count=1 -covermode=atomic \
-      -coverprofile="$go_profile" "$package" 2>&1 |
-      tail -c "$max_failure_output_bytes" >"$failure_output"; then
-      printf 'coverage test failed for %s (last %s bytes):\n' \
-        "$package" "$max_failure_output_bytes" >&2
-      cat "$failure_output" >&2
-      return 1
-    fi
-    awk -v package="$package" '
-      NR == 1 { next }
-      {
-        statements += $2
-        if ($3 > 0) {
-          covered += $2
+  package_file=$report.packages
+  printf '%s\n' "$packages" >"$package_file"
+  if ! go test -p=1 -count=1 -covermode=atomic \
+    -coverprofile="$go_profile" ./... 2>&1 |
+    tail -c "$max_failure_output_bytes" >"$failure_output"; then
+    printf 'coverage tests failed (last %s bytes):\n' \
+      "$max_failure_output_bytes" >&2
+    cat "$failure_output" >&2
+    rm -f -- "$package_file"
+    return 1
+  fi
+  awk -v package_file="$package_file" '
+    BEGIN {
+      while ((getline package < package_file) > 0) {
+        packages[++package_count] = package
+      }
+      close(package_file)
+    }
+    NR == 1 { next }
+    {
+      source = $1
+      sub(/:[0-9]+[.][0-9]+,.*/, "", source)
+      owner = ""
+      for (item = 1; item <= package_count; item++) {
+        candidate = packages[item]
+        if (length(candidate) > length(owner) &&
+            substr(source, 1, length(candidate) + 1) == candidate "/") {
+          owner = candidate
         }
       }
-      END {
-        if (statements > 0) {
-          printf "%s\t%.2f\n", package, 100 * covered / statements
+      if (owner == "") {
+        print "coverage profile names an unknown package: " source > "/dev/stderr"
+        failed = 1
+        next
+      }
+      statements[owner] += $2
+      if ($3 > 0) {
+        covered[owner] += $2
+      }
+    }
+    END {
+      for (item = 1; item <= package_count; item++) {
+        package = packages[item]
+        if (statements[package] > 0) {
+          printf "%s\t%.2f\n", package,
+            100 * covered[package] / statements[package]
         }
       }
-    ' "$profile" >>"$report"
-  done <<<"$packages"
+      exit failed
+    }
+  ' "$profile" >"$report" || {
+    rm -f -- "$package_file"
+    return 1
+  }
+  rm -f -- "$package_file"
   sort -o "$report" "$report"
 }
 
@@ -189,10 +186,8 @@ enforce_report() {
 }
 
 run_check() {
-  local cache_file failure_output key profile report temporary_cache
+  local failure_output package_file profile report
   local packages
-  local status=0
-  local use_cache=$1
 
   packages=$(go list -f '{{if or .GoFiles .CgoFiles}}{{.ImportPath}}{{end}}' \
     ./... | sed '/^[[:space:]]*$/d') || {
@@ -204,36 +199,15 @@ run_check() {
     return
   fi
 
-  key=$(cache_key)
-  cache_file="$cache_root/coverage/$key.tsv"
-  if [[ "$use_cache" == true && "$cache_max_age" -gt 0 &&
-    -n "$(find "$cache_file" -mmin "-$cache_max_age" -print 2>/dev/null)" ]]; then
-    enforce_report "$cache_file"
-    return
-  fi
-
-  mkdir -p "$cache_root"
-  profile=$(mktemp "$cache_root/coverage.XXXXXX")
-  report=$(mktemp "$cache_root/coverage-report.XXXXXX")
-  failure_output=$(mktemp "$cache_root/coverage-failure.XXXXXX")
-  trap 'rm -f -- "${profile:-}" "${report:-}" "${failure_output:-}"' EXIT
+  profile=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage.XXXXXX")
+  report=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage-report.XXXXXX")
+  package_file=$report.packages
+  failure_output=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage-failure.XXXXXX")
+  trap 'rm -f -- "${profile:-}" "${report:-}" "${package_file:-}" "${failure_output:-}"' EXIT
   create_report "$profile" "$report" "$packages" "$failure_output"
-  enforce_report "$report" || status=1
-  mkdir -p -- "$(dirname -- "$cache_file")"
-  temporary_cache=$(mktemp "$(dirname -- "$cache_file")/.coverage.XXXXXX")
-  if ! cp -- "$report" "$temporary_cache"; then
-    rm -f -- "$temporary_cache" "$profile" "$report" "$failure_output"
-    trap - EXIT
-    return 1
-  fi
-  if ! mv -f -- "$temporary_cache" "$cache_file"; then
-    rm -f -- "$temporary_cache" "$profile" "$report" "$failure_output"
-    trap - EXIT
-    return 1
-  fi
-  rm -f -- "$profile" "$report" "$failure_output"
+  enforce_report "$report"
+  rm -f -- "$profile" "$report" "$package_file" "$failure_output"
   trap - EXIT
-  return "$status"
 }
 
 if (($# != 1)); then
@@ -244,10 +218,7 @@ fi
 load_policy
 case "$1" in
 verify)
-  run_check false
-  ;;
-cached)
-  run_check true
+  run_check
   ;;
 *)
   usage

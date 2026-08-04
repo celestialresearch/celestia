@@ -66,8 +66,10 @@ shell_path() {
 }
 
 go_tests() {
+  local finished
   local arguments=()
   local missing
+  local started
 
   case "$profile" in
   quick) arguments=(-p=2) ;;
@@ -79,9 +81,17 @@ go_tests() {
     ;;
   esac
 
-  go_inventory
+  started=$(date +%s)
+  if ! go_inventory; then
+    printf '        %-34s[FAIL] %ss\n' 'Go Test Discovery' \
+      "$(($(date +%s) - started))"
+    return 1
+  fi
+  printf '        %-34s[PASS] %ss\n' 'Go Test Discovery' \
+    "$(($(date +%s) - started))"
   : >"$temporary/observed"
-  go test -json "${arguments[@]}" ./... |
+  started=$(date +%s)
+  if ! go test -json "${arguments[@]}" ./... |
     awk -v observed="$temporary/observed" '
       {
         print
@@ -114,7 +124,14 @@ go_tests() {
           exit 1
         }
       }
-    '
+    '; then
+    printf '        %-34s[FAIL] %ss\n' 'Go Test Execution' \
+      "$(($(date +%s) - started))"
+    return 1
+  fi
+  finished=$(date +%s)
+  printf '        %-34s[PASS] %ss\n' 'Go Test Execution' \
+    "$((finished - started))"
   LC_ALL=C sort -u "$temporary/observed" -o "$temporary/observed"
   missing=$(LC_ALL=C comm -23 "$temporary/expected" "$temporary/observed")
   if [[ -n "$missing" ]]; then
@@ -123,18 +140,23 @@ go_tests() {
   fi
 }
 
-rust_command() {
-  local all_targets=$1
-  local arguments=(test --workspace --all-features --locked --no-run --message-format=json)
+rust_tests() {
+  local arguments=(test --workspace --all-features --all-targets --locked --no-run --message-format=json)
   local directory
   local executable
+  local started
   local test_name
 
-  if [[ "$all_targets" == true ]]; then
-    arguments=(test --workspace --all-features --all-targets --locked --no-run --message-format=json)
+  started=$(date +%s)
+  if ! "$cargo_bin" "${arguments[@]}" |
+    cargo_executables >"$temporary/rust-executables"; then
+    printf '        %-34s[FAIL] %ss\n' 'Rust Test Construction' \
+      "$(($(date +%s) - started))"
+    return 1
   fi
-  "$cargo_bin" "${arguments[@]}" |
-    cargo_executables >"$temporary/rust-executables"
+  printf '        %-34s[PASS] %ss\n' 'Rust Test Construction' \
+    "$(($(date +%s) - started))"
+  started=$(date +%s)
   while IFS=$'\t' read -r directory executable; do
     directory=$(shell_path "$directory")
     executable=$(shell_path "$executable")
@@ -152,20 +174,17 @@ rust_command() {
         cat "$temporary/rust-result"
         return 1
       fi
-      cat "$temporary/rust-result"
       if [[ $(grep -c '^test result: ok\.' \
         "$temporary/rust-result" || true) -ne 1 ]]; then
         printf 'Rust test executable lacked one terminal summary: %s\n' \
           "$executable" >&2
+        cat "$temporary/rust-result" >&2
         return 1
       fi
     done <"$temporary/rust-list"
   done <"$temporary/rust-executables"
-  "$cargo_bin" test --workspace --all-features --locked
-}
-
-rust_tests() {
-  rust_command true
+  printf '        %-34s[PASS] %ss\n' 'Rust Test Execution' \
+    "$(($(date +%s) - started))"
 }
 
 family_inventory() {

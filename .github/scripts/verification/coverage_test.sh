@@ -132,54 +132,42 @@ func TestSecond(t *testing.T) {
 	}
 }
 EOF
-output=$(cd "$work_dir" && bash .github/scripts/coveragecheck.sh verify 2>&1) || {
+real_go=$(command -v go)
+mkdir -p "$work_dir/go-bin"
+cat >"$work_dir/go-bin/go" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == test ]]; then
+  printf '%s\n' "$*" >>"$GO_CALLS"
+fi
+exec "$REAL_GO" "$@"
+EOF
+chmod +x "$work_dir/go-bin/go"
+output=$(
+  cd "$work_dir" &&
+    GO_CALLS="$work_dir/go-calls" REAL_GO="$real_go" \
+      PATH="$work_dir/go-bin:$PATH" \
+      bash .github/scripts/coveragecheck.sh verify 2>&1
+) || {
   printf 'coverage check rejected the fully covered fixture:\n%s\n' \
     "$output" >&2
   return 1
 }
-(
-  cd "$work_dir" &&
-    bash .github/scripts/coveragecheck.sh cached >/dev/null
-)
+if [[ $(grep -c '^test ' "$work_dir/go-calls") -ne 1 ]] ||
+  ! grep -Fq ' ./...' "$work_dir/go-calls"; then
+  printf 'coverage check did not use one workspace test invocation:\n' >&2
+  cat "$work_dir/go-calls" >&2
+  return 1
+fi
 mv -- "$work_dir/b/b_test.go" "$work_dir/b/b_plan9_test.go"
 set +e
-output=$(cd "$work_dir" && bash .github/scripts/coveragecheck.sh cached 2>&1)
+output=$(cd "$work_dir" && bash .github/scripts/coveragecheck.sh verify 2>&1)
 status=$?
 set -e
 [[ "$status" -ne 0 ]] || {
-  printf 'coverage cache ignored a build-sensitive filename change\n' >&2
+  printf 'coverage check ignored a build-sensitive filename change\n' >&2
   return 1
 }
 mv -- "$work_dir/b/b_plan9_test.go" "$work_dir/b/b_test.go"
-fake_bin="$work_dir/fake-bin"
-real_git=$(command -v git)
-mkdir -p "$fake_bin"
-cat >"$fake_bin/git" <<'EOF'
-#!/usr/bin/env bash
-if [[ "${1:-}" == "${FAIL_GIT_COMMAND:-}" ]]; then
-  exit 2
-fi
-exec "$REAL_GIT" "$@"
-EOF
-chmod +x "$fake_bin/git"
-set +e
-output=$(
-  cd "$work_dir" &&
-    CELESTIA_GIT_BIN="$fake_bin/git" FAIL_GIT_COMMAND=ls-files \
-      REAL_GIT="$real_git" \
-      bash .github/scripts/coveragecheck.sh cached 2>&1
-)
-status=$?
-set -e
-[[ "$status" -ne 0 ]] || {
-  printf 'coverage check ignored a failed source inventory\n' >&2
-  return 1
-}
-grep -Fq 'Failed to inventory coverage inputs' <<<"$output" || {
-  printf 'coverage output omitted the inventory failure:\n%s\n' \
-    "$output" >&2
-  return 1
-}
 )
 
 main
