@@ -52,7 +52,7 @@ func TestValidateRequestRejects(t *testing.T) {
 			t.Parallel()
 			request := valid
 			test.mutate(&request)
-			if _, err := validateRequest(request, testAdmittedAt()); !errors.Is(err, ErrProtocol) {
+			if err := validateRequest(request, testAdmittedAt()); !errors.Is(err, ErrProtocol) {
 				t.Fatalf("validateRequest() error = %v, want ErrProtocol", err)
 			}
 		})
@@ -62,15 +62,15 @@ func TestRequestFrame(t *testing.T) {
 	t.Parallel()
 
 	request := testRequest()
-	data, correlation, err := EncodeRequest(request, testAdmittedAt())
+	data, err := EncodeRequest(request, testAdmittedAt())
 	if err != nil {
 		t.Fatalf("EncodeRequest() error = %v", err)
 	}
-	actual, decodedCorrelation, err := DecodeRequest(data, testAdmittedAt())
+	actual, err := DecodeRequest(data, testAdmittedAt())
 	if err != nil {
 		t.Fatalf("DecodeRequest() error = %v", err)
 	}
-	if actual != request || decodedCorrelation != correlation {
+	if actual != request {
 		t.Fatal("request round trip changed data")
 	}
 }
@@ -79,14 +79,14 @@ func TestEncodeRequestRejects(t *testing.T) {
 
 	request := testRequest()
 	request.AttemptID = "invalid"
-	if _, _, err := EncodeRequest(request, testAdmittedAt()); !errors.Is(err, ErrProtocol) {
+	if _, err := EncodeRequest(request, testAdmittedAt()); !errors.Is(err, ErrProtocol) {
 		t.Fatalf("EncodeRequest() error = %v, want ErrProtocol", err)
 	}
 }
 func TestDecodeRequestRejects(t *testing.T) {
 	t.Parallel()
 
-	valid, _, err := EncodeRequest(testRequest(), testAdmittedAt())
+	valid, err := EncodeRequest(testRequest(), testAdmittedAt())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestDecodeRequestRejects(t *testing.T) {
 		strings.Replace(frame, `"operation_id":"url-reference"`, `"operation_id":null`, 1),
 	}
 	for _, data := range tests {
-		if _, _, err := DecodeRequest([]byte(data), testAdmittedAt()); !errors.Is(err, ErrProtocol) {
+		if _, err := DecodeRequest([]byte(data), testAdmittedAt()); !errors.Is(err, ErrProtocol) {
 			t.Fatalf("DecodeRequest(%q) error = %v, want ErrProtocol", data, err)
 		}
 	}

@@ -89,7 +89,7 @@ func admit(
 		},
 		Input: input,
 	}
-	frame, _, err := workerprotocol.EncodeRequest(request, admittedAt)
+	frame, err := workerprotocol.EncodeRequest(request, admittedAt)
 	if err != nil {
 		return Accepted{}, fmt.Errorf("encode admitted request: %w", err)
 	}

@@ -148,12 +148,12 @@ func TestDecodeResponseRejectsCorrelation(t *testing.T) {
 	correlation := testCorrelation(t, request)
 	tests := []struct {
 		name        string
-		correlation Correlation
+		correlation responseCorrelation
 	}{
-		{name: "all fields", correlation: Correlation{}},
+		{name: "all fields", correlation: responseCorrelation{}},
 		{
 			name: "attempt identifier",
-			correlation: Correlation{
+			correlation: responseCorrelation{
 				attemptID: base64.RawURLEncoding.EncodeToString(
 					bytes.Repeat([]byte{0xC3}, 32),
 				),
@@ -163,7 +163,7 @@ func TestDecodeResponseRejectsCorrelation(t *testing.T) {
 		},
 		{
 			name: "request nonce",
-			correlation: Correlation{
+			correlation: responseCorrelation{
 				attemptID: correlation.attemptID,
 				nonce: base64.RawURLEncoding.EncodeToString(
 					bytes.Repeat([]byte{0xD4}, 32),
@@ -330,13 +330,12 @@ func testResponse(request Request) Response {
 		DurationNS:       1000,
 	}
 }
-func testCorrelation(tb testing.TB, request Request) Correlation {
+func testCorrelation(tb testing.TB, request Request) responseCorrelation {
 	tb.Helper()
-	correlation, err := validateRequest(request, testAdmittedAt())
-	if err != nil {
+	if err := validateRequest(request, testAdmittedAt()); err != nil {
 		tb.Fatal(err)
 	}
-	return correlation
+	return correlationFor(request)
 }
 func validResponseJSON(tb testing.TB, request Request) string {
 	tb.Helper()

@@ -40,7 +40,7 @@ func BenchmarkDecodeResponse(b *testing.B) {
 	if err != nil {
 		b.Fatalf("encode response: %v", err)
 	}
-	correlation := Correlation{
+	correlation := responseCorrelation{
 		attemptID: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		nonce:     "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
 		mediaType: MediaType,

@@ -38,7 +38,7 @@ func FuzzDecodeResponse(f *testing.F) {
 	})
 }
 func FuzzDecodeRequest(f *testing.F) {
-	valid, _, err := EncodeRequest(testRequest(), testAdmittedAt())
+	valid, err := EncodeRequest(testRequest(), testAdmittedAt())
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -47,15 +47,15 @@ func FuzzDecodeRequest(f *testing.F) {
 	f.Add([]byte(`{"protocol_version":-0}`))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		request, _, err := DecodeRequest(data, testAdmittedAt())
+		request, err := DecodeRequest(data, testAdmittedAt())
 		if err != nil {
 			return
 		}
-		encoded, _, err := EncodeRequest(request, testAdmittedAt())
+		encoded, err := EncodeRequest(request, testAdmittedAt())
 		if err != nil {
 			t.Fatalf("encode accepted request: %v", err)
 		}
-		if _, _, err := DecodeRequest(encoded, testAdmittedAt()); err != nil {
+		if _, err := DecodeRequest(encoded, testAdmittedAt()); err != nil {
 			t.Fatalf("round-trip request rejected: %v", err)
 		}
 	})

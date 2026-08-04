@@ -162,7 +162,7 @@ func validateAccepted(
 	if admittedAt.Location() != time.UTC || len(accepted.Frame) == 0 {
 		return workerprotocol.Request{}, fmt.Errorf("%w: admitted attempt", ErrInvalid)
 	}
-	request, _, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt)
+	request, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt)
 	if err != nil {
 		return workerprotocol.Request{}, fmt.Errorf("%w: admitted request frame: %w", ErrInvalid, err)
 	}

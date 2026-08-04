@@ -277,7 +277,7 @@ func rawFrame(t *testing.T, request workerprotocol.Request) []byte {
 
 func validFrame(t *testing.T, request workerprotocol.Request, admittedAt time.Time) []byte {
 	t.Helper()
-	frame, _, err := workerprotocol.EncodeRequest(request, admittedAt)
+	frame, err := workerprotocol.EncodeRequest(request, admittedAt)
 	if err != nil {
 		t.Fatalf("encode valid request: %v", err)
 	}

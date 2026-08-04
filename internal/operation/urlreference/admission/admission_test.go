@@ -59,7 +59,7 @@ func TestAdmit(t *testing.T) {
 	if accepted.Request.Deadline != "2026-07-25T10:00:12.000000123Z" {
 		t.Fatalf("deadline = %q", accepted.Request.Deadline)
 	}
-	decoded, _, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt)
+	decoded, err := workerprotocol.DecodeRequest(accepted.Frame, admittedAt)
 	if err != nil {
 		t.Fatalf("DecodeRequest() error = %v", err)
 	}

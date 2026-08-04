@@ -296,7 +296,7 @@ func lockProcessFixture(t *testing.T) (*Store, urladmission.Accepted, time.Time)
 		},
 		Input: input,
 	}
-	frame, _, err := workerprotocol.EncodeRequest(request, admittedAt)
+	frame, err := workerprotocol.EncodeRequest(request, admittedAt)
 	if err != nil {
 		t.Fatalf("encode fixture: %v", err)
 	}

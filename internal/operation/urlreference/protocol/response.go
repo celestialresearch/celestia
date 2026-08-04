@@ -19,7 +19,7 @@ import (
 	"unicode/utf8"
 )
 
-func decodeResponse(data []byte, correlation Correlation, exitCode int) (Response, error) {
+func decodeResponse(data []byte, correlation responseCorrelation, exitCode int) (Response, error) {
 	if len(data) == 0 || len(data) > MaxResponseBytes || !utf8.Valid(data) {
 		return Response{}, protocolError("response bounds or UTF-8")
 	}
@@ -55,7 +55,7 @@ func DecodeResponseForRequestCorrelation(
 	return decodeResponse(data, correlationFor(request), exitCode)
 }
 
-func validateResponse(response Response, correlation Correlation, exitCode int) error {
+func validateResponse(response Response, correlation responseCorrelation, exitCode int) error {
 	if err := validateIdentity(response, correlation); err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func validateResponse(response Response, correlation Correlation, exitCode int) 
 	return validateStatus(response, correlation, exitCode)
 }
 
-func validateIdentity(response Response, correlation Correlation) error {
+func validateIdentity(response Response, correlation responseCorrelation) error {
 	if response.ProtocolVersion != ProtocolVersion ||
 		response.OperationID != OperationID ||
 		response.OperationVersion != OperationVersion ||
@@ -95,7 +95,7 @@ func validateDiagnostics(response Response) error {
 	return nil
 }
 
-func validateStatus(response Response, correlation Correlation, exitCode int) error {
+func validateStatus(response Response, correlation responseCorrelation, exitCode int) error {
 	switch response.Status {
 	case Completed:
 		if exitCode != 0 {
@@ -116,7 +116,7 @@ func validateStatus(response Response, correlation Correlation, exitCode int) er
 	return nil
 }
 
-func validateOutput(response Response, correlation Correlation) error {
+func validateOutput(response Response, correlation responseCorrelation) error {
 	if *response.OutputMediaType != correlation.mediaType ||
 		!utf8.ValidString(*response.Output) ||
 		*response.OutputLength < 1 ||

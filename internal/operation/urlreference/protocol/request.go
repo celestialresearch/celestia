@@ -24,58 +24,56 @@ import (
 	"celestia.research/celestia/internal/operation/urlreference/transform"
 )
 
-func EncodeRequest(request Request, admittedAt time.Time) ([]byte, Correlation, error) {
-	correlation, err := validateRequest(request, admittedAt)
-	if err != nil {
-		return nil, Correlation{}, err
+func EncodeRequest(request Request, admittedAt time.Time) ([]byte, error) {
+	if err := validateRequest(request, admittedAt); err != nil {
+		return nil, err
 	}
 	data, err := json.Marshal(request)
 	if err != nil {
-		return nil, Correlation{}, protocolError("encode request")
+		return nil, protocolError("encode request")
 	}
-	return data, correlation, nil
+	return data, nil
 }
 
-func DecodeRequest(data []byte, admittedAt time.Time) (Request, Correlation, error) {
+func DecodeRequest(data []byte, admittedAt time.Time) (Request, error) {
 	if len(data) == 0 || len(data) > MaxResponseBytes || !utf8.Valid(data) {
-		return Request{}, Correlation{}, protocolError("request bounds or UTF-8")
+		return Request{}, protocolError("request bounds or UTF-8")
 	}
 	if err := validateJSONFrame(data); err != nil {
-		return Request{}, Correlation{}, err
+		return Request{}, err
 	}
 	if err := validateRequestFields(data); err != nil {
-		return Request{}, Correlation{}, err
+		return Request{}, err
 	}
 	var request Request
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
-		return Request{}, Correlation{}, protocolError("decode request")
+		return Request{}, protocolError("decode request")
 	}
-	correlation, err := validateRequest(request, admittedAt)
-	if err != nil {
-		return Request{}, Correlation{}, err
+	if err := validateRequest(request, admittedAt); err != nil {
+		return Request{}, err
 	}
-	return request, correlation, nil
+	return request, nil
 }
 
-func validateRequest(request Request, admittedAt time.Time) (Correlation, error) {
+func validateRequest(request Request, admittedAt time.Time) error {
 	if err := validateRequestConstants(request); err != nil {
-		return Correlation{}, err
+		return err
 	}
 	if !validIdentity(request.AttemptID) ||
 		!validIdentity(request.RequestNonce) ||
 		request.AttemptID == request.RequestNonce {
-		return Correlation{}, protocolError("request identity")
+		return protocolError("request identity")
 	}
 	if request.Mode != "fang" && request.Mode != "defang" {
-		return Correlation{}, protocolError("request mode")
+		return protocolError("request mode")
 	}
 	if err := validateRequestInput(request); err != nil {
-		return Correlation{}, err
+		return err
 	}
 	if err := validateDeadline(request.Deadline, admittedAt); err != nil {
-		return Correlation{}, err
+		return err
 	}
 	if request.Limits != (Limits{
 		InputBytes:  InputBytes,
@@ -84,13 +82,13 @@ func validateRequest(request Request, admittedAt time.Time) (Correlation, error)
 		MemoryBytes: MemoryBytes,
 		Processes:   Processes,
 	}) {
-		return Correlation{}, protocolError("request limits")
+		return protocolError("request limits")
 	}
-	return correlationFor(request), nil
+	return nil
 }
 
-func correlationFor(request Request) Correlation {
-	return Correlation{
+func correlationFor(request Request) responseCorrelation {
+	return responseCorrelation{
 		attemptID: request.AttemptID,
 		nonce:     request.RequestNonce,
 		mediaType: request.InputMediaType,

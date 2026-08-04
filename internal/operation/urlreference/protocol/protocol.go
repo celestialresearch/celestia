@@ -98,7 +98,7 @@ const (
 	Failed    Status = "failed"
 )
 
-type Correlation struct {
+type responseCorrelation struct {
 	attemptID string
 	nonce     string
 	mediaType string
