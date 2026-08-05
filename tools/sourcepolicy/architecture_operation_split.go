@@ -22,9 +22,9 @@ import (
 const (
 	operationSplitDirectory  = "internal/operation/urlreference/"
 	maxOperationSplitBytes   = 8 << 20
-	operationSplitPackageSHA = "a2306865cb24eaf81744ef7331fe0462c2df334ebe4dbd94d9a15ed7ccf92710"
-	operationSplitSourceSHA  = "7c7a731d4dc034e34390efff24f9ad92dc1c8bad5dc06ae083f5c153637fe83a"
-	operationSplitTargetSHA  = "35dff3fe9f2b990925874665cb58add2b19b756ba2054e02b722d83840c5412b"
+	operationSplitPackageSHA = "bc5b4735e4208561bf82cca685d220991935e9335e37018f741075388861f0df"
+	operationSplitSourceSHA  = "f715c3fa93aaf08d50b2f66871f406d3df225111f2b1e9a6d4082350c0a92e26"
+	operationSplitTargetSHA  = "43ff689420980e3a44d868caaa9921177a87c08117b210c85c838bcf8bfa7ce3"
 )
 
 var operationSplitOwners = map[string]string{
@@ -40,6 +40,7 @@ var operationSplitOwners = map[string]string{
 	"operation_unsupported_test.go":            "platform",
 	"operation_windows.go":                     "orchestration",
 	"performance_decode.go":                    "performance-report",
+	"performance_output_windows_test.go":       "performance-output",
 	"performance_report.go":                    "performance-report",
 	"performance_report_test.go":               "performance-report",
 	"performance_campaign_unsupported_test.go": "performance-campaign",
