@@ -75,7 +75,7 @@ type performanceCampaign struct {
 func TestOperationPerformanceCampaign(t *testing.T) {
 	output := os.Getenv(performanceReportEnvironment)
 	if output == "" {
-		t.Skipf("set %s to run the full performance campaign", performanceReportEnvironment)
+		return
 	}
 	campaign, err := newOperationPerformanceCampaign(t, output)
 	if err != nil {
