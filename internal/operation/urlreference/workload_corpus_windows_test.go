@@ -22,7 +22,7 @@ import (
 )
 
 func TestPerformanceWorkloadCorpusCoverage(t *testing.T) {
-	corpus := loadPerformanceCorpus(t)
+	corpus := readPerformanceCorpus(t)
 	seen := map[string]performanceWorkloadCase{}
 	for _, c := range corpus.Cases {
 		seen[c.Class] = c
@@ -41,7 +41,7 @@ func TestPerformanceWorkloadCorpusCoverage(t *testing.T) {
 }
 
 func TestPerformanceWorkloadCorpusFullOperation(t *testing.T) {
-	corpus := loadPerformanceCorpus(t)
+	corpus := readPerformanceCorpus(t)
 	warm, err := newTestOperation(t, testWorker(t))
 	if err != nil {
 		t.Fatalf("new warm operation: %v", err)

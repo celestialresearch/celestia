@@ -239,11 +239,6 @@ func marshalCorpus(t *testing.T, corpus *performanceCorpus) []byte {
 	return data
 }
 
-func loadPerformanceCorpus(t *testing.T) performanceCorpus {
-	t.Helper()
-	return readPerformanceCorpus(t)
-}
-
 func readPerformanceCorpus(t *testing.T) performanceCorpus {
 	t.Helper()
 	data, err := readPerformanceCorpusFile(performanceCorpusPath)

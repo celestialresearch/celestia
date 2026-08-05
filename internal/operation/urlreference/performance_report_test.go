@@ -50,7 +50,25 @@ func TestPerformanceReport_RejectsHostileInput(t *testing.T) {
 	corpus, corpusSHA256 := testPerformanceCorpus(t)
 	valid := testPerformanceReport(t, corpus, corpusSHA256)
 	data := marshalPerformanceReport(t, valid)
-	tests := map[string]func() []byte{
+	groups := []map[string]func() []byte{
+		performanceReportEncodingCases(data),
+		performanceReportSemanticCases(t, valid),
+		performanceReportBindingCases(t, valid),
+	}
+	for _, tests := range groups {
+		for name, build := range tests {
+			t.Run(name, func(t *testing.T) {
+				_, err := decodePerformanceReport(bytes.NewReader(build()), corpus, corpusSHA256)
+				if !errors.Is(err, errPerformanceReport) {
+					t.Fatalf("decode error = %v, want invalid report", err)
+				}
+			})
+		}
+	}
+}
+
+func performanceReportEncodingCases(data []byte) map[string]func() []byte {
+	return map[string]func() []byte{
 		"unknown field":   func() []byte { return replaceOne(data, []byte("}"), []byte(",\"unknown\":1}")) },
 		"duplicate field": func() []byte { return duplicatePerformanceField(data) },
 		"unknown nested field": func() []byte {
@@ -70,7 +88,15 @@ func TestPerformanceReport_RejectsHostileInput(t *testing.T) {
 		"unpaired after escaped quote": func() []byte {
 			return replaceOne(data, []byte("\"hardware\":\"test-host\""), []byte(`"hardware":"\"\ud800"`))
 		},
-		"oversized report":   func() []byte { return bytes.Repeat([]byte("x"), maxPerformanceReportBytes+1) },
+		"oversized report": func() []byte { return bytes.Repeat([]byte("x"), maxPerformanceReportBytes+1) },
+	}
+}
+
+func performanceReportSemanticCases(
+	t *testing.T,
+	valid performanceReport,
+) map[string]func() []byte {
+	return map[string]func() []byte{
 		"missing phase":      func() []byte { return marshalPerformanceReport(t, missingPhase(clonePerformanceReport(t, valid))) },
 		"duplicate phase":    func() []byte { return marshalPerformanceReport(t, duplicatePhase(clonePerformanceReport(t, valid))) },
 		"wrong sample count": func() []byte { return marshalPerformanceReport(t, wrongSampleCount(clonePerformanceReport(t, valid))) },
@@ -106,6 +132,14 @@ func TestPerformanceReport_RejectsHostileInput(t *testing.T) {
 			report.Calculation = "different"
 			return marshalPerformanceReport(t, report)
 		},
+	}
+}
+
+func performanceReportBindingCases(
+	t *testing.T,
+	valid performanceReport,
+) map[string]func() []byte {
+	return map[string]func() []byte{
 		"wrong corpus digest": func() []byte {
 			report := clonePerformanceReport(t, valid)
 			report.CorpusSHA256 = strings.Repeat("f", 64)
@@ -151,14 +185,6 @@ func TestPerformanceReport_RejectsHostileInput(t *testing.T) {
 			report.Workloads = append(report.Workloads, additional)
 			return marshalPerformanceReport(t, report)
 		},
-	}
-	for name, build := range tests {
-		t.Run(name, func(t *testing.T) {
-			_, err := decodePerformanceReport(bytes.NewReader(build()), corpus, corpusSHA256)
-			if !errors.Is(err, errPerformanceReport) {
-				t.Fatalf("decode error = %v, want invalid report", err)
-			}
-		})
 	}
 }
 
