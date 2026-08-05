@@ -13,6 +13,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -181,4 +182,132 @@ func TestSupervisionSplitRequiresStartBody(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "declaration is missing") {
 		t.Fatalf("missing declaration error = %v", err)
 	}
+}
+
+func TestSupervisionSplitRejectsDuplicateStart(t *testing.T) {
+	t.Chdir("../..")
+
+	_, err := supervisionStartBodyInventory(func(path string) ([]byte, error) {
+		source, readErr := readSource(path)
+		if readErr != nil || path != supervisionStartFile {
+			return source, readErr
+		}
+		return append(source, []byte("\nfunc startSuspendedWith() {}\n")...), nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "declaration is invalid") {
+		t.Fatalf("duplicate declaration error = %v", err)
+	}
+}
+
+func TestSupervisionSplitRejectsUnknownFile(t *testing.T) {
+	t.Chdir("../..")
+	const unknown = supervisionSplitDirectory + "unknown.go"
+	files := supervisionInventoryFiles(t)
+	files = replaceSupervisionFile(
+		t, files, supervisionSplitDirectory+"cleanup_windows.go", unknown,
+	)
+	readFile := func(path string) ([]byte, error) {
+		if path == unknown {
+			return nil, errors.New("unexpected source read")
+		}
+		return readSource(path)
+	}
+
+	inventory, err := supervisionSplitInventoryFor(files, readFile, supervisionSplitOwners)
+	if err != nil {
+		t.Fatalf("inventory unknown file: %v", err)
+	}
+	want := hashInventory([]string{inventoryRecord("unexpected-file", unknown)})
+	if inventory.packages != want {
+		t.Fatalf("unknown file inventory = %q, want %q", inventory.packages, want)
+	}
+}
+
+func TestSupervisionSplitRejectsNonGoFile(t *testing.T) {
+	t.Chdir("../..")
+	const nonGo = supervisionSplitDirectory + "cleanup_windows.rs"
+	files := supervisionInventoryFiles(t)
+	files = replaceSupervisionFile(
+		t, files, supervisionSplitDirectory+"cleanup_windows.go", nonGo,
+	)
+	owners := maps.Clone(supervisionSplitOwners)
+	owner := owners["cleanup_windows.go"]
+	delete(owners, "cleanup_windows.go")
+	owners["cleanup_windows.rs"] = owner
+	readFile := func(path string) ([]byte, error) {
+		if path == nonGo {
+			return nil, errors.New("unexpected source read")
+		}
+		return readSource(path)
+	}
+
+	inventory, err := supervisionSplitInventoryFor(files, readFile, owners)
+	if err != nil {
+		t.Fatalf("inventory non-Go file: %v", err)
+	}
+	want := hashInventory([]string{inventoryRecord("unexpected-file", nonGo)})
+	if inventory.packages != want {
+		t.Fatalf("non-Go file inventory = %q, want %q", inventory.packages, want)
+	}
+}
+
+func TestSupervisionSplitBoundsAggregateSource(t *testing.T) {
+	t.Chdir("../..")
+	files := supervisionInventoryFiles(t)
+	readFile := func(path string) ([]byte, error) {
+		source, err := readSource(path)
+		if err != nil || path != supervisionStartFile {
+			return source, err
+		}
+		return append(source, bytes.Repeat([]byte(" "), maxSupervisionSplitBytes-len(source)+1)...), nil
+	}
+
+	_, err := supervisionSplitInventoryFor(files, readFile, supervisionSplitOwners)
+	if err == nil || !strings.Contains(err.Error(), "source inventory exceeds bound") {
+		t.Fatalf("aggregate bound error = %v", err)
+	}
+}
+
+func TestSupervisionSplitRejectsWrongPackage(t *testing.T) {
+	t.Chdir("../..")
+	files := supervisionInventoryFiles(t)
+	readFile := func(path string) ([]byte, error) {
+		source, err := readSource(path)
+		if err != nil || path != supervisionStartFile {
+			return source, err
+		}
+		return bytes.Replace(source, []byte("package supervision"), []byte("package rogue"), 1), nil
+	}
+
+	_, err := supervisionSplitInventoryFor(files, readFile, supervisionSplitOwners)
+	if err == nil || !strings.Contains(err.Error(), "uses package rogue") {
+		t.Fatalf("wrong package error = %v", err)
+	}
+}
+
+func supervisionInventoryFiles(t *testing.T) []string {
+	t.Helper()
+
+	files, err := sourceFiles()
+	if err != nil {
+		t.Fatalf("inventory source: %v", err)
+	}
+	return files
+}
+
+func replaceSupervisionFile(t *testing.T, files []string, declared, replacement string) []string {
+	t.Helper()
+
+	replaced := false
+	updated := slices.Clone(files)
+	for index, path := range updated {
+		if path == declared {
+			updated[index] = replacement
+			replaced = true
+		}
+	}
+	if !replaced {
+		t.Fatalf("missing declared file %q", declared)
+	}
+	return updated
 }
