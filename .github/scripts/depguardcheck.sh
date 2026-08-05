@@ -331,6 +331,12 @@ add_case "$suite" execution-reject internal/execution/supervision/example.go \
 add_case "$suite" execution-test-reject internal/execution/supervision/rogue_test.go \
   celestia.research/celestia/internal/operation/urlreference \
   'execution packages must not import operation packages'
+add_case "$suite" linux-feasibility-reject internal/linuxamd64feasibility/example.go \
+  celestia.research/celestia/internal/operation/urlreference \
+  'Linux feasibility preflight must not import Production owners'
+add_case "$suite" linux-feasibility-tool-reject tools/linuxamd64feasibility/example.go \
+  celestia.research/celestia/internal/operation/urlreference \
+  'Linux feasibility tool imports only its preflight owner'
 add_case "$suite" execution-integration-reject \
   internal/execution/supervision/supervisor_windows_test.go \
   celestia.research/celestia/internal/operation/urlreference \

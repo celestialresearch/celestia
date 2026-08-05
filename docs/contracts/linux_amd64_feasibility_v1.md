@@ -14,6 +14,10 @@ One named native Linux AMD64 host either demonstrates every listed primitive
 or records the first refusal before a Production worker can execute. A feasible
 observation is not Linux support or a persistence qualification.
 
+The maintainer-only `tools/linuxamd64feasibility` preflight performs bounded
+read-only checks and emits only `unavailable` or `indeterminate`. It is not a
+release artefact and cannot qualify the platform.
+
 ## Required evidence
 - A writable delegated cgroup v2 subtree exposes `cgroup.kill`, `pids.max`,
   `memory.max` and `cpu.max`.

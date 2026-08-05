@@ -177,6 +177,30 @@ grep -Fq 'worker/rogue/main.go: Go package is not declared' <<<"$output" || {
 git -C "$architecture_dir" rm -q --cached worker/rogue/main.go
 rm -f -- "$architecture_dir/worker/rogue/main.go"
 rmdir "$architecture_dir/worker/rogue"
+for rogue in \
+  internal/linuxamd64feasibility/rogue \
+  tools/linuxamd64feasibility/rogue; do
+  mkdir -p "$architecture_dir/$rogue"
+  printf 'package rogue\n' >"$architecture_dir/$rogue/main.go"
+  git -C "$architecture_dir" add "$rogue/main.go"
+  set +e
+  output=$(cd "$architecture_dir" &&
+    "$architecture_policy" architecture 2>&1)
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'policy check accepted undeclared %s package\n' "$rogue" >&2
+    return 1
+  }
+  grep -Fq "$rogue/main.go: Go package is not declared" <<<"$output" || {
+    printf 'policy output omitted the %s placement diagnostic:\n%s\n' \
+      "$rogue" "$output" >&2
+    return 1
+  }
+  git -C "$architecture_dir" rm -q --cached "$rogue/main.go"
+  rm -f -- "$architecture_dir/$rogue/main.go"
+  rmdir "$architecture_dir/$rogue"
+done
 printf '\nvar verificationAttemptDrift = 1\n' \
   >>"$architecture_dir/internal/operation/urlreference/attempt/contract.go"
 set +e

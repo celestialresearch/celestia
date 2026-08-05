@@ -1,0 +1,44 @@
+// Copyright © 2026 @sudocelestia. All rights reserved.
+//
+// PROPRIETARY AND CONFIDENTIAL SOURCE CODE.
+//
+// No licence, permission or authorisation is granted to use, copy, modify,
+// compile, execute, distribute, publish, sublicense or otherwise exploit this
+// file, except to the limited extent unavoidably permitted by applicable law
+// or GitHub's Terms of Service.
+//
+// See the LICENSE file at the repository root for the complete terms.
+
+package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+
+	"celestia.research/celestia/internal/linuxamd64feasibility"
+)
+
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(arguments []string, stdout, stderr io.Writer) int {
+	if len(arguments) != 1 {
+		if _, err := fmt.Fprintln(stderr, "usage: linuxamd64feasibility <evidence-root>"); err != nil {
+			return 1
+		}
+		return 2
+	}
+	output, err := linuxamd64feasibility.Probe(arguments[0])
+	if err != nil {
+		if _, writeErr := fmt.Fprintln(stderr, "encode Linux AMD64 feasibility preflight"); writeErr != nil {
+			return 1
+		}
+		return 1
+	}
+	if _, err := stdout.Write(output); err != nil {
+		return 1
+	}
+	return 0
+}

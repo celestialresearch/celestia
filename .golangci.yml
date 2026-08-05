@@ -32,6 +32,22 @@ linters:
               desc: execution packages must not import operations
             - pkg: "celestia.research/celestia/internal/operation/urlreference"
               desc: execution packages must not import operation packages
+        linux-amd64-feasibility:
+          list-mode: lax
+          files:
+            - "**/internal/linuxamd64feasibility/*.go"
+          deny:
+            - pkg: "celestia.research/celestia/internal"
+              desc: Linux feasibility preflight must not import Production owners
+        linux-feasibility-tool:
+          list-mode: lax
+          files:
+            - "**/tools/linuxamd64feasibility/*.go"
+          allow:
+            - "celestia.research/celestia/internal/linuxamd64feasibility"
+          deny:
+            - pkg: "celestia.research/celestia/internal"
+              desc: Linux feasibility tool imports only its preflight owner
         execution-integration:
           list-mode: lax
           files:
