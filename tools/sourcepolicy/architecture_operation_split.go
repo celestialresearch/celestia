@@ -23,7 +23,7 @@ const (
 	operationSplitDirectory  = "internal/operation/urlreference/"
 	maxOperationSplitBytes   = 8 << 20
 	operationSplitPackageSHA = "232b7f68185459946d4cfa1354a4b0718b2cfb3c75ffe2b0c393c3a61db1ad87"
-	operationSplitSourceSHA  = "be618a243bd3fc0a52b623236b3fc76befbc90066103bf69d67992251d854a95"
+	operationSplitSourceSHA  = "3d978588b28ac0b8286616f548c1f651fe65779503607100b1587fd1c1c81119"
 	operationSplitTargetSHA  = "218e94d6dd76740571ebd3d72e90c075d6afd3f50d11e3ebf088dd6bb5ac39d2"
 )
 
