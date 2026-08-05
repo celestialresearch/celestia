@@ -57,6 +57,37 @@ renamed_key=$(cache_key)
 }
 mv -- "$action_file" "$work_dir/action.yml"
 action_file="$work_dir/action.yml"
+printf 'uses: example/action@0000000000000000000000000000000000000002 # v1.0.1\n' \
+  >"$action_file"
+content_key=$(cache_key)
+[[ "$first_key" != "$content_key" ]] || {
+  printf 'action cache ignored action content\n' >&2
+  exit 1
+}
+printf 'uses: example/action@0000000000000000000000000000000000000001 # v1.0.0\n' \
+  >"$action_file"
+
+policy_file="$work_dir/policy.go"
+printf 'package main\n' >"$policy_file"
+policy_files() {
+  printf '%s\0' "$policy_file"
+}
+policy_key=$(cache_key)
+printf '\n' >>"$policy_file"
+policy_content_key=$(cache_key)
+[[ "$policy_key" != "$policy_content_key" ]] || {
+  printf 'action cache ignored policy content\n' >&2
+  exit 1
+}
+renamed_policy="$work_dir/renamed-policy.go"
+mv -- "$policy_file" "$renamed_policy"
+policy_file=$renamed_policy
+policy_path_key=$(cache_key)
+[[ "$policy_content_key" != "$policy_path_key" ]] || {
+  printf 'action cache ignored a policy path\n' >&2
+  exit 1
+}
+first_key=$policy_path_key
 
 printf 'exceptions-v2\n' >"$currency_file"
 second_key=$(cache_key)
@@ -96,6 +127,7 @@ mkdir -p -- "$cache_root/actioncheck"
 printf 'wrong-key\n' >"$cache_root/actioncheck/$key"
 check_calls=0
 original_check_actions=$(declare -f check_actions)
+# shellcheck disable=SC2329 # Invoked indirectly by cached_currency.
 check_actions() {
   check_calls=$((check_calls + 1))
 }

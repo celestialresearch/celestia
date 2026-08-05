@@ -57,6 +57,36 @@ fourth=$(GOPROXY=https://proxy.invalid cache_key)
   exit 1
 }
 
+printf '\nrequire example.invalid/dependency v0.0.0\n' >>go.mod
+manifest=$(cache_key)
+[[ "$first" != "$manifest" ]] || {
+  printf 'module cache ignored the module manifest\n' >&2
+  exit 1
+}
+git checkout -q -- go.mod
+
+printf 'changed\n' >go.sum
+checksums=$(cache_key)
+[[ "$first" != "$checksums" ]] || {
+  printf 'module cache ignored the module checksum inventory\n' >&2
+  exit 1
+}
+git checkout -q -- go.sum
+
+printf '\n' >>.github/scripts/modcheck.sh
+checker=$(cache_key)
+[[ "$first" != "$checker" ]] || {
+  printf 'module cache ignored its checker\n' >&2
+  exit 1
+}
+git checkout -q -- .github/scripts/modcheck.sh
+
+flags=$(GOFLAGS=-mod=readonly cache_key)
+[[ "$first" != "$flags" ]] || {
+  printf 'module cache ignored Go build flags\n' >&2
+  exit 1
+}
+
 cache_root=$work/cache
 key=$(cache_key)
 mkdir -p "$cache_root/modcheck"
