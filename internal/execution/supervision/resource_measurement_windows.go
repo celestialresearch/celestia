@@ -56,20 +56,6 @@ func processResources(job, process windows.Handle) Resources {
 	)
 }
 
-func measureResources(deadline time.Time, measure func() Resources) (Resources, time.Time) {
-	return measureResourcesWith(deadline, time.Now, measure)
-}
-
-func measureResourcesWith(
-	deadline time.Time,
-	now func() time.Time,
-	measure func() Resources,
-) (Resources, time.Time) {
-	started := now()
-	resources := measure()
-	return resources, deadline.Add(now().Sub(started))
-}
-
 func processResourcesWith(
 	job, process windows.Handle,
 	queryAccounting queryJobAccounting,
