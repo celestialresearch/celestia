@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -46,6 +47,39 @@ func TestBuild(t *testing.T) {
 			t.Fatalf("run helper error = %v", err)
 		}
 	})
+}
+
+func TestBuildRejectsContextWithoutDeadline(t *testing.T) {
+	err := Build(context.Background(), Request{})
+	if err == nil || !strings.Contains(err.Error(), "context lacks deadline") {
+		t.Fatalf("missing deadline error = %v", err)
+	}
+}
+
+func TestWaitCause(t *testing.T) {
+	if cause := waitCause(context.Background(), uint32(windows.WAIT_TIMEOUT)); !errors.Is(cause, context.DeadlineExceeded) {
+		t.Fatalf("deadline wait cause = %v", cause)
+	}
+	if cause := waitCause(context.Background(), windows.WAIT_OBJECT_0); cause != nil {
+		t.Fatalf("completed wait cause = %v", cause)
+	}
+}
+
+func TestNextProcessListSize(t *testing.T) {
+	current, err := nextProcessListSize(0, 1, 0)
+	if err != nil {
+		t.Fatalf("initial process list size: %v", err)
+	}
+	next, err := nextProcessListSize(current, 2, 1)
+	if err != nil || next <= current {
+		t.Fatalf("resize process list = %d, %v", next, err)
+	}
+	if next, err := nextProcessListSize(next, 2, 2); err != nil || next != 0 {
+		t.Fatalf("complete process list = %d, %v", next, err)
+	}
+	if _, err := nextProcessListSize(current, 1, 2); err == nil {
+		t.Fatal("invalid process list accepted")
+	}
 }
 
 func TestBuildCancelsDescendant(t *testing.T) {
@@ -75,6 +109,81 @@ func TestBuildRejectsLiveDescendant(t *testing.T) {
 		t.Fatalf("clean parent build error = %v", err)
 	}
 	assertDescendantExited(t, pidPath)
+}
+
+func TestJoinTreeTerminatesAfterObservationFailure(t *testing.T) {
+	cases := []struct {
+		name string
+		wait treeWaiter
+	}{
+		{
+			name: "graceful observation",
+			wait: func(context.Context, windows.Handle, windows.Handle, time.Duration, bool) (bool, error) {
+				return false, errInjectedTreeObservation
+			},
+		},
+		{
+			name: "terminated observation",
+			wait: func(_ context.Context, _ windows.Handle, _ windows.Handle, _ time.Duration, requireSignal bool) (bool, error) {
+				if requireSignal {
+					return false, errInjectedTreeObservation
+				}
+				return false, nil
+			},
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			event, name, closeEvent := testEvent(t)
+			defer closeEvent()
+			pidPath := filepath.Join(t.TempDir(), "descendant.pid")
+			job, port, process := startHelperJob(t, "exit", pidPath, name, "")
+			defer closeStoppedJob(t, job, port, process)
+			if event, err := windows.WaitForSingleObject(event, 10_000); err != nil || event != windows.WAIT_OBJECT_0 {
+				t.Fatalf("wait for helper: event=%d error=%v", event, err)
+			}
+			err := joinTree(context.Background(), job, port, process.Process, true, test.wait)
+			if !errors.Is(err, errInjectedTreeObservation) {
+				t.Fatalf("join tree error = %v", err)
+			}
+			assertDescendantExited(t, pidPath)
+		})
+	}
+}
+
+func TestWaitJobEmptyHonoursCancellation(t *testing.T) {
+	event, name, closeEvent := testEvent(t)
+	defer closeEvent()
+	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
+	job, port, process := startHelperJob(t, "wait", pidPath, name, "")
+	defer closeStartedJob(t, job, port, process)
+	if event, err := windows.WaitForSingleObject(event, 10_000); err != nil || event != windows.WAIT_OBJECT_0 {
+		t.Fatalf("wait for helper: event=%d error=%v", event, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := waitJobEmpty(ctx, job.handle, port, joinTimeout, false)
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled observation error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancelled observation did not return promptly")
+	}
+}
+
+func TestBuildHonoursContextAfterStop(t *testing.T) {
+	ctx := newAfterStopContext()
+	err := testBuild(t, ctx, "success", "", "", "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("after-stop cancellation error = %v", err)
+	}
 }
 
 func TestValidateRequest(t *testing.T) {
@@ -140,8 +249,10 @@ func TestBuildJoinsCancellationCallbackBeforeClose(t *testing.T) {
 }
 
 func TestBuildCancelsBeforeJobAssignment(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+	parent, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	ctx, cancelDeadline := context.WithTimeout(parent, 5*time.Second)
+	defer cancelDeadline()
 	var pid uint32
 	err := buildWithStarter(
 		ctx,
@@ -209,7 +320,104 @@ func helperEnvironment() []string {
 
 func testBuild(t *testing.T, ctx context.Context, mode, pidPath, event, release string) error {
 	t.Helper()
+	ctx, cancel := testDeadline(ctx)
+	defer cancel()
 	return buildWithExecutable(ctx, helperRequest(t, mode, pidPath, event, release), os.Args[0])
+}
+
+func testDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, 5*time.Second)
+}
+
+func startHelperJob(
+	t *testing.T,
+	mode, pidPath, event, release string,
+) (*jobOwner, windows.Handle, windows.ProcessInformation) {
+	t.Helper()
+	job, port, err := newJobOwner()
+	if err != nil {
+		t.Fatalf("create helper job: %v", err)
+	}
+	process, err := startSuspended(os.Args[0], helperRequest(t, mode, pidPath, event, release))
+	if err != nil {
+		closeErr := errors.Join(closeHandle("close helper completion port", port), closeHandle("close helper job", job.handle))
+		t.Fatalf("start helper: %v", errors.Join(err, closeErr))
+	}
+	if err := windows.AssignProcessToJobObject(job.handle, process.Process); err != nil {
+		err = discardStartedProcess(process, fmt.Errorf("assign helper job: %w", err))
+		closeErr := errors.Join(closeHandle("close helper completion port", port), closeHandle("close helper job", job.handle))
+		t.Fatalf("assign helper: %v", errors.Join(err, closeErr))
+	}
+	if _, err := windows.ResumeThread(process.Thread); err != nil {
+		err = finishStoppedBuild(context.Background(), job, port, process.Process, fmt.Errorf("resume helper: %w", err))
+		closeErr := errors.Join(closeHandle("close helper thread", process.Thread), closeHandle("close helper process", process.Process), closeHandle("close helper completion port", port), closeHandle("close helper job", job.handle))
+		t.Fatalf("resume helper: %v", errors.Join(err, closeErr))
+	}
+	return job, port, process
+}
+
+func closeStartedJob(t *testing.T, job *jobOwner, port windows.Handle, process windows.ProcessInformation) {
+	t.Helper()
+	if err := finishStoppedBuild(context.Background(), job, port, process.Process, nil); err != nil {
+		t.Errorf("stop helper job: %v", err)
+	}
+	closeStoppedJob(t, job, port, process)
+}
+
+func closeStoppedJob(t *testing.T, job *jobOwner, port windows.Handle, process windows.ProcessInformation) {
+	t.Helper()
+	if err := errors.Join(
+		closeHandle("close helper thread", process.Thread),
+		closeHandle("close helper process", process.Process),
+		closeHandle("close helper completion port", port),
+		closeHandle("close helper job", job.handle),
+	); err != nil {
+		t.Errorf("close helper job: %v", err)
+	}
+}
+
+var errInjectedTreeObservation = errors.New("injected Cargo process-tree observation failure")
+
+type afterStopContext struct {
+	done chan struct{}
+	once sync.Once
+}
+
+func newAfterStopContext() *afterStopContext {
+	return &afterStopContext{done: make(chan struct{})}
+}
+
+func (ctx *afterStopContext) Deadline() (time.Time, bool) {
+	return time.Now().Add(time.Minute), true
+}
+
+func (ctx *afterStopContext) Done() <-chan struct{} {
+	return ctx.done
+}
+
+func (ctx *afterStopContext) Err() error {
+	select {
+	case <-ctx.done:
+		return context.Canceled
+	default:
+		return nil
+	}
+}
+
+func (*afterStopContext) Value(any) any {
+	return nil
+}
+
+func (ctx *afterStopContext) AfterFunc(func()) func() bool {
+	return func() bool {
+		ctx.once.Do(func() {
+			close(ctx.done)
+		})
+		return true
+	}
 }
 
 func runChildHelper(t *testing.T, block bool) {

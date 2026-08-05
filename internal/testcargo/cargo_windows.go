@@ -23,7 +23,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -34,6 +33,8 @@ import (
 const (
 	jobActiveProcessZero = 4
 	joinTimeout          = 10 * time.Second
+	descendantGrace      = time.Second
+	jobPollInterval      = 50 * time.Millisecond
 )
 
 // Request describes one Cargo build owned by a Windows test.
@@ -59,6 +60,12 @@ type jobCompletionPort struct {
 	port windows.Handle
 }
 
+type jobProcessIDList struct {
+	assigned uint32
+	count    uint32
+	ids      [1]uintptr
+}
+
 type jobOwner struct {
 	handle       windows.Handle
 	terminate    sync.Once
@@ -66,6 +73,8 @@ type jobOwner struct {
 }
 
 type suspendedCargoStarter func(string, Request) (windows.ProcessInformation, error)
+
+type treeWaiter func(context.Context, windows.Handle, windows.Handle, time.Duration, bool) (bool, error)
 
 // Build starts one Cargo process suspended, owns its process tree and waits
 // for that tree to end before returning.
@@ -83,11 +92,19 @@ func buildWithStarter(
 	executable string,
 	start suspendedCargoStarter,
 ) (result error) {
-	if ctx == nil {
-		return errors.New("run Cargo: missing context")
-	}
-	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("run Cargo: %w", err)
+	return buildWithStarterAndWaiter(ctx, request, executable, start, waitJobEmpty)
+}
+
+func buildWithStarterAndWaiter(
+	ctx context.Context,
+	request Request,
+	executable string,
+	start suspendedCargoStarter,
+	wait treeWaiter,
+) (result error) {
+	deadline, err := buildDeadline(ctx)
+	if err != nil {
+		return err
 	}
 	if executable == "" {
 		return errors.New("run Cargo: missing executable")
@@ -123,13 +140,30 @@ func buildWithStarter(
 		return finishUnassignedBuild(process.Process, fmt.Errorf("assign Cargo job: %w", err))
 	}
 	if err := ctx.Err(); err != nil {
-		return finishStoppedBuild(job, port, process.Process, err)
+		return finishStoppedBuild(ctx, job, port, process.Process, err)
 	}
 	if _, err := windows.ResumeThread(process.Thread); err != nil {
-		return finishStoppedBuild(job, port, process.Process, fmt.Errorf("resume Cargo: %w", err))
+		return finishStoppedBuild(ctx, job, port, process.Process, fmt.Errorf("resume Cargo: %w", err))
 	}
 
-	return awaitBuild(ctx, job, port, process.Process)
+	return awaitBuild(ctx, deadline, job, port, process.Process, wait)
+}
+
+func buildDeadline(ctx context.Context) (time.Time, error) {
+	if ctx == nil {
+		return time.Time{}, errors.New("run Cargo: missing context")
+	}
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, fmt.Errorf("run Cargo: %w", err)
+	}
+	deadline, hasDeadline := ctx.Deadline()
+	if !hasDeadline {
+		return time.Time{}, errors.New("run Cargo: context lacks deadline")
+	}
+	if time.Until(deadline) <= 0 {
+		return time.Time{}, fmt.Errorf("run Cargo: %w", context.DeadlineExceeded)
+	}
+	return deadline, nil
 }
 
 func validateRequest(request Request) error {
@@ -360,13 +394,14 @@ func environmentKey(value string) (string, bool) {
 
 func awaitBuild(
 	ctx context.Context,
+	deadline time.Time,
 	job *jobOwner,
 	port, process windows.Handle,
+	wait treeWaiter,
 ) (result error) {
-	cancelled := atomic.Bool{}
 	cancelEvent, err := windows.CreateEvent(nil, 1, 0, nil)
 	if err != nil {
-		return finishStoppedBuild(job, port, process, fmt.Errorf("create Cargo cancellation event: %w", err))
+		return finishStoppedBuild(ctx, job, port, process, fmt.Errorf("create Cargo cancellation event: %w", err))
 	}
 	defer func() {
 		result = errors.Join(result, closeHandle("close Cargo cancellation event", cancelEvent))
@@ -375,34 +410,35 @@ func awaitBuild(
 	callbackDone := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		defer close(callbackDone)
-		cancelled.Store(true)
 		signal <- windows.SetEvent(cancelEvent)
 	})
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return finishStoppedBuild(ctx, job, port, process, context.DeadlineExceeded)
+	}
 	event, err := windows.WaitForMultipleObjects(
-		[]windows.Handle{process, cancelEvent}, false, windows.INFINITE,
+		[]windows.Handle{process, cancelEvent}, false, waitMilliseconds(remaining),
 	)
-	if !stop() {
-		<-callbackDone
-		cancelled.Store(true)
-		if signalErr := <-signal; signalErr != nil {
-			return finishStoppedBuild(job, port, process, fmt.Errorf("signal Cargo cancellation: %w", signalErr))
-		}
+	if err := stopCancellation(stop, callbackDone, signal); err != nil {
+		return finishStoppedBuild(ctx, job, port, process, fmt.Errorf("signal Cargo cancellation: %w", err))
+	}
+	if err := ctx.Err(); err != nil {
+		return finishStoppedBuild(ctx, job, port, process, err)
 	}
 	if err != nil {
-		return finishStoppedBuild(job, port, process, fmt.Errorf("wait for Cargo: %w", err))
+		return finishStoppedBuild(ctx, job, port, process, fmt.Errorf("wait for Cargo: %w", err))
 	}
-	if event == windows.WAIT_OBJECT_0+1 || cancelled.Load() {
-		cause := ctx.Err()
-		if cause == nil {
-			cause = context.Canceled
-		}
-		return finishStoppedBuild(job, port, process, cause)
+	if cause := waitCause(ctx, event); cause != nil {
+		return finishStoppedBuild(ctx, job, port, process, cause)
 	}
 	if event != windows.WAIT_OBJECT_0 {
-		return finishStoppedBuild(job, port, process, fmt.Errorf("unexpected Cargo wait result: %d", event))
+		return finishStoppedBuild(ctx, job, port, process, fmt.Errorf("unexpected Cargo wait result: %d", event))
 	}
-	if err := joinTree(job, port, process, true); err != nil {
+	if err := joinTree(ctx, job, port, process, true, wait); err != nil {
 		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return finishStoppedBuild(ctx, job, port, process, err)
 	}
 	var code uint32
 	if err := windows.GetExitCodeProcess(process, &code); err != nil {
@@ -412,6 +448,31 @@ func awaitBuild(
 		return fmt.Errorf("cargo exited with status %d", code)
 	}
 	return nil
+}
+
+func waitCause(ctx context.Context, event uint32) error {
+	switch event {
+	case windows.WAIT_OBJECT_0 + 1:
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return context.Canceled
+	case uint32(windows.WAIT_TIMEOUT):
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return context.DeadlineExceeded
+	default:
+		return nil
+	}
+}
+
+func stopCancellation(stop func() bool, callbackDone <-chan struct{}, signal <-chan error) error {
+	if stop() {
+		return nil
+	}
+	<-callbackDone
+	return <-signal
 }
 
 func finishUnassignedBuild(process windows.Handle, cause error) error {
@@ -429,11 +490,12 @@ func discardStartedProcess(process windows.ProcessInformation, cause error) erro
 }
 
 func finishStoppedBuild(
+	ctx context.Context,
 	job *jobOwner,
 	port, process windows.Handle,
 	cause error,
 ) error {
-	return errors.Join(cause, job.stop(), joinTree(job, port, process, false))
+	return errors.Join(cause, joinTree(ctx, job, port, process, false, waitJobEmpty))
 }
 
 func (job *jobOwner) stop() error {
@@ -443,76 +505,259 @@ func (job *jobOwner) stop() error {
 	return job.terminateErr
 }
 
-func joinTree(job *jobOwner, port, process windows.Handle, allowGrace bool) error {
-	event, err := windows.WaitForSingleObject(process, windows.INFINITE)
+func joinTree(
+	ctx context.Context,
+	job *jobOwner,
+	port, process windows.Handle,
+	allowGrace bool,
+	wait treeWaiter,
+) error {
+	deadline := time.Now().Add(joinTimeout)
+	if !allowGrace {
+		return terminateAndJoin(ctx, job, port, process, deadline, nil, nil, nil, wait)
+	}
+	if err := waitExitedUntil(process, deadline); err != nil {
+		return terminateAndJoin(ctx, job, port, process, deadline, err, nil, nil, wait)
+	}
+	handles, captureErr := jobProcessHandles(job.handle)
+	graceDeadline := time.Now().Add(descendantGrace)
+	if deadline.Before(graceDeadline) {
+		graceDeadline = deadline
+	}
+	empty, err := wait(ctx, job.handle, port, time.Until(graceDeadline), false)
 	if err != nil {
-		return fmt.Errorf("wait for Cargo process: %w", err)
+		return terminateAndJoin(ctx, job, port, process, deadline, errors.Join(err, errors.New("observe Cargo process tree")), handles, captureErr, wait)
 	}
-	if event != windows.WAIT_OBJECT_0 {
-		return fmt.Errorf("unexpected Cargo process result: %d", event)
+	if empty {
+		return errors.Join(waitProcessHandles(handles, deadline), closeProcessHandles(handles))
 	}
-	if allowGrace {
-		empty, err := waitJobEmpty(job.handle, port, joinTimeout, false)
+	return terminateAndJoin(ctx, job, port, process, deadline, errors.New("cargo exited with a running descendant"), handles, captureErr, wait)
+}
+
+func terminateAndJoin(
+	ctx context.Context,
+	job *jobOwner,
+	port windows.Handle,
+	process windows.Handle,
+	deadline time.Time,
+	cause error,
+	handles []windows.Handle,
+	captureErr error,
+	wait treeWaiter,
+) (result error) {
+	if cause == nil {
+		cause = ctx.Err()
+	}
+	defer func() {
+		result = errors.Join(result, closeProcessHandles(handles))
+	}()
+	stopErr := job.stop()
+	processErr := waitExitedUntil(process, deadline)
+	if handles == nil && captureErr == nil {
+		handles, captureErr = jobProcessHandles(job.handle)
+	}
+	empty, observeErr := wait(context.WithoutCancel(ctx), job.handle, port, time.Until(deadline), true)
+	afterStop, afterStopErr := jobProcessHandles(job.handle)
+	handles = append(handles, afterStop...)
+	joinErr := waitProcessHandles(handles, deadline)
+	if observeErr == nil && empty {
+		return errors.Join(cause, stopErr, processErr, captureErr, afterStopErr, joinErr)
+	}
+	if observeErr != nil {
+		return errors.Join(cause, stopErr, processErr, captureErr, observeErr, afterStopErr, joinErr)
+	}
+	return errors.Join(cause, stopErr, processErr, captureErr, afterStopErr, joinErr, errors.New("cargo process tree cleanup deadline exceeded"))
+}
+
+func waitJobEmpty(
+	ctx context.Context,
+	job, port windows.Handle,
+	timeout time.Duration,
+	requireSignal bool,
+) (bool, error) {
+	if !requireSignal {
+		empty, err := jobEmpty(job)
+		if err != nil || empty {
+			return empty, err
+		}
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		empty, retry, err := observeJob(ctx, job, port, deadline)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if empty {
-			return nil
+			return true, nil
+		}
+		if !retry {
+			return false, nil
 		}
 	}
-	if err := job.stop(); err != nil {
-		return fmt.Errorf("terminate Cargo process tree: %w", err)
+}
+
+func observeJob(
+	ctx context.Context,
+	job, port windows.Handle,
+	deadline time.Time,
+) (bool, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, false, err
 	}
-	empty, err := waitJobEmpty(job.handle, port, joinTimeout, true)
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return false, false, nil
+	}
+	message, timedOut, err := waitJobMessage(port, remaining)
 	if err != nil {
-		return err
+		return false, false, err
 	}
-	if !empty {
-		return errors.New("cargo process tree cleanup deadline exceeded")
+	if timedOut || message != jobActiveProcessZero {
+		return false, time.Until(deadline) > 0, nil
 	}
-	if allowGrace {
-		return errors.New("cargo exited with a running descendant")
+	empty, err := jobEmpty(job)
+	return empty, !empty, err
+}
+
+func waitJobMessage(port windows.Handle, remaining time.Duration) (uint32, bool, error) {
+	if remaining > jobPollInterval {
+		remaining = jobPollInterval
+	}
+	var message uint32
+	var key uintptr
+	var overlapped *windows.Overlapped
+	err := windows.GetQueuedCompletionStatus(port, &message, &key, &overlapped, waitMilliseconds(remaining))
+	if errors.Is(err, windows.ERROR_TIMEOUT) || errors.Is(err, syscall.Errno(windows.WAIT_TIMEOUT)) {
+		return 0, true, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("wait for Cargo process tree: %w", err)
+	}
+	return message, false, nil
+}
+
+func jobEmpty(job windows.Handle) (bool, error) {
+	active, err := jobActive(job)
+	return !active, err
+}
+
+func waitProcessHandles(handles []windows.Handle, deadline time.Time) error {
+	for _, handle := range handles {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return errors.New("cargo process tree cleanup deadline exceeded")
+		}
+		event, err := windows.WaitForSingleObject(handle, waitMilliseconds(remaining))
+		if err != nil {
+			return fmt.Errorf("wait for terminated Cargo process tree: %w", err)
+		}
+		if event != windows.WAIT_OBJECT_0 {
+			return fmt.Errorf("unexpected terminated Cargo process result: %d", event)
+		}
 	}
 	return nil
 }
 
-func waitJobEmpty(job, port windows.Handle, timeout time.Duration, requireSignal bool) (bool, error) {
-	deadline := time.Now().Add(timeout)
-	for {
-		if !requireSignal {
-			active, err := jobActive(job)
-			if err != nil {
-				return false, err
-			}
-			if !active {
-				return true, nil
-			}
-		}
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return false, nil
-		}
-		var message uint32
-		var key uintptr
-		var overlapped *windows.Overlapped
-		if err := windows.GetQueuedCompletionStatus(
-			port, &message, &key, &overlapped, waitMilliseconds(remaining),
-		); err != nil {
-			if errors.Is(err, windows.ERROR_TIMEOUT) || errors.Is(err, syscall.Errno(windows.WAIT_TIMEOUT)) {
-				return false, nil
-			}
-			return false, fmt.Errorf("wait for Cargo process tree: %w", err)
-		}
-		if message == jobActiveProcessZero {
-			active, err := jobActive(job)
-			if err != nil {
-				return false, err
-			}
-			if !active {
-				return true, nil
-			}
-		}
+func waitExitedUntil(process windows.Handle, deadline time.Time) error {
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return errors.New("cargo process tree cleanup deadline exceeded")
 	}
+	event, err := windows.WaitForSingleObject(process, waitMilliseconds(remaining))
+	if err != nil {
+		return fmt.Errorf("wait for Cargo process: %w", err)
+	}
+	if event == uint32(windows.WAIT_TIMEOUT) {
+		return errors.New("cargo process tree cleanup deadline exceeded")
+	}
+	if event != windows.WAIT_OBJECT_0 {
+		return fmt.Errorf("unexpected Cargo process result: %d", event)
+	}
+	return nil
+}
+
+func jobProcessHandles(job windows.Handle) ([]windows.Handle, error) {
+	size, err := nextProcessListSize(0, 16, 0)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		buffer := make([]byte, size)
+		err := windows.QueryInformationJobObject(
+			job,
+			windows.JobObjectBasicProcessIdList,
+			uintptr(nativePointer(&buffer[0])),
+			size,
+			nil,
+		)
+		if err != nil && !errors.Is(err, windows.ERROR_MORE_DATA) {
+			return nil, fmt.Errorf("query terminated Cargo process tree: %w", err)
+		}
+		list := (*jobProcessIDList)(nativePointer(&buffer[0]))
+		nextSize, sizeErr := nextProcessListSize(size, list.assigned, list.count)
+		if sizeErr != nil {
+			return nil, sizeErr
+		}
+		if nextSize != 0 {
+			size = nextSize
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("query terminated Cargo process tree: %w", err)
+		}
+		available := (size - uint32(unsafe.Offsetof(jobProcessIDList{}.ids))) / uint32(unsafe.Sizeof(uintptr(0)))
+		if list.count > available {
+			return nil, errors.New("query terminated Cargo process tree: invalid process count")
+		}
+		return openJobProcesses(processIDs(list))
+	}
+}
+
+func openJobProcesses(ids []uintptr) ([]windows.Handle, error) {
+	handles := make([]windows.Handle, 0, len(ids))
+	for _, id := range ids {
+		if id > uintptr(^uint32(0)) {
+			return nil, errors.New("query terminated Cargo process tree: invalid process identity")
+		}
+		handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(id))
+		if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
+			continue
+		}
+		if err != nil {
+			return nil, errors.Join(fmt.Errorf("open terminated Cargo process: %w", err), closeProcessHandles(handles))
+		}
+		handles = append(handles, handle)
+	}
+	return handles, nil
+}
+
+func nextProcessListSize(current, assigned, count uint32) (uint32, error) {
+	if count > assigned {
+		return 0, errors.New("query terminated Cargo process tree: invalid process count")
+	}
+	if count == assigned && current != 0 {
+		return 0, nil
+	}
+	required := uint64(unsafe.Offsetof(jobProcessIDList{}.ids)) + uint64(assigned)*uint64(unsafe.Sizeof(uintptr(0)))
+	if required > 1<<20 || required > uint64(^uint32(0)) {
+		return 0, errors.New("query terminated Cargo process tree: process list is too large")
+	}
+	if uint32(required) <= current {
+		return 0, errors.New("query terminated Cargo process tree: incomplete process list")
+	}
+	return uint32(required), nil
+}
+
+func processIDs(list *jobProcessIDList) []uintptr {
+	return unsafe.Slice(&list.ids[0], list.count) // #nosec G103 -- Win32 supplies the bounded variable-length process list.
+}
+
+func closeProcessHandles(handles []windows.Handle) error {
+	var result error
+	for _, handle := range handles {
+		result = errors.Join(result, closeHandle("close terminated Cargo process", handle))
+	}
+	return result
 }
 
 func jobActive(job windows.Handle) (bool, error) {
@@ -531,14 +776,7 @@ func jobActive(job windows.Handle) (bool, error) {
 }
 
 func waitExited(process windows.Handle) error {
-	event, err := windows.WaitForSingleObject(process, windows.INFINITE)
-	if err != nil {
-		return fmt.Errorf("wait for Cargo process: %w", err)
-	}
-	if event != windows.WAIT_OBJECT_0 {
-		return fmt.Errorf("unexpected Cargo process result: %d", event)
-	}
-	return nil
+	return waitExitedUntil(process, time.Now().Add(joinTimeout))
 }
 
 func closeHandle(operation string, handle windows.Handle) error {
