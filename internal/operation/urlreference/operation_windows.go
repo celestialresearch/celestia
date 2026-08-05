@@ -295,9 +295,12 @@ func (operation *Operation) executeAcceptedMeasured(
 	}
 	timings.Worker = time.Duration(response.DurationNS)
 	timings.WorkerMeasured = true
-	started = time.Now()
-	result := evaluateResponse(accepted, process, response)
-	timings.Verification = time.Since(started)
-	timings.VerificationMeasured = true
+	result, verification, measured := evaluateResponse(
+		accepted,
+		process,
+		response,
+	)
+	timings.Verification = verification
+	timings.VerificationMeasured = measured
 	return result, process, timings
 }

@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 )
 
 type markerPublicationOperations struct {
@@ -54,13 +55,21 @@ func loadTerminal(path string, records *Records) error {
 }
 
 func writeOrMatchReceipt(path, attemptID, kind, terminalFile, state string) error {
+	_, err := writeOrMatchReceiptMeasured(path, attemptID, kind, terminalFile, state)
+	return err
+}
+
+func writeOrMatchReceiptMeasured(
+	path, attemptID, kind, terminalFile, state string,
+) (time.Duration, error) {
+	started := time.Now()
 	admittedHash, err := fileHash(path, admittedFile)
 	if err != nil {
-		return err
+		return time.Since(started), err
 	}
 	terminalHash, err := fileHash(path, terminalFile)
 	if err != nil {
-		return err
+		return time.Since(started), err
 	}
 	receipt := Receipt{
 		Version:       Version,
@@ -72,7 +81,8 @@ func writeOrMatchReceipt(path, attemptID, kind, terminalFile, state string) erro
 		TerminalHash:  terminalHash,
 		TerminalState: state,
 	}
-	return writeOrMatchRecord(path, receiptFile, receipt)
+	duration := time.Since(started)
+	return duration, writeOrMatchRecord(path, receiptFile, receipt)
 }
 
 func publishMarker(path, attemptID string) error {

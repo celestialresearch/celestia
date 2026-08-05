@@ -23,8 +23,8 @@ const (
 	operationSplitDirectory  = "internal/operation/urlreference/"
 	maxOperationSplitBytes   = 8 << 20
 	operationSplitPackageSHA = "cfb9040d3a48b4c7333f61a0cdbcd16dda47e25c83287dcdf315200cbd803bf0"
-	operationSplitSourceSHA  = "ae1a10a7021d26d54e31e9a204d8fd91ebe5e4657369d9a850c2216c1b04b554"
-	operationSplitTargetSHA  = "864171ea9882bceb0511e216835f0dcfd4c761f0e7eef8acc32e44fbdd25c619"
+	operationSplitSourceSHA  = "d581aab2db976861e3072c4d8f6d04aec6e0c58d621a990f233e36478069edb3"
+	operationSplitTargetSHA  = "78cbbf3e0280fa786f004cd54bf8f395dfa37cabd26076b4270e3a168a0c4544"
 )
 
 var operationSplitOwners = map[string]string{

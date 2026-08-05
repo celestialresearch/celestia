@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"celestia.research/celestia/internal/execution/supervision"
+	"celestia.research/celestia/internal/operation/urlreference/admission"
 	"celestia.research/celestia/internal/operation/urlreference/transform"
 )
 
@@ -44,6 +45,31 @@ func TestOperationMeasuresEveryPhase(t *testing.T) {
 	assertPhaseDurations(t, timings)
 	if result.Process.Timings != (supervision.Timings{}) {
 		t.Fatal("caller result exposes internal phase timings")
+	}
+}
+
+func TestOperationDoesNotMeasureMissingVerification(t *testing.T) {
+	operation, err := newTestOperation(t, testHostileWorker(t))
+	if err != nil {
+		t.Fatalf("new operation: %v", err)
+	}
+	admittedAt := time.Now().UTC()
+	accepted, err := urladmission.Admit(
+		"https://rejected.test",
+		urlreference.Defang,
+		admittedAt,
+	)
+	if err != nil {
+		t.Fatalf("admit: %v", err)
+	}
+	_, _, timings := operation.executeAcceptedMeasured(
+		context.Background(),
+		accepted,
+		admittedAt,
+	)
+	if !timings.ProtocolMeasured || !timings.WorkerMeasured ||
+		timings.VerificationMeasured {
+		t.Fatalf("rejected response timings = %+v", timings)
 	}
 }
 

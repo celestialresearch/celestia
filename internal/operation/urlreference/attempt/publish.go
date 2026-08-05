@@ -76,20 +76,17 @@ func (attempt *Attempt) publishLockedMeasured(
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
 		return timings, fmt.Errorf("write observation: %w", err)
 	}
-	receiptStarted := time.Now()
-	if err := writeOrMatchReceipt(
+	timings.Receipt, err = writeOrMatchReceiptMeasured(
 		attempt.path,
 		attempt.admitted.AttemptID,
 		"observation",
 		observationFile,
 		observation.TerminalStatus,
-	); err != nil {
-		timings.Receipt = time.Since(receiptStarted)
-		timings.ReceiptMeasured = true
+	)
+	timings.ReceiptMeasured = true
+	if err != nil {
 		return timings, err
 	}
-	timings.Receipt = time.Since(receiptStarted)
-	timings.ReceiptMeasured = true
 	path, err := attempt.publishDirectory()
 	if err != nil {
 		return timings, err

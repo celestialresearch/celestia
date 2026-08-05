@@ -16,6 +16,7 @@ package urloperation
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"celestia.research/celestia/internal/execution/supervision"
 	"celestia.research/celestia/internal/operation/urlreference/admission"
@@ -28,7 +29,7 @@ func evaluateResponse(
 	accepted urladmission.Accepted,
 	process supervision.Outcome,
 	response workerprotocol.Response,
-) Result {
+) (Result, time.Duration, bool) {
 	diagnostics := projectDiagnostics(response.Status, response.Diagnostics)
 	response.Diagnostics = nil
 	if response.Status != workerprotocol.Completed {
@@ -41,7 +42,7 @@ func evaluateResponse(
 				ErrProcess,
 				fmt.Errorf("worker status %s", response.Status),
 			),
-		}
+		}, 0, false
 	}
 	result := Result{
 		Status:      ExecutedUnverified,
@@ -53,16 +54,18 @@ func evaluateResponse(
 			VerifierVersion: attemptstore.URLVerifierVersion,
 		},
 	}
+	started := time.Now()
 	expected, err := urlreference.Transform(
 		accepted.Request.Input,
 		urlreference.Mode(accepted.Request.Mode),
 	)
 	result.Verification.Expected = expected
 	result.Verification.Matched = err == nil && *response.Output == expected
+	duration := time.Since(started)
 	if !result.Verification.Matched {
 		result.Err = ErrVerification
-		return result
+		return result, duration, true
 	}
 	result.Status = Verified
-	return result
+	return result, duration, true
 }
