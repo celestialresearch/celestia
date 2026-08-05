@@ -304,6 +304,28 @@ func TestBuildJoinsCancellationCallbackBeforeClose(t *testing.T) {
 	}
 }
 
+func TestBuildWaitsForRelease(t *testing.T) {
+	started, startedName, closeStarted := testEvent(t)
+	defer closeStarted()
+	release, releaseName, closeRelease := testEvent(t)
+	defer closeRelease()
+	done := make(chan error, 1)
+	go func() {
+		done <- testBuild(
+			t, context.Background(), "race", "", startedName, releaseName,
+		)
+	}()
+	if event, err := windows.WaitForSingleObject(started, 10_000); err != nil || event != windows.WAIT_OBJECT_0 {
+		t.Fatalf("wait for helper: event=%d error=%v", event, err)
+	}
+	if err := windows.SetEvent(release); err != nil {
+		t.Fatalf("release helper: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("released build error = %v", err)
+	}
+}
+
 func TestBuildCancelsBeforeJobAssignment(t *testing.T) {
 	parent, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -550,7 +572,7 @@ func signalChildStart(t *testing.T) {
 	if name == "" {
 		return
 	}
-	event, err := openTestEvent(name)
+	event, err := openTestEvent(name, windows.EVENT_MODIFY_STATE)
 	if err != nil {
 		t.Fatalf("open test event: %v", err)
 	}
@@ -565,7 +587,10 @@ func signalChildStart(t *testing.T) {
 
 func runCompletionRaceHelper(t *testing.T) {
 	t.Helper()
-	started, err := openTestEvent(os.Getenv("CELESTIA_TEST_CARGO_EVENT"))
+	started, err := openTestEvent(
+		os.Getenv("CELESTIA_TEST_CARGO_EVENT"),
+		windows.EVENT_MODIFY_STATE,
+	)
 	if err != nil {
 		t.Fatalf("open start event: %v", err)
 	}
@@ -576,7 +601,10 @@ func runCompletionRaceHelper(t *testing.T) {
 	if err := windows.CloseHandle(started); err != nil {
 		t.Fatalf("close start event: %v", err)
 	}
-	release, err := openTestEvent(os.Getenv("CELESTIA_TEST_CARGO_RELEASE"))
+	release, err := openTestEvent(
+		os.Getenv("CELESTIA_TEST_CARGO_RELEASE"),
+		windows.SYNCHRONIZE,
+	)
 	if err != nil {
 		t.Fatalf("open release event: %v", err)
 	}
@@ -624,12 +652,12 @@ func testEvent(t *testing.T) (windows.Handle, string, func()) {
 	}
 }
 
-func openTestEvent(name string) (windows.Handle, error) {
+func openTestEvent(name string, access uint32) (windows.Handle, error) {
 	pointer, err := windows.UTF16PtrFromString(name)
 	if err != nil {
 		return 0, err
 	}
-	return windows.OpenEvent(windows.EVENT_MODIFY_STATE, false, pointer)
+	return windows.OpenEvent(access, false, pointer)
 }
 
 func assertDescendantExited(t *testing.T, pidPath string) {
