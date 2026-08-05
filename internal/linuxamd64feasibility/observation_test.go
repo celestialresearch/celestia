@@ -150,12 +150,21 @@ func TestDecodeObservationRejectsBrokenInvariants(t *testing.T) {
 	}
 }
 
+func TestDecodeObservationRejectsFailedSuccessReason(t *testing.T) {
+	value := failedObservation()
+	value.Reason = "all_primitives_passed"
+	if _, err := decodeObservation(marshalObservation(t, value)); err == nil {
+		t.Fatal("failed observation accepted success reason")
+	}
+}
+
 func TestDecodeObservationAcceptsTerminalNonSuccessStates(t *testing.T) {
 	cases := []observation{
 		unavailableObservation(),
 		unavailableAfterCleanupObservation(),
 		failedObservation(),
 		cancelledObservation(),
+		terminalObservation("cancelled", "cancelled", 1),
 		indeterminateObservation(),
 	}
 	for _, value := range cases {

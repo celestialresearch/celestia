@@ -75,6 +75,14 @@ func platformRefusalCases() []preflightCase {
 			status: "unavailable",
 			reason: "cgroup_delegation_missing",
 		},
+		{
+			name: "missing required controller",
+			source: sourceWith(readySource("linux", "amd64"), func(source *preflightSource) {
+				source.read = sourceRead("cpu memory")
+			}),
+			status: "unavailable",
+			reason: "cgroup_controllers_missing",
+		},
 	}
 }
 

@@ -217,9 +217,10 @@ func validObservationStatusInvariants(value observation) bool {
 			completeCleanup(value.Cleanup)
 	case "cancelled":
 		return value.Reason == "cancelled" &&
-			completeCleanup(value.Cleanup)
+			validRefusalCleanup(value.Cleanup, value.Primitives[2].Outcome == "passed")
 	case "failed":
-		return value.Primitives[2].Outcome != "passed" || value.Cleanup.Attempted
+		return value.Reason != "all_primitives_passed" &&
+			(value.Primitives[2].Outcome != "passed" || value.Cleanup.Attempted)
 	case "unavailable", "indeterminate":
 		return value.Reason != "all_primitives_passed" &&
 			validRefusalCleanup(value.Cleanup, value.Primitives[2].Outcome == "passed")

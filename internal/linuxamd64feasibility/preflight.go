@@ -134,8 +134,8 @@ func inspectCgroup(source preflightSource, platform string) (preflightResult, bo
 	if len(controllers) > maxCgroupBytes {
 		return indeterminate("cgroup_controllers_oversized", platform), true
 	}
-	if !requiredControllers(controllers) {
-		return indeterminate("cgroup_controllers_malformed", platform), true
+	if result, refused := inspectControllers(controllers, platform); refused {
+		return result, true
 	}
 	for _, name := range []string{"cgroup.kill", "pids.max", "memory.max", "cpu.max"} {
 		mode, err := source.lstat(cgroupRoot + "/" + name)
@@ -149,20 +149,31 @@ func inspectCgroup(source preflightSource, platform string) (preflightResult, bo
 	return preflightResult{}, false
 }
 
-func requiredControllers(data []byte) bool {
+func inspectControllers(controllers []byte, platform string) (preflightResult, bool) {
+	valid, complete := requiredControllers(controllers)
+	if !valid {
+		return indeterminate("cgroup_controllers_malformed", platform), true
+	}
+	if !complete {
+		return unavailable("cgroup_controllers_missing", platform), true
+	}
+	return preflightResult{}, false
+}
+
+func requiredControllers(data []byte) (bool, bool) {
 	if len(data) == 0 || !utf8.Valid(data) {
-		return false
+		return false, false
 	}
 	controllers := map[string]bool{}
 	for name := range strings.FieldsSeq(string(data)) {
 		if strings.IndexFunc(name, func(character rune) bool {
 			return unicode.IsControl(character) || character > unicode.MaxASCII
 		}) >= 0 {
-			return false
+			return false, false
 		}
 		controllers[name] = true
 	}
-	return controllers["cpu"] && controllers["memory"] && controllers["pids"]
+	return true, controllers["cpu"] && controllers["memory"] && controllers["pids"]
 }
 
 func unavailable(reason, platform string) preflightResult {
