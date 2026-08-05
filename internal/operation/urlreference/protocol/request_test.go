@@ -52,7 +52,7 @@ func TestValidateRequestRejects(t *testing.T) {
 			t.Parallel()
 			request := valid
 			test.mutate(&request)
-			if err := validateRequest(request, testAdmittedAt()); !errors.Is(err, ErrProtocol) {
+			if err := validateRequest(request, testAdmittedAt()); !errors.Is(err, errProtocol) {
 				t.Fatalf("validateRequest() error = %v, want ErrProtocol", err)
 			}
 		})
@@ -79,7 +79,7 @@ func TestEncodeRequestRejects(t *testing.T) {
 
 	request := testRequest()
 	request.AttemptID = "invalid"
-	if _, err := EncodeRequest(request, testAdmittedAt()); !errors.Is(err, ErrProtocol) {
+	if _, err := EncodeRequest(request, testAdmittedAt()); !errors.Is(err, errProtocol) {
 		t.Fatalf("EncodeRequest() error = %v, want ErrProtocol", err)
 	}
 }
@@ -114,7 +114,7 @@ func TestDecodeRequestRejects(t *testing.T) {
 		strings.Replace(frame, `"operation_id":"url-reference"`, `"operation_id":null`, 1),
 	}
 	for _, data := range tests {
-		if _, err := DecodeRequest([]byte(data), testAdmittedAt()); !errors.Is(err, ErrProtocol) {
+		if _, err := DecodeRequest([]byte(data), testAdmittedAt()); !errors.Is(err, errProtocol) {
 			t.Fatalf("DecodeRequest(%q) error = %v, want ErrProtocol", data, err)
 		}
 	}

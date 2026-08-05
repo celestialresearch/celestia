@@ -27,7 +27,7 @@ func TestJSONFrameDepthLimit(t *testing.T) {
 		t.Fatalf("bounded JSON nesting rejected: %v", err)
 	}
 	excessive := "[" + within + "]"
-	if err := validateJSONFrame([]byte(excessive)); !errors.Is(err, ErrProtocol) {
+	if err := validateJSONFrame([]byte(excessive)); !errors.Is(err, errProtocol) {
 		t.Fatalf("excessive JSON nesting accepted: %v", err)
 	}
 }
@@ -123,28 +123,28 @@ func TestDecodeHex4(t *testing.T) {
 func TestValidateRawDiagnosticsRejects(t *testing.T) {
 	t.Parallel()
 
-	if err := validateRawDiagnostics([]byte(`[`)); !errors.Is(err, ErrProtocol) {
+	if err := validateRawDiagnostics([]byte(`[`)); !errors.Is(err, errProtocol) {
 		t.Fatalf("error = %v, want ErrProtocol", err)
 	}
 }
 func TestRawRequestFieldsRejectMalformed(t *testing.T) {
 	t.Parallel()
 
-	if err := validateRequestFields([]byte(`{`)); !errors.Is(err, ErrProtocol) {
+	if err := validateRequestFields([]byte(`{`)); !errors.Is(err, errProtocol) {
 		t.Fatalf("request fields error = %v, want ErrProtocol", err)
 	}
-	if err := validateLimitFields([]byte(`{`)); !errors.Is(err, ErrProtocol) {
+	if err := validateLimitFields([]byte(`{`)); !errors.Is(err, errProtocol) {
 		t.Fatalf("limits fields error = %v, want ErrProtocol", err)
 	}
 }
 func TestValidateFieldsRejects(t *testing.T) {
 	t.Parallel()
 
-	if err := validateFields([]byte(`{`), Completed); !errors.Is(err, ErrProtocol) {
+	if err := validateFields([]byte(`{`), Completed); !errors.Is(err, errProtocol) {
 		t.Fatalf("malformed error = %v, want ErrProtocol", err)
 	}
 	data := []byte(`{"protocol_version":1,"operation_id":"url-reference","operation_version":1,"attempt_id":"attempt","request_nonce":"nonce","worker_id":"celestia-url-reference","worker_version":"1","status":"failed","unknown":[],"duration_ns":0}`)
-	if err := validateFields(data, Failed); !errors.Is(err, ErrProtocol) {
+	if err := validateFields(data, Failed); !errors.Is(err, errProtocol) {
 		t.Fatalf("missing field error = %v, want ErrProtocol", err)
 	}
 }
@@ -169,7 +169,7 @@ func TestProtocolScannerErrors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if err := test.run(); !errors.Is(err, ErrProtocol) {
+			if err := test.run(); !errors.Is(err, errProtocol) {
 				t.Fatalf("error = %v, want ErrProtocol", err)
 			}
 		})

@@ -38,7 +38,7 @@ const (
 )
 
 var (
-	ErrProtocol    = errors.New("invalid worker protocol")
+	errProtocol    = errors.New("invalid worker protocol")
 	diagnosticCode = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
 	decimalInteger = regexp.MustCompile(`^(0|[1-9][0-9]*)$`)
 	lowerHex       = regexp.MustCompile(`^[0-9a-f]{64}$`)

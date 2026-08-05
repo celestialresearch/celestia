@@ -74,7 +74,7 @@ func TestDecodeResponseForRequestCorrelation(t *testing.T) {
 				data,
 				invalid,
 				0,
-			); !errors.Is(err, ErrProtocol) {
+			); !errors.Is(err, errProtocol) {
 				t.Fatalf("invalid request correlation error = %v, want ErrProtocol", err)
 			}
 		})
@@ -134,7 +134,7 @@ func TestDecodeResponseRejects(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := decodeResponse([]byte(test.data), correlation, test.exitCode)
-			if !errors.Is(err, ErrProtocol) {
+			if !errors.Is(err, errProtocol) {
 				t.Fatalf("decodeResponse() error = %v, want ErrProtocol", err)
 			}
 		})
@@ -177,7 +177,7 @@ func TestDecodeResponseRejectsCorrelation(t *testing.T) {
 			t.Parallel()
 			if _, err := decodeResponse(
 				data, test.correlation, 0,
-			); !errors.Is(err, ErrProtocol) {
+			); !errors.Is(err, errProtocol) {
 				t.Fatalf(
 					"decodeResponse() error = %v, want ErrProtocol", err,
 				)
@@ -231,7 +231,7 @@ func TestDecodeResponseStatuses(t *testing.T) {
 				data = []byte(strings.Replace(string(data), `"message":"worker failed"`, `"message":null`, 1))
 			}
 			_, err = decodeResponse(data, correlation, test.exitCode)
-			if test.wantError && !errors.Is(err, ErrProtocol) {
+			if test.wantError && !errors.Is(err, errProtocol) {
 				t.Fatalf("decodeResponse() error = %v, want ErrProtocol", err)
 			}
 			if !test.wantError && err != nil {
@@ -295,7 +295,7 @@ func TestDecodeResponseRejectsDiagnosticFields(t *testing.T) {
 				[]byte(test.data),
 				correlation,
 				3,
-			); !errors.Is(err, ErrProtocol) {
+			); !errors.Is(err, errProtocol) {
 				t.Fatalf("decodeResponse() error = %v, want ErrProtocol", err)
 			}
 		})
@@ -306,7 +306,7 @@ func TestValidateStatusRejectsUnknown(t *testing.T) {
 
 	request := testRequest()
 	response := Response{Status: "unknown"}
-	if err := validateStatus(response, testCorrelation(t, request), 1); !errors.Is(err, ErrProtocol) {
+	if err := validateStatus(response, testCorrelation(t, request), 1); !errors.Is(err, errProtocol) {
 		t.Fatalf("error = %v, want ErrProtocol", err)
 	}
 }

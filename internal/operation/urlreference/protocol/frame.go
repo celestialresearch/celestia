@@ -285,5 +285,5 @@ func expectDelimiter(decoder *json.Decoder, expected json.Delim) error {
 }
 
 func protocolError(message string) error {
-	return fmt.Errorf("%w: %s", ErrProtocol, message)
+	return fmt.Errorf("%w: %s", errProtocol, message)
 }

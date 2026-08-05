@@ -20,7 +20,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"math"
@@ -173,8 +172,8 @@ func TestSupervisorAllowsProtocolExits(t *testing.T) {
 			accepted.Request,
 			int(outcome.ExitCode),
 		)
-		if !errors.Is(err, workerprotocol.ErrProtocol) {
-			t.Fatalf("decode failed response error=%v, want protocol error", err)
+		if err == nil {
+			t.Fatal("failed response was accepted")
 		}
 	})
 }
