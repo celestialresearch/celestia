@@ -130,6 +130,14 @@ func TestPerformanceReport_NearestRank(t *testing.T) {
 	}
 }
 
+func TestPerformanceReport_RejectsPhaseBeyondTotal(t *testing.T) {
+	phases := testPerformanceSample(1, 1).Phases
+	phases[0].DurationNS = phases[len(phases)-1].DurationNS + 1
+	if validSamplePhases(phases) {
+		t.Fatal("phase beyond total was accepted")
+	}
+}
+
 func TestPerformanceReport_RejectsStatisticsOverflow(t *testing.T) {
 	samples := []performanceSample{testPerformanceSample(1, 1), testPerformanceSample(2, 2)}
 	samples[0].Phases[len(performancePhases)-1].DurationNS = math.MaxUint64

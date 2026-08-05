@@ -256,8 +256,9 @@ func validSamplePhases(phases []phaseMeasurement) bool {
 	if len(phases) != len(performancePhases) {
 		return false
 	}
+	total := phases[len(phases)-1].DurationNS
 	for index, phase := range phases {
-		if phase.ID != performancePhases[index] {
+		if phase.ID != performancePhases[index] || phase.DurationNS > total {
 			return false
 		}
 	}
