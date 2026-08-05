@@ -93,12 +93,7 @@ func validateLinuxFeasibilityManifest(data []byte) error {
 	}
 	if manifest.SliceID != "cel-plat-linux-amd64-feas-001" ||
 		manifest.Owner != "Linux AMD64 feasibility probe" ||
-		!slices.Contains(manifest.CanonicalState, "Linux operation and attempt persistence remain unsupported") ||
-		!slices.Contains(manifest.CanonicalState, "Windows AMD64 remains the only qualified operation boundary") ||
-		!slices.Contains(manifest.CanonicalState, "Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes") ||
-		!slices.Contains(manifest.CanonicalState, "A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2") ||
-		!slices.Contains(manifest.CanonicalState, "A fixture is an x86-64 static ELF executable with no PT_INTERP and is bound by SHA-256, device and inode") ||
-		!slices.Contains(manifest.CanonicalState, "A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values, Linux architecture, kernel release, boot ID, cgroup mount and subtree identities, filesystem type and device, namespace configuration and primitive outcomes") ||
+		!linuxCanonicalStateRetained(manifest.CanonicalState) ||
 		!slices.Contains(manifest.NonGoals, "Enable Linux operation or attempt persistence") ||
 		!linuxPlatformUnsupported(manifest.Platforms) ||
 		!linuxInvariantRetained(manifest.Invariants) ||
@@ -106,6 +101,26 @@ func validateLinuxFeasibilityManifest(data []byte) error {
 		return errors.New("Linux feasibility boundary differs from its semantic contract")
 	}
 	return nil
+}
+
+func linuxCanonicalStateRetained(state []string) bool {
+	required := []string{
+		"Linux operation and attempt persistence remain unsupported",
+		"Windows AMD64 remains the only qualified operation boundary",
+		"Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes",
+		"A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2",
+		"A fixture is an x86-64 static ELF executable with no PT_INTERP and is bound by SHA-256, device and inode",
+		"A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values, Linux architecture, kernel release, boot ID, cgroup mount and subtree identities, filesystem type and device, namespace configuration and primitive outcomes",
+	}
+	if len(state) < len(required) {
+		return false
+	}
+	for _, value := range required {
+		if !slices.Contains(state, value) {
+			return false
+		}
+	}
+	return true
 }
 
 func linuxPlatformUnsupported(platforms []linuxPlatform) bool {
