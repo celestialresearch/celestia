@@ -111,7 +111,7 @@ func TestBuildJoinsLiveDescendant(t *testing.T) {
 }
 
 func TestJoinTreeChecksDescendantsImmediately(t *testing.T) {
-	job, port, process := startHelperJob(t, "success", "", "", "")
+	job, port, process := startHelperJob(t, "success", "", "")
 	defer closeStoppedJob(t, job, port, process)
 	var allowance time.Duration
 	err := joinTree(
@@ -162,7 +162,7 @@ func TestJoinTreeTerminatesAfterObservationFailure(t *testing.T) {
 			event, name, closeEvent := testEvent(t)
 			defer closeEvent()
 			pidPath := filepath.Join(t.TempDir(), "descendant.pid")
-			job, port, process := startHelperJob(t, "exit", pidPath, name, "")
+			job, port, process := startHelperJob(t, "exit", pidPath, name)
 			defer closeStoppedJob(t, job, port, process)
 			if event, err := windows.WaitForSingleObject(event, 10_000); err != nil || event != windows.WAIT_OBJECT_0 {
 				t.Fatalf("wait for helper: event=%d error=%v", event, err)
@@ -180,7 +180,7 @@ func TestTerminateAndJoinClosesJobAfterCaptureAndObservationFailure(t *testing.T
 	event, name, closeEvent := testEvent(t)
 	defer closeEvent()
 	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
-	job, port, process := startHelperJob(t, "exit", pidPath, name, "")
+	job, port, process := startHelperJob(t, "exit", pidPath, name)
 	defer closeStoppedJob(t, job, port, process)
 	if event, err := windows.WaitForSingleObject(event, 10_000); err != nil || event != windows.WAIT_OBJECT_0 {
 		t.Fatalf("wait for helper: event=%d error=%v", event, err)
@@ -211,7 +211,7 @@ func TestWaitJobEmptyHonoursCancellation(t *testing.T) {
 	event, name, closeEvent := testEvent(t)
 	defer closeEvent()
 	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
-	job, port, process := startHelperJob(t, "wait", pidPath, name, "")
+	job, port, process := startHelperJob(t, "wait", pidPath, name)
 	defer closeStartedJob(t, job, port, process)
 	if event, err := windows.WaitForSingleObject(event, 10_000); err != nil || event != windows.WAIT_OBJECT_0 {
 		t.Fatalf("wait for helper: event=%d error=%v", event, err)
@@ -390,14 +390,14 @@ func testDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
 
 func startHelperJob(
 	t *testing.T,
-	mode, pidPath, event, release string,
+	mode, pidPath, event string,
 ) (*jobOwner, windows.Handle, windows.ProcessInformation) {
 	t.Helper()
 	job, port, err := newJobOwner()
 	if err != nil {
 		t.Fatalf("create helper job: %v", err)
 	}
-	process, err := startSuspended(os.Args[0], helperRequest(t, mode, pidPath, event, release))
+	process, err := startSuspended(os.Args[0], helperRequest(t, mode, pidPath, event, ""))
 	if err != nil {
 		closeErr := errors.Join(closeHandle("close helper completion port", port), closeHandle("close helper job", job.handle))
 		t.Fatalf("start helper: %v", errors.Join(err, closeErr))
