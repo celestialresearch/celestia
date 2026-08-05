@@ -33,6 +33,7 @@ import (
 	"time"
 
 	attemptstore "celestia.research/celestia/internal/operation/urlreference/attempt"
+	workerprotocol "celestia.research/celestia/internal/operation/urlreference/protocol"
 	"celestia.research/celestia/internal/operation/urlreference/transform"
 )
 
@@ -91,6 +92,53 @@ func TestOperationPerformanceCampaign(t *testing.T) {
 	}
 	if len(report.Workloads) != len(acceptedClasses) {
 		t.Fatalf("workloads=%d want=%d", len(report.Workloads), len(acceptedClasses))
+	}
+}
+
+func TestPerformanceManifestBindsResourceOwners(t *testing.T) {
+	root, err := repositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "docs", "contracts", "governed_url_reference_performance_v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Bounds struct {
+			Processes              uint64 `json:"processes"`
+			MemoryBytes            uint64 `json:"memory_bytes"`
+			OutputBytes            uint64 `json:"output_bytes"`
+			WorkerTimeMilliseconds uint64 `json:"worker_time_milliseconds"`
+			PersistenceBytes       uint64 `json:"persistence_bytes"`
+		} `json:"bounds"`
+		Resources []struct {
+			ID    string `json:"id"`
+			Bound string `json:"bound"`
+		} `json:"resources"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Bounds.Processes != uint64(workerprotocol.Processes) ||
+		manifest.Bounds.MemoryBytes != uint64(workerprotocol.MemoryBytes) ||
+		manifest.Bounds.OutputBytes != uint64(maxPerformanceReportBytes) ||
+		manifest.Bounds.WorkerTimeMilliseconds != uint64(workerprotocol.TimeoutMS) ||
+		manifest.Bounds.PersistenceBytes != uint64(maximumCampaignEvidenceBytes) {
+		t.Fatalf("bounds=%+v", manifest.Bounds)
+	}
+	want := fmt.Sprintf("One attempt bundle and %d aggregate output bytes", maximumCampaignEvidenceBytes)
+	matched := 0
+	for _, resource := range manifest.Resources {
+		if resource.ID == "CEL-PERF-RESOURCE-002" {
+			matched++
+			if resource.Bound != want {
+				t.Fatalf("evidence bound=%q want=%q", resource.Bound, want)
+			}
+		}
+	}
+	if matched != 1 {
+		t.Fatalf("temporary evidence resources=%d", matched)
 	}
 }
 

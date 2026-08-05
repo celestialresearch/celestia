@@ -27,10 +27,10 @@
     {"id": "CEL-PERF-TRUST-001", "source": "versioned workload corpus", "target": "performance campaign", "treatment": "Decode strictly, enforce bounds and reject unknown fields or cases"},
     {"id": "CEL-PERF-TRUST-002", "source": "operation and worker observations", "target": "performance report", "treatment": "Record observed outcomes without promoting worker output or timing data to trusted operation state"}
   ],
-  "bounds": {"processes": 1, "memory_bytes": 268435456, "output_bytes": 16777216, "worker_time_milliseconds": 2000, "persistence_bytes": 16777216},
+  "bounds": {"processes": 1, "memory_bytes": 67108864, "output_bytes": 16777216, "worker_time_milliseconds": 2000, "persistence_bytes": 2097152},
   "resources": [
     {"id": "CEL-PERF-RESOURCE-001", "kind": "owned worker process tree", "owner": "internal/execution/supervision", "acquisition": "Existing governed operation supervision", "bound": "Existing operation process, memory, stream, startup, execution and cleanup limits", "release": "Existing complete process-tree cleanup", "cleanup_failure": "Retain the operation cleanup failure and reject the sample as accepted performance evidence"},
-    {"id": "CEL-PERF-RESOURCE-002", "kind": "temporary evidence root", "owner": "performance campaign", "acquisition": "Unique local directory per measured attempt", "bound": "One attempt bundle and 16777216 aggregate output bytes", "release": "Inspect then remove only the owned campaign directory", "cleanup_failure": "Report the campaign failure and retain the path for operator inspection"}
+    {"id": "CEL-PERF-RESOURCE-002", "kind": "temporary evidence root", "owner": "performance campaign", "acquisition": "Unique local directory per measured attempt", "bound": "One attempt bundle and 2097152 aggregate output bytes", "release": "Inspect then remove only the owned campaign directory", "cleanup_failure": "Report the campaign failure and retain the path for operator inspection"}
   ],
   "platforms": [
     {"os": "windows", "arch": "amd64", "support": "supported", "refusal": "", "evidence": "Native qualified operation and performance campaign"},
