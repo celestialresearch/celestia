@@ -130,6 +130,32 @@ func TestBuildRejectsLiveDescendant(t *testing.T) {
 	assertDescendantExited(t, pidPath)
 }
 
+func TestJoinTreeUsesCleanupBudgetForDescendants(t *testing.T) {
+	job, port, process := startHelperJob(t, "success", "", "", "")
+	defer closeStoppedJob(t, job, port, process)
+	var allowance time.Duration
+	err := joinTree(
+		context.Background(),
+		job,
+		port,
+		process.Process,
+		true,
+		func(_ context.Context, _, _ windows.Handle, timeout time.Duration, requireSignal bool) (bool, error) {
+			if requireSignal {
+				t.Fatal("completed descendant grace required termination")
+			}
+			allowance = timeout
+			return true, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("join completed tree: %v", err)
+	}
+	if allowance < joinTimeout-time.Second {
+		t.Fatalf("descendant grace = %v, want shared cleanup budget", allowance)
+	}
+}
+
 func TestJoinTreeTerminatesAfterObservationFailure(t *testing.T) {
 	cases := []struct {
 		name string
