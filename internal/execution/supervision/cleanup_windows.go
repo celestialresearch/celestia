@@ -88,9 +88,53 @@ func terminateForCleanup(cause error, terminate func() error) (error, bool) {
 }
 
 func finaliseCleanup(deadline time.Time, closeResources func() error) (bool, error) {
-	overdue := !time.Now().Before(deadline)
+	return finaliseCleanupWith(deadline, closeResources, time.Now)
+}
+
+func finaliseObservedCleanup(
+	deadline time.Time,
+	measure func() Resources,
+	closeResources func() error,
+) (Resources, bool, error) {
+	return finaliseObservedCleanupWith(deadline, measure, closeResources, time.Now)
+}
+
+func finaliseObservedCleanupWith(
+	deadline time.Time,
+	measure func() Resources,
+	closeResources func() error,
+	now func() time.Time,
+) (Resources, bool, error) {
+	measurementStarted := now()
+	if !measurementStarted.Before(deadline) {
+		complete, err := finaliseCleanupWith(deadline, closeResources, now)
+		return Resources{Err: errors.New("resource measurement skipped after cleanup deadline")}, complete, err
+	}
+	resources := measure()
+	measurementFinished := now()
+	deadline = extendCleanupDeadline(deadline, measurementStarted, measurementFinished)
+	complete, err := finaliseCleanupWith(deadline, closeResources, now)
+	return resources, complete, err
+}
+
+func extendCleanupDeadline(
+	deadline, measurementStarted, measurementFinished time.Time,
+) time.Time {
+	elapsed := measurementFinished.Sub(measurementStarted)
+	if elapsed <= 0 {
+		return deadline
+	}
+	return deadline.Add(elapsed)
+}
+
+func finaliseCleanupWith(
+	deadline time.Time,
+	closeResources func() error,
+	now func() time.Time,
+) (bool, error) {
+	overdue := !now().Before(deadline)
 	err := closeResources()
-	if overdue || !time.Now().Before(deadline) {
+	if overdue || !now().Before(deadline) {
 		err = errors.Join(err, errors.New("final cleanup deadline exceeded"))
 	}
 	return err == nil, err

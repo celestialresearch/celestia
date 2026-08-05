@@ -175,3 +175,73 @@ func TestFinalCleanupDeadline(t *testing.T) {
 		t.Fatalf("overdue cleanup: called=%t complete=%t error=%v", called, complete, err)
 	}
 }
+
+func TestFinalCleanupPreservesRemainingAllowance(t *testing.T) {
+	start := time.Unix(0, 0)
+	deadline := start.Add(10 * time.Second)
+	clock := start.Add(5 * time.Second)
+	resources, complete, err := finaliseObservedCleanupWith(
+		deadline,
+		func() Resources {
+			clock = clock.Add(2 * time.Second)
+			return Resources{Measured: true}
+		},
+		func() error {
+			clock = clock.Add(4 * time.Second)
+			return nil
+		},
+		func() time.Time {
+			return clock
+		},
+	)
+	if !resources.Measured || !complete || err != nil {
+		t.Fatalf("resources=%+v complete=%t error=%v", resources, complete, err)
+	}
+}
+
+func TestFinalCleanupSkipsExpiredMeasurement(t *testing.T) {
+	start := time.Unix(0, 0)
+	clock := start.Add(11 * time.Second)
+	measured := false
+	closed := false
+	resources, complete, err := finaliseObservedCleanupWith(
+		start.Add(10*time.Second),
+		func() Resources {
+			measured = true
+			return Resources{Measured: true}
+		},
+		func() error {
+			closed = true
+			return nil
+		},
+		func() time.Time {
+			return clock
+		},
+	)
+	if measured || !closed || resources.Measured || resources.Err == nil || complete || err == nil {
+		t.Fatalf("measured=%t closed=%t resources=%+v complete=%t error=%v", measured, closed, resources, complete, err)
+	}
+}
+
+func TestFinalCleanupCreditsOnlyMeasurementTime(t *testing.T) {
+	start := time.Unix(0, 0)
+	deadline := start.Add(10 * time.Second)
+	clock := start.Add(7 * time.Second)
+	resources, complete, err := finaliseObservedCleanupWith(
+		deadline,
+		func() Resources {
+			clock = clock.Add(2 * time.Second)
+			return Resources{Measured: true}
+		},
+		func() error {
+			clock = clock.Add(3 * time.Second)
+			return nil
+		},
+		func() time.Time {
+			return clock
+		},
+	)
+	if !resources.Measured || complete || err == nil {
+		t.Fatalf("resources=%+v complete=%t error=%v", resources, complete, err)
+	}
+}
