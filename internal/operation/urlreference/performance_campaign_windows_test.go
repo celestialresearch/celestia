@@ -42,6 +42,8 @@ const performanceReportEnvironment = "CELESTIA_OPERATION_PERFORMANCE_REPORT"
 
 const maximumCampaignEvidenceFiles = 4
 
+const performanceCampaignTimeout = 10 * time.Minute
+
 type campaignOperation struct {
 	operation    *Operation
 	evidenceRoot string
@@ -68,11 +70,13 @@ func TestOperationPerformanceCampaign(t *testing.T) {
 	if output == "" {
 		return
 	}
-	campaign, err := newOperationPerformanceCampaign(t, output)
+	ctx, cancel := context.WithTimeout(t.Context(), performanceCampaignTimeout)
+	defer cancel()
+	campaign, err := newOperationPerformanceCampaign(t, ctx, output)
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, err := campaign.run(context.Background())
+	report, err := campaign.run(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,6 +229,59 @@ func TestPerformanceCampaignDoesNotPublishPartialReport(t *testing.T) {
 	if published {
 		t.Fatal("campaign published partial report")
 	}
+}
+
+func TestPerformanceCampaignCancellationAfterFinalRelease(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	warmCleaned := false
+	published := false
+	var next uint64
+	warmRoot := newCampaignMeterRoot(t)
+	campaign := performanceCampaign{
+		corpus:       singleCampaignCorpus(),
+		corpusSHA256: strings.Repeat("a", 64),
+		environment:  testCampaignEnvironment(),
+		coldCount:    1,
+		warmCount:    1,
+		newCold:      func() (campaignOperation, error) { return testCampaignOperation(t, nil), nil },
+		newWarm: func() (campaignOperation, error) {
+			return campaignOperation{evidenceRoot: warmRoot, cleanup: func() error {
+				if attemptCount(t, warmRoot) != 0 {
+					return errors.New("warm attempt remained after release")
+				}
+				warmCleaned = true
+				cancel()
+				return nil
+			}}, nil
+		},
+		execute: func(_ context.Context, operation campaignOperation, _ performanceWorkloadCase) (performanceSample, error) {
+			next++
+			return testCampaignSample(t, operation, next), nil
+		},
+		publish: func(performanceReport) error {
+			published = true
+			return nil
+		},
+	}
+	if _, err := campaign.run(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation error=%v", err)
+	}
+	if !warmCleaned {
+		t.Fatal("campaign did not clean the warm operation")
+	}
+	if next != 2 {
+		t.Fatalf("samples=%d want=2", next)
+	}
+	if published {
+		t.Fatal("campaign published after cancellation")
+	}
+}
+
+func singleCampaignCorpus() performanceCorpus {
+	return performanceCorpus{Cases: []performanceWorkloadCase{{
+		ID: "short-fang", Class: "shortest_fang", Kind: "accepted", Mode: "fang",
+		Input: "hxxp://a[.]b/", Expected: "http://a.b/", Paths: []string{"cold", "warm"}, Eligible: true,
+	}}}
 }
 
 func TestPerformanceCampaignDoesNotPublishWhenCleanupFails(t *testing.T) {
@@ -577,7 +634,11 @@ func TestPerformanceCampaignMeasuresPublishedEvidence(t *testing.T) {
 	}
 }
 
-func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCampaign, error) {
+func newOperationPerformanceCampaign(
+	t *testing.T,
+	ctx context.Context,
+	output string,
+) (performanceCampaign, error) {
 	t.Helper()
 	if err := validateCampaignOutput(output, ignoredPerformanceOutput, validatePerformanceOutput); err != nil {
 		return performanceCampaign{}, err
@@ -597,7 +658,10 @@ func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCa
 	if err != nil {
 		return performanceCampaign{}, fmt.Errorf("decode performance corpus: %w", err)
 	}
-	worker := performanceWorker(t)
+	worker, err := performanceWorker(t, ctx)
+	if err != nil {
+		return performanceCampaign{}, err
+	}
 	environment, err := operationPerformanceEnvironment(worker)
 	if err != nil {
 		return performanceCampaign{}, err
@@ -652,14 +716,15 @@ func validateCampaignOutput(
 	return nil
 }
 
-func performanceWorker(t *testing.T) string {
+func performanceWorker(t *testing.T, ctx context.Context) (string, error) {
 	t.Helper()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	root, err := repositoryRoot()
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
 	targetDirectory := filepath.Join(t.TempDir(), "cargo-target")
 	if err := testcargo.Build(ctx, testcargo.Request{
 		Arguments: []string{
@@ -669,15 +734,23 @@ func performanceWorker(t *testing.T) string {
 		Directory:   root,
 		Environment: cargoTargetEnvironment(os.Environ(), targetDirectory),
 	}); err != nil {
-		t.Fatalf("build release worker: %v", err)
+		return "", fmt.Errorf("build release worker: %w", err)
 	}
 	path := filepath.Join(
 		targetDirectory, "x86_64-pc-windows-msvc", "release", "celestia-url-reference.exe",
 	)
 	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
-		t.Fatalf("release worker is unavailable: %v", err)
+		return "", errPerformanceReport
 	}
-	return path
+	return path, nil
+}
+
+func TestPerformanceWorkerRejectsCancelledCampaign(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := performanceWorker(t, ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancellation error=%v", err)
+	}
 }
 
 func newCampaignEvidenceRoot(t *testing.T) (string, func() error) {
@@ -695,11 +768,14 @@ func newCampaignEvidenceRoot(t *testing.T) (string, func() error) {
 	}
 }
 
-func (campaign performanceCampaign) run(ctx context.Context) (performanceReport, error) {
+func (campaign performanceCampaign) run(ctx context.Context) (report performanceReport, err error) {
 	if err := campaign.valid(); err != nil {
 		return performanceReport{}, err
 	}
-	report := performanceReport{
+	if err := ctx.Err(); err != nil {
+		return performanceReport{}, err
+	}
+	report = performanceReport{
 		SchemaVersion: performanceReportSchema,
 		CorpusVersion: performanceCorpusSchema,
 		CorpusSHA256:  campaign.corpusSHA256,
@@ -711,23 +787,43 @@ func (campaign performanceCampaign) run(ctx context.Context) (performanceReport,
 	if err != nil {
 		return performanceReport{}, fmt.Errorf("create warm operation: %w", errors.Join(err, cleanCampaignOperation(warm)))
 	}
+	cleaned := false
+	cleanWarm := func() error {
+		if cleaned {
+			return nil
+		}
+		cleaned = true
+		return cleanCampaignOperation(warm)
+	}
+	defer func() {
+		if cleanupErr := cleanWarm(); cleanupErr != nil {
+			report = performanceReport{}
+			err = errors.Join(err, cleanupErr)
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return performanceReport{}, err
+	}
 	for _, workload := range campaign.corpus.Cases {
 		if !workload.Eligible {
 			continue
 		}
 		measured, err := campaign.measureWorkload(ctx, workload, warm)
 		if err != nil {
-			return performanceReport{}, errors.Join(err, cleanCampaignOperation(warm))
+			return performanceReport{}, err
 		}
 		report.Workloads = append(report.Workloads, measured)
 	}
-	if err := cleanCampaignOperation(warm); err != nil {
+	if err := cleanWarm(); err != nil {
 		return performanceReport{}, err
 	}
 	if campaign.requireFull && !validPerformanceReport(report, campaign.corpus, campaign.corpusSHA256) {
 		return performanceReport{}, errPerformanceReport
 	}
 	if campaign.publish != nil {
+		if err := ctx.Err(); err != nil {
+			return performanceReport{}, err
+		}
 		if err := campaign.publish(report); err != nil {
 			return performanceReport{}, fmt.Errorf("publish performance report: %w", err)
 		}
@@ -796,11 +892,17 @@ func (campaign performanceCampaign) measureProfile(
 ) (performanceProfile, error) {
 	profile := performanceProfile{Mode: mode, Samples: make([]performanceSample, 0, count)}
 	for index := range count {
+		if err := ctx.Err(); err != nil {
+			return performanceProfile{}, err
+		}
 		operation, err := nextOperation()
 		if err != nil {
 			return performanceProfile{}, fmt.Errorf(
 				"create %s operation: %w", mode, errors.Join(err, cleanCampaignOperation(operation)),
 			)
+		}
+		if err := ctx.Err(); err != nil {
+			return performanceProfile{}, errors.Join(err, release(operation, ""))
 		}
 		sample, err := campaign.execute(ctx, operation, workload)
 		if err != nil {
@@ -822,6 +924,9 @@ func (campaign performanceCampaign) measureProfile(
 			return performanceProfile{}, fmt.Errorf(
 				"measure %s/%s %d: %w", workload.ID, mode, index+1, err,
 			)
+		}
+		if err := ctx.Err(); err != nil {
+			return performanceProfile{}, err
 		}
 		profile.Samples = append(profile.Samples, sample)
 	}
