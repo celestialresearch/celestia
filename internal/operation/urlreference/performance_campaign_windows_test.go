@@ -107,10 +107,14 @@ func TestPerformanceManifestBindsResourceOwners(t *testing.T) {
 		t.Fatalf("bounds=%+v", manifest.Bounds)
 	}
 	want := fmt.Sprintf("One attempt bundle and %d aggregate output bytes", maxPerformanceEvidenceBytes)
+	acquisition := "One shared warm root plus one cold root per sample; each holds one attempt bundle at a time"
 	matched := 0
 	for _, resource := range manifest.Resources {
 		if resource.ID == "CEL-PERF-RESOURCE-002" {
 			matched++
+			if resource.Acquisition != acquisition {
+				t.Fatalf("evidence acquisition=%q want=%q", resource.Acquisition, acquisition)
+			}
 			if resource.Bound != want {
 				t.Fatalf("evidence bound=%q want=%q", resource.Bound, want)
 			}
@@ -124,8 +128,9 @@ func TestPerformanceManifestBindsResourceOwners(t *testing.T) {
 type performanceManifestBounds struct {
 	Bounds    performanceBounds `json:"bounds"`
 	Resources []struct {
-		ID    string `json:"id"`
-		Bound string `json:"bound"`
+		ID          string `json:"id"`
+		Acquisition string `json:"acquisition"`
+		Bound       string `json:"bound"`
 	} `json:"resources"`
 }
 
@@ -145,11 +150,13 @@ func validPerformanceManifestBounds(bounds performanceBounds) bool {
 		bounds.PersistenceBytes == uint64(maxPerformanceEvidenceBytes)
 }
 
-func TestPerformanceCampaignUsesFreshColdAndSharedWarmOperation(t *testing.T) {
+func TestPerformanceCampaignReleasesWarmEvidencePerSample(t *testing.T) {
 	corpus := performanceCorpus{Cases: []performanceWorkloadCase{
 		{ID: "short-fang", Class: "shortest_fang", Kind: "accepted", Mode: "fang", Input: "hxxp://a[.]b/", Expected: "http://a.b/", Paths: []string{"cold", "warm"}, Eligible: true},
 	}}
 	var cold, warm, next uint64
+	warmRoot := newCampaignMeterRoot(t)
+	warmCleaned := false
 	campaign := performanceCampaign{
 		corpus:       corpus,
 		corpusSHA256: strings.Repeat("a", 64),
@@ -158,14 +165,21 @@ func TestPerformanceCampaignUsesFreshColdAndSharedWarmOperation(t *testing.T) {
 		warmCount:    3,
 		newCold: func() (campaignOperation, error) {
 			cold++
-			return campaignOperation{}, nil
+			return campaignOperation{evidenceRoot: newCampaignMeterRoot(t)}, nil
 		},
 		newWarm: func() (campaignOperation, error) {
 			warm++
-			return campaignOperation{}, nil
+			return campaignOperation{evidenceRoot: warmRoot, cleanup: func() error {
+				warmCleaned = true
+				return nil
+			}}, nil
 		},
-		execute: func(context.Context, campaignOperation, performanceWorkloadCase) (performanceSample, error) {
+		execute: func(_ context.Context, operation campaignOperation, _ performanceWorkloadCase) (performanceSample, error) {
+			if attemptCount(t, operation.evidenceRoot) != 0 {
+				return performanceSample{}, errors.New("prior attempt remains")
+			}
 			next++
+			writeCampaignAttempt(t, operation.evidenceRoot, performanceTestIdentity(next))
 			return testPerformanceSample(0, next), nil
 		},
 	}
@@ -173,11 +187,14 @@ func TestPerformanceCampaignUsesFreshColdAndSharedWarmOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cold != 2 || warm != 1 || len(report.Workloads) != 1 {
-		t.Fatalf("cold=%d warm=%d workloads=%d", cold, warm, len(report.Workloads))
+	if cold != 2 || warm != 1 || !warmCleaned || len(report.Workloads) != 1 {
+		t.Fatalf("cold=%d warm=%d warm_cleaned=%t workloads=%d", cold, warm, warmCleaned, len(report.Workloads))
 	}
 	if got := report.Workloads[0]; len(got.Cold.Samples) != 2 || len(got.Warm.Samples) != 3 {
 		t.Fatalf("samples=%+v", got)
+	}
+	if attemptCount(t, warmRoot) != 0 {
+		t.Fatal("warm root retained a measured attempt")
 	}
 }
 
@@ -224,16 +241,16 @@ func TestPerformanceCampaignDoesNotPublishWhenCleanupFails(t *testing.T) {
 		coldCount:    1,
 		warmCount:    1,
 		newCold: func() (campaignOperation, error) {
-			return campaignOperation{cleanup: func() error { return cleanupErr }}, nil
+			return testCampaignOperation(t, func() error { return cleanupErr }), nil
 		},
 		newWarm: func() (campaignOperation, error) {
-			return campaignOperation{cleanup: func() error {
+			return testCampaignOperation(t, func() error {
 				warmCleaned = true
 				return nil
-			}}, nil
+			}), nil
 		},
-		execute: func(context.Context, campaignOperation, performanceWorkloadCase) (performanceSample, error) {
-			return testPerformanceSample(0, 1), nil
+		execute: func(_ context.Context, operation campaignOperation, _ performanceWorkloadCase) (performanceSample, error) {
+			return testCampaignSample(t, operation, 1), nil
 		},
 		publish: func(performanceReport) error {
 			published = true
@@ -263,12 +280,12 @@ func TestPerformanceCampaignDoesNotPublishWhenWarmCleanupFails(t *testing.T) {
 		environment:  testCampaignEnvironment(),
 		coldCount:    1,
 		warmCount:    1,
-		newCold:      func() (campaignOperation, error) { return campaignOperation{}, nil },
+		newCold:      func() (campaignOperation, error) { return testCampaignOperation(t, nil), nil },
 		newWarm: func() (campaignOperation, error) {
-			return campaignOperation{cleanup: func() error { return cleanupErr }}, nil
+			return testCampaignOperation(t, func() error { return cleanupErr }), nil
 		},
-		execute: func(context.Context, campaignOperation, performanceWorkloadCase) (performanceSample, error) {
-			return testPerformanceSample(0, 1), nil
+		execute: func(_ context.Context, operation campaignOperation, _ performanceWorkloadCase) (performanceSample, error) {
+			return testCampaignSample(t, operation, 1), nil
 		},
 		publish: func(performanceReport) error {
 			published = true
@@ -297,19 +314,19 @@ func TestPerformanceCampaignCleansEvidenceBeforePublication(t *testing.T) {
 		coldCount:    1,
 		warmCount:    1,
 		newCold: func() (campaignOperation, error) {
-			return campaignOperation{cleanup: func() error {
+			return testCampaignOperation(t, func() error {
 				coldCleaned = true
 				return nil
-			}}, nil
+			}), nil
 		},
 		newWarm: func() (campaignOperation, error) {
-			return campaignOperation{cleanup: func() error {
+			return testCampaignOperation(t, func() error {
 				warmCleaned = true
 				return nil
-			}}, nil
+			}), nil
 		},
-		execute: func(context.Context, campaignOperation, performanceWorkloadCase) (performanceSample, error) {
-			return testPerformanceSample(0, 1), nil
+		execute: func(_ context.Context, operation campaignOperation, _ performanceWorkloadCase) (performanceSample, error) {
+			return testCampaignSample(t, operation, 1), nil
 		},
 		publish: func(performanceReport) error {
 			if !coldCleaned || !warmCleaned {
@@ -342,6 +359,73 @@ func TestNewCampaignEvidenceRootRemovesOwnedDirectory(t *testing.T) {
 	if _, err := os.Lstat(directory); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("campaign directory remains: %v", err)
 	}
+}
+
+func TestCampaignEvidenceBytesRejectsAdditionalAttempt(t *testing.T) {
+	root := t.TempDir()
+	first := performanceTestIdentity(1)
+	second := performanceTestIdentity(2)
+	writeCampaignAttempt(t, root, first)
+	bytes, err := campaignEvidenceBytes(root, first)
+	if err != nil || bytes != 4 {
+		t.Fatalf("first attempt bytes=%d error=%v", bytes, err)
+	}
+	writeCampaignAttempt(t, root, second)
+	if _, err := campaignEvidenceBytes(root, first); !errors.Is(err, errPerformanceReport) {
+		t.Fatalf("additional attempt error=%v", err)
+	}
+	if err := discardCampaignAttempt(root, "../first"); !errors.Is(err, errPerformanceReport) {
+		t.Fatalf("invalid attempt removal error=%v", err)
+	}
+}
+
+func writeCampaignAttempt(t *testing.T, root, attemptID string) {
+	t.Helper()
+	directory := filepath.Join(root, "attempts", attemptID)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"admitted.json", "observation.json", "receipt.json", "publication.json"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(name[:1]), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func newCampaignMeterRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "attempts", ".pending"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func testCampaignOperation(t *testing.T, cleanup func() error) campaignOperation {
+	t.Helper()
+	return campaignOperation{evidenceRoot: newCampaignMeterRoot(t), cleanup: cleanup}
+}
+
+func testCampaignSample(t *testing.T, operation campaignOperation, identity uint64) performanceSample {
+	t.Helper()
+	sample := testPerformanceSample(0, identity)
+	writeCampaignAttempt(t, operation.evidenceRoot, sample.AttemptID)
+	return sample
+}
+
+func attemptCount(t *testing.T, root string) int {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(root, "attempts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, entry := range entries {
+		if entry.Name() != ".pending" {
+			count++
+		}
+	}
+	return count
 }
 
 func TestPerformanceCampaignRejectsUnmeasuredSample(t *testing.T) {
@@ -627,20 +711,18 @@ func (campaign performanceCampaign) run(ctx context.Context) (performanceReport,
 	if err != nil {
 		return performanceReport{}, fmt.Errorf("create warm operation: %w", errors.Join(err, cleanCampaignOperation(warm)))
 	}
-	var measureErr error
 	for _, workload := range campaign.corpus.Cases {
 		if !workload.Eligible {
 			continue
 		}
 		measured, err := campaign.measureWorkload(ctx, workload, warm)
 		if err != nil {
-			measureErr = err
-			break
+			return performanceReport{}, errors.Join(err, cleanCampaignOperation(warm))
 		}
 		report.Workloads = append(report.Workloads, measured)
 	}
-	if err := cleanCampaignOperation(warm); err != nil || measureErr != nil {
-		return performanceReport{}, errors.Join(measureErr, err)
+	if err := cleanCampaignOperation(warm); err != nil {
+		return performanceReport{}, err
 	}
 	if campaign.requireFull && !validPerformanceReport(report, campaign.corpus, campaign.corpusSHA256) {
 		return performanceReport{}, errPerformanceReport
@@ -682,14 +764,16 @@ func (campaign performanceCampaign) measureWorkload(
 	warm campaignOperation,
 ) (performanceWorkload, error) {
 	cold, err := campaign.measureProfile(
-		ctx, workload, "cold", campaign.coldCount, campaign.newCold, cleanCampaignOperation,
+		ctx, workload, "cold", campaign.coldCount, campaign.newCold, releaseColdCampaignOperation,
 	)
 	if err != nil {
 		return performanceWorkload{}, err
 	}
-	warmProfile, err := campaign.measureProfile(ctx, workload, "warm", campaign.warmCount, func() (campaignOperation, error) {
-		return warm, nil
-	}, nil)
+	warmProfile, err := campaign.measureProfile(
+		ctx, workload, "warm", campaign.warmCount, func() (campaignOperation, error) {
+			return warm, nil
+		}, releaseWarmCampaignOperation,
+	)
 	if err != nil {
 		return performanceWorkload{}, err
 	}
@@ -708,7 +792,7 @@ func (campaign performanceCampaign) measureProfile(
 	mode string,
 	count int,
 	nextOperation func() (campaignOperation, error),
-	release func(campaignOperation) error,
+	release func(campaignOperation, string) error,
 ) (performanceProfile, error) {
 	profile := performanceProfile{Mode: mode, Samples: make([]performanceSample, 0, count)}
 	for index := range count {
@@ -719,13 +803,10 @@ func (campaign performanceCampaign) measureProfile(
 			)
 		}
 		sample, err := campaign.execute(ctx, operation, workload)
-		var cleanupErr error
-		if release != nil {
-			cleanupErr = release(operation)
-		}
-		if err != nil || cleanupErr != nil {
+		if err != nil {
 			return performanceProfile{}, fmt.Errorf(
-				"measure %s/%s %d: %w", workload.ID, mode, index+1, errors.Join(err, cleanupErr),
+				"measure %s/%s %d: %w", workload.ID, mode, index+1,
+				errors.Join(err, release(operation, "")),
 			)
 		}
 		sample.Sequence = uint64(index + 1)
@@ -733,7 +814,13 @@ func (campaign performanceCampaign) measureProfile(
 		if !validSample(sample, sample.Sequence, campaign.environment.Identity) {
 			return performanceProfile{}, fmt.Errorf(
 				"measure %s/%s %d: %w: sample=%+v",
-				workload.ID, mode, index+1, errPerformanceReport, sample,
+				workload.ID, mode, index+1,
+				errors.Join(errPerformanceReport, release(operation, "")), sample,
+			)
+		}
+		if err := release(operation, sample.AttemptID); err != nil {
+			return performanceProfile{}, fmt.Errorf(
+				"measure %s/%s %d: %w", workload.ID, mode, index+1, err,
 			)
 		}
 		profile.Samples = append(profile.Samples, sample)
@@ -751,6 +838,23 @@ func cleanCampaignOperation(operation campaignOperation) error {
 		return nil
 	}
 	return operation.cleanup()
+}
+
+func releaseColdCampaignOperation(operation campaignOperation, attemptID string) error {
+	if attemptID == "" {
+		return cleanCampaignOperation(operation)
+	}
+	return errors.Join(
+		discardCampaignAttempt(operation.evidenceRoot, attemptID),
+		cleanCampaignOperation(operation),
+	)
+}
+
+func releaseWarmCampaignOperation(operation campaignOperation, attemptID string) error {
+	if attemptID == "" {
+		return nil
+	}
+	return discardCampaignAttempt(operation.evidenceRoot, attemptID)
 }
 
 func campaignOperationSample(
@@ -859,36 +963,73 @@ func campaignPhases(timings operationTimings) []phaseMeasurement {
 }
 
 type evidenceMeter struct {
-	root  string
-	bytes uint64
-	files int
+	root     string
+	attempts string
+	bytes    uint64
+	paths    []string
 }
 
 func campaignEvidenceBytes(root, attemptID string) (uint64, error) {
-	meter := evidenceMeter{root: filepath.Join(root, "attempts", attemptID)}
-	err := filepath.WalkDir(meter.root, meter.visit)
-	if err != nil || meter.files != maximumCampaignEvidenceFiles || meter.bytes == 0 {
-		return 0, errPerformanceReport
+	meter, err := measureCampaignEvidence(root, attemptID)
+	if err != nil {
+		return 0, err
 	}
 	return meter.bytes, nil
+}
+
+func discardCampaignAttempt(root, attemptID string) error {
+	if !validPerformanceIdentity(attemptID) {
+		return errPerformanceReport
+	}
+	meter, err := measureCampaignEvidence(root, attemptID)
+	if err != nil {
+		return err
+	}
+	for _, path := range meter.paths {
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("remove measured campaign record: %w", err)
+		}
+	}
+	if err := os.Remove(meter.root); err != nil {
+		return fmt.Errorf("remove measured campaign attempt: %w", err)
+	}
+	return nil
+}
+
+func measureCampaignEvidence(root, attemptID string) (evidenceMeter, error) {
+	if !validPerformanceIdentity(attemptID) {
+		return evidenceMeter{}, errPerformanceReport
+	}
+	meter := evidenceMeter{
+		root:     filepath.Join(root, "attempts", attemptID),
+		attempts: filepath.Join(root, "attempts"),
+	}
+	err := filepath.WalkDir(meter.attempts, meter.visit)
+	if err != nil || len(meter.paths) != maximumCampaignEvidenceFiles || meter.bytes == 0 {
+		return evidenceMeter{}, errPerformanceReport
+	}
+	return meter, nil
 }
 
 func (meter *evidenceMeter) visit(path string, entry os.DirEntry, err error) error {
 	if err != nil || entry.Type()&os.ModeSymlink != 0 {
 		return errPerformanceReport
 	}
-	if entry.IsDir() {
-		if path != meter.root {
+	pending := filepath.Join(meter.attempts, ".pending")
+	if path == meter.attempts || path == pending || path == meter.root {
+		if !entry.IsDir() {
 			return errPerformanceReport
 		}
 		return nil
 	}
-	return meter.addFile(entry)
+	if entry.IsDir() || filepath.Dir(path) != meter.root {
+		return errPerformanceReport
+	}
+	return meter.addFile(path, entry)
 }
 
-func (meter *evidenceMeter) addFile(entry os.DirEntry) error {
-	meter.files++
-	if meter.files > maximumCampaignEvidenceFiles {
+func (meter *evidenceMeter) addFile(path string, entry os.DirEntry) error {
+	if len(meter.paths) == maximumCampaignEvidenceFiles {
 		return errPerformanceReport
 	}
 	info, err := entry.Info()
@@ -900,6 +1041,7 @@ func (meter *evidenceMeter) addFile(entry os.DirEntry) error {
 		return errPerformanceReport
 	}
 	meter.bytes += size
+	meter.paths = append(meter.paths, path)
 	return nil
 }
 
