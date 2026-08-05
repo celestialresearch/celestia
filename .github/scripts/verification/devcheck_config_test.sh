@@ -17,6 +17,100 @@ script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=.github/scripts/verification/fixture.sh
 source "$script_dir/fixture.sh"
 
+verify_module_cache() (
+  local cache_root calls checksums checker first flags fourth key manifest
+  local module_dir second third
+  local root=$1
+  local cache_work=$2
+
+  module_dir=$cache_work/module-cache
+  mkdir -p "$module_dir/.github/scripts"
+  cp "$root/.github/scripts/modcheck.sh" "$module_dir/.github/scripts/"
+  printf 'module fixture.invalid/cache\n\ngo 1.25.1\n' >"$module_dir/go.mod"
+  printf 'fixture\n' >"$module_dir/go.sum"
+  printf 'package cache\n\nconst Value = 1\n' >"$module_dir/cache.go"
+  git -C "$module_dir" init -q
+  git -C "$module_dir" config user.name Fixture
+  git -C "$module_dir" config user.email fixture@example.invalid
+  git -C "$module_dir" config commit.gpgsign false
+  git -C "$module_dir" config core.autocrlf false
+  git -C "$module_dir" add -A
+  git -C "$module_dir" commit -q -m base
+
+  cd "$module_dir"
+  # shellcheck source=.github/scripts/modcheck.sh
+  source ./.github/scripts/modcheck.sh
+
+  first=$(cache_key)
+  printf '\n' >>cache.go
+  second=$(cache_key)
+  [[ "$first" != "$second" ]] || {
+    printf 'module cache ignored Go source content\n' >&2
+    return 1
+  }
+  git checkout -q -- cache.go
+
+  git mv cache.go renamed.go
+  third=$(cache_key)
+  [[ "$first" != "$third" ]] || {
+    printf 'module cache ignored a Go source path\n' >&2
+    return 1
+  }
+  git reset -q --hard HEAD
+
+  fourth=$(GOPROXY=https://proxy.invalid cache_key)
+  [[ "$first" != "$fourth" ]] || {
+    printf 'module cache ignored Go module resolution policy\n' >&2
+    return 1
+  }
+  printf '\nrequire example.invalid/dependency v0.0.0\n' >>go.mod
+  manifest=$(cache_key)
+  [[ "$first" != "$manifest" ]] || {
+    printf 'module cache ignored the module manifest\n' >&2
+    return 1
+  }
+  git checkout -q -- go.mod
+  printf 'changed\n' >go.sum
+  checksums=$(cache_key)
+  [[ "$first" != "$checksums" ]] || {
+    printf 'module cache ignored the module checksum inventory\n' >&2
+    return 1
+  }
+  git checkout -q -- go.sum
+  printf '\n' >>.github/scripts/modcheck.sh
+  checker=$(cache_key)
+  [[ "$first" != "$checker" ]] || {
+    printf 'module cache ignored its checker\n' >&2
+    return 1
+  }
+  git checkout -q -- .github/scripts/modcheck.sh
+  flags=$(GOFLAGS=-mod=readonly cache_key)
+  [[ "$first" != "$flags" ]] || {
+    printf 'module cache ignored Go build flags\n' >&2
+    return 1
+  }
+
+  cache_root=$cache_work/module-result-cache
+  key=$(cache_key)
+  mkdir -p "$cache_root/modcheck"
+  printf 'wrong-key\n' >"$cache_root/modcheck/$key"
+  calls=0
+  # shellcheck disable=SC2329 # Invoked indirectly by check_cached_update_diff.
+  verify_modules() { calls=$((calls + 1)); }
+  # shellcheck disable=SC2329 # Invoked indirectly by check_cached_update_diff.
+  check_update_diff() { calls=$((calls + 1)); }
+  MODCHECK_CACHE_MAX_AGE_MINUTES=1440 check_cached_update_diff >/dev/null
+  [[ "$calls" -eq 2 && "$(<"$cache_root/modcheck/$key")" == "$key" ]] || {
+    printf 'module cache trusted an invalid marker\n' >&2
+    return 1
+  }
+  MODCHECK_CACHE_MAX_AGE_MINUTES=1440 check_cached_update_diff >/dev/null
+  [[ "$calls" -eq 2 ]] || {
+    printf 'module cache ignored a valid marker\n' >&2
+    return 1
+  }
+)
+
 main() (
 root=${CELESTIA_VERIFICATION_ROOT:-$(cd -- "$script_dir/../../.." && pwd)}
 work_dir=$(new_verification_work verification-devcheck-config)
@@ -254,6 +348,7 @@ for profile_mode in quick:tidy full:verify; do
     return 1
   }
 done
+verify_module_cache "$root" "$work_dir"
 )
 
 main
