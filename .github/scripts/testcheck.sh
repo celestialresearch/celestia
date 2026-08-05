@@ -43,11 +43,148 @@ trap cleanup EXIT
 trap 'exit 130' HUP INT TERM
 
 go_inventory() {
+	if [[ "$fixture_mode" == --fixture ]]; then
+		[[ -n "${TESTINVENTORY_BIN:-}" ]] || return 2
+		"$TESTINVENTORY_BIN" go >"$temporary/expected"
+	else
+		go run ./tools/sourcepolicy go-test-inventory >"$temporary/expected"
+	fi
+}
+
+select_quick_go_path() {
+  local architecture
+  local constrained
+  local directory
+  local filename
+  local operating_system
+  local path=$1
+  local status=$2
+  local target
+
+  case "$path" in
+  README.md | docs/*) return ;;
+  *.go) ;;
+  *) return 1 ;;
+  esac
+  case "$status:$path" in
+  [AM]:*_test.go) ;;
+  [AM]:internal/operation/urlreference/transform/*.go) ;;
+  *) return 1 ;;
+  esac
+  directory=${path%/*}
+  [[ "$directory" != "$path" ]] || return 1
+  if grep -Eq '^(//go:build|//[[:space:]]*\+build)' -- "$path"; then
+    return 1
+  fi
+  filename=${path##*/}
+  constrained=${filename%_test.go}.go
+  while IFS= read -r target; do
+    operating_system=${target%/*}
+    architecture=${target#*/}
+    case "$constrained" in
+    *_"$operating_system".go | *_"$architecture".go | \
+      *_"$operating_system"_"$architecture".go) return 1 ;;
+    esac
+  done <<<"$quick_platforms"
+  if [[ "$path" == *_test.go ]]; then
+    printf '%s/%s\n' "$quick_module" "$directory" >>"$temporary/quick-direct"
+    return
+  fi
+  printf '%s/%s\n' "$quick_module" "$directory" >>"$temporary/quick-propagate"
+}
+
+expand_quick_go_packages() {
+  if ! go list -f '{{.ImportPath}}	{{join .Imports " "}}' ./... >"$temporary/quick-graph"; then
+    return 1
+  fi
+  awk -F '\t' -v direct_file="$temporary/quick-direct" \
+    -v propagate_file="$temporary/quick-propagate" '
+    FILENAME == direct_file { direct[$1] = 1; next }
+    FILENAME == propagate_file { selected[$1] = 1; next }
+    {
+      package_name[NR] = $1
+      imports[NR] = $2
+      known[$1] = 1
+    }
+    END {
+      changed = 1
+      while (changed) {
+        changed = 0
+        for (line in package_name) {
+          if (package_name[line] in selected) continue
+          count = split(imports[line], values, " ")
+          for (item = 1; item <= count; item++) {
+            if (values[item] in selected) {
+              selected[package_name[line]] = 1
+              changed = 1
+              break
+            }
+          }
+        }
+      }
+      for (name in direct) {
+        if (!(name in known)) exit 2
+        selected[name] = 1
+      }
+      for (name in selected) {
+        if (!(name in known)) exit 2
+        print name
+      }
+    }
+  ' "$temporary/quick-direct" "$temporary/quick-propagate" \
+    "$temporary/quick-graph" | LC_ALL=C sort
+  [[ "${PIPESTATUS[0]}" == 0 ]]
+}
+
+quick_go_packages() {
+  local base
+  local path
+  local status
+
   if [[ "$fixture_mode" == --fixture ]]; then
-    [[ -n "${TESTINVENTORY_BIN:-}" ]] || return 2
-    "$TESTINVENTORY_BIN" go >"$temporary/expected"
+    printf './...\n'
+    return
+  fi
+  if git rev-parse --verify --quiet refs/remotes/origin/main >/dev/null; then
+    base=$(git merge-base HEAD refs/remotes/origin/main) || {
+      printf './...\n'
+      return
+    }
   else
-    go run ./tools/sourcepolicy go-test-inventory >"$temporary/expected"
+    base=HEAD
+  fi
+  if ! git diff --no-renames --name-status -z "$base" -- >"$temporary/changes" ||
+    ! git ls-files --others --exclude-standard -z >"$temporary/untracked"; then
+    printf './...\n'
+    return
+  fi
+  quick_module=$(go list -m -f '{{.Path}}') || {
+    printf './...\n'
+    return
+  }
+  quick_platforms=$(go tool dist list) || {
+    printf './...\n'
+    return
+  }
+  : >"$temporary/quick-direct"
+  : >"$temporary/quick-propagate"
+  while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+    select_quick_go_path "$path" "$status" || {
+      printf './...\n'
+      return
+    }
+  done <"$temporary/changes"
+  while IFS= read -r -d '' path; do
+    select_quick_go_path "$path" A || {
+      printf './...\n'
+      return
+    }
+  done <"$temporary/untracked"
+  if [[ ! -s "$temporary/quick-direct" && ! -s "$temporary/quick-propagate" ]]; then
+    return
+  fi
+  if ! expand_quick_go_packages; then
+    printf './...\n'
   fi
 }
 
@@ -76,9 +213,20 @@ go_tests() {
   local arguments=()
   local missing
   local started
+  local package
+  local packages=()
 
   case "$profile" in
-  quick) arguments=(-p=2) ;;
+  quick)
+    arguments=(-p=2)
+    while IFS= read -r package; do
+      [[ -n "$package" ]] && packages+=("$package")
+    done < <(quick_go_packages)
+    if ((${#packages[@]} == 0)); then
+      printf 'No changed Go packages require tests.\n'
+      return
+    fi
+    ;;
   standard)
     arguments=(-p=2 -count=1 -shuffle=on)
     if [[ -n "$coverage_profile" ]]; then
@@ -94,18 +242,26 @@ go_tests() {
     return 2
     ;;
   esac
+  ((${#packages[@]} > 0)) || packages=(./...)
 
   started=$(date +%s)
-  if ! go_inventory; then
+	if ! go_inventory; then
     printf '        %-34s[FAIL] %ss\n' 'Go Test Discovery' \
       "$(($(date +%s) - started))"
     return 1
-  fi
+	fi
+	if [[ "$profile" == quick && "${packages[0]}" != ./... ]]; then
+		printf '%s\n' "${packages[@]}" | LC_ALL=C sort -u >"$temporary/quick-packages"
+		awk -F '\t' 'NR == FNR { selected[$1] = 1; next }
+		  selected[$1] { print }' "$temporary/quick-packages" \
+		  "$temporary/expected" >"$temporary/quick-expected"
+		mv -- "$temporary/quick-expected" "$temporary/expected"
+	fi
   printf '        %-34s[PASS] %ss\n' 'Go Test Discovery' \
     "$(($(date +%s) - started))"
   : >"$temporary/observed"
   started=$(date +%s)
-  if ! go test -json "${arguments[@]}" ./... |
+  if ! go test -json "${arguments[@]}" "${packages[@]}" |
     awk -v observed="$temporary/observed" '
       {
         print
@@ -367,11 +523,12 @@ go)
     go_tests
   fi
   ;;
+go-packages) quick_go_packages ;;
 rust) rust_tests ;;
 verification) verification_tests ;;
 action) action_tests ;;
 *)
-  printf 'Usage: testcheck.sh go fuzz|quick|race|standard | rust | verification FAMILY_DIR EXECUTED | action FAMILY_DIR EXECUTED REPO PREFIX\n' >&2
+  printf 'Usage: testcheck.sh go fuzz|quick|race|standard | go-packages | rust | verification FAMILY_DIR EXECUTED | action FAMILY_DIR EXECUTED REPO PREFIX\n' >&2
   exit 2
   ;;
 esac

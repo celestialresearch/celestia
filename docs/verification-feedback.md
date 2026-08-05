@@ -31,6 +31,18 @@ may delegate them only through explicit environment selections. A Product
 result with `DEVCHECK_SELF_TEST=false` or `DEVCHECK_GO_CAMPAIGN=false` is one
 part of the CI sign-off composition and is not complete sign-off by itself.
 
+### Quick Go Selection
+
+Quick testing selects a modified package-local test without its importers. A
+transformation-source change selects that package and every transitive reverse
+dependant. Documentation-only changes select no Go test package.
+
+Deleted files, build constraints, tools, protocols, persistence, supervision,
+operation orchestration, module state, policy and unknown paths select all Go
+packages. An unavailable Git base, package graph or changed package also falls
+back to all packages. Sign-off remains complete and does not consume a quick
+result.
+
 ## Control Dependencies
 
 Consumer | Required predecessors | Reused output | Independent writable state
