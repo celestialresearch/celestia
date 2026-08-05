@@ -15,16 +15,18 @@ Package | Files | Lines | Statements | Functions | Exports | Unconsumed exports 
 `internal/execution/supervision` | 18 | 2,537 | 864 | 117 | 31 | `ErrInvalid`, `ErrUnavailable` | 0 | 119 | 0 | 0 | 99.6%
 `internal/operation/urlreference` | 8 | 561 | 115 | 17 | 21 | All; no current Production caller | 0 | 26 | 0 | 1 | 100.0%
 `internal/operation/urlreference/admission` | 2 | 122 | 28 | 4 | 5 | None | 0 | 6 | 0 | 0 | 100.0%
-`internal/operation/urlreference/attempt` | 29 | 4,218 | 1,505 | 203 | 38 | `Admitted`, `ErrActive`, `ErrCorrupt`, `ErrDuplicate`, `ErrInvalid`, `ErrUncommitted`, `ErrUnsupported`, `Publication`, `Receipt`, `Records`, `Recovery` | 0 | 262 | 2 | 0 | 99.9%
+`internal/operation/urlreference/attempt` | 29 | 4,218 | 1,505 | 203 | 38 | `Admitted`, `ErrActive`, `ErrCorrupt`, `ErrDuplicate`, `ErrInvalid`, `ErrUncommitted`, `ErrUnsupported`, `Publication`, `Receipt`, `Records`, `Recovery` | 2 | 262 | 2 | 0 | 99.9%
 `internal/operation/urlreference/protocol` | 5 | 689 | 294 | 31 | 45 | `Correlation`, `DecodeResponse`, `ErrProtocol`, `MaxDiagnostics`, `MaxDurationNS`, `MaxJSONDepth`, `MaxMessageBytes`, `ValidateRequest`, `WorkerID`, `WorkerVersion` | 0 | 19 | 2 | 1 | 99.6%
 `internal/operation/urlreference/transform` | 5 | 461 | 199 | 24 | 8 | `ErrInvalid`, `MaxInputBytes`, `MaxReferenceBytes` | 0 | 9 | 1 | 1 | 100.0%
 `tools/actionpolicy` | 6 | 777 | 384 | 29 | 0 | None | 0 | 33 | 1 | 0 | 98.5%
-`tools/sourcepolicy` | 45 | 6,904 | 2,760 | 283 | 0 | None | 0 | 195 | 0 | 0 | 91.8%
+`tools/sourcepolicy` | 45 | 6,904 | 2,760 | 283 | 0 | None | 1 | 195 | 0 | 0 | 91.8%
 
 The root operation exports are retained because they are the declared internal
 capability boundary even though no CLI currently consumes them. Other
 unconsumed exports require separate contract and test-consumer review before
-unexporting or deletion. Production declares no Go interfaces.
+unexporting or deletion. Attempt persistence declares two narrow file-operation
+interfaces and source policy declares one command-lifecycle interface. Each has
+one real implementation and a fault-test implementation.
 
 ## Source Inventory
 
@@ -113,3 +115,29 @@ to `closeFilesWith`. Its sole test can invoke the owning function directly with
 `(*os.File).Close`, retaining the real closed-file error path. This is the first
 bounded deletion. `awaitProcess` and `failedJob` have the same test-only-wrapper
 shape but remain separate candidate slices.
+
+## Candidate Reconciliation
+
+Production source was audited through `6f9b4d0`. Against the baseline, the
+candidate removes 39 net non-test Go lines across 25 files. No Production Go
+file reaches the 500-line structural-review threshold.
+
+The candidate removes the identified dead wrappers, dormant exports,
+single-value factories, forwarding aliases and duplicated native security
+attribute construction. Every remaining export has a current Production
+consumer or owns a declared operation, protocol or evidence contract.
+
+The remaining operation tables and `With` functions inject native failures at
+their owning boundary. Removing them would either remove fault evidence or
+duplicate the real platform bindings in tests. Admission, protocol,
+transformation, evidence and supervision validation remain separate because
+they govern different trust transitions. Independent transformation
+verification remains intentionally separate.
+
+No obsolete protocol reader, persistence reader, migration path, accidental
+interface or architecture exception remains. Both native pointer suppressions
+remain at the smallest Win32 boundary that requires them. The configured
+unused-code and parameter analysers report no Production finding.
+
+The source audit satisfies the static simplification criteria. Complete
+Production and Assurance sign-off remains the phase exit requirement.
