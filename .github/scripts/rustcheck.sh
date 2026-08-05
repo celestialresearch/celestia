@@ -51,6 +51,26 @@ toml_value() {
   ' "$file"
 }
 
+cargo_home() {
+  local selected=${1:-}
+
+  if [[ -z "$selected" ]]; then
+    case "$(uname -s 2>/dev/null)" in
+    CYGWIN* | MINGW* | MSYS*) selected=${USERPROFILE:-${HOME:-}} ;;
+    *) selected=${HOME:-} ;;
+    esac
+    [[ -n "$selected" ]] || {
+      printf 'Cannot determine Cargo home\n' >&2
+      return 1
+    }
+    selected=$selected/.cargo
+  fi
+  case "$(uname -s 2>/dev/null)" in
+  CYGWIN* | MINGW* | MSYS*) cygpath -u -- "$selected" ;;
+  *) printf '%s\n' "$selected" ;;
+  esac
+}
+
 check_lint_policy() {
   root_ascii=$(toml_value Cargo.toml workspace.lints.rust non_ascii_idents)
   root_unsafe=$(toml_value Cargo.toml workspace.lints.rust unsafe_code)
@@ -106,7 +126,7 @@ check_environment() {
     return 1
   fi
 
-  selected_cargo_home=${selected_cargo_home:-${CARGO_HOME:-"$HOME/.cargo"}}
+  selected_cargo_home=$(cargo_home "$selected_cargo_home") || return
   for config in \
     "$selected_cargo_home/config" \
     "$selected_cargo_home/config.toml"; do

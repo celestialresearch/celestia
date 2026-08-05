@@ -164,6 +164,44 @@ output=$(
   return 1
 }
 
+case "$(uname -s 2>/dev/null)" in
+CYGWIN* | MINGW* | MSYS*)
+  mkdir -p "$rust_dir/windows-profile"
+  output=$(
+    cd "$rust_dir" &&
+      env -i PATH="$PATH" HOME=/ USERPROFILE="$rust_dir/windows-profile" \
+        SYSTEMROOT="${SYSTEMROOT:-}" \
+        bash .github/scripts/rustcheck.sh config 2>&1
+  ) || {
+    printf 'Rust config check rejected the Windows Cargo home:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  mkdir -p "$rust_dir/windows-profile/.cargo"
+  printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
+    >"$rust_dir/windows-profile/.cargo/config.toml"
+  set +e
+  output=$(
+    cd "$rust_dir" &&
+      env -i PATH="$PATH" HOME=/ USERPROFILE="$rust_dir/windows-profile" \
+        SYSTEMROOT="${SYSTEMROOT:-}" \
+        bash .github/scripts/rustcheck.sh config 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 ]] || {
+    printf 'Rust config check accepted Windows user configuration\n' >&2
+    return 1
+  }
+  grep -Fq 'External Cargo configuration is prohibited' <<<"$output" || {
+    printf 'Rust config check omitted the Windows user diagnostic:\n%s\n' \
+      "$output" >&2
+    return 1
+  }
+  rm -rf -- "$rust_dir/windows-profile"
+  ;;
+esac
+
 mkdir -p "$rust_dir/external-cargo-home"
 printf '%s\n' '[build]' 'rustflags = ["--cap-lints=allow"]' \
   >"$rust_dir/external-cargo-home/config.toml"
