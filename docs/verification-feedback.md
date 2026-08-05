@@ -65,7 +65,8 @@ Environment | `devcheck.sh` | `go.mod`, Rust toolchain and tool modules | Go too
 Config | `check_config` | Linter, workflow, Rust and shell configuration | Tool caches and temporary inventories | Go and tool caches | Host | Config, quick and full profiles
 Verification Scripts | `verification_test.sh` | Tracked verification families and their bound source snapshot | Isolated temporary snapshot and family directories | Tool caches | Host | Full profile
 Policy | `policycheck.sh` | Tracked and untracked maintained source, manifests and architecture policy | Temporary inventory and Go cache | Go | Host | Full, quick and shell profiles
-Modules | `modcheck.sh verify` | Go and Cargo manifests and lockfiles | Isolated temporary directory | None | Host | Full and quick profiles
+Module integrity | `modcheck.sh verify` | Go and Cargo manifests, lockfiles and downloaded Go modules | Isolated temporary directory | None | Host | Full profile
+Module tidiness | `modcheck.sh tidy` | Go source and module manifests | Go build cache | Go | Host | Quick profile
 Currency Exceptions | `currencycheck.sh verify` | `.github/.currency` and governed manifests | Temporary inventories | None | Host | Full and quick profiles
 Licence Headers | `licencecheck.sh verify` | Eligible tracked and untracked source | Temporary inventories | Optional digest cache | Host | Full and quick profiles
 Currency | Module, action and version currency commands | Manifests, actions, tools and remote release state | `.cache` entries and temporary inventories | Bounded repository caches | Networked host | Selected full jobs and nightly
