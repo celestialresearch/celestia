@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -41,8 +42,11 @@ func TestMain(testingMain *testing.M) {
 		"--workspace",
 		"--all-targets",
 		"--locked",
+		"--target",
+		"x86_64-pc-windows-msvc",
 	)
 	command.Dir = root
+	command.Env = cargoTargetEnvironment(os.Environ(), filepath.Join(root, "target", "celestia-tests"))
 	command.Stdout = os.Stderr
 	command.Stderr = os.Stderr
 	if err := command.Run(); err != nil {
@@ -57,8 +61,13 @@ func TestMain(testingMain *testing.M) {
 		"worker/qualification-fixtures/Cargo.toml",
 		"--bins",
 		"--locked",
+		"--target",
+		"x86_64-pc-windows-msvc",
 	)
 	qualification.Dir = root
+	qualification.Env = cargoTargetEnvironment(
+		os.Environ(), filepath.Join(root, "target", "celestia-qualification-tests"),
+	)
 	qualification.Stdout = os.Stderr
 	qualification.Stderr = os.Stderr
 	if err := qualification.Run(); err != nil {
@@ -130,15 +139,39 @@ func locateWorker(tb testing.TB, name string) string {
 	if err != nil {
 		tb.Fatalf("repository root: %v", err)
 	}
-	binaryDirectory := filepath.Join(root, "target", "debug")
+	binaryDirectory := filepath.Join(
+		root, "target", "celestia-tests", "x86_64-pc-windows-msvc", "debug",
+	)
 	if name == "celestia-hostile-worker.exe" || name == "celestia-blocked-input-worker.exe" {
-		binaryDirectory = filepath.Join(root, "worker", "qualification-fixtures", "target", "debug")
+		binaryDirectory = filepath.Join(
+			root, "target", "celestia-qualification-tests", "x86_64-pc-windows-msvc", "debug",
+		)
 	}
 	path := filepath.Join(binaryDirectory, name)
 	if _, err := os.Stat(path); err != nil {
 		tb.Fatalf("worker %s is unavailable: %v", name, err)
 	}
 	return path
+}
+
+func cargoTargetEnvironment(environment []string, target string) []string {
+	filtered := make([]string, 0, len(environment)+1)
+	for _, entry := range environment {
+		if !strings.HasPrefix(strings.ToUpper(entry), "CARGO_TARGET_DIR=") {
+			filtered = append(filtered, entry)
+		}
+	}
+	return append(filtered, "CARGO_TARGET_DIR="+target)
+}
+
+func TestCargoTargetEnvironmentReplacesAmbientTarget(t *testing.T) {
+	environment := cargoTargetEnvironment(
+		[]string{"PATH=fixture", "CARGO_TARGET_DIR=stale", "cargo_target_dir=other"},
+		"owned",
+	)
+	if got := strings.Join(environment, "|"); got != "PATH=fixture|CARGO_TARGET_DIR=owned" {
+		t.Fatalf("environment=%q", got)
+	}
 }
 
 func repositoryRoot() (string, error) {
