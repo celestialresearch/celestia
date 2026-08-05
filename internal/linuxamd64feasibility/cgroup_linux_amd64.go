@@ -62,9 +62,7 @@ func cgroupPrimitive(root string) (result cgroupResult) {
 		return cgroupOpenResult(err)
 	}
 	defer func() {
-		if err := directory.close(); err != nil && result.Outcome == "passed" {
-			result = indeterminateCgroup("cgroup_root_close_failed")
-		}
+		result = finishCgroupCleanup(result, directory.close())
 	}()
 	if result = validateDelegatedCgroup(directory); result.Outcome != "passed" {
 		return result

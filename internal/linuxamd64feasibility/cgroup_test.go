@@ -64,3 +64,17 @@ func TestCgroupEventsRequireOneCanonicalPopulation(t *testing.T) {
 		})
 	}
 }
+
+func TestCgroupCleanupPreservesPrimitiveOutcome(t *testing.T) {
+	primary := unavailableCgroup("first_refusal")
+	complete := finishCgroupCleanup(primary, nil)
+	if complete.Outcome != primary.Outcome || complete.Reason != primary.Reason ||
+		!complete.CleanupAttempted || !complete.CleanupComplete {
+		t.Fatalf("complete=%+v", complete)
+	}
+	failed := finishCgroupCleanup(primary, errCgroupEventsMalformed)
+	if failed.Outcome != primary.Outcome || failed.Reason != primary.Reason ||
+		!failed.CleanupAttempted || failed.CleanupComplete {
+		t.Fatalf("failed=%+v", failed)
+	}
+}

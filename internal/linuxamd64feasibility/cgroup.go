@@ -34,6 +34,16 @@ func unavailableCgroup(reason string) cgroupResult {
 	return cgroupResult{Outcome: "unavailable", Reason: reason}
 }
 
+func finishCgroupCleanup(result cgroupResult, cleanupError error) cgroupResult {
+	if !result.CleanupAttempted {
+		result.CleanupAttempted = true
+		result.CleanupComplete = cleanupError == nil
+	} else if cleanupError != nil {
+		result.CleanupComplete = false
+	}
+	return result
+}
+
 func requiredDelegatedControllers(data []byte) bool {
 	controllers, ok := cgroupControllers(data)
 	return ok && controllers["cpu"] && controllers["memory"] && controllers["pids"]
