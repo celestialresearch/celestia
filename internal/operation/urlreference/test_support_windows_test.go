@@ -98,7 +98,12 @@ func newTestOperation(t *testing.T, worker string) (*Operation, error) {
 
 func testEvidenceRoot(tb testing.TB) string {
 	tb.Helper()
-	parent := filepath.Join(tb.TempDir(), "owned")
+	return testEvidenceRootAt(tb, tb.TempDir())
+}
+
+func testEvidenceRootAt(tb testing.TB, directory string) string {
+	tb.Helper()
+	parent := filepath.Join(directory, "owned")
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {
 		tb.Fatalf("current user: %v", err)
