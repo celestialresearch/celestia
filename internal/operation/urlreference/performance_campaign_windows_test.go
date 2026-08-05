@@ -14,6 +14,7 @@
 package urloperation
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -57,6 +58,7 @@ type campaignOperation struct {
 	operation    *Operation
 	evidenceRoot string
 	workerPath   string
+	workerSHA256 string
 }
 
 type performanceCampaign struct {
@@ -238,6 +240,44 @@ func TestPerformanceCampaignRequiresIgnoredOutput(t *testing.T) {
 	}
 }
 
+func TestPerformanceCampaignRequiresCleanCheckout(t *testing.T) {
+	root := t.TempDir()
+	run := func(command *exec.Cmd) {
+		t.Helper()
+		command.Dir = root
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", command.Args, err, output)
+		}
+	}
+	run(exec.CommandContext(t.Context(), "git", "init", "--quiet"))
+	path := filepath.Join(root, "source.go")
+	if err := os.WriteFile(path, []byte("package fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run(exec.CommandContext(t.Context(), "git", "add", "source.go"))
+	run(exec.CommandContext(
+		t.Context(),
+		"git", "-c", "commit.gpgsign=false", "-c", "user.name=Celestia Test",
+		"-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "fixture",
+	))
+	if err := requireCleanPerformanceCheckout(root); err != nil {
+		t.Fatalf("clean checkout rejected: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("package changed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireCleanPerformanceCheckout(root); !errors.Is(err, errPerformanceReport) {
+		t.Fatalf("dirty checkout error=%v", err)
+	}
+	run(exec.CommandContext(t.Context(), "git", "checkout", "--", "source.go"))
+	if err := os.WriteFile(filepath.Join(root, "untracked.go"), []byte("package fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := requireCleanPerformanceCheckout(root); !errors.Is(err, errPerformanceReport) {
+		t.Fatalf("untracked source error=%v", err)
+	}
+}
+
 func TestPerformanceCampaignDoesNotReplaceRacedReport(t *testing.T) {
 	root, err := os.OpenRoot(t.TempDir())
 	if err != nil {
@@ -285,7 +325,12 @@ func TestPerformanceCampaignRequiresCompleteCorpus(t *testing.T) {
 
 func TestPerformanceCampaignMeasuresPublishedEvidence(t *testing.T) {
 	root := testEvidenceRoot(t)
-	operation, err := New(testWorker(t), root)
+	worker := testWorker(t)
+	workerSHA256, err := fileDigest(worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := New(worker, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,6 +346,16 @@ func TestPerformanceCampaignMeasuresPublishedEvidence(t *testing.T) {
 	if err != nil || bytes == 0 {
 		t.Fatalf("evidence bytes=%d error=%v", bytes, err)
 	}
+	candidate := campaignOperation{
+		operation: operation, evidenceRoot: root, workerPath: worker, workerSHA256: workerSHA256,
+	}
+	if err := validCampaignEvidence(candidate, result.AttemptID, *result.Response.Output); err != nil {
+		t.Fatalf("valid evidence rejected: %v", err)
+	}
+	candidate.workerSHA256 = strings.Repeat("0", 64)
+	if err := validCampaignEvidence(candidate, result.AttemptID, *result.Response.Output); !errors.Is(err, errPerformanceReport) {
+		t.Fatalf("worker mismatch error=%v", err)
+	}
 }
 
 func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCampaign, error) {
@@ -311,6 +366,13 @@ func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCa
 	if err := ignoredPerformanceOutput(output); err != nil {
 		return performanceCampaign{}, fmt.Errorf("validate performance report ignore: %w", err)
 	}
+	root, err := repositoryRoot()
+	if err != nil {
+		return performanceCampaign{}, err
+	}
+	if err := requireCleanPerformanceCheckout(root); err != nil {
+		return performanceCampaign{}, err
+	}
 	corpusData, err := os.ReadFile(performanceCorpusPath)
 	if err != nil {
 		return performanceCampaign{}, fmt.Errorf("read performance corpus: %w", err)
@@ -319,7 +381,7 @@ func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCa
 	if err != nil {
 		return performanceCampaign{}, fmt.Errorf("decode performance corpus: %w", err)
 	}
-	worker := testWorker(t)
+	worker := performanceWorker(t)
 	environment, err := operationPerformanceEnvironment(worker)
 	if err != nil {
 		return performanceCampaign{}, err
@@ -334,18 +396,52 @@ func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCa
 		newCold: func() (campaignOperation, error) {
 			root := testEvidenceRoot(t)
 			operation, err := New(worker, root)
-			return campaignOperation{operation: operation, evidenceRoot: root, workerPath: worker}, err
+			return campaignOperation{
+				operation: operation, evidenceRoot: root, workerPath: worker,
+				workerSHA256: environment.WorkerSHA256,
+			}, err
 		},
 		newWarm: func() (campaignOperation, error) {
 			root := testEvidenceRoot(t)
 			operation, err := New(worker, root)
-			return campaignOperation{operation: operation, evidenceRoot: root, workerPath: worker}, err
+			return campaignOperation{
+				operation: operation, evidenceRoot: root, workerPath: worker,
+				workerSHA256: environment.WorkerSHA256,
+			}, err
 		},
 		execute: campaignOperationSample,
 		publish: func(report performanceReport) error {
 			return writePerformanceReport(output, report)
 		},
 	}, nil
+}
+
+func performanceWorker(t *testing.T) string {
+	t.Helper()
+	root, err := repositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	targetDirectory := filepath.Join(t.TempDir(), "cargo-target")
+	command := exec.CommandContext(ctx, "cargo", "build",
+		"--release", "--locked", "--target", "x86_64-pc-windows-msvc",
+		"--package", "celestia-url-reference", "--bin", "celestia-url-reference")
+	command.Dir = root
+	command.Env = append(os.Environ(), "CARGO_TARGET_DIR="+targetDirectory)
+	command.Stdout = os.Stderr
+	command.Stderr = os.Stderr
+	if err := command.Run(); err != nil {
+		t.Fatalf("build release worker: %v", err)
+	}
+	path := filepath.Join(
+		targetDirectory, "x86_64-pc-windows-msvc", "release", "celestia-url-reference.exe",
+	)
+	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+		t.Fatalf("release worker is unavailable: %v", err)
+	}
+	return path
 }
 
 func (campaign performanceCampaign) run(ctx context.Context) (performanceReport, error) {
@@ -486,7 +582,8 @@ func campaignOperationSample(
 	candidate campaignOperation,
 	workload performanceWorkloadCase,
 ) (performanceSample, error) {
-	if candidate.operation == nil || candidate.evidenceRoot == "" {
+	if candidate.operation == nil || candidate.evidenceRoot == "" ||
+		!validPerformanceHash(candidate.workerSHA256) {
 		return performanceSample{}, errPerformanceReport
 	}
 	var before, after runtime.MemStats
@@ -552,7 +649,8 @@ func validCampaignEvidence(candidate campaignOperation, attemptID, expected stri
 	if err != nil || records.Observation == nil || records.Observation.TerminalStatus != string(Verified) ||
 		!records.Observation.CleanupComplete || records.Observation.ExpectedOutput != expected ||
 		!records.Observation.VerificationPass || records.Observation.VerificationID != attemptstore.URLVerifierID ||
-		records.Observation.VerificationVer != attemptstore.URLVerifierVersion {
+		records.Observation.VerificationVer != attemptstore.URLVerifierVersion ||
+		records.Observation.WorkerSHA256 != candidate.workerSHA256 {
 		return errPerformanceReport
 	}
 	return nil
@@ -736,6 +834,18 @@ func performanceCommit() (string, error) {
 		return "", errPerformanceReport
 	}
 	return commit, nil
+}
+
+func requireCleanPerformanceCheckout(root string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, "git", "status", "--porcelain=v1", "--untracked-files=all")
+	command.Dir = root
+	output, err := command.Output()
+	if err != nil || len(bytes.TrimSpace(output)) != 0 {
+		return errPerformanceReport
+	}
+	return nil
 }
 
 func performanceRustVersion() (string, error) {
