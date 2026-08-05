@@ -35,21 +35,17 @@ type supervisorCreationOperations struct {
 	close func(*os.File) error
 }
 
-func defaultSupervisorCreationOperations() supervisorCreationOperations {
-	return supervisorCreationOperations{
-		open: openLocalImage,
-		hash: hashFile,
-		close: func(file *os.File) error {
-			return file.Close()
-		},
-	}
-}
-
 func newSupervisor(workerPath string, limits Limits) (*Supervisor, error) {
 	return newSupervisorWith(
 		workerPath,
 		limits,
-		defaultSupervisorCreationOperations(),
+		supervisorCreationOperations{
+			open: openLocalImage,
+			hash: hashFile,
+			close: func(file *os.File) error {
+				return file.Close()
+			},
+		},
 	)
 }
 
