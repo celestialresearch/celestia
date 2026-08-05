@@ -9,7 +9,5 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows && amd64
-
 // Package testcargo owns bounded Cargo build processes used by Windows tests.
 package testcargo
