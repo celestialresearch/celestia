@@ -151,8 +151,8 @@ func TestJoinTreeUsesCleanupBudgetForDescendants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("join completed tree: %v", err)
 	}
-	if allowance < joinTimeout-time.Second {
-		t.Fatalf("descendant grace = %v, want shared cleanup budget", allowance)
+	if allowance < descendantGrace-time.Second || allowance > descendantGrace {
+		t.Fatalf("descendant grace = %v, want bounded cleanup partition", allowance)
 	}
 }
 

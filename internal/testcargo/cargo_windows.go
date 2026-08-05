@@ -33,6 +33,7 @@ import (
 const (
 	jobActiveProcessZero = 4
 	joinTimeout          = 10 * time.Second
+	descendantGrace      = joinTimeout / 2
 	jobPollInterval      = 50 * time.Millisecond
 )
 
@@ -524,7 +525,8 @@ func joinTree(
 		return terminateAndJoin(ctx, job, port, process, deadline, err, nil, nil, wait, jobProcessHandles)
 	}
 	handles, captureErr := jobProcessHandles(job.handle)
-	empty, err := wait(ctx, job.handle, port, time.Until(deadline), false)
+	graceDeadline := time.Now().Add(descendantGrace)
+	empty, err := wait(ctx, job.handle, port, time.Until(graceDeadline), false)
 	if err != nil {
 		return terminateAndJoin(ctx, job, port, process, deadline, errors.Join(err, errors.New("observe Cargo process tree")), handles, captureErr, wait, jobProcessHandles)
 	}
