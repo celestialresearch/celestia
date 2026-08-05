@@ -67,6 +67,19 @@ printf '%s\n' 'package fixture' >"$licence_dir/fixture.go"
     bash .github/scripts/licencecheck.sh apply >/dev/null &&
     bash .github/scripts/licencecheck.sh cached-diff >/dev/null
 )
+output=$(cd "$licence_dir" &&
+  bash .github/scripts/licencecheck.sh cached-diff)
+grep -Fq 'licence headers cached' <<<"$output" || {
+  printf 'licence cache ignored a valid marker\n' >&2
+  return 1
+}
+printf '\n' >>"$licence_dir/.github/scripts/licencecheck.sh"
+output=$(cd "$licence_dir" &&
+  bash .github/scripts/licencecheck.sh cached-diff)
+[[ -z "$output" ]] || {
+  printf 'licence cache ignored its checker\n' >&2
+  return 1
+}
 mv -- "$licence_dir/fixture.go" "$licence_dir/-fixture.sh"
 set +e
 output=$(
