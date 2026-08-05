@@ -108,6 +108,18 @@ func TestSourceFilesCommand(t *testing.T) {
 	}
 }
 
+func TestSourceFilesRejectsEmptyInventory(t *testing.T) {
+	t.Parallel()
+
+	_, err := inventorySourceFiles(
+		&fakeInventoryCommand{output: strings.NewReader("")},
+		func() {},
+	)
+	if err == nil || !strings.Contains(err.Error(), "source inventory is empty") {
+		t.Fatalf("empty inventory error = %v", err)
+	}
+}
+
 type fakeInventoryCommand struct {
 	output   io.Reader
 	pipeErr  error

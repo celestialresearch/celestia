@@ -99,6 +99,9 @@ func readInventoryWithLimits(
 			if len(path) != 0 {
 				return nil, errors.New("source inventory is not NUL terminated")
 			}
+			if len(files) == 0 {
+				return nil, errors.New("source inventory is empty")
+			}
 			return files, nil
 		}
 		if err != nil {
