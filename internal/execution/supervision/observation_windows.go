@@ -71,7 +71,10 @@ func (supervisor *Supervisor) observe(
 	out := awaitStream(stdoutReader, stdout, cleanupDeadline, joinDeadline)
 	diagnostics := awaitStream(stderrReader, stderr, cleanupDeadline, joinDeadline)
 	outcome := finishOutcome(process, status, cause, cleanupComplete, executionDuration, out, diagnostics)
-	outcome.Resources = processResources(process.job, process.info.Process)
+	outcome.Resources, cleanupDeadline = measureResources(
+		cleanupDeadline,
+		func() Resources { return processResources(process.job, process.info.Process) },
+	)
 	closeComplete, closeErr := finaliseCleanup(cleanupDeadline, process.close)
 	outcome = applyFinalCleanup(outcome, closeComplete, closeErr)
 	outcome.Timings.Input = inputResult.duration

@@ -59,6 +59,23 @@ func TestProcessResources(t *testing.T) {
 	assertResourceValues(t, resources)
 }
 
+func TestResourceMeasurementPreservesCleanupAllowance(t *testing.T) {
+	started := time.Unix(100, 0)
+	deadline := started.Add(time.Second)
+	times := []time.Time{started, started.Add(250 * time.Millisecond)}
+	index := 0
+	resources, adjusted := measureResourcesWith(deadline, func() time.Time {
+		value := times[index]
+		index++
+		return value
+	}, func() Resources {
+		return Resources{Measured: true}
+	})
+	if !resources.Measured || adjusted != deadline.Add(250*time.Millisecond) {
+		t.Fatalf("resources=%+v deadline=%s", resources, adjusted)
+	}
+}
+
 func assertResourceValues(t *testing.T, resources Resources) {
 	t.Helper()
 	if resources.CPUTime != 1800*time.Nanosecond ||
