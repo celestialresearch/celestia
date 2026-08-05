@@ -18,7 +18,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -134,14 +136,20 @@ func validateDelegatedCgroup(directory cgroupDirectory) cgroupResult {
 }
 
 func (directory cgroupDirectory) mountRoot() (bool, error) {
-	var current, parent unix.Stat_t
-	if err := unix.Fstat(directory.fd, &current); err != nil {
+	resolved, err := os.Readlink("/proc/self/fd/" + strconv.Itoa(directory.fd))
+	if err != nil {
 		return false, err
 	}
-	if err := unix.Fstatat(directory.fd, "..", &parent, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+	mounts, err := os.Open("/proc/self/mountinfo")
+	if err != nil {
 		return false, err
 	}
-	return current.Dev == parent.Dev && current.Ino == parent.Ino, nil
+	defer mounts.Close()
+	mount, _, err := mountedFilesystemIdentity(
+		io.LimitReader(mounts, maxMountinfoBytes+1),
+		path.Clean(resolved),
+	)
+	return err == nil && mount == path.Clean(resolved), err
 }
 
 func (directory cgroupDirectory) createLeaf() (ownedCgroupLeaf, error) {
@@ -172,9 +180,8 @@ func useCgroupLeaf(directory cgroupDirectory, validate func(ownedCgroupLeaf) cgr
 		return cgroupLeafResult(err)
 	}
 	result := validate(leaf)
-	if err := leaf.remove(); err != nil {
-		return indeterminateCgroup("cgroup_leaf_cleanup_failed")
-	}
+	result.CleanupAttempted = true
+	result.CleanupComplete = leaf.remove() == nil
 	return result
 }
 
@@ -207,9 +214,24 @@ func validateCgroupLeaf(leaf ownedCgroupLeaf) cgroupResult {
 }
 
 func (leaf ownedCgroupLeaf) remove() error {
+	owned, identityErr := leaf.namedIdentity()
+	if identityErr != nil || !owned {
+		return errors.Join(identityErr, unix.ESTALE, unix.Close(leaf.fd))
+	}
 	closeErr := unix.Close(leaf.fd)
 	removeErr := unix.Unlinkat(leaf.root, leaf.name, unix.AT_REMOVEDIR)
 	return errors.Join(closeErr, removeErr)
+}
+
+func (leaf ownedCgroupLeaf) namedIdentity() (bool, error) {
+	var opened, named unix.Stat_t
+	if err := unix.Fstat(leaf.fd, &opened); err != nil {
+		return false, err
+	}
+	if err := unix.Fstatat(leaf.root, leaf.name, &named, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return false, err
+	}
+	return opened.Dev == named.Dev && opened.Ino == named.Ino, nil
 }
 
 func (directory cgroupDirectory) read(name string, limit int) ([]byte, error) {

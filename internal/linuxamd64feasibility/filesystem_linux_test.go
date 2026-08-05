@@ -52,6 +52,16 @@ func TestMountedFilesystem(t *testing.T) {
 	}
 }
 
+func TestMountedFilesystemIdentifiesMountRoot(t *testing.T) {
+	mount, filesystem, err := mountedFilesystemIdentity(
+		strings.NewReader("2 1 8:2 / /evidence rw - xfs /dev/data rw\n"),
+		"/evidence",
+	)
+	if err != nil || mount != "/evidence" || filesystem != "xfs" {
+		t.Fatalf("mount=%q filesystem=%q error=%v", mount, filesystem, err)
+	}
+}
+
 func TestMountedFilesystemRejectsInvalidInput(t *testing.T) {
 	for _, input := range []string{"invalid\n", strings.Repeat("a", maxMountinfoBytes+1)} {
 		if _, err := mountedFilesystem(strings.NewReader(input), "/evidence"); err == nil {

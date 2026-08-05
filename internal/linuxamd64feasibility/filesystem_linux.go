@@ -73,6 +73,11 @@ func evidenceFilesystem(filesystem int64, mounted string) string {
 }
 
 func mountedFilesystem(reader io.Reader, target string) (string, error) {
+	_, filesystem, err := mountedFilesystemIdentity(reader, target)
+	return filesystem, err
+}
+
+func mountedFilesystemIdentity(reader io.Reader, target string) (string, string, error) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 4096), maxMountinfoBytes)
 	bestMount := ""
@@ -81,7 +86,7 @@ func mountedFilesystem(reader io.Reader, target string) (string, error) {
 		fields := strings.Fields(scanner.Text())
 		separator := fieldIndex(fields, "-")
 		if len(fields) < 7 || separator < 6 || separator+1 >= len(fields) {
-			return "", errors.New("malformed mountinfo")
+			return "", "", errors.New("malformed mountinfo")
 		}
 		mount := unescapeMountPath(fields[4])
 		if containsPath(mount, target) && len(mount) > len(bestMount) {
@@ -90,12 +95,12 @@ func mountedFilesystem(reader io.Reader, target string) (string, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return "", err
+		return "", "", err
 	}
 	if bestMount == "" {
-		return "", errors.New("mount not found")
+		return "", "", errors.New("mount not found")
 	}
-	return bestFilesystem, nil
+	return bestMount, bestFilesystem, nil
 }
 
 func fieldIndex(fields []string, value string) int {

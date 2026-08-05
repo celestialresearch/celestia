@@ -24,8 +24,10 @@ var (
 )
 
 type cgroupResult struct {
-	Outcome string
-	Reason  string
+	Outcome          string
+	Reason           string
+	CleanupAttempted bool
+	CleanupComplete  bool
 }
 
 func unavailableCgroup(reason string) cgroupResult {

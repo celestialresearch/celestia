@@ -17,6 +17,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestOwnedCgroupLeafRemovesCreatedDirectory(t *testing.T) {
@@ -38,13 +40,67 @@ func TestOwnedCgroupLeafRemovesCreatedDirectory(t *testing.T) {
 			}
 			return expected
 		})
-		if result != expected {
+		if result.Outcome != expected.Outcome || result.Reason != expected.Reason {
 			t.Fatalf("result=%+v expected=%+v", result, expected)
+		}
+		if !result.CleanupAttempted || !result.CleanupComplete {
+			t.Fatalf("cleanup result=%+v", result)
 		}
 		entries, err := os.ReadDir(root)
 		if err != nil || len(entries) != 0 {
 			t.Fatalf("entries=%v err=%v", entries, err)
 		}
+	}
+}
+
+func TestOwnedCgroupLeafRefusesReplacement(t *testing.T) {
+	root := t.TempDir()
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer directory.close()
+	leaf, err := directory.createLeaf()
+	if err != nil {
+		t.Fatalf("create leaf: %v", err)
+	}
+	name := filepath.Join(root, leaf.name)
+	replacement := name + "-replacement"
+	if err := os.Mkdir(replacement, 0o700); err != nil {
+		t.Fatalf("create replacement: %v", err)
+	}
+	if err := os.Rename(name, name+"-original"); err != nil {
+		t.Fatalf("rename leaf: %v", err)
+	}
+	if err := os.Rename(replacement, name); err != nil {
+		t.Fatalf("replace leaf: %v", err)
+	}
+	if err := leaf.remove(); err == nil {
+		t.Fatal("replacement removed")
+	}
+	if _, err := os.Stat(name); err != nil {
+		t.Fatalf("replacement missing: %v", err)
+	}
+	_ = unix.Close(leaf.fd)
+}
+
+func TestCgroupLeafPreservesRefusalAfterCleanupFailure(t *testing.T) {
+	root := t.TempDir()
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer directory.close()
+	result := useCgroupLeaf(directory, func(leaf ownedCgroupLeaf) cgroupResult {
+		name := filepath.Join(root, leaf.name)
+		if err := os.Rename(name, name+"-moved"); err != nil {
+			t.Fatalf("move leaf: %v", err)
+		}
+		return unavailableCgroup("leaf_rejected")
+	})
+	if result.Outcome != "unavailable" || result.Reason != "leaf_rejected" ||
+		!result.CleanupAttempted || result.CleanupComplete {
+		t.Fatalf("result=%+v", result)
 	}
 }
 

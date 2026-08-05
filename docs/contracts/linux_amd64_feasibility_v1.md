@@ -19,7 +19,10 @@ read-only checks and emits only `unavailable` or `indeterminate`. It is not a
 release artefact and cannot qualify the platform.
 
 The internal cgroup checkpoint validates a caller-supplied delegated cgroup v2
-root then creates and removes one owned empty leaf. It does not start a
+root under exclusive same-authority custody then creates and removes one owned
+empty leaf. Same-authority processes outside that custody boundary can defeat
+filesystem ownership and are not an isolation target. The result retains the
+first primitive outcome separately from cleanup completion. It does not start a
 process, change a controller value, retain an observation or enable Linux
 operation execution or attempt persistence.
 
