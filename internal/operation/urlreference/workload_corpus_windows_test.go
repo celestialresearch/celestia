@@ -35,6 +35,8 @@ const (
 	performanceCorpusPath  = "../../../testdata/url-reference-performance-workload-v1.json"
 	performanceInputBytes  = 4096
 	maximumCorpusFileBytes = 1 << 20
+	maximumCorpusJSONDepth = 64
+	maximumCorpusJSONNodes = 1 << 20
 )
 
 type performanceCorpus struct {
@@ -138,12 +140,14 @@ func assertCorpusEvidence(t *testing.T, op *Operation, attemptID, expected strin
 
 func TestPerformanceWorkloadCorpusRejectsInvalidRows(t *testing.T) {
 	for name, raw := range map[string]string{
-		"unknown":        `{"version":1,"operation":"url-reference","cases":[],"unknown":true}`,
-		"duplicate":      `{"version":1,"operation":"url-reference","cases":[{"id":"a","class":"short","kind":"accepted","mode":"fang","input":"x","expected":"x","required_paths":["cold","warm"],"sample_eligible":true},{"id":"a","class":"ordinary","kind":"accepted","mode":"fang","input":"x","expected":"x","required_paths":["cold","warm"],"sample_eligible":true}]}`,
-		"invalid-mode":   `{"version":1,"operation":"url-reference","cases":[{"id":"a","class":"short","kind":"accepted","mode":"bad","input":"x","expected":"x","required_paths":["cold","warm"],"sample_eligible":true}]}`,
-		"missing-output": `{"version":1,"operation":"url-reference","cases":[{"id":"a","class":"short","kind":"accepted","mode":"fang","input":"x","expected":"","required_paths":["cold","warm"],"sample_eligible":true}]}`,
-		"oversized":      fmt.Sprintf("{\"version\":1,\"operation\":\"url-reference\",\"cases\":[{\"id\":\"a\",\"class\":\"short\",\"kind\":\"accepted\",\"mode\":\"fang\",\"input\":\"%s\",\"expected\":\"x\",\"required_paths\":[\"cold\",\"warm\"],\"sample_eligible\":true}]}", strings.Repeat("a", performanceInputBytes+1)),
-		"eligible-fault": `{"version":1,"operation":"url-reference","cases":[{"id":"a","class":"timeout","kind":"fault","mode":"fang","input":"x","expected":"timed_out","required_paths":[],"sample_eligible":true}]}`,
+		"unknown":          `{"version":1,"operation":"url-reference","cases":[],"unknown":true}`,
+		"duplicate-field":  `{"version":1,"version":1,"operation":"url-reference","cases":[]}`,
+		"nested-duplicate": `{"version":1,"operation":"url-reference","cases":[{"id":"a","id":"b"}]}`,
+		"duplicate":        `{"version":1,"operation":"url-reference","cases":[{"id":"a","class":"short","kind":"accepted","mode":"fang","input":"x","expected":"x","required_paths":["cold","warm"],"sample_eligible":true},{"id":"a","class":"ordinary","kind":"accepted","mode":"fang","input":"x","expected":"x","required_paths":["cold","warm"],"sample_eligible":true}]}`,
+		"invalid-mode":     `{"version":1,"operation":"url-reference","cases":[{"id":"a","class":"short","kind":"accepted","mode":"bad","input":"x","expected":"x","required_paths":["cold","warm"],"sample_eligible":true}]}`,
+		"missing-output":   `{"version":1,"operation":"url-reference","cases":[{"id":"a","class":"short","kind":"accepted","mode":"fang","input":"x","expected":"","required_paths":["cold","warm"],"sample_eligible":true}]}`,
+		"oversized":        fmt.Sprintf("{\"version\":1,\"operation\":\"url-reference\",\"cases\":[{\"id\":\"a\",\"class\":\"short\",\"kind\":\"accepted\",\"mode\":\"fang\",\"input\":\"%s\",\"expected\":\"x\",\"required_paths\":[\"cold\",\"warm\"],\"sample_eligible\":true}]}", strings.Repeat("a", performanceInputBytes+1)),
+		"eligible-fault":   `{"version":1,"operation":"url-reference","cases":[{"id":"a","class":"timeout","kind":"fault","mode":"fang","input":"x","expected":"timed_out","required_paths":[],"sample_eligible":true}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := decodePerformanceCorpus([]byte(raw)); err == nil {
@@ -306,6 +310,9 @@ func decodePerformanceCorpus(data []byte) (performanceCorpus, error) {
 }
 
 func decodeCorpus(data []byte) (performanceCorpus, error) {
+	if err := validateCorpusJSON(data); err != nil {
+		return performanceCorpus{}, err
+	}
 	var corpus performanceCorpus
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -316,6 +323,76 @@ func decodeCorpus(data []byte) (performanceCorpus, error) {
 		return corpus, fmt.Errorf("trailing data: %w", err)
 	}
 	return corpus, nil
+}
+
+func validateCorpusJSON(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	nodes := maximumCorpusJSONNodes
+	if err := scanCorpusValue(decoder, 0, &nodes); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return fmt.Errorf("trailing data")
+	}
+	return nil
+}
+
+func scanCorpusValue(decoder *json.Decoder, depth int, nodes *int) error {
+	if depth > maximumCorpusJSONDepth || *nodes == 0 {
+		return fmt.Errorf("JSON bounds")
+	}
+	*nodes--
+	token, err := decoder.Token()
+	if err != nil {
+		return fmt.Errorf("JSON token")
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	if delimiter == '{' {
+		return scanCorpusObject(decoder, depth+1, nodes)
+	}
+	if delimiter == '[' {
+		return scanCorpusArray(decoder, depth+1, nodes)
+	}
+	return fmt.Errorf("JSON delimiter")
+}
+
+func scanCorpusObject(decoder *json.Decoder, depth int, nodes *int) error {
+	keys := make(map[string]struct{})
+	for decoder.More() {
+		token, err := decoder.Token()
+		key, ok := token.(string)
+		if err != nil || !ok {
+			return fmt.Errorf("JSON object key")
+		}
+		if _, exists := keys[key]; exists {
+			return fmt.Errorf("duplicate field")
+		}
+		keys[key] = struct{}{}
+		if err := scanCorpusValue(decoder, depth, nodes); err != nil {
+			return err
+		}
+	}
+	return expectCorpusDelimiter(decoder, '}')
+}
+
+func scanCorpusArray(decoder *json.Decoder, depth int, nodes *int) error {
+	for decoder.More() {
+		if err := scanCorpusValue(decoder, depth, nodes); err != nil {
+			return err
+		}
+	}
+	return expectCorpusDelimiter(decoder, ']')
+}
+
+func expectCorpusDelimiter(decoder *json.Decoder, expected json.Delim) error {
+	token, err := decoder.Token()
+	if err != nil || token != expected {
+		return fmt.Errorf("JSON delimiter")
+	}
+	return nil
 }
 
 func validateCorpusHeader(c performanceCorpus) error {
