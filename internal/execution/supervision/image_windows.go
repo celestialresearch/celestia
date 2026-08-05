@@ -33,7 +33,7 @@ type imageStageOperations struct {
 	copy       func(io.Writer, io.Reader) (int64, error)
 	sync       func(*os.File) error
 	close      func(*os.File) error
-	verify     func(*os.File, [32]byte) error
+	hash       func(*os.File) ([32]byte, error)
 }
 
 type lockedFileOperations struct {
@@ -59,7 +59,7 @@ func defaultImageStageOperations() imageStageOperations {
 		copy:       io.Copy,
 		sync:       (*os.File).Sync,
 		close:      (*os.File).Close,
-		verify:     verifyImage,
+		hash:       hashFile,
 	}
 }
 
@@ -95,8 +95,7 @@ func stageImageWith(
 	if err != nil {
 		return nil, hash, "", true, fmt.Errorf("create staged worker: %w", err)
 	}
-	digest := sha256.New()
-	if _, err := operations.copy(io.MultiWriter(writer, digest), sourceFile); err != nil {
+	if _, err := operations.copy(writer, sourceFile); err != nil {
 		return nil, hash, "", true, fmt.Errorf("stage worker: %w", err)
 	}
 	if err := operations.sync(writer); err != nil {
@@ -116,10 +115,9 @@ func stageImageWith(
 		err = fmt.Errorf("lock staged worker: %w", err)
 		return
 	}
-	copy(hash[:], digest.Sum(nil))
-	if verifyErr := operations.verify(image, hash); verifyErr != nil {
+	hash, err = operations.hash(image)
+	if err != nil {
 		path = ""
-		err = verifyErr
 		return
 	}
 	if closeErr := operations.close(sourceFile); closeErr != nil {
@@ -140,23 +138,6 @@ func closeFilesWith(close func(*os.File) error, files ...*os.File) error {
 		}
 	}
 	return closeErr
-}
-
-func verifyImage(image *os.File, expected [32]byte) error {
-	return verifyImageWith(expected, func() ([32]byte, error) {
-		return hashFile(image)
-	})
-}
-
-func verifyImageWith(expected [32]byte, hash func() ([32]byte, error)) error {
-	actual, err := hash()
-	if err != nil {
-		return err
-	}
-	if actual != expected {
-		return errors.New("staged worker changed before execution lock")
-	}
-	return nil
 }
 
 func hashFile(file *os.File) ([32]byte, error) {

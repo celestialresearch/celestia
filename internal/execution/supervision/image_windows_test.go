@@ -14,7 +14,6 @@
 package supervision
 
 import (
-	"crypto/sha256"
 	"errors"
 	"io"
 	"os"
@@ -145,12 +144,12 @@ func imageStageFailureCases() []imageStageFailureCase {
 			},
 		},
 		{
-			name:            "verify",
-			want:            "verify",
+			name:            "hash",
+			want:            "hash",
 			cleanupComplete: true,
 			change: func(operations *imageStageOperations, _ string) {
-				operations.verify = func(*os.File, [32]byte) error {
-					return errors.New("verify")
+				operations.hash = func(*os.File) ([32]byte, error) {
+					return [32]byte{}, errors.New("hash")
 				}
 			},
 		},
@@ -168,25 +167,6 @@ func imageStageFailureCases() []imageStageFailureCase {
 				}
 			},
 		},
-	}
-}
-
-func TestVerifyImageStates(t *testing.T) {
-	expected := sha256.Sum256([]byte("worker"))
-	if err := verifyImageWith(expected, func() ([32]byte, error) {
-		return expected, nil
-	}); err != nil {
-		t.Fatalf("matching image: %v", err)
-	}
-	if err := verifyImageWith(expected, func() ([32]byte, error) {
-		return [32]byte{}, errors.New("hash")
-	}); err == nil || !strings.Contains(err.Error(), "hash") {
-		t.Fatalf("hash failure: %v", err)
-	}
-	if err := verifyImageWith(expected, func() ([32]byte, error) {
-		return [32]byte{}, nil
-	}); err == nil || !strings.Contains(err.Error(), "changed") {
-		t.Fatalf("image mismatch: %v", err)
 	}
 }
 

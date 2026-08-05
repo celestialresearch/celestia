@@ -16,6 +16,7 @@ package supervision
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"golang.org/x/sys/windows"
 	"os"
@@ -291,6 +292,57 @@ func TestPrepareLaunchHonoursContextAtBoundaries(t *testing.T) {
 				t.Fatalf("resources=%v complete=%t error=%v", resources, complete, err)
 			}
 		})
+	}
+}
+
+func TestPrepareLaunchRejectsStagedIdentityChange(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "staged-worker.exe")
+	if err := os.WriteFile(path, []byte("staged"), 0o600); err != nil {
+		t.Fatalf("write staged worker: %v", err)
+	}
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("open staged root: %v", err)
+	}
+	defer func() {
+		if err := root.Close(); err != nil {
+			t.Errorf("close staged root: %v", err)
+		}
+	}()
+	image, err := root.Open(filepath.Base(path))
+	if err != nil {
+		t.Fatalf("open staged worker: %v", err)
+	}
+	configured := sha256.Sum256([]byte("configured"))
+	staged := sha256.Sum256([]byte("staged"))
+	supervisor := &Supervisor{
+		workerPath: path,
+		workerHash: configured,
+		limits:     testNativeLimits(),
+	}
+	operations := defaultLaunchPreparationOperations()
+	operations.createContainer = func() (appContainer, error) {
+		return appContainer{sidReleased: true, profileDeleted: true}, nil
+	}
+	operations.stageImage = func(
+		string,
+		string,
+	) (*os.File, [32]byte, string, bool, error) {
+		return image, staged, path, true, nil
+	}
+	resources, complete, err := supervisor.prepareLaunchWith(
+		context.Background(),
+		time.Now().Add(supervisor.limits.StartupTimeout),
+		operations,
+	)
+	if resources != nil || !complete || err == nil ||
+		!strings.Contains(err.Error(), "configured worker identity changed") {
+		t.Fatalf("resources=%v complete=%t error=%v", resources, complete, err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("staged mismatch retained image: %v", err)
 	}
 }
 
