@@ -21,8 +21,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"golang.org/x/sys/windows"
 )
 
 func TestPerformanceCampaignWritesOnlyCompleteReport(t *testing.T) {
@@ -48,54 +46,77 @@ func TestPerformanceCampaignWritesOnlyCompleteReport(t *testing.T) {
 }
 
 func TestPerformanceCampaignRejectsUnavailableOutputBeforeExecution(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "missing", "report.json")
-	if err := validatePerformanceOutput(path); err == nil {
+	repository := t.TempDir()
+	path := filepath.Join(repository, "reports", "missing", "report.json")
+	if _, _, err := openPerformanceOutputIn(repository, path); !errors.Is(err, errPerformanceReport) {
 		t.Fatal("missing output directory was accepted")
 	}
 }
 
-func TestPerformanceCampaignRequiresIgnoredOutput(t *testing.T) {
-	root, err := repositoryRoot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := ignoredPerformanceOutput(filepath.Join(root, "reports", "performance.json")); err != nil {
-		t.Fatalf("ignored output rejected: %v", err)
-	}
-	if err := ignoredPerformanceOutput(filepath.Join(t.TempDir(), "performance.json")); err == nil {
-		t.Fatal("external output accepted")
-	}
-}
-
-func TestPerformanceCampaignRefusesExternalOutputBeforeProbe(t *testing.T) {
-	probed := false
-	err := validateCampaignOutput(
-		filepath.Join(t.TempDir(), "performance.json"),
-		ignoredPerformanceOutput,
-		func(string) error {
-			probed = true
-			return nil
-		},
-	)
-	if !errors.Is(err, errPerformanceReport) {
+func TestPerformanceCampaignRefusesExternalOutputBeforeExecution(t *testing.T) {
+	repository := t.TempDir()
+	external := filepath.Join(t.TempDir(), "report.json")
+	if _, _, err := openPerformanceOutputIn(repository, external); !errors.Is(err, errPerformanceReport) {
 		t.Fatalf("external output error=%v", err)
 	}
-	if probed {
-		t.Fatal("external output was probed")
-	}
 }
 
-func TestPerformanceCampaignRejectsReparseOutputAncestry(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, "reports", "candidate", "report.json")
-	attributes := func(candidate string) (uint32, error) {
-		if candidate == filepath.Join(root, "reports") {
-			return windows.FILE_ATTRIBUTE_DIRECTORY | windows.FILE_ATTRIBUTE_REPARSE_POINT, nil
-		}
-		return windows.FILE_ATTRIBUTE_DIRECTORY, nil
+func TestPerformanceCampaignRetainsOpenedOutputAcrossReparseReplacement(t *testing.T) {
+	repository := t.TempDir()
+	directory := filepath.Join(repository, "reports", "candidate")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if err := validatePerformanceOutputAncestry(root, path, attributes); !errors.Is(err, errPerformanceReport) {
-		t.Fatalf("reparse ancestry error=%v", err)
+	external := t.TempDir()
+	output := filepath.Join(directory, "report.json")
+	type openedOutput struct {
+		root *os.Root
+		name string
+		err  error
+	}
+	opened := make(chan openedOutput, 1)
+	replace := make(chan struct{})
+	replaced := make(chan error, 1)
+	go func() {
+		root, name, err := openPerformanceOutputIn(repository, output)
+		opened <- openedOutput{root: root, name: name, err: err}
+		if err != nil {
+			return
+		}
+		<-replace
+		held := filepath.Join(repository, "reports", "held")
+		if err := os.Rename(directory, held); err != nil {
+			replaced <- err
+			return
+		}
+		replaced <- os.Symlink(external, directory)
+	}()
+	value := <-opened
+	if value.err != nil {
+		t.Fatalf("open output: %v", value.err)
+	}
+	t.Cleanup(func() {
+		if err := value.root.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	close(replace)
+	if err := <-replaced; err != nil {
+		t.Fatalf("replace output ancestry: %v", err)
+	}
+	if _, _, err := openPerformanceOutputIn(repository, output); !errors.Is(err, errPerformanceReport) {
+		t.Fatalf("replacement output root error=%v", err)
+	}
+	corpus, corpusSHA256 := testPerformanceCorpus(t)
+	if err := writeOpenedPerformanceReport(value.root, value.name, testPerformanceReport(t, corpus, corpusSHA256), corpus, corpusSHA256); err != nil {
+		t.Fatalf("write report: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(external, value.name)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("replacement target received output: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(repository, "reports", "held", value.name))
+	if err != nil || len(data) == 0 {
+		t.Fatalf("retained report bytes=%d error=%v", len(data), err)
 	}
 }
 
@@ -132,6 +153,83 @@ func writePerformanceReport(
 	corpus performanceCorpus,
 	corpusSHA256 string,
 ) error {
+	root, name, err := rootedPath(path)
+	if err != nil {
+		return err
+	}
+	writeErr := writeOpenedPerformanceReport(root, name, report, corpus, corpusSHA256)
+	return errors.Join(writeErr, root.Close())
+}
+
+func openPerformanceOutput(path string) (*os.Root, string, error) {
+	repositoryPath, err := repositoryRoot()
+	if err != nil {
+		return nil, "", err
+	}
+	return openPerformanceOutputIn(repositoryPath, path)
+}
+
+func openPerformanceOutputIn(repositoryPath, path string) (*os.Root, string, error) {
+	relative, err := performanceOutputRelative(repositoryPath, path)
+	if err != nil {
+		return nil, "", err
+	}
+	repository, err := os.OpenRoot(repositoryPath)
+	if err != nil {
+		return nil, "", errors.Join(errPerformanceReport, err)
+	}
+	root, openErr := repository.OpenRoot(filepath.Dir(relative))
+	closeErr := repository.Close()
+	if openErr != nil || closeErr != nil {
+		if root != nil {
+			closeErr = errors.Join(closeErr, root.Close())
+		}
+		return nil, "", errors.Join(errPerformanceReport, openErr, closeErr)
+	}
+	name := filepath.Base(relative)
+	if err := validateOpenedPerformanceOutput(root, name); err != nil {
+		return nil, "", errors.Join(err, root.Close())
+	}
+	return root, name, nil
+}
+
+func performanceOutputRelative(root, path string) (string, error) {
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) || clean != path || filepath.Base(clean) == "." {
+		return "", errPerformanceReport
+	}
+	relative, err := filepath.Rel(root, clean)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
+		return "", errPerformanceReport
+	}
+	parts := strings.Split(relative, string(filepath.Separator))
+	if len(parts) < 2 || parts[0] != "reports" {
+		return "", errPerformanceReport
+	}
+	return relative, nil
+}
+
+func validateOpenedPerformanceOutput(root *os.Root, name string) error {
+	if _, err := root.Lstat(name); !errors.Is(err, os.ErrNotExist) {
+		return errPerformanceReport
+	}
+	if _, err := root.Lstat(name + ".tmp"); !errors.Is(err, os.ErrNotExist) {
+		return errPerformanceReport
+	}
+	return nil
+}
+
+func writeRootedPerformanceReport(root *os.Root, name string, data []byte) error {
+	return writeRootedPerformanceReportWith(root, name, data, root.Link)
+}
+
+func writeOpenedPerformanceReport(
+	root *os.Root,
+	name string,
+	report performanceReport,
+	corpus performanceCorpus,
+	corpusSHA256 string,
+) error {
 	if !validPerformanceReport(report, corpus, corpusSHA256) {
 		return errPerformanceReport
 	}
@@ -142,83 +240,7 @@ func writePerformanceReport(
 	if _, err := decodePerformanceReport(strings.NewReader(string(data)), corpus, corpusSHA256); err != nil {
 		return err
 	}
-	root, name, err := rootedPath(path)
-	if err != nil {
-		return err
-	}
-	writeErr := writeRootedPerformanceReport(root, name, data)
-	return errors.Join(writeErr, root.Close())
-}
-
-func validatePerformanceOutput(path string) (err error) {
-	root, name, err := rootedPath(path)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if closeErr := root.Close(); closeErr != nil {
-			err = errors.Join(err, closeErr)
-		}
-	}()
-	if _, err := root.Lstat(name); !errors.Is(err, os.ErrNotExist) {
-		return errPerformanceReport
-	}
-	if _, err := root.Lstat(name + ".tmp"); !errors.Is(err, os.ErrNotExist) {
-		return errPerformanceReport
-	}
-	return nil
-}
-
-func ignoredPerformanceOutput(path string) error {
-	root, err := repositoryRoot()
-	if err != nil {
-		return err
-	}
-	relative, err := filepath.Rel(root, path)
-	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
-		return errPerformanceReport
-	}
-	parts := strings.Split(relative, string(filepath.Separator))
-	if len(parts) < 2 || parts[0] != "reports" {
-		return errPerformanceReport
-	}
-	return validatePerformanceOutputAncestry(root, path, performanceFileAttributes)
-}
-
-func validatePerformanceOutputAncestry(
-	root, output string,
-	attributes func(string) (uint32, error),
-) error {
-	relative, err := filepath.Rel(root, filepath.Dir(output))
-	if err != nil || relative == "." || relative == ".." ||
-		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return errPerformanceReport
-	}
-	current := root
-	for component := range strings.SplitSeq(relative, string(filepath.Separator)) {
-		current = filepath.Join(current, component)
-		value, err := attributes(current)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		if err != nil || value&windows.FILE_ATTRIBUTE_DIRECTORY == 0 ||
-			value&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-			return errPerformanceReport
-		}
-	}
-	return nil
-}
-
-func performanceFileAttributes(path string) (uint32, error) {
-	pointer, err := windows.UTF16PtrFromString(path)
-	if err != nil {
-		return 0, err
-	}
-	return windows.GetFileAttributes(pointer)
-}
-
-func writeRootedPerformanceReport(root *os.Root, name string, data []byte) error {
-	return writeRootedPerformanceReportWith(root, name, data, root.Link)
+	return writeRootedPerformanceReport(root, name, data)
 }
 
 func writeRootedPerformanceReportWith(

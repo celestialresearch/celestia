@@ -640,9 +640,15 @@ func newOperationPerformanceCampaign(
 	output string,
 ) (performanceCampaign, error) {
 	t.Helper()
-	if err := validateCampaignOutput(output, ignoredPerformanceOutput, validatePerformanceOutput); err != nil {
+	outputRoot, outputName, err := openPerformanceOutput(output)
+	if err != nil {
 		return performanceCampaign{}, err
 	}
+	t.Cleanup(func() {
+		if err := outputRoot.Close(); err != nil {
+			t.Errorf("close performance output root: %v", err)
+		}
+	})
 	root, err := repositoryRoot()
 	if err != nil {
 		return performanceCampaign{}, err
@@ -697,23 +703,9 @@ func newOperationPerformanceCampaign(
 		},
 		execute: campaignOperationSample,
 		publish: func(report performanceReport) error {
-			return writePerformanceReport(output, report, corpus, corpusDigest(corpusData))
+			return writeOpenedPerformanceReport(outputRoot, outputName, report, corpus, corpusDigest(corpusData))
 		},
 	}, nil
-}
-
-func validateCampaignOutput(
-	output string,
-	authorise func(string) error,
-	probe func(string) error,
-) error {
-	if err := authorise(output); err != nil {
-		return fmt.Errorf("validate performance report ignore: %w", err)
-	}
-	if err := probe(output); err != nil {
-		return fmt.Errorf("validate performance report path: %w", err)
-	}
-	return nil
 }
 
 func performanceWorker(t *testing.T, ctx context.Context) (string, error) {
