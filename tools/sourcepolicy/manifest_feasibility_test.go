@@ -68,6 +68,9 @@ func TestLinuxAMD64FeasibilityManifestPreservesUnsupportedBoundary(t *testing.T)
 		{"The feasibility slice cannot enable Linux operation or attempt persistence constructors", "Linux operation is enabled"},
 		{"clone3(CLONE_INTO_CGROUP)", "post-start cgroup placement"},
 		{"Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes", "Resolve paths beneath the temporary root"},
+		{"A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2", "A fixture uses isolated namespaces"},
+		{"A fixture is an x86-64 static ELF executable with no PT_INTERP and is bound by SHA-256, device and inode", "A fixture has an identity"},
+		{"named local ext4 or XFS evidence root", "named local evidence root"},
 		{"Fsync the temporary file, publish with renameat2(RENAME_NOREPLACE), fsync the parent directory", "Publish the temporary file"},
 		{"A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values", "A feasible observation records the platform"},
 		{"Enable Linux operation or attempt persistence", "Enable Linux ARM64"},
@@ -93,6 +96,8 @@ func validateLinuxFeasibilityManifest(data []byte) error {
 		!slices.Contains(manifest.CanonicalState, "Linux operation and attempt persistence remain unsupported") ||
 		!slices.Contains(manifest.CanonicalState, "Windows AMD64 remains the only qualified operation boundary") ||
 		!slices.Contains(manifest.CanonicalState, "Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes") ||
+		!slices.Contains(manifest.CanonicalState, "A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2") ||
+		!slices.Contains(manifest.CanonicalState, "A fixture is an x86-64 static ELF executable with no PT_INTERP and is bound by SHA-256, device and inode") ||
 		!slices.Contains(manifest.CanonicalState, "A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values, Linux architecture, kernel release, boot ID, cgroup mount and subtree identities, filesystem type and device, namespace configuration and primitive outcomes") ||
 		!slices.Contains(manifest.NonGoals, "Enable Linux operation or attempt persistence") ||
 		!linuxPlatformUnsupported(manifest.Platforms) ||
@@ -122,7 +127,10 @@ func linuxInvariantRetained(invariants []linuxInvariant) bool {
 		}
 		ids[invariant.ID] = invariant.Statement
 	}
-	return strings.Contains(ids["CEL-PLAT-INV-001"], "root-relative resolution refuses links and path escapes") &&
+	return strings.Contains(ids["CEL-PLAT-INV-001"], "private PID, IPC, UTS, mount and network namespaces") &&
+		strings.Contains(ids["CEL-PLAT-INV-001"], "only descriptors 0, 1 and 2") &&
+		strings.Contains(ids["CEL-PLAT-INV-001"], "static x86-64 ELF identity with no PT_INTERP") &&
+		strings.Contains(ids["CEL-PLAT-INV-001"], "root-relative resolution refuses links and path escapes") &&
 		ids["CEL-PLAT-INV-002"] == "The feasibility slice cannot enable Linux operation or attempt persistence constructors" &&
 		ids["CEL-PLAT-INV-003"] != "" && ids["CEL-PLAT-INV-004"] != ""
 }
@@ -135,7 +143,8 @@ func linuxResourcesRetained(resources []linuxResource) bool {
 		return resource.Kind == "process" && strings.Contains(resource.Acquisition, "clone3(CLONE_INTO_CGROUP)")
 	})
 	durable := slices.ContainsFunc(resources, func(resource linuxResource) bool {
-		return resource.Kind == "durable" && strings.Contains(resource.Release, "renameat2(RENAME_NOREPLACE)") &&
+		return resource.Kind == "durable" && strings.Contains(resource.Acquisition, "ext4 or XFS") &&
+			strings.Contains(resource.Release, "renameat2(RENAME_NOREPLACE)") &&
 			strings.Count(strings.ToLower(resource.Release), "fsync") == 2
 	})
 	return process && durable

@@ -57,7 +57,7 @@ const (
 	freezeSplitPath         = "docs/contracts/cel_split_008.json"
 	freezeSplitSHA          = "5a82cf664db889462ab050c2585ef9130fd117acda5703f07f85d38fb88e1c6a"
 	linuxFeasibilityPath    = "docs/contracts/cel_plat_linux_amd64_feas_001.json"
-	linuxFeasibilitySHA     = "bf0039f9c8aaeb13d565d8088827bdc3062b2c5a21a1f2bebcb667fdc28673ac"
+	linuxFeasibilitySHA     = "0e6269ad376b54192033d0b7791318a505be263c3e621d1b999a4bcb65299452"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {

@@ -28,6 +28,8 @@
     "A feasibility observation is non-authoritative platform evidence",
     "Windows AMD64 remains the only qualified operation boundary",
     "Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes",
+    "A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2",
+    "A fixture is an x86-64 static ELF executable with no PT_INTERP and is bound by SHA-256, device and inode",
     "A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values, Linux architecture, kernel release, boot ID, cgroup mount and subtree identities, filesystem type and device, namespace configuration and primitive outcomes"
   ],
   "derived_state": [
@@ -85,7 +87,7 @@
       "id": "CEL-PLAT-RESOURCE-002",
       "kind": "durable",
       "owner": "Linux AMD64 feasibility probe",
-      "acquisition": "Create one bounded same-directory temporary record beneath the named local evidence root",
+      "acquisition": "Create one bounded same-directory temporary record beneath the named local ext4 or XFS evidence root",
       "bound": "At most 1048576 retained bytes",
       "release": "Fsync the temporary file, publish with renameat2(RENAME_NOREPLACE), fsync the parent directory, inspect then remove only the owned fixture tree",
       "cleanup_failure": "Record failure and retain no feasibility claim",
@@ -133,7 +135,7 @@
   "invariants": [
     {
       "id": "CEL-PLAT-INV-001",
-      "statement": "No fixture process executes before clone3(CLONE_INTO_CGROUP) places its bootstrap in the owned cgroup, every required containment primitive succeeds and root-relative resolution refuses links and path escapes",
+      "statement": "No fixture process executes before clone3(CLONE_INTO_CGROUP) places its bootstrap in the owned cgroup; the fixture has private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback, only descriptors 0, 1 and 2, static x86-64 ELF identity with no PT_INTERP and root-relative resolution refuses links and path escapes",
       "owner": "Linux AMD64 feasibility probe",
       "severity": "high",
       "boundary": "native process creation",
@@ -181,7 +183,7 @@
     },
     {
       "id": "CEL-PLAT-INV-004",
-      "statement": "A feasible observation proves same-directory file fsync, renameat2(RENAME_NOREPLACE) and parent-directory fsync on the named local filesystem",
+      "statement": "A feasible observation proves same-directory file fsync, renameat2(RENAME_NOREPLACE) and parent-directory fsync on the named local ext4 or XFS filesystem",
       "owner": "Linux AMD64 feasibility probe",
       "severity": "high",
       "boundary": "feasibility publication",
