@@ -22,34 +22,36 @@ import (
 const (
 	operationSplitDirectory  = "internal/operation/urlreference/"
 	maxOperationSplitBytes   = 8 << 20
-	operationSplitPackageSHA = "0d2f18ebe1deac1744f91fff7690df765e3a2ecd78e5ef8ff27d84c0b4e86b75"
-	operationSplitSourceSHA  = "341c35c76b5d22dc361bf3d6e467f7d2afeddcfd6ab6ef0d5f4e08fc2e4f6ad6"
-	operationSplitTargetSHA  = "1c558744a08c539475ac9253c207fa89dfad1ea24aaa7d098c2862ad7b9f4dfa"
+	operationSplitPackageSHA = "a2306865cb24eaf81744ef7331fe0462c2df334ebe4dbd94d9a15ed7ccf92710"
+	operationSplitSourceSHA  = "64713f1bcbd2b36803877175ec6b531c9f12936c581f19ef23ec1286b6b3dec8"
+	operationSplitTargetSHA  = "a24bd6af7cae635cea5b8d50b1ccd7fdc99b95ffbafb277fecc77b5bbf99a97b"
 )
 
 var operationSplitOwners = map[string]string{
-	"admission_windows_test.go":       "admission",
-	"benchmark_windows_test.go":       "benchmark",
-	"cancellation_windows_test.go":    "cancellation",
-	"diagnostics_windows_test.go":     "diagnostics",
-	"doc.go":                          "contract",
-	"evidence_windows.go":             "evidence",
-	"execution_windows_test.go":       "execution",
-	"operation.go":                    "contract",
-	"operation_unsupported.go":        "platform",
-	"operation_unsupported_test.go":   "platform",
-	"operation_windows.go":            "orchestration",
-	"performance_decode.go":           "performance-report",
-	"performance_report.go":           "performance-report",
-	"performance_report_test.go":      "performance-report",
-	"platform_windows.go":             "platform",
-	"projection_windows.go":           "projection",
-	"protocol_windows_test.go":        "protocol",
-	"publication_windows_test.go":     "publication",
-	"test_support_windows_test.go":    "test-support",
-	"verification_windows.go":         "verification",
-	"verification_windows_test.go":    "verification",
-	"workload_corpus_windows_test.go": "performance-corpus",
+	"admission_windows_test.go":                "admission",
+	"benchmark_windows_test.go":                "benchmark",
+	"cancellation_windows_test.go":             "cancellation",
+	"diagnostics_windows_test.go":              "diagnostics",
+	"doc.go":                                   "contract",
+	"evidence_windows.go":                      "evidence",
+	"execution_windows_test.go":                "execution",
+	"operation.go":                             "contract",
+	"operation_unsupported.go":                 "platform",
+	"operation_unsupported_test.go":            "platform",
+	"operation_windows.go":                     "orchestration",
+	"performance_decode.go":                    "performance-report",
+	"performance_report.go":                    "performance-report",
+	"performance_report_test.go":               "performance-report",
+	"performance_campaign_unsupported_test.go": "performance-campaign",
+	"performance_campaign_windows_test.go":     "performance-campaign",
+	"platform_windows.go":                      "platform",
+	"projection_windows.go":                    "projection",
+	"protocol_windows_test.go":                 "protocol",
+	"publication_windows_test.go":              "publication",
+	"test_support_windows_test.go":             "test-support",
+	"verification_windows.go":                  "verification",
+	"verification_windows_test.go":             "verification",
+	"workload_corpus_windows_test.go":          "performance-corpus",
 }
 
 func operationSplitDeclarationFindings(

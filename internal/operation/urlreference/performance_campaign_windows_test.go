@@ -1,0 +1,889 @@
+// Copyright © 2026 @sudocelestia. All rights reserved.
+//
+// PROPRIETARY AND CONFIDENTIAL SOURCE CODE.
+//
+// No licence, permission or authorisation is granted to use, copy, modify,
+// compile, execute, distribute, publish, sublicense or otherwise exploit this
+// file, except to the limited extent unavoidably permitted by applicable law
+// or GitHub's Terms of Service.
+//
+// See the LICENSE file at the repository root for the complete terms.
+
+//go:build windows && amd64
+
+package urloperation
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	attemptstore "celestia.research/celestia/internal/operation/urlreference/attempt"
+	"celestia.research/celestia/internal/operation/urlreference/transform"
+)
+
+const performanceReportEnvironment = "CELESTIA_OPERATION_PERFORMANCE_REPORT"
+
+const (
+	maximumCampaignEvidenceBytes = 2 << 20
+	maximumCampaignEvidenceFiles = 4
+)
+
+var fullCampaignWorkloads = map[string]string{
+	"shortest_fang":             "shortest-fang",
+	"shortest_defang":           "shortest-defang",
+	"ordinary":                  "ordinary",
+	"ipv4":                      "ipv4",
+	"ipv6":                      "ipv6",
+	"escaped_percent_non_ascii": "escaped_percent_non_ascii",
+	"maximum_input":             "maximum_input",
+	"maximum_label":             "maximum_label",
+	"maximum_host":              "maximum_host",
+}
+
+type campaignOperation struct {
+	operation    *Operation
+	evidenceRoot string
+	workerPath   string
+}
+
+type performanceCampaign struct {
+	corpus       performanceCorpus
+	corpusSHA256 string
+	environment  performanceEnvironment
+	coldCount    int
+	warmCount    int
+	requireFull  bool
+	newCold      func() (campaignOperation, error)
+	newWarm      func() (campaignOperation, error)
+	execute      func(context.Context, campaignOperation, performanceWorkloadCase) (performanceSample, error)
+	publish      func(performanceReport) error
+}
+
+func TestOperationPerformanceCampaign(t *testing.T) {
+	output := os.Getenv(performanceReportEnvironment)
+	if output == "" {
+		t.Skipf("set %s to run the full performance campaign", performanceReportEnvironment)
+	}
+	campaign, err := newOperationPerformanceCampaign(t, output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := campaign.run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Workloads) != len(acceptedClasses) {
+		t.Fatalf("workloads=%d want=%d", len(report.Workloads), len(acceptedClasses))
+	}
+}
+
+func TestPerformanceCampaignUsesFreshColdAndSharedWarmOperation(t *testing.T) {
+	corpus := performanceCorpus{Cases: []performanceWorkloadCase{
+		{ID: "short-fang", Class: "shortest_fang", Kind: "accepted", Mode: "fang", Input: "hxxp://a[.]b/", Expected: "http://a.b/", Paths: []string{"cold", "warm"}, Eligible: true},
+	}}
+	var cold, warm, next uint64
+	campaign := performanceCampaign{
+		corpus:       corpus,
+		corpusSHA256: strings.Repeat("a", 64),
+		environment:  testCampaignEnvironment(),
+		coldCount:    2,
+		warmCount:    3,
+		newCold: func() (campaignOperation, error) {
+			cold++
+			return campaignOperation{}, nil
+		},
+		newWarm: func() (campaignOperation, error) {
+			warm++
+			return campaignOperation{}, nil
+		},
+		execute: func(context.Context, campaignOperation, performanceWorkloadCase) (performanceSample, error) {
+			next++
+			return testPerformanceSample(0, next), nil
+		},
+	}
+	report, err := campaign.run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cold != 2 || warm != 1 || len(report.Workloads) != 1 {
+		t.Fatalf("cold=%d warm=%d workloads=%d", cold, warm, len(report.Workloads))
+	}
+	if got := report.Workloads[0]; len(got.Cold.Samples) != 2 || len(got.Warm.Samples) != 3 {
+		t.Fatalf("samples=%+v", got)
+	}
+}
+
+func TestPerformanceCampaignDoesNotPublishPartialReport(t *testing.T) {
+	corpus := performanceCorpus{Cases: []performanceWorkloadCase{
+		{ID: "short-fang", Class: "shortest_fang", Kind: "accepted", Mode: "fang", Input: "hxxp://a[.]b/", Expected: "http://a.b/", Paths: []string{"cold", "warm"}, Eligible: true},
+	}}
+	published := false
+	campaign := performanceCampaign{
+		corpus:       corpus,
+		corpusSHA256: strings.Repeat("a", 64),
+		environment:  testCampaignEnvironment(),
+		coldCount:    1,
+		warmCount:    1,
+		newCold:      func() (campaignOperation, error) { return campaignOperation{}, nil },
+		newWarm:      func() (campaignOperation, error) { return campaignOperation{}, nil },
+		execute: func(context.Context, campaignOperation, performanceWorkloadCase) (performanceSample, error) {
+			return performanceSample{}, errors.New("injected failure")
+		},
+		publish: func(performanceReport) error {
+			published = true
+			return nil
+		},
+	}
+	if _, err := campaign.run(context.Background()); err == nil {
+		t.Fatal("campaign accepted failed sample")
+	}
+	if published {
+		t.Fatal("campaign published partial report")
+	}
+}
+
+func TestPerformanceCampaignRejectsUnmeasuredSample(t *testing.T) {
+	corpus := performanceCorpus{Cases: []performanceWorkloadCase{
+		{ID: "short-fang", Class: "shortest_fang", Kind: "accepted", Mode: "fang", Input: "hxxp://a[.]b/", Expected: "http://a.b/", Paths: []string{"cold", "warm"}, Eligible: true},
+	}}
+	var next uint64
+	campaign := performanceCampaign{
+		corpus:       corpus,
+		corpusSHA256: strings.Repeat("a", 64),
+		environment:  testCampaignEnvironment(),
+		coldCount:    1,
+		warmCount:    1,
+		newCold:      func() (campaignOperation, error) { return campaignOperation{}, nil },
+		newWarm:      func() (campaignOperation, error) { return campaignOperation{}, nil },
+		execute: func(context.Context, campaignOperation, performanceWorkloadCase) (performanceSample, error) {
+			next++
+			sample := testPerformanceSample(0, next)
+			sample.Resources.Measured = false
+			return sample, nil
+		},
+	}
+	if _, err := campaign.run(context.Background()); err == nil {
+		t.Fatal("campaign accepted an unmeasured sample")
+	}
+}
+
+func TestPerformanceCampaignDigestsCorpusAndRows(t *testing.T) {
+	data := []byte(`{"version":1,"operation":"url-reference","cases":[]}`)
+	corpus := performanceCorpus{Cases: []performanceWorkloadCase{{ID: "short-fang", Class: "shortest_fang"}}}
+	digest := sha256.Sum256(data)
+	if got := corpusDigest(data); got != hex.EncodeToString(digest[:]) {
+		t.Fatalf("corpus digest=%s", got)
+	}
+	encoded, err := json.Marshal(corpus.Cases[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	rowDigest := sha256.Sum256(encoded)
+	if got := workloadDigest(corpus.Cases[0]); got != hex.EncodeToString(rowDigest[:]) {
+		t.Fatalf("workload digest=%s", got)
+	}
+}
+
+func TestPerformanceCampaignWritesOnlyCompleteReport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report.json")
+	report := testPerformanceReport(t)
+	if err := writePerformanceReport(path, report); err != nil {
+		t.Fatalf("write report: %v", err)
+	}
+	data, err := readRootedPerformanceReport(path)
+	if err != nil {
+		t.Fatalf("read report: %v", err)
+	}
+	if _, err := decodePerformanceReport(strings.NewReader(string(data))); err != nil {
+		t.Fatalf("decode report: %v", err)
+	}
+	if err := writePerformanceReport(path, report); err == nil {
+		t.Fatal("existing report was replaced")
+	}
+	if err := writePerformanceReport(filepath.Join(t.TempDir(), "invalid.json"), performanceReport{}); err == nil {
+		t.Fatal("invalid report was published")
+	}
+}
+
+func TestPerformanceCampaignRejectsUnavailableOutputBeforeExecution(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing", "report.json")
+	if err := validatePerformanceOutput(path); err == nil {
+		t.Fatal("missing output directory was accepted")
+	}
+}
+
+func TestPerformanceCampaignRequiresIgnoredOutput(t *testing.T) {
+	root, err := repositoryRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ignoredPerformanceOutput(filepath.Join(root, "reports", "performance.json")); err != nil {
+		t.Fatalf("ignored output rejected: %v", err)
+	}
+	if err := ignoredPerformanceOutput(filepath.Join(t.TempDir(), "performance.json")); err == nil {
+		t.Fatal("external output accepted")
+	}
+}
+
+func TestPerformanceCampaignDoesNotReplaceRacedReport(t *testing.T) {
+	root, err := os.OpenRoot(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := root.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	data := marshalPerformanceReport(t, testPerformanceReport(t))
+	err = writeRootedPerformanceReportWith(root, "report.json", data, func(_, name string) error {
+		if err := root.WriteFile(name, []byte("existing"), 0o600); err != nil {
+			return err
+		}
+		return os.ErrExist
+	})
+	if !errors.Is(err, os.ErrExist) {
+		t.Fatalf("write error=%v", err)
+	}
+	retained, err := root.ReadFile("report.json")
+	if err != nil || string(retained) != "existing" {
+		t.Fatalf("retained=%q error=%v", retained, err)
+	}
+}
+
+func TestPerformanceCampaignRequiresCompleteCorpus(t *testing.T) {
+	campaign := performanceCampaign{
+		corpus:       performanceCorpus{},
+		corpusSHA256: strings.Repeat("a", 64),
+		environment:  testCampaignEnvironment(),
+		coldCount:    coldSampleCount,
+		warmCount:    warmSampleCount,
+		requireFull:  true,
+		newCold:      func() (campaignOperation, error) { return campaignOperation{}, nil },
+		newWarm:      func() (campaignOperation, error) { return campaignOperation{}, nil },
+		execute: func(context.Context, campaignOperation, performanceWorkloadCase) (performanceSample, error) {
+			return performanceSample{}, nil
+		},
+	}
+	if err := campaign.valid(); !errors.Is(err, errPerformanceReport) {
+		t.Fatalf("validation error=%v", err)
+	}
+}
+
+func TestPerformanceCampaignMeasuresPublishedEvidence(t *testing.T) {
+	root := testEvidenceRoot(t)
+	operation, err := New(testWorker(t), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, _ := operation.executeMeasured(
+		context.Background(),
+		"https://example.test/",
+		urlreference.Defang,
+	)
+	if result.Status != Verified {
+		t.Fatalf("result=%+v", result)
+	}
+	bytes, err := campaignEvidenceBytes(root, result.AttemptID)
+	if err != nil || bytes == 0 {
+		t.Fatalf("evidence bytes=%d error=%v", bytes, err)
+	}
+}
+
+func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCampaign, error) {
+	t.Helper()
+	if err := validatePerformanceOutput(output); err != nil {
+		return performanceCampaign{}, fmt.Errorf("validate performance report path: %w", err)
+	}
+	if err := ignoredPerformanceOutput(output); err != nil {
+		return performanceCampaign{}, fmt.Errorf("validate performance report ignore: %w", err)
+	}
+	corpusData, err := os.ReadFile(performanceCorpusPath)
+	if err != nil {
+		return performanceCampaign{}, fmt.Errorf("read performance corpus: %w", err)
+	}
+	corpus, err := decodePerformanceCorpus(corpusData)
+	if err != nil {
+		return performanceCampaign{}, fmt.Errorf("decode performance corpus: %w", err)
+	}
+	worker := testWorker(t)
+	environment, err := operationPerformanceEnvironment(worker)
+	if err != nil {
+		return performanceCampaign{}, err
+	}
+	return performanceCampaign{
+		corpus:       corpus,
+		corpusSHA256: corpusDigest(corpusData),
+		environment:  environment,
+		coldCount:    coldSampleCount,
+		warmCount:    warmSampleCount,
+		requireFull:  true,
+		newCold: func() (campaignOperation, error) {
+			root := testEvidenceRoot(t)
+			operation, err := New(worker, root)
+			return campaignOperation{operation: operation, evidenceRoot: root, workerPath: worker}, err
+		},
+		newWarm: func() (campaignOperation, error) {
+			root := testEvidenceRoot(t)
+			operation, err := New(worker, root)
+			return campaignOperation{operation: operation, evidenceRoot: root, workerPath: worker}, err
+		},
+		execute: campaignOperationSample,
+		publish: func(report performanceReport) error {
+			return writePerformanceReport(output, report)
+		},
+	}, nil
+}
+
+func (campaign performanceCampaign) run(ctx context.Context) (performanceReport, error) {
+	if err := campaign.valid(); err != nil {
+		return performanceReport{}, err
+	}
+	report := performanceReport{
+		SchemaVersion: performanceReportSchema,
+		CorpusVersion: performanceCorpusSchema,
+		CorpusSHA256:  campaign.corpusSHA256,
+		Calculation:   performanceCalculation,
+		Environment:   campaign.environment,
+	}
+	report.Environment.Identity = performanceEnvironmentIdentity(report.Environment)
+	warm, err := campaign.newWarm()
+	if err != nil {
+		return performanceReport{}, fmt.Errorf("create warm operation: %w", err)
+	}
+	for _, workload := range campaign.corpus.Cases {
+		if !workload.Eligible {
+			continue
+		}
+		measured, err := campaign.measureWorkload(ctx, workload, warm)
+		if err != nil {
+			return performanceReport{}, err
+		}
+		report.Workloads = append(report.Workloads, measured)
+	}
+	if campaign.requireFull && !validPerformanceReport(report) {
+		return performanceReport{}, errPerformanceReport
+	}
+	if campaign.publish != nil {
+		if err := campaign.publish(report); err != nil {
+			return performanceReport{}, fmt.Errorf("publish performance report: %w", err)
+		}
+	}
+	return report, nil
+}
+
+func (campaign performanceCampaign) valid() error {
+	if !validCampaignCore(campaign) || !validCampaignCounts(campaign) {
+		return errPerformanceReport
+	}
+	if campaign.requireFull && !validFullCampaignCorpus(campaign.corpus) {
+		return errPerformanceReport
+	}
+	return nil
+}
+
+func validCampaignCore(campaign performanceCampaign) bool {
+	return campaign.newCold != nil && campaign.newWarm != nil && campaign.execute != nil &&
+		validPerformanceHash(campaign.corpusSHA256) && validEnvironment(campaign.environment)
+}
+
+func validCampaignCounts(campaign performanceCampaign) bool {
+	if campaign.coldCount < 1 || campaign.warmCount < 1 {
+		return false
+	}
+	return !campaign.requireFull ||
+		(campaign.coldCount == coldSampleCount && campaign.warmCount == warmSampleCount)
+}
+
+func validFullCampaignCorpus(corpus performanceCorpus) bool {
+	if validateCorpusHeader(corpus) != nil || validateCorpusRows(corpus) != nil {
+		return false
+	}
+	accepted := 0
+	for _, workload := range corpus.Cases {
+		if !workload.Eligible {
+			continue
+		}
+		if fullCampaignWorkloads[workload.Class] != workload.ID {
+			return false
+		}
+		accepted++
+	}
+	return accepted == len(fullCampaignWorkloads)
+}
+
+func (campaign performanceCampaign) measureWorkload(
+	ctx context.Context,
+	workload performanceWorkloadCase,
+	warm campaignOperation,
+) (performanceWorkload, error) {
+	cold, err := campaign.measureProfile(ctx, workload, "cold", campaign.coldCount, campaign.newCold)
+	if err != nil {
+		return performanceWorkload{}, err
+	}
+	warmProfile, err := campaign.measureProfile(ctx, workload, "warm", campaign.warmCount, func() (campaignOperation, error) {
+		return warm, nil
+	})
+	if err != nil {
+		return performanceWorkload{}, err
+	}
+	return performanceWorkload{
+		Class:          workload.Class,
+		WorkloadID:     workload.ID,
+		WorkloadSHA256: workloadDigest(workload),
+		Cold:           cold,
+		Warm:           warmProfile,
+	}, nil
+}
+
+func (campaign performanceCampaign) measureProfile(
+	ctx context.Context,
+	workload performanceWorkloadCase,
+	mode string,
+	count int,
+	nextOperation func() (campaignOperation, error),
+) (performanceProfile, error) {
+	profile := performanceProfile{Mode: mode, Samples: make([]performanceSample, 0, count)}
+	for index := range count {
+		operation, err := nextOperation()
+		if err != nil {
+			return performanceProfile{}, fmt.Errorf("create %s operation: %w", mode, err)
+		}
+		sample, err := campaign.execute(ctx, operation, workload)
+		if err != nil {
+			return performanceProfile{}, fmt.Errorf("measure %s/%s %d: %w", workload.ID, mode, index+1, err)
+		}
+		sample.Sequence = uint64(index + 1)
+		sample.EnvironmentID = campaign.environment.Identity
+		if !validSample(sample, sample.Sequence, campaign.environment.Identity) {
+			return performanceProfile{}, fmt.Errorf("measure %s/%s %d: %w", workload.ID, mode, index+1, errPerformanceReport)
+		}
+		profile.Samples = append(profile.Samples, sample)
+	}
+	statistics, err := calculateStatistics(profile.Samples)
+	if err != nil {
+		return performanceProfile{}, err
+	}
+	profile.Statistics = statistics
+	return profile, nil
+}
+
+func campaignOperationSample(
+	ctx context.Context,
+	candidate campaignOperation,
+	workload performanceWorkloadCase,
+) (performanceSample, error) {
+	if candidate.operation == nil || candidate.evidenceRoot == "" {
+		return performanceSample{}, errPerformanceReport
+	}
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	result, timings := candidate.operation.executeMeasured(ctx, workload.Input, urlreference.Mode(workload.Mode))
+	runtime.ReadMemStats(&after)
+	if err := verifiedCampaignResult(candidate, result, timings, workload.Expected); err != nil {
+		return performanceSample{}, err
+	}
+	evidenceBytes, err := campaignEvidenceBytes(candidate.evidenceRoot, result.AttemptID)
+	if err != nil {
+		return performanceSample{}, err
+	}
+	workerImage, err := campaignWorkerBytes(candidate.workerPath)
+	if err != nil {
+		return performanceSample{}, err
+	}
+	return performanceSample{
+		AttemptID:       result.AttemptID,
+		Outcome:         string(result.Status),
+		CleanupComplete: result.Process.CleanupComplete,
+		Phases:          campaignPhases(timings),
+		Resources: resourceMeasurement{
+			Measured:                timings.Resources.Measured && timings.Resources.Err == nil,
+			WorkerCPUTimeNS:         durationNanoseconds(timings.Resources.CPUTime),
+			PeakWorkingSetBytes:     timings.Resources.PeakWorkingSet,
+			PeakProcessCommitBytes:  timings.Resources.PeakProcessCommit,
+			PeakJobCommitBytes:      timings.Resources.PeakJobCommit,
+			JobReadOperations:       timings.Resources.ReadOperations,
+			JobWriteOperations:      timings.Resources.WriteOperations,
+			JobOtherOperations:      timings.Resources.OtherOperations,
+			JobReadBytes:            timings.Resources.ReadBytes,
+			JobWriteBytes:           timings.Resources.WriteBytes,
+			JobOtherBytes:           timings.Resources.OtherBytes,
+			GoRuntimeAllocatedBytes: allocationDelta(before.TotalAlloc, after.TotalAlloc),
+			EvidenceBytes:           evidenceBytes,
+			WorkerImageBytes:        workerImage,
+		},
+	}, nil
+}
+
+func verifiedCampaignResult(
+	candidate campaignOperation,
+	result Result,
+	timings operationTimings,
+	expected string,
+) error {
+	if !validCampaignResult(result, timings, expected) {
+		return errPerformanceReport
+	}
+	return validCampaignEvidence(candidate, result.AttemptID, expected)
+}
+
+func validCampaignResult(result Result, timings operationTimings, expected string) bool {
+	return result.Status == Verified && result.AttemptID != "" && result.Response != nil &&
+		result.Response.Output != nil && *result.Response.Output == expected &&
+		result.Process.CleanupComplete && timings.measured == allMeasuredPhases &&
+		timings.Resources.Measured && timings.Resources.Err == nil
+}
+
+func validCampaignEvidence(candidate campaignOperation, attemptID, expected string) error {
+	records, err := candidate.operation.store.Inspect(attemptID)
+	if err != nil || records.Observation == nil || records.Observation.TerminalStatus != string(Verified) ||
+		!records.Observation.CleanupComplete || records.Observation.ExpectedOutput != expected ||
+		!records.Observation.VerificationPass || records.Observation.VerificationID != attemptstore.URLVerifierID ||
+		records.Observation.VerificationVer != attemptstore.URLVerifierVersion {
+		return errPerformanceReport
+	}
+	return nil
+}
+
+func campaignPhases(timings operationTimings) []phaseMeasurement {
+	values := [...]time.Duration{
+		timings.Request,
+		timings.Admission,
+		timings.Staging,
+		timings.Preparation,
+		timings.ProcessStart,
+		timings.Input,
+		timings.Worker,
+		timings.Output,
+		timings.Diagnostics,
+		timings.Lifecycle,
+		timings.Protocol,
+		timings.Verification,
+		timings.Observation,
+		timings.Publication,
+		timings.Receipt,
+		timings.Total,
+	}
+	phases := make([]phaseMeasurement, len(performancePhases))
+	for index, id := range performancePhases {
+		phases[index] = phaseMeasurement{ID: id, DurationNS: durationNanoseconds(values[index])}
+	}
+	return phases
+}
+
+type evidenceMeter struct {
+	root  string
+	bytes uint64
+	files int
+}
+
+func campaignEvidenceBytes(root, attemptID string) (uint64, error) {
+	meter := evidenceMeter{root: filepath.Join(root, "attempts", attemptID)}
+	err := filepath.WalkDir(meter.root, meter.visit)
+	if err != nil || meter.files != maximumCampaignEvidenceFiles || meter.bytes == 0 {
+		return 0, errPerformanceReport
+	}
+	return meter.bytes, nil
+}
+
+func (meter *evidenceMeter) visit(path string, entry os.DirEntry, err error) error {
+	if err != nil || entry.Type()&os.ModeSymlink != 0 {
+		return errPerformanceReport
+	}
+	if entry.IsDir() {
+		if path != meter.root {
+			return errPerformanceReport
+		}
+		return nil
+	}
+	return meter.addFile(entry)
+}
+
+func (meter *evidenceMeter) addFile(entry os.DirEntry) error {
+	meter.files++
+	if meter.files > maximumCampaignEvidenceFiles {
+		return errPerformanceReport
+	}
+	info, err := entry.Info()
+	if err != nil || !info.Mode().IsRegular() {
+		return errPerformanceReport
+	}
+	size, err := nonNegativeUint64(info.Size())
+	if err != nil || size > maximumCampaignEvidenceBytes-meter.bytes {
+		return errPerformanceReport
+	}
+	meter.bytes += size
+	return nil
+}
+
+func campaignWorkerBytes(path string) (uint64, error) {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 {
+		return 0, errPerformanceReport
+	}
+	return nonNegativeUint64(info.Size())
+}
+
+func allocationDelta(before, after uint64) uint64 {
+	if after < before {
+		return 0
+	}
+	return after - before
+}
+
+func durationNanoseconds(duration time.Duration) uint64 {
+	value, err := nonNegativeUint64(int64(duration))
+	if err != nil {
+		return 0
+	}
+	return value
+}
+
+func nonNegativeUint64(value int64) (uint64, error) {
+	if value < 0 {
+		return 0, errPerformanceReport
+	}
+	return uint64(value), nil
+}
+
+func corpusDigest(data []byte) string {
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
+}
+
+func workloadDigest(workload performanceWorkloadCase) string {
+	data, err := json.Marshal(workload)
+	if err != nil {
+		return ""
+	}
+	return corpusDigest(data)
+}
+
+func operationPerformanceEnvironment(worker string) (performanceEnvironment, error) {
+	workerHash, err := fileDigest(worker)
+	if err != nil {
+		return performanceEnvironment{}, err
+	}
+	commit, err := performanceCommit()
+	if err != nil {
+		return performanceEnvironment{}, err
+	}
+	rust, err := performanceRustVersion()
+	if err != nil {
+		return performanceEnvironment{}, err
+	}
+	hardware := strings.TrimSpace(os.Getenv("PROCESSOR_IDENTIFIER"))
+	if hardware == "" {
+		hardware = fmt.Sprintf("logical-cpus-%d", runtime.NumCPU())
+	}
+	environment := performanceEnvironment{
+		Platform:      runtime.GOOS + "/" + runtime.GOARCH,
+		Hardware:      hardware,
+		Toolchains:    []string{runtime.Version(), rust},
+		CacheState:    "cold-fresh-operation-warm-reused-operation",
+		Concurrency:   1,
+		WorkerSHA256:  workerHash,
+		ProductCommit: commit,
+	}
+	sort.Strings(environment.Toolchains)
+	environment.Identity = performanceEnvironmentIdentity(environment)
+	if !validEnvironment(environment) {
+		return performanceEnvironment{}, errPerformanceReport
+	}
+	return environment, nil
+}
+
+func fileDigest(path string) (string, error) {
+	root, name, err := rootedPath(path)
+	if err != nil {
+		return "", err
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		closeErr := root.Close()
+		return "", errors.Join(err, closeErr)
+	}
+	digest := sha256.New()
+	_, copyErr := io.Copy(digest, file)
+	return hex.EncodeToString(digest.Sum(nil)), errors.Join(copyErr, file.Close(), root.Close())
+}
+
+func performanceCommit() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	root, err := repositoryRoot()
+	if err != nil {
+		return "", err
+	}
+	command := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+	command.Dir = root
+	output, err := command.Output()
+	commit := strings.TrimSpace(string(output))
+	if err != nil || !validCommit(commit) {
+		return "", errPerformanceReport
+	}
+	return commit, nil
+}
+
+func performanceRustVersion() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "rustc", "--version").Output()
+	fields := strings.Fields(string(output))
+	if err != nil || len(fields) < 2 {
+		return "", errPerformanceReport
+	}
+	version := fields[0] + "-" + fields[1]
+	if !identifierPerformance.MatchString(version) {
+		return "", errPerformanceReport
+	}
+	return version, nil
+}
+
+func writePerformanceReport(path string, report performanceReport) error {
+	if !validPerformanceReport(report) {
+		return errPerformanceReport
+	}
+	data, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	if _, err := decodePerformanceReport(strings.NewReader(string(data))); err != nil {
+		return err
+	}
+	root, name, err := rootedPath(path)
+	if err != nil {
+		return err
+	}
+	writeErr := writeRootedPerformanceReport(root, name, data)
+	return errors.Join(writeErr, root.Close())
+}
+
+func validatePerformanceOutput(path string) (err error) {
+	root, name, err := rootedPath(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if closeErr := root.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+	}()
+	if _, err := root.Lstat(name); !errors.Is(err, os.ErrNotExist) {
+		return errPerformanceReport
+	}
+	if _, err := root.Lstat(name + ".tmp"); !errors.Is(err, os.ErrNotExist) {
+		return errPerformanceReport
+	}
+	return nil
+}
+
+func ignoredPerformanceOutput(path string) error {
+	root, err := repositoryRoot()
+	if err != nil {
+		return err
+	}
+	relative, err := filepath.Rel(root, path)
+	if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
+		return errPerformanceReport
+	}
+	parts := strings.Split(relative, string(filepath.Separator))
+	if len(parts) < 2 || parts[0] != "reports" {
+		return errPerformanceReport
+	}
+	return nil
+}
+
+func writeRootedPerformanceReport(root *os.Root, name string, data []byte) error {
+	return writeRootedPerformanceReportWith(root, name, data, root.Link)
+}
+
+func writeRootedPerformanceReportWith(
+	root *os.Root,
+	name string,
+	data []byte,
+	link func(string, string) error,
+) (err error) {
+	if _, err := root.Lstat(name); !errors.Is(err, os.ErrNotExist) {
+		return errPerformanceReport
+	}
+	temporary := name + ".tmp"
+	file, err := root.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	created := true
+	defer func() {
+		if created {
+			err = errors.Join(err, root.Remove(temporary))
+		}
+	}()
+	if err := writeAndClosePerformanceReport(file, data); err != nil {
+		return err
+	}
+	if err := link(temporary, name); err != nil {
+		return err
+	}
+	created = false
+	return root.Remove(temporary)
+}
+
+func writeAndClosePerformanceReport(file *os.File, data []byte) error {
+	if _, err := file.Write(data); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	return errors.Join(file.Sync(), file.Close())
+}
+
+func readRootedPerformanceReport(path string) ([]byte, error) {
+	root, name, err := rootedPath(path)
+	if err != nil {
+		return nil, err
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return nil, errors.Join(err, root.Close())
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxPerformanceReportBytes+1))
+	return data, errors.Join(readErr, file.Close(), root.Close())
+}
+
+func rootedPath(path string) (*os.Root, string, error) {
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) || clean != path || filepath.Base(clean) == "." {
+		return nil, "", errPerformanceReport
+	}
+	directory := filepath.Dir(clean)
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return nil, "", err
+	}
+	return root, filepath.Base(clean), nil
+}
+
+func testCampaignEnvironment() performanceEnvironment {
+	environment := performanceEnvironment{
+		Platform:      "windows/amd64",
+		Hardware:      "test-host",
+		Toolchains:    []string{"go1.26.5", "rustc-1.95.0"},
+		CacheState:    "declared",
+		Concurrency:   1,
+		WorkerSHA256:  strings.Repeat("c", 64),
+		ProductCommit: strings.Repeat("d", 40),
+	}
+	environment.Identity = performanceEnvironmentIdentity(environment)
+	return environment
+}

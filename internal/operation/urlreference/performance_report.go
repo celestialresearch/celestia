@@ -77,20 +77,20 @@ type phaseMeasurement struct {
 }
 
 type resourceMeasurement struct {
-	Measured               bool   `json:"measured"`
-	WorkerCPUTimeNS        uint64 `json:"worker_cpu_time_ns"`
-	PeakWorkingSetBytes    uint64 `json:"peak_working_set_bytes"`
-	PeakProcessCommitBytes uint64 `json:"peak_process_commit_bytes"`
-	PeakJobCommitBytes     uint64 `json:"peak_job_commit_bytes"`
-	JobReadOperations      uint64 `json:"job_read_operations"`
-	JobWriteOperations     uint64 `json:"job_write_operations"`
-	JobOtherOperations     uint64 `json:"job_other_operations"`
-	JobReadBytes           uint64 `json:"job_read_bytes"`
-	JobWriteBytes          uint64 `json:"job_write_bytes"`
-	JobOtherBytes          uint64 `json:"job_other_bytes"`
-	GoAllocatedBytes       uint64 `json:"go_allocated_bytes"`
-	EvidenceBytes          uint64 `json:"evidence_bytes"`
-	WorkerImageBytes       uint64 `json:"worker_image_bytes"`
+	Measured                bool   `json:"measured"`
+	WorkerCPUTimeNS         uint64 `json:"worker_cpu_time_ns"`
+	PeakWorkingSetBytes     uint64 `json:"peak_working_set_bytes"`
+	PeakProcessCommitBytes  uint64 `json:"peak_process_commit_bytes"`
+	PeakJobCommitBytes      uint64 `json:"peak_job_commit_bytes"`
+	JobReadOperations       uint64 `json:"job_read_operations"`
+	JobWriteOperations      uint64 `json:"job_write_operations"`
+	JobOtherOperations      uint64 `json:"job_other_operations"`
+	JobReadBytes            uint64 `json:"job_read_bytes"`
+	JobWriteBytes           uint64 `json:"job_write_bytes"`
+	JobOtherBytes           uint64 `json:"job_other_bytes"`
+	GoRuntimeAllocatedBytes uint64 `json:"go_runtime_allocated_bytes"`
+	EvidenceBytes           uint64 `json:"evidence_bytes"`
+	WorkerImageBytes        uint64 `json:"worker_image_bytes"`
 }
 
 type performanceStatistics struct {
@@ -144,7 +144,7 @@ var performanceResources = [...]string{
 	"job_read_bytes",
 	"job_write_bytes",
 	"job_other_bytes",
-	"go_allocated_bytes",
+	"go_runtime_allocated_bytes",
 	"evidence_bytes",
 	"worker_image_bytes",
 }
@@ -206,7 +206,7 @@ func sampleResourceValues(resources resourceMeasurement) [len(performanceResourc
 		resources.JobReadBytes,
 		resources.JobWriteBytes,
 		resources.JobOtherBytes,
-		resources.GoAllocatedBytes,
+		resources.GoRuntimeAllocatedBytes,
 		resources.EvidenceBytes,
 		resources.WorkerImageBytes,
 	}
