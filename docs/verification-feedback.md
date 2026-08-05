@@ -305,6 +305,19 @@ Go linting owns `govet` and its deliberately defective fixture. The separate
 `go vet` invocation repeated the same analyser immediately before that gate and
 was removed; `govet` remains blocking through the pinned linter configuration.
 
+The retained persistent result caches are action currency, module update diff
+and licence headers. Each key binds ordered path and content identity plus its
+checker and applicable tool or environment inputs; focused fixtures reject
+stale markers and changed relevance inputs. Go and Cargo build caches remain
+tool-owned acceleration rather than trusted verification results.
+
+Concurrent shell analysis writes only to separate diagnostic files. Windows
+shell runs receive separate result-cache, Cargo-target and temporary roots.
+Remaining sleeps and polls own explicit retry, deadline, process-tree cleanup
+or hostile-fixture behaviour; no delay is used to make an ordinary assertion
+eventually pass. Standard, race and fuzz discovery remains separate where the
+campaign or target inventory is independently owned.
+
 CI runs race and active fuzz controls in a separate blocking matrix for every
 qualified Product runner. Local full verification retains both controls. The
 green `b34f75d` run spent 93 seconds on race and 15 seconds on fuzz for Linux
