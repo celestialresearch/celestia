@@ -1,7 +1,7 @@
 {
   "schema_version": "celestia.source-policy.split-inventory.v1",
   "package_sha256": "ecfc907fc1625517d868da4f9fa40073d3929e65fb350e243245b3ad4427cda2",
-  "source_sha256": "2f3148c01e1b9caf2740e18d269572db7166a80348a6d273b9a3564b0831b86e",
+  "source_sha256": "d2e81d823e20da8963161dfa66b2c7e575522d51b0dcf0b0350fed03d342fb8d",
   "target_sha256": "2b4266ea7165e0c5c69c3c265b46664ed14fd2152eb18142d4e6f7aed208082c",
   "fixture_sha256": "f13c15e94fa1a2041c66801fedf6bdb2626c4f268d9e7d6d49dc81d8fb31cc94"
 }

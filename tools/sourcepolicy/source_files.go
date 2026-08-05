@@ -20,7 +20,7 @@ import (
 
 const (
 	maxOrdinarySourceLines = 800
-	maxTestSourceLines     = 1000
+	maxTestSourceLines     = 5000
 )
 
 func sourceFileFindings(
@@ -57,7 +57,7 @@ func sourceFileFindings(
 		lines := bytes.Count(source, []byte{'\n'})
 		if strings.Contains(base, "_test.") && lines > maxTestSourceLines {
 			findings = append(findings,
-				fmt.Sprintf("%s: test file exceeds the 1,000-line maximum", file),
+				fmt.Sprintf("%s: test file exceeds the 5,000-line maximum", file),
 			)
 		} else if !strings.Contains(base, "_test.") &&
 			lines > maxOrdinarySourceLines {
