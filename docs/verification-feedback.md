@@ -328,6 +328,43 @@ existing module download cache took 263.9, 199.5 and 196.8 seconds (median
 were disabled according to the quick profile; ambiguous branch-wide changes
 conservatively selected all Go packages.
 
+Windows AMD64 campaign measurements at Product `9f079d4` used the same host
+and toolchains. Each campaign ran race then every active fuzz target for 1,000
+iterations. Three warm runs took 181.2, 154.6 and 153.6 seconds (median 154.6;
+range 27.6). Three runs with a new empty Go build cache and the existing module
+download cache took 260.7, 227.6 and 234.8 seconds (median 234.8; range 33.1).
+All six race and fuzz campaigns passed.
+
+Three hosted sign-off observations used Product `9f079d4`, workflow run
+`30978590949`, fresh GitHub-hosted checkouts and the caches restored by
+`actions/setup-go`. The runner labels were `ubuntu-24.04`, `ubuntu-24.04-arm`,
+`windows-2025`, `macos-15` and `macos-15-intel`. GitHub did not expose stable
+CPU, memory, power or virtualisation identity, so these observations are useful
+for workflow budgets but are not hardware-controlled benchmarks.
+
+Job | Attempt 1 | Attempt 2 | Attempt 3
+--- | ---: | ---: | ---:
+Verification Scripts | 281 s pass | 320 s pass | 326 s pass
+Verify Linux AMD64 | 269 s pass | 284 s pass | 293 s pass
+Verify Linux ARM64 | 124 s pass | 121 s pass | 117 s pass
+Verify macOS ARM64 | 130 s pass | 169 s pass | 232 s pass
+Verify macOS Intel | 372 s pass | 430 s pass | 555 s pass
+Verify Windows AMD64 | 425 s pass | 471 s pass | 404 s fail
+
+Attempt 3 exposed an intermittent environment defect rather than a product
+test failure: native Windows Cargo used the user profile while the checker
+inspected Git Bash `HOME=/`. Product `1f519b6` resolves the Windows Cargo home
+from `USERPROFILE`, retains explicit `CARGO_HOME` precedence and includes a
+mutation-sensitive clean and hostile-profile fixture. The other twelve
+blocking jobs in attempt 3 passed.
+
+The measured feedback budgets are diagnostic escalation thresholds rather
+than pass overrides. Windows AMD64 quick feedback has a 180-second warm and
+300-second empty-Go-cache budget. Its campaign has a 210-second warm and
+300-second empty-Go-cache budget. A hosted sign-off job has a 600-second
+budget. Exceeding a budget requires measurement and diagnosis; it does not
+permit cancellation, retry, skipped controls or a successful result.
+
 CI runs race and active fuzz controls in a separate blocking matrix for every
 qualified Product runner. Local full verification retains both controls. The
 green `b34f75d` run spent 93 seconds on race and 15 seconds on fuzz for Linux
