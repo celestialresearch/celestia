@@ -103,8 +103,27 @@ func TestBuildCancelsDescendant(t *testing.T) {
 }
 
 func TestBuildRejectsLiveDescendant(t *testing.T) {
+	event, name, closeEvent := testEvent(t)
+	defer closeEvent()
 	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
-	err := testBuild(t, context.Background(), "exit", pidPath, "", "")
+	job, port, process := startHelperJob(t, "exit", pidPath, name, "")
+	defer closeStoppedJob(t, job, port, process)
+	if event, err := windows.WaitForSingleObject(event, 10_000); err != nil || event != windows.WAIT_OBJECT_0 {
+		t.Fatalf("wait for helper: event=%d error=%v", event, err)
+	}
+	err := joinTree(
+		context.Background(),
+		job,
+		port,
+		process.Process,
+		true,
+		func(ctx context.Context, job, port windows.Handle, timeout time.Duration, requireSignal bool) (bool, error) {
+			if !requireSignal {
+				return false, nil
+			}
+			return waitJobEmpty(ctx, job, port, timeout, requireSignal)
+		},
+	)
 	if err == nil || !strings.Contains(err.Error(), "cargo exited with a running descendant") {
 		t.Fatalf("clean parent build error = %v", err)
 	}
