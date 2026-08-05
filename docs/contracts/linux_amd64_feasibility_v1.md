@@ -18,6 +18,11 @@ The maintainer-only `tools/linuxamd64feasibility` preflight performs bounded
 read-only checks and emits only `unavailable` or `indeterminate`. It is not a
 release artefact and cannot qualify the platform.
 
+The `celestia.linux-amd64-feasibility-observation.v1` schema is reserved for a
+future native probe. Its synthetic fixtures prove only strict decoding and
+state validation. They do not qualify Linux, enable operation execution or
+enable attempt persistence.
+
 ## Required evidence
 - A writable delegated cgroup v2 subtree exposes `cgroup.kill`, `pids.max`,
   `memory.max` and `cpu.max`.
