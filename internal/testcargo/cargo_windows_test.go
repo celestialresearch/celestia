@@ -151,6 +151,37 @@ func TestJoinTreeTerminatesAfterObservationFailure(t *testing.T) {
 	}
 }
 
+func TestTerminateAndJoinClosesJobAfterCaptureAndObservationFailure(t *testing.T) {
+	event, name, closeEvent := testEvent(t)
+	defer closeEvent()
+	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
+	job, port, process := startHelperJob(t, "exit", pidPath, name, "")
+	defer closeStoppedJob(t, job, port, process)
+	if event, err := windows.WaitForSingleObject(event, 10_000); err != nil || event != windows.WAIT_OBJECT_0 {
+		t.Fatalf("wait for helper: event=%d error=%v", event, err)
+	}
+	err := terminateAndJoin(
+		context.Background(),
+		job,
+		port,
+		process.Process,
+		time.Now().Add(joinTimeout),
+		errInjectedTreeObservation,
+		nil,
+		errors.New("injected Cargo process capture failure"),
+		func(context.Context, windows.Handle, windows.Handle, time.Duration, bool) (bool, error) {
+			return false, errInjectedTreeObservation
+		},
+		func(windows.Handle) ([]windows.Handle, error) {
+			return nil, errors.New("injected Cargo process capture failure")
+		},
+	)
+	if !errors.Is(err, errInjectedTreeObservation) {
+		t.Fatalf("terminate and join error = %v", err)
+	}
+	assertDescendantExited(t, pidPath)
+}
+
 func TestWaitJobEmptyHonoursCancellation(t *testing.T) {
 	event, name, closeEvent := testEvent(t)
 	defer closeEvent()
@@ -373,7 +404,7 @@ func closeStoppedJob(t *testing.T, job *jobOwner, port windows.Handle, process w
 		closeHandle("close helper thread", process.Thread),
 		closeHandle("close helper process", process.Process),
 		closeHandle("close helper completion port", port),
-		closeHandle("close helper job", job.handle),
+		job.close(),
 	); err != nil {
 		t.Errorf("close helper job: %v", err)
 	}

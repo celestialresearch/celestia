@@ -62,6 +62,7 @@ type jobCompletionPort struct {
 
 type jobOwner struct {
 	handle       windows.Handle
+	closed       bool
 	terminate    sync.Once
 	terminateErr error
 }
@@ -70,8 +71,10 @@ type suspendedCargoStarter func(string, Request) (windows.ProcessInformation, er
 
 type treeWaiter func(context.Context, windows.Handle, windows.Handle, time.Duration, bool) (bool, error)
 
-// Build starts one Cargo process suspended, owns its process tree and waits
-// for that tree to end before returning.
+type processCapturer func(windows.Handle) ([]windows.Handle, error)
+
+// Build starts one Cargo process suspended, owns its process tree and joins it
+// before returning unless a reported native observation failure prevents proof.
 func Build(ctx context.Context, request Request) error {
 	return buildWithStarter(ctx, request, "cargo", startSuspended)
 }
@@ -114,7 +117,7 @@ func buildWithStarterAndWaiter(
 		result = errors.Join(result, closeHandle("close Cargo completion port", port))
 	}()
 	defer func() {
-		result = errors.Join(result, closeHandle("close Cargo job", job.handle))
+		result = errors.Join(result, job.close())
 	}()
 
 	process, err := start(executable, request)
@@ -499,6 +502,14 @@ func (job *jobOwner) stop() error {
 	return job.terminateErr
 }
 
+func (job *jobOwner) close() error {
+	if job.closed {
+		return nil
+	}
+	job.closed = true
+	return closeHandle("close Cargo job", job.handle)
+}
+
 func joinTree(
 	ctx context.Context,
 	job *jobOwner,
@@ -508,10 +519,10 @@ func joinTree(
 ) error {
 	deadline := time.Now().Add(joinTimeout)
 	if !allowGrace {
-		return terminateAndJoin(ctx, job, port, process, deadline, nil, nil, nil, wait)
+		return terminateAndJoin(ctx, job, port, process, deadline, nil, nil, nil, wait, jobProcessHandles)
 	}
 	if err := waitExitedUntil(process, deadline); err != nil {
-		return terminateAndJoin(ctx, job, port, process, deadline, err, nil, nil, wait)
+		return terminateAndJoin(ctx, job, port, process, deadline, err, nil, nil, wait, jobProcessHandles)
 	}
 	handles, captureErr := jobProcessHandles(job.handle)
 	graceDeadline := time.Now().Add(descendantGrace)
@@ -520,12 +531,12 @@ func joinTree(
 	}
 	empty, err := wait(ctx, job.handle, port, time.Until(graceDeadline), false)
 	if err != nil {
-		return terminateAndJoin(ctx, job, port, process, deadline, errors.Join(err, errors.New("observe Cargo process tree")), handles, captureErr, wait)
+		return terminateAndJoin(ctx, job, port, process, deadline, errors.Join(err, errors.New("observe Cargo process tree")), handles, captureErr, wait, jobProcessHandles)
 	}
 	if empty {
 		return errors.Join(waitProcessHandles(handles, deadline), closeProcessHandles(handles))
 	}
-	return terminateAndJoin(ctx, job, port, process, deadline, errors.New("cargo exited with a running descendant"), handles, captureErr, wait)
+	return terminateAndJoin(ctx, job, port, process, deadline, errors.New("cargo exited with a running descendant"), handles, captureErr, wait, jobProcessHandles)
 }
 
 func terminateAndJoin(
@@ -538,6 +549,7 @@ func terminateAndJoin(
 	handles []windows.Handle,
 	captureErr error,
 	wait treeWaiter,
+	capture processCapturer,
 ) (result error) {
 	if cause == nil {
 		cause = ctx.Err()
@@ -548,19 +560,39 @@ func terminateAndJoin(
 	stopErr := job.stop()
 	processErr := waitExitedUntil(process, deadline)
 	if handles == nil && captureErr == nil {
-		handles, captureErr = jobProcessHandles(job.handle)
+		handles, captureErr = capture(job.handle)
 	}
 	empty, observeErr := wait(context.WithoutCancel(ctx), job.handle, port, time.Until(deadline), true)
-	afterStop, afterStopErr := jobProcessHandles(job.handle)
+	afterStop, afterStopErr := capture(job.handle)
 	handles = append(handles, afterStop...)
 	joinErr := waitProcessHandles(handles, deadline)
+	var closeJoinErr error
+	if observeErr != nil && len(handles) == 0 && (captureErr != nil || afterStopErr != nil) {
+		closeJoinErr = errors.Join(job.close(), waitTreeExitSignal(port, deadline))
+	}
 	if observeErr == nil && empty {
-		return errors.Join(cause, stopErr, processErr, captureErr, afterStopErr, joinErr)
+		return errors.Join(cause, stopErr, processErr, captureErr, afterStopErr, joinErr, closeJoinErr)
 	}
 	if observeErr != nil {
-		return errors.Join(cause, stopErr, processErr, captureErr, observeErr, afterStopErr, joinErr)
+		return errors.Join(cause, stopErr, processErr, captureErr, observeErr, afterStopErr, joinErr, closeJoinErr)
 	}
-	return errors.Join(cause, stopErr, processErr, captureErr, afterStopErr, joinErr, errors.New("cargo process tree cleanup deadline exceeded"))
+	return errors.Join(cause, stopErr, processErr, captureErr, afterStopErr, joinErr, closeJoinErr, errors.New("cargo process tree cleanup deadline exceeded"))
+}
+
+func waitTreeExitSignal(port windows.Handle, deadline time.Time) error {
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return errors.New("cargo process tree cleanup deadline exceeded")
+		}
+		message, retry, err := waitJobMessage(port, remaining)
+		if err != nil {
+			return err
+		}
+		if !retry && message == jobActiveProcessZero {
+			return nil
+		}
+	}
 }
 
 func waitJobEmpty(
