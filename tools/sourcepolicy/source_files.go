@@ -55,6 +55,9 @@ func sourceFileFindings(
 			continue
 		}
 		lines := bytes.Count(source, []byte{'\n'})
+		if len(source) > 0 && source[len(source)-1] != '\n' {
+			lines++
+		}
 		if strings.Contains(base, "_test.") && lines > maxTestSourceLines {
 			findings = append(findings,
 				fmt.Sprintf("%s: test file exceeds the 5,000-line maximum", file),

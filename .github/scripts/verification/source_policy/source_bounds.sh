@@ -91,6 +91,25 @@ set -e
   return 1
 }
 rm -- "$work_dir/-generated.go"
+awk 'BEGIN { for (line = 0; line < 5000; line++) print "// fixture" }' \
+  >"$work_dir/oversized_test.go"
+printf '%s' 'package fixture' >>"$work_dir/oversized_test.go"
+set +e
+output=$(cd "$work_dir" &&
+  bash .github/scripts/policycheck.sh source-files 2>&1)
+status=$?
+set -e
+[[ "$status" -ne 0 ]] || {
+  printf 'policy check accepted a 5,001-line test file\n' >&2
+  return 1
+}
+grep -Fq 'oversized_test.go: test file exceeds the 5,000-line maximum' \
+  <<<"$output" || {
+  printf 'policy check omitted the test-file limit diagnostic:\n%s\n' \
+    "$output" >&2
+  return 1
+}
+rm -- "$work_dir/oversized_test.go"
 )
 
 main "$@"
