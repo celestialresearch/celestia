@@ -53,6 +53,19 @@ func TestRunReportsWriteFailure(t *testing.T) {
 	}
 }
 
+func TestWriteResult(t *testing.T) {
+	var output bytes.Buffer
+	if err := writeResult(&output, []byte("result")); err != nil || output.String() != "result" {
+		t.Fatalf("output=%q error=%v", output.String(), err)
+	}
+}
+
+func TestRunReportsUsageWriteFailure(t *testing.T) {
+	if status := run(nil, failingWriter{}, failingWriter{}); status != 1 {
+		t.Fatalf("status=%d", status)
+	}
+}
+
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) {

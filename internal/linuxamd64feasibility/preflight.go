@@ -14,7 +14,6 @@ package linuxamd64feasibility
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io/fs"
 	"path/filepath"
 	"runtime"
@@ -53,7 +52,7 @@ type preflightSource struct {
 
 // Probe returns one bounded canonical result. It does not start a process,
 // modify the host or claim Linux feasibility.
-func Probe(root string) ([]byte, error) {
+func Probe(root string) []byte {
 	return canonicalJSON(preflight(currentSource(root)))
 }
 
@@ -200,13 +199,10 @@ func validPlatformPart(value string) bool {
 	}) == -1
 }
 
-func canonicalJSON(result preflightResult) ([]byte, error) {
+func canonicalJSON(result preflightResult) []byte {
 	encoded, err := json.Marshal(result)
 	if err != nil {
-		return nil, fmt.Errorf("marshal preflight result: %w", err)
+		panic("marshal fixed preflight result: " + err.Error())
 	}
-	if len(encoded)+1 > maxOutputBytes {
-		return nil, errors.New("preflight result exceeds the output bound")
-	}
-	return append(encoded, '\n'), nil
+	return append(encoded, '\n')
 }

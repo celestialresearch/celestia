@@ -224,10 +224,7 @@ func rootIndeterminateCases() []preflightCase {
 
 func TestPreflightCanonicalJSONIsBounded(t *testing.T) {
 	source := readySource(strings.Repeat("x", maxPlatformBytes+1), "amd64")
-	encoded, err := canonicalJSON(preflight(source))
-	if err != nil {
-		t.Fatalf("encode result: %v", err)
-	}
+	encoded := canonicalJSON(preflight(source))
 	if len(encoded) > maxOutputBytes ||
 		string(encoded) != "{\"schema_version\":\"celestia.linux-amd64-feasibility-preflight.v1\",\"status\":\"unavailable\",\"reason\":\"wrong_os\",\"platform\":\"unknown\"}\n" {
 		t.Fatalf("encoded=%q", encoded)
@@ -235,10 +232,7 @@ func TestPreflightCanonicalJSONIsBounded(t *testing.T) {
 }
 
 func TestProbeEmitsTerminalJSON(t *testing.T) {
-	encoded, err := Probe(t.TempDir())
-	if err != nil {
-		t.Fatalf("probe: %v", err)
-	}
+	encoded := Probe(t.TempDir())
 	var result preflightResult
 	if err := json.Unmarshal(encoded, &result); err != nil {
 		t.Fatalf("decode probe result: %v", err)

@@ -30,15 +30,14 @@ func run(arguments []string, stdout, stderr io.Writer) int {
 		}
 		return 2
 	}
-	output, err := linuxamd64feasibility.Probe(arguments[0])
-	if err != nil {
-		if _, writeErr := fmt.Fprintln(stderr, "encode Linux AMD64 feasibility preflight"); writeErr != nil {
-			return 1
-		}
-		return 1
-	}
-	if _, err := stdout.Write(output); err != nil {
+	output := linuxamd64feasibility.Probe(arguments[0])
+	if err := writeResult(stdout, output); err != nil {
 		return 1
 	}
 	return 0
+}
+
+func writeResult(output io.Writer, data []byte) error {
+	_, err := output.Write(data)
+	return err
 }
