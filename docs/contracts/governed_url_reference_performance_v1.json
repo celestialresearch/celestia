@@ -1,0 +1,87 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "governed-url-reference-performance",
+  "contract_version": "1.0.0",
+  "revision": {"class": "initial"},
+  "operator_visible_outcome": "The complete governed URL-reference path emits bounded phase measurements without changing its authority, timeout, protocol or evidence semantics",
+  "owner": "internal/operation/urlreference",
+  "inputs": [
+    {"id": "CEL-PERF-INPUT-001", "media_type": "application/vnd.celestia.performance-workload+json", "maximum_bytes": 1048576, "validation": "Strict versioned workload cases selected from the governed URL-reference contract"}
+  ],
+  "outputs": [
+    {"id": "CEL-PERF-OUTPUT-001", "media_type": "application/vnd.celestia.performance-samples+json", "maximum_bytes": 16777216, "validation": "Bounded raw phase samples with environment identity, outcome and calculation method"}
+  ],
+  "canonical_state": [
+    "The governed operation result, protocol frames and durable evidence remain authoritative",
+    "Performance samples are derived non-authoritative campaign artefacts",
+    "Timeouts retain their existing admission, startup, execution and cleanup owners"
+  ],
+  "derived_state": ["Phase durations, percentiles, throughput and resource observations"],
+  "external_effects": [
+    {"id": "CEL-PERF-EFFECT-001", "kind": "temporary performance campaign output", "authority": "CEL-PERF-AUTH-001"}
+  ],
+  "authorities": [
+    {"id": "CEL-PERF-AUTH-001", "owner": "performance campaign", "grant": "Execute only the fixed bounded workload on the qualified local operation", "refusal": "Reject unknown workloads, unsupported platforms, invalid bounds or output destinations"}
+  ],
+  "trust_boundaries": [
+    {"id": "CEL-PERF-TRUST-001", "source": "versioned workload corpus", "target": "performance campaign", "treatment": "Decode strictly, enforce bounds and reject unknown fields or cases"},
+    {"id": "CEL-PERF-TRUST-002", "source": "operation and worker observations", "target": "performance report", "treatment": "Record observed outcomes without promoting worker output or timing data to trusted operation state"}
+  ],
+  "bounds": {"processes": 1, "memory_bytes": 268435456, "output_bytes": 16777216, "worker_time_milliseconds": 2000, "persistence_bytes": 16777216},
+  "resources": [
+    {"id": "CEL-PERF-RESOURCE-001", "kind": "owned worker process tree", "owner": "internal/execution/supervision", "acquisition": "Existing governed operation supervision", "bound": "Existing operation process, memory, stream, startup, execution and cleanup limits", "release": "Existing complete process-tree cleanup", "cleanup_failure": "Retain the operation cleanup failure and reject the sample as accepted performance evidence"},
+    {"id": "CEL-PERF-RESOURCE-002", "kind": "temporary evidence root", "owner": "performance campaign", "acquisition": "Unique local directory per measured attempt", "bound": "One attempt bundle and 16777216 aggregate output bytes", "release": "Inspect then remove only the owned campaign directory", "cleanup_failure": "Report the campaign failure and retain the path for operator inspection"}
+  ],
+  "platforms": [
+    {"os": "windows", "arch": "amd64", "support": "supported", "refusal": "", "evidence": "Native qualified operation and performance campaign"},
+    {"os": "other", "arch": "other", "support": "unsupported", "refusal": "Fail closed before worker execution", "evidence": "Existing unsupported-platform tests"}
+  ],
+  "states": [
+    {"id": "proposed", "kind": "intermediate"},
+    {"id": "accepted", "kind": "success"},
+    {"id": "rejected", "kind": "refusal"},
+    {"id": "failed", "kind": "failure"},
+    {"id": "cancelled", "kind": "cancellation"},
+    {"id": "indeterminate", "kind": "indeterminate"}
+  ],
+  "allowed_transitions": [
+    {"from": "proposed", "to": "accepted"},
+    {"from": "proposed", "to": "rejected"},
+    {"from": "proposed", "to": "failed"},
+    {"from": "proposed", "to": "cancelled"},
+    {"from": "proposed", "to": "indeterminate"}
+  ],
+  "prohibited_transitions": [
+    {"from": "accepted", "to": "proposed"}, {"from": "accepted", "to": "rejected"}, {"from": "accepted", "to": "failed"}, {"from": "accepted", "to": "cancelled"}, {"from": "accepted", "to": "indeterminate"},
+    {"from": "rejected", "to": "proposed"}, {"from": "rejected", "to": "accepted"}, {"from": "rejected", "to": "failed"}, {"from": "rejected", "to": "cancelled"}, {"from": "rejected", "to": "indeterminate"},
+    {"from": "failed", "to": "proposed"}, {"from": "failed", "to": "accepted"}, {"from": "failed", "to": "rejected"}, {"from": "failed", "to": "cancelled"}, {"from": "failed", "to": "indeterminate"},
+    {"from": "cancelled", "to": "proposed"}, {"from": "cancelled", "to": "accepted"}, {"from": "cancelled", "to": "rejected"}, {"from": "cancelled", "to": "failed"}, {"from": "cancelled", "to": "indeterminate"},
+    {"from": "indeterminate", "to": "proposed"}, {"from": "indeterminate", "to": "accepted"}, {"from": "indeterminate", "to": "rejected"}, {"from": "indeterminate", "to": "failed"}, {"from": "indeterminate", "to": "cancelled"}
+  ],
+  "invariants": [
+    {"id": "CEL-PERF-INV-001", "statement": "Instrumentation cannot change operation results, protocol bytes, evidence bytes, timeout ownership or cleanup", "owner": "internal/operation/urlreference", "severity": "high", "boundary": "caller request to durable terminal attempt", "falsifier": "Instrumented and uninstrumented equivalent attempts differ outside identities and timestamps", "production_controls": [{"id": "CEL-PERF-PROD-001", "owner": "operation equivalence and timeout tests"}], "assurance_controls": [{"id": "CEL-PERF-ASSURE-001", "owner": "independent operation model and artefact comparison"}], "platforms": ["windows/amd64"], "residual_uncertainty": "Host scheduling and filesystem state remain measurement noise"},
+    {"id": "CEL-PERF-INV-002", "statement": "Every declared timing boundary is measured once by its current authority owner", "owner": "performance campaign", "severity": "medium", "boundary": "phase start to phase completion", "falsifier": "A phase is missing, overlaps an unrelated authority boundary or is counted twice", "production_controls": [{"id": "CEL-PERF-PROD-002", "owner": "phase completeness and accounting tests"}], "assurance_controls": [{"id": "CEL-PERF-ASSURE-002", "owner": "independent phase inventory comparison"}], "platforms": ["windows/amd64"], "residual_uncertainty": "Concurrent stream and process phases overlap and are reported independently rather than summing to total latency"},
+    {"id": "CEL-PERF-INV-003", "statement": "Only gains beyond observed noise under equivalent workloads and semantics are accepted", "owner": "performance campaign", "severity": "medium", "boundary": "baseline samples to candidate samples", "falsifier": "A claimed gain changes workload, cache state, durability, containment, verification, cleanup or hidden asynchronous work", "production_controls": [{"id": "CEL-PERF-PROD-003", "owner": "versioned corpus and raw-sample calculator"}], "assurance_controls": [{"id": "CEL-PERF-ASSURE-003", "owner": "independent workload and report validation"}], "platforms": ["windows/amd64"], "residual_uncertainty": "A single host cannot establish other-hardware budgets"}
+  ],
+  "success_semantics": "Accepted means every required phase and resource metric was recorded for a valid bounded workload without semantic drift",
+  "refusal_semantics": "Unknown, malformed, unsupported or out-of-bound workloads are rejected before operation execution",
+  "failure_semantics": "Operation, persistence, cleanup, measurement or output failure remains explicit and cannot produce an accepted sample",
+  "cancellation_semantics": "Cancellation retains the operation result and terminates campaign-owned work",
+  "indeterminate_semantics": "Missing or contradictory phase, resource or outcome evidence cannot produce an accepted comparison",
+  "recovery_semantics": "Raw samples are regenerated from the unchanged corpus; partial performance output is non-canonical",
+  "compatibility_or_reset_policy": "Unused pre-release performance formats are replaced coherently with no compatibility reader",
+  "falsifiers": ["Instrumentation changes protocol or evidence bytes", "A timing phase is omitted or double counted", "Timeout ownership moves", "A sample survives an operation or cleanup failure", "A gain depends on a changed workload, weaker semantics or hidden work"],
+  "production_controls": [
+    {"id": "CEL-PERF-PROD-001", "owner": "operation equivalence and timeout tests"},
+    {"id": "CEL-PERF-PROD-002", "owner": "phase completeness and accounting tests"},
+    {"id": "CEL-PERF-PROD-003", "owner": "versioned corpus and raw-sample calculator"}
+  ],
+  "assurance_controls": [
+    {"id": "CEL-PERF-ASSURE-001", "owner": "independent operation model and artefact comparison"},
+    {"id": "CEL-PERF-ASSURE-002", "owner": "independent phase inventory comparison"},
+    {"id": "CEL-PERF-ASSURE-003", "owner": "independent workload and report validation"}
+  ],
+  "residual_limitations": ["Performance qualification is Windows AMD64 only", "Hosted CI timing is not a native hardware benchmark", "Concurrent phases do not form an additive total", "Performance samples are not durable operation evidence"],
+  "non_goals": ["Change operation, protocol, persistence, containment, authority or timeout semantics", "Add a persistent worker, pool, daemon, service or broker", "Claim performance for unsupported platforms", "Preserve an unused pre-release performance format"],
+  "deletion_criteria": ["Delete only when a reviewed later performance contract supersedes every reader, writer, corpus and report"]
+}
