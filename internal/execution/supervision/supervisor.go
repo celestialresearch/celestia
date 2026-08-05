@@ -55,6 +55,22 @@ type Outcome struct {
 	Duration        time.Duration
 	CleanupComplete bool
 	Err             error
+	Timings         Timings
+}
+
+type Timings struct {
+	Preparation         time.Duration
+	Start               time.Duration
+	Input               time.Duration
+	Output              time.Duration
+	Diagnostics         time.Duration
+	Lifecycle           time.Duration
+	PreparationMeasured bool
+	StartMeasured       bool
+	InputMeasured       bool
+	OutputMeasured      bool
+	DiagnosticsMeasured bool
+	LifecycleMeasured   bool
 }
 
 func New(workerPath string, limits Limits) (*Supervisor, error) {

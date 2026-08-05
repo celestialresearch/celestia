@@ -44,6 +44,57 @@ const (
 	containmentStartupTimeout = 10 * time.Second
 )
 
+type operationTimings struct {
+	Request      time.Duration
+	Admission    time.Duration
+	Staging      time.Duration
+	Preparation  time.Duration
+	ProcessStart time.Duration
+	Input        time.Duration
+	Worker       time.Duration
+	Output       time.Duration
+	Diagnostics  time.Duration
+	Lifecycle    time.Duration
+	Protocol     time.Duration
+	Verification time.Duration
+	Observation  time.Duration
+	Publication  time.Duration
+	Receipt      time.Duration
+	Total        time.Duration
+	measured     phaseMask
+}
+
+type phaseMask uint32
+
+const (
+	phaseRequest phaseMask = 1 << iota
+	phaseAdmission
+	phaseStaging
+	phasePreparation
+	phaseProcessStart
+	phaseInput
+	phaseWorker
+	phaseOutput
+	phaseDiagnostics
+	phaseLifecycle
+	phaseProtocol
+	phaseVerification
+	phaseObservation
+	phasePublication
+	phaseReceipt
+	phaseTotal
+	allMeasuredPhases = 1<<iota - 1
+)
+
+type responseTimings struct {
+	Protocol             time.Duration
+	Verification         time.Duration
+	Worker               time.Duration
+	ProtocolMeasured     bool
+	VerificationMeasured bool
+	WorkerMeasured       bool
+}
+
 func New(
 	workerPath string,
 	evidenceRoot string,
@@ -75,6 +126,20 @@ func (operation *Operation) Execute(
 	input string,
 	mode urlreference.Mode,
 ) Result {
+	result, _ := operation.executeMeasured(ctx, input, mode)
+	return result
+}
+
+func (operation *Operation) executeMeasured(
+	ctx context.Context,
+	input string,
+	mode urlreference.Mode,
+) (result Result, timings operationTimings) {
+	started := time.Now()
+	defer func() {
+		timings.Total = time.Since(started)
+		timings.measured |= phaseTotal
+	}()
 	if ctx == nil {
 		return Result{
 			Status: Rejected,
@@ -82,17 +147,23 @@ func (operation *Operation) Execute(
 				"%w: nil execution context",
 				urladmission.ErrRejected,
 			),
-		}
+		}, timings
 	}
 	admittedAt := time.Now().UTC()
 	accepted, err := operation.admit(input, mode, admittedAt)
+	timings.Request = accepted.Timings.Request
+	timings.Admission = accepted.Timings.Admission
+	timings.measured |= phaseRequest | phaseAdmission
 	if err != nil {
 		if errors.Is(err, urladmission.ErrRejected) {
-			return Result{Status: Rejected, Err: err}
+			return Result{Status: Rejected, Err: err}, timings
 		}
-		return Result{Status: Failed, Err: errors.Join(ErrAdmission, err)}
+		return Result{Status: Failed, Err: errors.Join(ErrAdmission, err)}, timings
 	}
+	phaseStarted := time.Now()
 	attempt, err := operation.stage(accepted, admittedAt)
+	timings.Staging = time.Since(phaseStarted)
+	timings.measured |= phaseStaging
 	if err != nil {
 		if committed, ok := errors.AsType[*attemptstore.CommittedStageError](err); ok &&
 			committed.AttemptID == accepted.Request.AttemptID {
@@ -100,20 +171,72 @@ func (operation *Operation) Execute(
 				AttemptID: committed.AttemptID,
 				Status:    Indeterminate,
 				Err:       errors.Join(ErrPersistence, err),
-			}
+			}, timings
 		}
 		return Result{
 			Status: Indeterminate,
 			Err:    errors.Join(ErrPersistence, err),
-		}
+		}, timings
 	}
-	result, process := operation.executeAccepted(ctx, accepted, admittedAt)
+	result, process, responseTiming := operation.executeAcceptedMeasured(
+		ctx,
+		accepted,
+		admittedAt,
+	)
+	timings.Preparation = process.Timings.Preparation
+	timings.ProcessStart = process.Timings.Start
+	timings.Input = process.Timings.Input
+	timings.Worker = responseTiming.Worker
+	timings.Output = process.Timings.Output
+	timings.Diagnostics = process.Timings.Diagnostics
+	timings.Lifecycle = process.Timings.Lifecycle
+	timings.Protocol = responseTiming.Protocol
+	timings.Verification = responseTiming.Verification
+	if process.Timings.PreparationMeasured {
+		timings.measured |= phasePreparation
+	}
+	if process.Timings.StartMeasured {
+		timings.measured |= phaseProcessStart
+	}
+	if process.Timings.InputMeasured {
+		timings.measured |= phaseInput
+	}
+	if process.Timings.OutputMeasured {
+		timings.measured |= phaseOutput
+	}
+	if process.Timings.DiagnosticsMeasured {
+		timings.measured |= phaseDiagnostics
+	}
+	if process.Timings.LifecycleMeasured {
+		timings.measured |= phaseLifecycle
+	}
+	if responseTiming.ProtocolMeasured {
+		timings.measured |= phaseProtocol
+	}
+	if responseTiming.VerificationMeasured {
+		timings.measured |= phaseVerification
+	}
+	if responseTiming.WorkerMeasured {
+		timings.measured |= phaseWorker
+	}
 	result.AttemptID = accepted.Request.AttemptID
+	phaseStarted = time.Now()
 	observation := observationFrom(result, process)
+	timings.Observation = time.Since(phaseStarted)
+	timings.measured |= phaseObservation
 	if err := operation.publish(attempt, observation); err != nil {
 		applyPublishError(&result, err)
 	}
-	return result
+	publication := attempt.PublicationTimings()
+	timings.Publication = publication.DurablePublication
+	timings.Receipt = publication.Receipt
+	if publication.DurablePublicationMeasured {
+		timings.measured |= phasePublication
+	}
+	if publication.ReceiptMeasured {
+		timings.measured |= phaseReceipt
+	}
+	return result, timings
 }
 
 func (operation *Operation) executeAccepted(
@@ -121,6 +244,16 @@ func (operation *Operation) executeAccepted(
 	accepted urladmission.Accepted,
 	admittedAt time.Time,
 ) (Result, supervision.Outcome) {
+	result, process, _ := operation.executeAcceptedMeasured(ctx, accepted, admittedAt)
+	return result, process
+}
+
+func (operation *Operation) executeAcceptedMeasured(
+	ctx context.Context,
+	accepted urladmission.Accepted,
+	admittedAt time.Time,
+) (Result, supervision.Outcome, responseTimings) {
+	var timings responseTimings
 	startDeadline := admittedAt.Add(
 		time.Duration(workerprotocol.StartTimeoutMS) * time.Millisecond,
 	)
@@ -130,20 +263,29 @@ func (operation *Operation) executeAccepted(
 			Status:  terminalStatus(process),
 			Process: callerProcess(process),
 			Err:     errors.Join(ErrProcess, process.Err),
-		}, process
+		}, process, timings
 	}
 
+	started := time.Now()
 	response, err := workerprotocol.DecodeResponseForRequestCorrelation(
 		process.Stdout,
 		accepted.Request,
 		int(process.ExitCode),
 	)
+	timings.Protocol = time.Since(started)
+	timings.ProtocolMeasured = true
 	if err != nil {
 		return Result{
 			Status:  Failed,
 			Process: callerProcess(process),
 			Err:     errors.Join(ErrProtocol, err),
-		}, process
+		}, process, timings
 	}
-	return evaluateResponse(accepted, process, response), process
+	timings.Worker = time.Duration(response.DurationNS)
+	timings.WorkerMeasured = true
+	started = time.Now()
+	result := evaluateResponse(accepted, process, response)
+	timings.Verification = time.Since(started)
+	timings.VerificationMeasured = true
+	return result, process, timings
 }

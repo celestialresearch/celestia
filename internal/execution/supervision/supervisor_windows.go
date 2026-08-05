@@ -135,9 +135,10 @@ func (supervisor *Supervisor) run(
 		startDeadline,
 		time.Now().Add(supervisor.limits.StartupTimeout),
 	)
-	process, hash, cleanupComplete, err := supervisor.launch(ctx, startupDeadline)
+	process, hash, cleanupComplete, timings, err := supervisor.launch(ctx, startupDeadline)
 	if err != nil {
 		outcome := failedLaunchOutcome(started, cleanupComplete, err)
+		outcome.Timings = timings
 		outcome.WorkerSHA256 = supervisor.workerHash
 		if hash != ([32]byte{}) {
 			outcome.WorkerSHA256 = hash
@@ -151,6 +152,10 @@ func (supervisor *Supervisor) run(
 		time.Now(),
 	)
 	outcome := supervisor.observe(ctx, process, frame, remaining)
+	outcome.Timings.Preparation = timings.Preparation
+	outcome.Timings.Start = timings.Start
+	outcome.Timings.PreparationMeasured = timings.PreparationMeasured
+	outcome.Timings.StartMeasured = timings.StartMeasured
 	outcome.WorkerSHA256 = hash
 	return outcome
 }

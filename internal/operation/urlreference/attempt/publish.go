@@ -17,7 +17,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 )
+
+type PublicationTimings struct {
+	Receipt                    time.Duration
+	DurablePublication         time.Duration
+	ReceiptMeasured            bool
+	DurablePublicationMeasured bool
+}
 
 type pendingPublicationOperations struct {
 	publish func(string, string, string) (string, error)
@@ -37,21 +45,38 @@ func (attempt *Attempt) Publish(observation Observation) error {
 	if attempt.closed {
 		return fmt.Errorf("%w: attempt ownership released", ErrInvalid)
 	}
-	err := attempt.publishLocked(observation)
+	timings, err := attempt.publishLockedMeasured(observation)
+	attempt.publication = timings
 	return publishResult(err, attempt.closeLocked())
 }
 
 func (attempt *Attempt) publishLocked(observation Observation) error {
+	_, err := attempt.publishLockedMeasured(observation)
+	return err
+}
+
+func (attempt *Attempt) publishLockedMeasured(
+	observation Observation,
+) (timings PublicationTimings, err error) {
+	started := time.Now()
+	defer func() {
+		timings.DurablePublication = max(
+			time.Since(started)-timings.Receipt,
+			0,
+		)
+		timings.DurablePublicationMeasured = true
+	}()
 	if err := validateObservation(observation); err != nil ||
 		observation.AttemptID != attempt.admitted.AttemptID {
-		return fmt.Errorf("%w: observation", ErrInvalid)
+		return timings, fmt.Errorf("%w: observation", ErrInvalid)
 	}
 	if err := validateObservationEvidence(attempt.admitted, observation); err != nil {
-		return fmt.Errorf("%w: observation evidence", ErrInvalid)
+		return timings, fmt.Errorf("%w: observation evidence", ErrInvalid)
 	}
 	if err := writeOrMatchRecord(attempt.path, observationFile, observation); err != nil {
-		return fmt.Errorf("write observation: %w", err)
+		return timings, fmt.Errorf("write observation: %w", err)
 	}
+	receiptStarted := time.Now()
 	if err := writeOrMatchReceipt(
 		attempt.path,
 		attempt.admitted.AttemptID,
@@ -59,13 +84,23 @@ func (attempt *Attempt) publishLocked(observation Observation) error {
 		observationFile,
 		observation.TerminalStatus,
 	); err != nil {
-		return err
+		timings.Receipt = time.Since(receiptStarted)
+		timings.ReceiptMeasured = true
+		return timings, err
 	}
+	timings.Receipt = time.Since(receiptStarted)
+	timings.ReceiptMeasured = true
 	path, err := attempt.publishDirectory()
 	if err != nil {
-		return err
+		return timings, err
 	}
-	return publishMarker(path, attempt.admitted.AttemptID)
+	return timings, publishMarker(path, attempt.admitted.AttemptID)
+}
+
+func (attempt *Attempt) PublicationTimings() PublicationTimings {
+	attempt.mu.Lock()
+	defer attempt.mu.Unlock()
+	return attempt.publication
 }
 
 func releaseError(err error) error {

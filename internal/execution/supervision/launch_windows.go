@@ -55,20 +55,28 @@ func defaultLaunchPreparationOperations() launchPreparationOperations {
 func (supervisor *Supervisor) launch(
 	ctx context.Context,
 	startupDeadline time.Time,
-) (*launchedProcess, [32]byte, bool, error) {
+) (*launchedProcess, [32]byte, bool, Timings, error) {
+	var timings Timings
+	started := time.Now()
 	resources, cleanupComplete, err := supervisor.prepareLaunch(ctx, startupDeadline)
+	timings.Preparation = time.Since(started)
+	timings.PreparationMeasured = true
 	if err != nil {
-		return nil, [32]byte{}, cleanupComplete, err
+		return nil, [32]byte{}, cleanupComplete, timings, err
 	}
+	started = time.Now()
 	process, cleanupComplete, err := resources.start(ctx, startupDeadline)
+	timings.Start = time.Since(started)
+	timings.StartMeasured = true
 	if err != nil {
 		closeErr := resources.close()
 		return nil,
 			resources.imageHash,
 			cleanupSucceeded(cleanupComplete, closeErr),
+			timings,
 			errors.Join(err, closeErr)
 	}
-	return process, resources.imageHash, true, nil
+	return process, resources.imageHash, true, timings, nil
 }
 
 func (supervisor *Supervisor) prepareLaunch(

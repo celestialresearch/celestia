@@ -24,6 +24,7 @@ func (supervisor *Supervisor) observe(
 	frame []byte,
 	remaining time.Duration,
 ) Outcome {
+	lifecycleStarted := time.Now()
 	stdout := make(chan streamResult, 1)
 	stderr := make(chan streamResult, 1)
 	overflow := make(chan Status, 2)
@@ -71,7 +72,16 @@ func (supervisor *Supervisor) observe(
 	diagnostics := awaitStream(stderrReader, stderr, cleanupDeadline, joinDeadline)
 	outcome := finishOutcome(process, status, cause, cleanupComplete, executionDuration, out, diagnostics)
 	closeComplete, closeErr := finaliseCleanup(cleanupDeadline, process.close)
-	return applyFinalCleanup(outcome, closeComplete, closeErr)
+	outcome = applyFinalCleanup(outcome, closeComplete, closeErr)
+	outcome.Timings.Input = inputResult.duration
+	outcome.Timings.Output = out.duration
+	outcome.Timings.Diagnostics = diagnostics.duration
+	outcome.Timings.Lifecycle = time.Since(lifecycleStarted)
+	outcome.Timings.InputMeasured = true
+	outcome.Timings.OutputMeasured = true
+	outcome.Timings.DiagnosticsMeasured = true
+	outcome.Timings.LifecycleMeasured = true
+	return outcome
 }
 
 func unappliedInputResult(result inputResult, applied bool) inputResult {

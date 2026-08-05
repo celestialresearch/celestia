@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	urladmission "celestia.research/celestia/internal/operation/urlreference/admission"
 	workerprotocol "celestia.research/celestia/internal/operation/urlreference/protocol"
 )
 
@@ -193,10 +194,7 @@ func TestRecoverRejectsAdmittedBindingCorruption(t *testing.T) {
 	}
 }
 
-type acceptedAttempt = struct {
-	Request workerprotocol.Request
-	Frame   []byte
-}
+type acceptedAttempt = urladmission.Accepted
 
 type admittedCorruption struct {
 	name    string

@@ -86,10 +86,12 @@ func newInputWriter(handle windows.Handle) *inputWriter {
 }
 
 func (writer *inputWriter) write(frame []byte) inputResult {
+	started := time.Now()
 	if writer.file == nil {
 		return inputResult{
 			err:        errors.New("create worker stdin"),
 			cleanupErr: writer.cancel(),
+			duration:   time.Since(started),
 		}
 	}
 	_, writeErr := io.Copy(writer.file, bytes.NewReader(frame))
@@ -97,6 +99,7 @@ func (writer *inputWriter) write(frame []byte) inputResult {
 	if writeErr != nil {
 		result.err = fmt.Errorf("write worker frame: %w", writeErr)
 	}
+	result.duration = time.Since(started)
 	return result
 }
 

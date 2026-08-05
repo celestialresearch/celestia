@@ -82,8 +82,10 @@ func (reader *streamReader) read(
 	result chan<- streamResult,
 	overflow chan<- Status,
 ) {
+	started := time.Now()
 	value := reader.readResult(limit, overflowStatus, overflow)
 	value.cleanupErr = reader.cancel()
+	value.duration = time.Since(started)
 	result <- value
 	close(reader.done)
 }

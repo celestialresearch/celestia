@@ -32,6 +32,12 @@ var ErrRejected = errors.New("url-reference admission rejected")
 type Accepted struct {
 	Request workerprotocol.Request
 	Frame   []byte
+	Timings Timings
+}
+
+type Timings struct {
+	Admission time.Duration
+	Request   time.Duration
 }
 
 func Admit(input string, mode urlreference.Mode, admittedAt time.Time) (Accepted, error) {
@@ -43,7 +49,16 @@ func admit(
 	mode urlreference.Mode,
 	admittedAt time.Time,
 	randomness io.Reader,
-) (Accepted, error) {
+) (accepted Accepted, err error) {
+	admissionStarted := time.Now()
+	var requestStarted time.Time
+	defer func() {
+		if requestStarted.IsZero() {
+			accepted.Timings.Admission = time.Since(admissionStarted)
+			return
+		}
+		accepted.Timings.Request = time.Since(requestStarted)
+	}()
 	if admittedAt.Location() != time.UTC {
 		return Accepted{}, reject("admission time must be UTC")
 	}
@@ -65,6 +80,8 @@ func admit(
 	if nonce == attemptID {
 		return Accepted{}, errors.New("request nonce repeated attempt identity")
 	}
+	accepted.Timings.Admission = time.Since(admissionStarted)
+	requestStarted = time.Now()
 	inputHash := sha256.Sum256([]byte(input))
 	request := workerprotocol.Request{
 		ProtocolVersion:  workerprotocol.ProtocolVersion,
@@ -93,7 +110,9 @@ func admit(
 	if err != nil {
 		return Accepted{}, fmt.Errorf("encode admitted request: %w", err)
 	}
-	return Accepted{Request: request, Frame: frame}, nil
+	accepted.Request = request
+	accepted.Frame = frame
+	return accepted, nil
 }
 
 func identity(randomness io.Reader) (string, error) {

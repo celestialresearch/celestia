@@ -26,12 +26,14 @@ type streamResult struct {
 	data       []byte
 	err        error
 	cleanupErr error
+	duration   time.Duration
 }
 
 type inputResult struct {
 	err        error
 	cleanupErr error
 	joinErr    error
+	duration   time.Duration
 }
 
 func finishOutcome(

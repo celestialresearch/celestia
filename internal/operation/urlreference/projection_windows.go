@@ -21,6 +21,7 @@ import (
 func callerProcess(process supervision.Outcome) supervision.Outcome {
 	process.Stdout = nil
 	process.Stderr = nil
+	process.Timings = supervision.Timings{}
 	return process
 }
 

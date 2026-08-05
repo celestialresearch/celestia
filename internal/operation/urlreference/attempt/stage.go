@@ -31,6 +31,7 @@ type Attempt struct {
 	admitted    Admitted
 	owner       *attemptLock
 	closed      bool
+	publication PublicationTimings
 }
 
 type CommittedStageError struct {

@@ -14,10 +14,67 @@
 package urloperation
 
 import (
-	"celestia.research/celestia/internal/operation/urlreference/transform"
 	"context"
 	"testing"
+	"time"
+
+	"celestia.research/celestia/internal/execution/supervision"
+	"celestia.research/celestia/internal/operation/urlreference/transform"
 )
+
+func TestOperationMeasuresEveryPhase(t *testing.T) {
+	operation, err := New(
+		locateWorker(t, "celestia-url-reference.exe"),
+		testEvidenceRoot(t),
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	result, timings := operation.executeMeasured(
+		context.Background(),
+		"https://example.test/path",
+		urlreference.Defang,
+	)
+	if result.Status != Verified {
+		t.Fatalf("status = %s, error = %v", result.Status, result.Err)
+	}
+	if timings.measured != allMeasuredPhases {
+		t.Fatalf("measured phases = %016b, want %016b", timings.measured, allMeasuredPhases)
+	}
+	for name, duration := range map[string]time.Duration{
+		"request":       timings.Request,
+		"admission":     timings.Admission,
+		"staging":       timings.Staging,
+		"preparation":   timings.Preparation,
+		"process start": timings.ProcessStart,
+		"input":         timings.Input,
+		"worker":        timings.Worker,
+		"output":        timings.Output,
+		"diagnostics":   timings.Diagnostics,
+		"lifecycle":     timings.Lifecycle,
+		"protocol":      timings.Protocol,
+		"verification":  timings.Verification,
+		"observation":   timings.Observation,
+		"publication":   timings.Publication,
+		"receipt":       timings.Receipt,
+		"total":         timings.Total,
+	} {
+		if duration < 0 {
+			t.Errorf("%s duration = %s", name, duration)
+		}
+		if duration > timings.Total {
+			t.Errorf("%s duration %s exceeds total %s", name, duration, timings.Total)
+		}
+	}
+	if timings.Total <= 0 || timings.Preparation <= 0 ||
+		timings.ProcessStart <= 0 || timings.Lifecycle <= 0 ||
+		timings.Publication <= 0 {
+		t.Fatalf("material phase timings = %+v", timings)
+	}
+	if result.Process.Timings != (supervision.Timings{}) {
+		t.Fatal("caller result exposes internal phase timings")
+	}
+}
 
 func BenchmarkOperation(b *testing.B) {
 	operation, err := New(
