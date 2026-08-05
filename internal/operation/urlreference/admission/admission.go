@@ -36,8 +36,10 @@ type Accepted struct {
 }
 
 type Timings struct {
-	Admission time.Duration
-	Request   time.Duration
+	Admission         time.Duration
+	Request           time.Duration
+	AdmissionMeasured bool
+	RequestMeasured   bool
 }
 
 func Admit(input string, mode urlreference.Mode, admittedAt time.Time) (Accepted, error) {
@@ -52,12 +54,16 @@ func admit(
 ) (accepted Accepted, err error) {
 	admissionStarted := time.Now()
 	var requestStarted time.Time
+	var admissionDuration time.Duration
 	defer func() {
 		if requestStarted.IsZero() {
-			accepted.Timings.Admission = time.Since(admissionStarted)
-			return
+			admissionDuration = time.Since(admissionStarted)
+		} else {
+			accepted.Timings.Request = time.Since(requestStarted)
+			accepted.Timings.RequestMeasured = true
 		}
-		accepted.Timings.Request = time.Since(requestStarted)
+		accepted.Timings.Admission = admissionDuration
+		accepted.Timings.AdmissionMeasured = true
 	}()
 	if admittedAt.Location() != time.UTC {
 		return Accepted{}, reject("admission time must be UTC")
@@ -80,7 +86,7 @@ func admit(
 	if nonce == attemptID {
 		return Accepted{}, errors.New("request nonce repeated attempt identity")
 	}
-	accepted.Timings.Admission = time.Since(admissionStarted)
+	admissionDuration = time.Since(admissionStarted)
 	requestStarted = time.Now()
 	inputHash := sha256.Sum256([]byte(input))
 	request := workerprotocol.Request{

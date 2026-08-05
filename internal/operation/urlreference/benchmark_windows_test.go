@@ -41,6 +41,14 @@ func TestOperationMeasuresEveryPhase(t *testing.T) {
 	if timings.measured != allMeasuredPhases {
 		t.Fatalf("measured phases = %016b, want %016b", timings.measured, allMeasuredPhases)
 	}
+	assertPhaseDurations(t, timings)
+	if result.Process.Timings != (supervision.Timings{}) {
+		t.Fatal("caller result exposes internal phase timings")
+	}
+}
+
+func assertPhaseDurations(t *testing.T, timings operationTimings) {
+	t.Helper()
 	for name, duration := range map[string]time.Duration{
 		"request":       timings.Request,
 		"admission":     timings.Admission,
@@ -70,9 +78,6 @@ func TestOperationMeasuresEveryPhase(t *testing.T) {
 		timings.ProcessStart <= 0 || timings.Lifecycle <= 0 ||
 		timings.Publication <= 0 {
 		t.Fatalf("material phase timings = %+v", timings)
-	}
-	if result.Process.Timings != (supervision.Timings{}) {
-		t.Fatal("caller result exposes internal phase timings")
 	}
 }
 

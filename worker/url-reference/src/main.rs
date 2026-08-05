@@ -28,9 +28,9 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<ExitCode, ()> {
-    let start = Instant::now();
     let data = read()?;
     let request = parse(&data)?;
+    let start = Instant::now();
     let output = match transform(&request.input, &request.mode) {
         Ok(output) => output,
         Err(()) => {

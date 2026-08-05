@@ -66,6 +66,9 @@ func TestAdmit(t *testing.T) {
 	if decoded != accepted.Request {
 		t.Fatal("encoded request changed fields")
 	}
+	if !accepted.Timings.AdmissionMeasured || !accepted.Timings.RequestMeasured {
+		t.Fatalf("successful admission timings = %+v", accepted.Timings)
+	}
 }
 
 func TestAdmitUsesSecureRandomness(t *testing.T) {
@@ -107,10 +110,16 @@ func TestAdmitRejects(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := admit(test.url, test.mode, test.time, bytes.NewReader(make([]byte, 64)))
+			accepted, err := admit(
+				test.url,
+				test.mode,
+				test.time,
+				bytes.NewReader(make([]byte, 64)),
+			)
 			if !errors.Is(err, ErrRejected) {
 				t.Fatalf("admit() error = %v, want ErrRejected", err)
 			}
+			assertAdmissionOnly(t, accepted.Timings)
 		})
 	}
 }
@@ -140,7 +149,7 @@ func TestAdmitRandomFailure(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := admit(
+			accepted, err := admit(
 				"https://example.test",
 				urlreference.Defang,
 				time.Unix(0, 0).UTC(),
@@ -151,6 +160,7 @@ func TestAdmitRandomFailure(t *testing.T) {
 				t.Fatalf("admit() error = %v, want %q generation failure",
 					err, test.want)
 			}
+			assertAdmissionOnly(t, accepted.Timings)
 		})
 	}
 }
@@ -158,7 +168,7 @@ func TestAdmitRandomFailure(t *testing.T) {
 func TestAdmitRejectsRepeatedIdentity(t *testing.T) {
 	t.Parallel()
 
-	_, err := admit(
+	accepted, err := admit(
 		"https://example.test",
 		urlreference.Defang,
 		time.Unix(0, 0).UTC(),
@@ -167,12 +177,13 @@ func TestAdmitRejectsRepeatedIdentity(t *testing.T) {
 	if err == nil || errors.Is(err, ErrRejected) {
 		t.Fatalf("admit() error = %v, want entropy failure", err)
 	}
+	assertAdmissionOnly(t, accepted.Timings)
 }
 
 func TestAdmitRejectsUnencodableDeadline(t *testing.T) {
 	t.Parallel()
 
-	_, err := admit(
+	accepted, err := admit(
 		"https://example.test",
 		urlreference.Defang,
 		time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC),
@@ -184,5 +195,15 @@ func TestAdmitRejectsUnencodableDeadline(t *testing.T) {
 	if err == nil || errors.Is(err, ErrRejected) ||
 		!strings.Contains(err.Error(), "encode admitted request") {
 		t.Fatalf("admit() error = %v, want request encoding failure", err)
+	}
+	if !accepted.Timings.AdmissionMeasured || !accepted.Timings.RequestMeasured {
+		t.Fatalf("request failure timings = %+v", accepted.Timings)
+	}
+}
+
+func assertAdmissionOnly(t *testing.T, timings Timings) {
+	t.Helper()
+	if !timings.AdmissionMeasured || timings.RequestMeasured {
+		t.Fatalf("admission-only timings = %+v", timings)
 	}
 }

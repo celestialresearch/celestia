@@ -297,8 +297,10 @@ for every other status:
 Worker statuses are `completed`, `rejected` and `failed`. `worker_id` is
 `celestia-url-reference`, `worker_version` is `1` and the output media type is
 the request media type. Output length ranges from 1 through 8,192 and its hash
-is exactly 64 lowercase hexadecimal digits. `duration_ns` is an integer from
-zero through 2,000,000,000. A diagnostic is an object
+is exactly 64 lowercase hexadecimal digits. `duration_ns` is the elapsed time
+of the worker's transformation call, excluding request reading, request parsing,
+response construction and response writing. It is an integer from zero through
+2,000,000,000. A diagnostic is an object
 containing required string fields `code` and `message`. A response has at most
 16 diagnostics. Codes contain 1 to 64 lowercase ASCII letters, digits and
 underscores. Messages contain at most 512 UTF-8 bytes. Messages are

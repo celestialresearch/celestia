@@ -35,13 +35,16 @@ func TestOperationRejectsBeforeExecution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new operation: %v", err)
 	}
-	result := operation.Execute(
+	result, timings := operation.executeMeasured(
 		context.Background(),
 		"not-a-url",
 		urlreference.Defang,
 	)
 	if result.Status != Rejected {
 		t.Fatalf("result=%+v", result)
+	}
+	if timings.measured != phaseAdmission|phaseTotal {
+		t.Fatalf("rejected phases = %016b", timings.measured)
 	}
 	result = operation.Execute(
 		nilContext(),

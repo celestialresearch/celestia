@@ -95,6 +95,48 @@ type responseTimings struct {
 	WorkerMeasured       bool
 }
 
+func (timings *operationTimings) absorb(
+	process supervision.Outcome,
+	response responseTimings,
+) {
+	timings.Preparation = process.Timings.Preparation
+	timings.ProcessStart = process.Timings.Start
+	timings.Input = process.Timings.Input
+	timings.Worker = response.Worker
+	timings.Output = process.Timings.Output
+	timings.Diagnostics = process.Timings.Diagnostics
+	timings.Lifecycle = process.Timings.Lifecycle
+	timings.Protocol = response.Protocol
+	timings.Verification = response.Verification
+	if process.Timings.PreparationMeasured {
+		timings.measured |= phasePreparation
+	}
+	if process.Timings.StartMeasured {
+		timings.measured |= phaseProcessStart
+	}
+	if process.Timings.InputMeasured {
+		timings.measured |= phaseInput
+	}
+	if process.Timings.OutputMeasured {
+		timings.measured |= phaseOutput
+	}
+	if process.Timings.DiagnosticsMeasured {
+		timings.measured |= phaseDiagnostics
+	}
+	if process.Timings.LifecycleMeasured {
+		timings.measured |= phaseLifecycle
+	}
+	if response.ProtocolMeasured {
+		timings.measured |= phaseProtocol
+	}
+	if response.VerificationMeasured {
+		timings.measured |= phaseVerification
+	}
+	if response.WorkerMeasured {
+		timings.measured |= phaseWorker
+	}
+}
+
 func New(
 	workerPath string,
 	evidenceRoot string,
@@ -153,7 +195,12 @@ func (operation *Operation) executeMeasured(
 	accepted, err := operation.admit(input, mode, admittedAt)
 	timings.Request = accepted.Timings.Request
 	timings.Admission = accepted.Timings.Admission
-	timings.measured |= phaseRequest | phaseAdmission
+	if accepted.Timings.RequestMeasured {
+		timings.measured |= phaseRequest
+	}
+	if accepted.Timings.AdmissionMeasured {
+		timings.measured |= phaseAdmission
+	}
 	if err != nil {
 		if errors.Is(err, urladmission.ErrRejected) {
 			return Result{Status: Rejected, Err: err}, timings
@@ -183,42 +230,7 @@ func (operation *Operation) executeMeasured(
 		accepted,
 		admittedAt,
 	)
-	timings.Preparation = process.Timings.Preparation
-	timings.ProcessStart = process.Timings.Start
-	timings.Input = process.Timings.Input
-	timings.Worker = responseTiming.Worker
-	timings.Output = process.Timings.Output
-	timings.Diagnostics = process.Timings.Diagnostics
-	timings.Lifecycle = process.Timings.Lifecycle
-	timings.Protocol = responseTiming.Protocol
-	timings.Verification = responseTiming.Verification
-	if process.Timings.PreparationMeasured {
-		timings.measured |= phasePreparation
-	}
-	if process.Timings.StartMeasured {
-		timings.measured |= phaseProcessStart
-	}
-	if process.Timings.InputMeasured {
-		timings.measured |= phaseInput
-	}
-	if process.Timings.OutputMeasured {
-		timings.measured |= phaseOutput
-	}
-	if process.Timings.DiagnosticsMeasured {
-		timings.measured |= phaseDiagnostics
-	}
-	if process.Timings.LifecycleMeasured {
-		timings.measured |= phaseLifecycle
-	}
-	if responseTiming.ProtocolMeasured {
-		timings.measured |= phaseProtocol
-	}
-	if responseTiming.VerificationMeasured {
-		timings.measured |= phaseVerification
-	}
-	if responseTiming.WorkerMeasured {
-		timings.measured |= phaseWorker
-	}
+	timings.absorb(process, responseTiming)
 	result.AttemptID = accepted.Request.AttemptID
 	phaseStarted = time.Now()
 	observation := observationFrom(result, process)
