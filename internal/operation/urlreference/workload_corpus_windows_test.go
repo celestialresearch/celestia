@@ -25,6 +25,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	attemptstore "celestia.research/celestia/internal/operation/urlreference/attempt"
 	workerprotocol "celestia.research/celestia/internal/operation/urlreference/protocol"
@@ -154,6 +155,18 @@ func TestPerformanceWorkloadCorpusRejectsInvalidRows(t *testing.T) {
 				t.Fatal("invalid corpus accepted")
 			}
 		})
+	}
+}
+
+func TestPerformanceWorkloadCorpusRejectsInvalidUTF8(t *testing.T) {
+	raw := []byte(`{"version":1,"operation":"url-reference","cases":[],"unknown":"`)
+	raw = append(raw, 0xff)
+	raw = append(raw, '"', '}')
+	if utf8.Valid(raw) {
+		t.Fatal("fixture is valid UTF-8")
+	}
+	if _, err := decodePerformanceCorpus(raw); err == nil || err.Error() != "invalid UTF-8" {
+		t.Fatalf("error = %v, want invalid UTF-8", err)
 	}
 }
 
@@ -326,6 +339,9 @@ func decodeCorpus(data []byte) (performanceCorpus, error) {
 }
 
 func validateCorpusJSON(data []byte) error {
+	if !utf8.Valid(data) {
+		return fmt.Errorf("invalid UTF-8")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	nodes := maximumCorpusJSONNodes
 	if err := scanCorpusValue(decoder, 0, &nodes); err != nil {
