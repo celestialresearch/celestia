@@ -180,6 +180,80 @@ for failed_path in \
     return 1
   }
 done
+
+cat >"$fake_bin/go" <<'EOF'
+#!/bin/sh
+case "$*" in
+  'env GOVERSION') printf '%s\n' "$CELESTIA_FAKE_GO_VERSION" ;;
+  'env GOOS') printf '%s\n' windows ;;
+  'env GOARCH') printf '%s\n' amd64 ;;
+  'env CGO_ENABLED') printf '%s\n' 1 ;;
+  'env CC') printf '%s\n' gcc ;;
+  'list -m -f {{.Version}} github.com/golangci/golangci-lint/v2') printf '%s\n' v2.12.2 ;;
+  'list -m -f {{.Version}} golang.org/x/vuln') printf '%s\n' v1.6.0 ;;
+  'list -m -f {{.Version}} github.com/wasilibs/go-shellcheck') printf '%s\n' v0.11.1 ;;
+  'tool golangci-lint config verify' | 'tool actionlint' | tool\ shellcheck*) ;;
+  'mod tidy -diff' | 'mod verify')
+    printf '%s\n' "$*" >>"$CELESTIA_GO_COMMAND_LOG"
+    ;;
+  *) printf 'unexpected Go command: %s\n' "$*" >&2; exit 99 ;;
+esac
+EOF
+cat >"$fake_bin/bash" <<'EOF'
+#!/bin/sh
+case "$1" in
+  *.github/scripts/modcheck.sh)
+    printf '%s\n' "$2" >"$CELESTIA_MODULE_MODE_LOG"
+    exit 97
+    ;;
+  *.github/scripts/actioncheck.sh | *.github/scripts/rustcheck.sh | \
+    *.github/scripts/policycheck.sh)
+    exit
+    ;;
+  *)
+    printf 'unexpected Bash command: %s\n' "$*" >&2
+    exit 99
+    ;;
+esac
+EOF
+chmod +x "$fake_bin/go" "$fake_bin/bash"
+fake_go_version=go$(awk '$1 == "go" { print $2; exit }' "$root/go.mod")
+for module_mode in tidy verify; do
+  : >"$work_dir/go-command"
+  CELESTIA_FAKE_GO_VERSION="$fake_go_version" \
+    CELESTIA_GO_COMMAND_LOG="$work_dir/go-command" PATH="$fake_bin:$PATH" \
+    "$real_bash" "$root/.github/scripts/modcheck.sh" "$module_mode"
+  if [[ "$module_mode" == tidy ]]; then
+    expected_commands='mod tidy -diff'
+  else
+    expected_commands=$'mod verify\nmod tidy -diff'
+  fi
+  [[ "$(<"$work_dir/go-command")" == "$expected_commands" ]] || {
+    printf 'modcheck %s selected the wrong Go commands\n' "$module_mode" >&2
+    return 1
+  }
+done
+for profile_mode in quick:tidy full:verify; do
+  profile=${profile_mode%%:*}
+  expected=${profile_mode#*:}
+  set +e
+  output=$(
+    cd "$root" &&
+      CELESTIA_MODULE_MODE_LOG="$work_dir/module-mode" \
+      CELESTIA_FAKE_GO_VERSION="$fake_go_version" \
+      CELESTIA_GO_COMMAND_LOG="$work_dir/go-command" \
+      PATH="$fake_bin:$PATH" DEVCHECK_PROFILE="$profile" \
+      DEVCHECK_SELF_TEST=false "$real_bash" .github/scripts/devcheck.sh 2>&1
+  )
+  status=$?
+  set -e
+  [[ "$status" -ne 0 && -f "$work_dir/module-mode" &&
+    "$(<"$work_dir/module-mode")" == "$expected" ]] || {
+    printf 'devcheck %s selected the wrong module mode:\n%s\n' \
+      "$profile" "$output" >&2
+    return 1
+  }
+done
 )
 
 main

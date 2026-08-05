@@ -167,6 +167,13 @@ check_config() {
   run_subcheck 'Shell Syntax and Style' check_shell || return
 }
 
+check_modules() {
+  local mode=verify
+
+  [[ "$profile" != quick ]] || mode=tidy
+  bash ./.github/scripts/modcheck.sh "$mode"
+}
+
 check_shell() (
   local action=()
   local finished
@@ -332,7 +339,7 @@ else
   skip_check 'Verification Scripts' 'Full profile'
 fi
 run_check 'Policy' bash ./.github/scripts/policycheck.sh
-run_check 'Modules' bash ./.github/scripts/modcheck.sh verify
+run_check 'Modules' check_modules
 run_check 'Currency Exceptions' bash ./.github/scripts/currencycheck.sh verify
 run_check 'Licence Headers' bash ./.github/scripts/licencecheck.sh verify
 if [[ "$profile" != quick && "${DEVCHECK_CURRENCY:-true}" == true ]]; then

@@ -255,6 +255,15 @@ host. Each group has a controlled failure fixture; groups receive the source
 files needed for indirect function and sourced-file analysis and write
 diagnostics to separate temporary files.
 
+Module verification is not safely source-cacheable because corruption of the
+module download cache would not change a repository-derived key. Three
+consecutive sign-off module observations took 272.1, 2.9 and 3.0 seconds as the
+filesystem and module cache warmed. Quick feedback now runs only the
+source-sensitive `go mod tidy -diff`; one equivalent warm comparison took 0.3
+seconds for tidiness and 3.1 seconds for complete verification. Sign-off still
+runs both `go mod verify` and tidiness. A controlled direct-import fixture
+proved that quick tidiness rejects source-to-manifest drift.
+
 Licence verification now classifies files and compares the ten required header
 lines with Bash built-ins. Three equivalent warm Windows observations fell
 from 30.0, 30.1 and 31.2 seconds to 0.83, 0.87 and 0.90 seconds. Diff, repair,

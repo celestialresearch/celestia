@@ -19,7 +19,7 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.."
 cache_root=${CELESTIA_CACHE_DIR:-.cache}
 
 usage() {
-  printf 'Usage: %s verify|diff|cached-diff|update\n' "${0##*/}" >&2
+  printf 'Usage: %s tidy|verify|diff|cached-diff|update\n' "${0##*/}" >&2
 }
 
 tool_packages() {
@@ -39,6 +39,10 @@ tool_packages() {
 
 verify_modules() {
   go mod verify
+  go mod tidy -diff
+}
+
+verify_tidy() {
   go mod tidy -diff
 }
 
@@ -177,6 +181,9 @@ if (($# != 1)); then
 fi
 
 case "$1" in
+tidy)
+  verify_tidy
+  ;;
 verify)
   verify_modules
   ;;
