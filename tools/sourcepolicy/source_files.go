@@ -54,10 +54,7 @@ func sourceFileFindings(
 		if generatedSource(source) {
 			continue
 		}
-		lines := bytes.Count(source, []byte{'\n'})
-		if len(source) > 0 && source[len(source)-1] != '\n' {
-			lines++
-		}
+		lines := sourceLineCount(source)
 		if strings.Contains(base, "_test.") && lines > maxTestSourceLines {
 			findings = append(findings,
 				fmt.Sprintf("%s: test file exceeds the 5,000-line maximum", file),
@@ -70,6 +67,14 @@ func sourceFileFindings(
 		}
 	}
 	return findings
+}
+
+func sourceLineCount(source []byte) int {
+	lines := bytes.Count(source, []byte{'\n'})
+	if len(source) > 0 && source[len(source)-1] != '\n' {
+		lines++
+	}
+	return lines
 }
 
 func governedSourceExtension(extension string) bool {
