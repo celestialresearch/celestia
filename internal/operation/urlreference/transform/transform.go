@@ -28,7 +28,7 @@ const (
 	Defang Mode = "defang"
 )
 
-var ErrInvalid = errors.New("invalid URL reference")
+var errInvalid = errors.New("invalid URL reference")
 
 func ValidateInput(input string) error {
 	if len(input) > MaxInputBytes {

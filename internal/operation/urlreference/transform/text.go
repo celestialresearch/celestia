@@ -60,5 +60,5 @@ func isHex(value byte) bool {
 }
 
 func invalid(reason string) error {
-	return fmt.Errorf("%w: %s", ErrInvalid, reason)
+	return fmt.Errorf("%w: %s", errInvalid, reason)
 }

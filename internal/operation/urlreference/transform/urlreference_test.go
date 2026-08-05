@@ -114,7 +114,7 @@ func TestTransformRejects(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			_, err := Transform(test.input, Defang)
-			if !errors.Is(err, ErrInvalid) {
+			if !errors.Is(err, errInvalid) {
 				t.Fatalf("Transform() error = %v, want ErrInvalid", err)
 			}
 		})
@@ -125,7 +125,7 @@ func TestTransformRejectsMode(t *testing.T) {
 	t.Parallel()
 
 	_, err := Transform("https://example.test/", "invalid")
-	if !errors.Is(err, ErrInvalid) {
+	if !errors.Is(err, errInvalid) {
 		t.Fatalf("Transform() error = %v, want ErrInvalid", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestValidateInput(t *testing.T) {
 	if len(expanded) <= MaxInputBytes {
 		t.Fatal("fixture did not exceed original input limit")
 	}
-	if err := ValidateInput(expanded); !errors.Is(err, ErrInvalid) {
+	if err := ValidateInput(expanded); !errors.Is(err, errInvalid) {
 		t.Fatalf("ValidateInput() error = %v, want ErrInvalid", err)
 	}
 }
@@ -203,7 +203,7 @@ func TestTransformRejectsOversizedOutput(t *testing.T) {
 	if len(input) != MaxReferenceBytes {
 		t.Fatalf("fixture length = %d, want %d", len(input), MaxReferenceBytes)
 	}
-	if _, err := Transform(input, Defang); !errors.Is(err, ErrInvalid) {
+	if _, err := Transform(input, Defang); !errors.Is(err, errInvalid) {
 		t.Fatalf("Transform() error = %v, want ErrInvalid", err)
 	}
 }
