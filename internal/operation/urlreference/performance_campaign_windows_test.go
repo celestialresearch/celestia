@@ -547,20 +547,20 @@ func TestPerformanceCampaignRequiresCleanCheckout(t *testing.T) {
 		"git", "-c", "commit.gpgsign=false", "-c", "user.name=Celestia Test",
 		"-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "fixture",
 	))
-	if err := requireCleanPerformanceCheckout(root); err != nil {
+	if err := requireCleanPerformanceCheckout(t.Context(), root); err != nil {
 		t.Fatalf("clean checkout rejected: %v", err)
 	}
 	if err := os.WriteFile(path, []byte("package changed\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := requireCleanPerformanceCheckout(root); !errors.Is(err, errPerformanceReport) {
+	if err := requireCleanPerformanceCheckout(t.Context(), root); !errors.Is(err, errPerformanceReport) {
 		t.Fatalf("dirty checkout error=%v", err)
 	}
 	run(exec.CommandContext(t.Context(), "git", "checkout", "--", "source.go"))
 	if err := os.WriteFile(filepath.Join(root, "untracked.go"), []byte("package fixture\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := requireCleanPerformanceCheckout(root); !errors.Is(err, errPerformanceReport) {
+	if err := requireCleanPerformanceCheckout(t.Context(), root); !errors.Is(err, errPerformanceReport) {
 		t.Fatalf("untracked source error=%v", err)
 	}
 }
@@ -653,7 +653,7 @@ func newOperationPerformanceCampaign(
 	if err != nil {
 		return performanceCampaign{}, err
 	}
-	if err := requireCleanPerformanceCheckout(root); err != nil {
+	if err := requireCleanPerformanceCheckout(ctx, root); err != nil {
 		return performanceCampaign{}, err
 	}
 	corpusData, err := readPerformanceCorpusFile(performanceCorpusPath)
@@ -668,7 +668,7 @@ func newOperationPerformanceCampaign(
 	if err != nil {
 		return performanceCampaign{}, err
 	}
-	environment, err := operationPerformanceEnvironment(worker)
+	environment, err := operationPerformanceEnvironment(ctx, worker)
 	if err != nil {
 		return performanceCampaign{}, err
 	}
@@ -779,6 +779,14 @@ func (campaign performanceCampaign) run(ctx context.Context) (report performance
 	if err != nil {
 		return performanceReport{}, fmt.Errorf("create warm operation: %w", errors.Join(err, cleanCampaignOperation(warm)))
 	}
+	return campaign.runWithWarm(ctx, report, warm)
+}
+
+func (campaign performanceCampaign) runWithWarm(
+	ctx context.Context,
+	report performanceReport,
+	warm campaignOperation,
+) (result performanceReport, err error) {
 	cleaned := false
 	cleanWarm := func() error {
 		if cleaned {
@@ -789,7 +797,7 @@ func (campaign performanceCampaign) run(ctx context.Context) (report performance
 	}
 	defer func() {
 		if cleanupErr := cleanWarm(); cleanupErr != nil {
-			report = performanceReport{}
+			result = performanceReport{}
 			err = errors.Join(err, cleanupErr)
 		}
 	}()
@@ -812,15 +820,23 @@ func (campaign performanceCampaign) run(ctx context.Context) (report performance
 	if campaign.requireFull && !validPerformanceReport(report, campaign.corpus, campaign.corpusSHA256) {
 		return performanceReport{}, errPerformanceReport
 	}
-	if campaign.publish != nil {
-		if err := ctx.Err(); err != nil {
-			return performanceReport{}, err
-		}
-		if err := campaign.publish(report); err != nil {
-			return performanceReport{}, fmt.Errorf("publish performance report: %w", err)
-		}
+	if err := campaign.publishReport(ctx, report); err != nil {
+		return performanceReport{}, err
 	}
 	return report, nil
+}
+
+func (campaign performanceCampaign) publishReport(ctx context.Context, report performanceReport) error {
+	if campaign.publish == nil {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := campaign.publish(report); err != nil {
+		return fmt.Errorf("publish performance report: %w", err)
+	}
+	return nil
 }
 
 func (campaign performanceCampaign) valid() error {
@@ -1172,16 +1188,16 @@ func nonNegativeUint64(value int64) (uint64, error) {
 	return uint64(value), nil
 }
 
-func operationPerformanceEnvironment(worker string) (performanceEnvironment, error) {
+func operationPerformanceEnvironment(ctx context.Context, worker string) (performanceEnvironment, error) {
 	workerHash, err := fileDigest(worker)
 	if err != nil {
 		return performanceEnvironment{}, err
 	}
-	commit, err := performanceCommit()
+	commit, err := performanceCommit(ctx)
 	if err != nil {
 		return performanceEnvironment{}, err
 	}
-	rust, err := performanceRustVersion()
+	rust, err := performanceRustVersion(ctx)
 	if err != nil {
 		return performanceEnvironment{}, err
 	}
@@ -1221,8 +1237,8 @@ func fileDigest(path string) (string, error) {
 	return hex.EncodeToString(digest.Sum(nil)), errors.Join(copyErr, file.Close(), root.Close())
 }
 
-func performanceCommit() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func performanceCommit(parent context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	root, err := repositoryRoot()
 	if err != nil {
@@ -1238,8 +1254,8 @@ func performanceCommit() (string, error) {
 	return commit, nil
 }
 
-func requireCleanPerformanceCheckout(root string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func requireCleanPerformanceCheckout(parent context.Context, root string) error {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, "git", "status", "--porcelain=v1", "--untracked-files=all")
 	command.Dir = root
@@ -1250,8 +1266,8 @@ func requireCleanPerformanceCheckout(root string) error {
 	return nil
 }
 
-func performanceRustVersion() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func performanceRustVersion(parent context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
 	output, err := exec.CommandContext(ctx, "rustc", "--version").Output()
 	fields := strings.Fields(string(output))

@@ -114,7 +114,7 @@ func TestPerformanceCampaignRetainsOpenedOutputAcrossReparseReplacement(t *testi
 	if _, err := os.Lstat(filepath.Join(external, value.name)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("replacement target received output: %v", err)
 	}
-	data, err := os.ReadFile(filepath.Join(repository, "reports", "held", value.name))
+	data, err := value.root.ReadFile(value.name)
 	if err != nil || len(data) == 0 {
 		t.Fatalf("retained report bytes=%d error=%v", len(data), err)
 	}
