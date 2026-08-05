@@ -176,7 +176,7 @@ func TestFinalCleanupDeadline(t *testing.T) {
 	}
 }
 
-func TestFinalCleanupPreservesRemainingAllowance(t *testing.T) {
+func TestFinalCleanupKeepsAbsoluteDeadline(t *testing.T) {
 	start := time.Unix(0, 0)
 	deadline := start.Add(10 * time.Second)
 	clock := start.Add(5 * time.Second)
@@ -187,7 +187,7 @@ func TestFinalCleanupPreservesRemainingAllowance(t *testing.T) {
 			return Resources{Measured: true}
 		},
 		func() error {
-			clock = clock.Add(4 * time.Second)
+			clock = clock.Add(2 * time.Second)
 			return nil
 		},
 		func() time.Time {
@@ -223,18 +223,17 @@ func TestFinalCleanupSkipsExpiredMeasurement(t *testing.T) {
 	}
 }
 
-func TestFinalCleanupCreditsOnlyMeasurementTime(t *testing.T) {
+func TestFinalCleanupRecordsMeasurementOverrun(t *testing.T) {
 	start := time.Unix(0, 0)
 	deadline := start.Add(10 * time.Second)
 	clock := start.Add(7 * time.Second)
 	resources, complete, err := finaliseObservedCleanupWith(
 		deadline,
 		func() Resources {
-			clock = clock.Add(2 * time.Second)
+			clock = clock.Add(4 * time.Second)
 			return Resources{Measured: true}
 		},
 		func() error {
-			clock = clock.Add(3 * time.Second)
 			return nil
 		},
 		func() time.Time {
