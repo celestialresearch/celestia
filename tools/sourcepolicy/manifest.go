@@ -23,7 +23,7 @@ const (
 	governedManifestPath    = "docs/contracts/governed_url_reference_v1.json"
 	governedManifestSHA     = "a9afb81c9c40d5e35cab4833bc04bba809c3ae0590a99e035ed28a81453b23b3"
 	performanceManifestPath = "docs/contracts/governed_url_reference_performance_v1.json"
-	performanceManifestSHA  = "64b61d83fba8ffb9649f50d9f96baead349bbe81c9eadcd8eae0396e5a509365"
+	performanceManifestSHA  = "77a0fdb646b3a2cebf3671d7e24b8e1727cfbb01f04e4f6cf9c109b0817500ca"
 	structureManifestPath   = "docs/contracts/cel_struct_001.json"
 	structureManifestSHA    = "e062137f91713d0a9176d1af20720b20bf7c4ebfbc88ee0bf70a4d6316c490cc"
 	executionManifestPath   = "docs/contracts/cel_struct_003.json"
