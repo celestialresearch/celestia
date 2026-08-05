@@ -176,7 +176,7 @@ func TestFinalCleanupDeadline(t *testing.T) {
 	}
 }
 
-func TestFinalCleanupKeepsAbsoluteDeadline(t *testing.T) {
+func TestFinalCleanupRejectsClosureOverrunAfterMeasurement(t *testing.T) {
 	start := time.Unix(0, 0)
 	deadline := start.Add(10 * time.Second)
 	clock := start.Add(5 * time.Second)
@@ -187,14 +187,14 @@ func TestFinalCleanupKeepsAbsoluteDeadline(t *testing.T) {
 			return Resources{Measured: true}
 		},
 		func() error {
-			clock = clock.Add(2 * time.Second)
+			clock = clock.Add(4 * time.Second)
 			return nil
 		},
 		func() time.Time {
 			return clock
 		},
 	)
-	if !resources.Measured || !complete || err != nil {
+	if !resources.Measured || complete || err == nil {
 		t.Fatalf("resources=%+v complete=%t error=%v", resources, complete, err)
 	}
 }
@@ -227,6 +227,8 @@ func TestFinalCleanupRecordsMeasurementOverrun(t *testing.T) {
 	start := time.Unix(0, 0)
 	deadline := start.Add(10 * time.Second)
 	clock := start.Add(7 * time.Second)
+	closed := false
+	closeErr := errors.New("close resources")
 	resources, complete, err := finaliseObservedCleanupWith(
 		deadline,
 		func() Resources {
@@ -234,13 +236,22 @@ func TestFinalCleanupRecordsMeasurementOverrun(t *testing.T) {
 			return Resources{Measured: true}
 		},
 		func() error {
-			return nil
+			closed = true
+			return closeErr
 		},
 		func() time.Time {
 			return clock
 		},
 	)
-	if !resources.Measured || complete || err == nil {
-		t.Fatalf("resources=%+v complete=%t error=%v", resources, complete, err)
+	if !resources.Measured || !closed || complete ||
+		!errors.Is(err, closeErr) ||
+		!strings.Contains(err.Error(), "resource measurement exceeded cleanup deadline") {
+		t.Fatalf(
+			"resources=%+v closed=%t complete=%t error=%v",
+			resources,
+			closed,
+			complete,
+			err,
+		)
 	}
 }
