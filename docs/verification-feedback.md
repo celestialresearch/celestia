@@ -14,6 +14,49 @@ Profile | Owner | Scope | Escalation
 `shell` | `devcheck.sh` | Product policy for bounded documentation and policy changes | Other changes escalate before selection
 Assurance | `sec/devcheck.sh` | Complete Assurance repository gate | Separate Product and Assurance custody
 
+## Measured Commands
+
+Concept | Command | Required environment | Meaning
+--- | --- | --- | ---
+Quick | `bash ./.github/scripts/devcheck.sh` | `DEVCHECK_PROFILE=quick` | Conservative cached Product feedback
+Sign-off | `bash ./.github/scripts/devcheck.sh` | `DEVCHECK_PROFILE=full` | Complete local Product gate independent of quick results
+Product campaign | `verification_test.sh`, `testcheck.sh go race`, `testcheck.sh go fuzz` | Clean source-bound checkout | Checker self-tests plus race and active fuzz evidence
+Assurance quick | `assure check` | `--profile quick` | Non-signable independent feedback
+Assurance sign-off | `assure check` | `--profile signoff` | Complete signable exact-pair evidence
+Assurance campaign | `assure check` | `--profile campaign` | Sign-off controls plus extended campaign controls
+
+`full` is the Product driver's implementation name for sign-off. Campaign
+commands remain separate because CI runs them concurrently and local sign-off
+may delegate them only through explicit environment selections. A Product
+result with `DEVCHECK_SELF_TEST=false` or `DEVCHECK_GO_CAMPAIGN=false` is one
+part of the CI sign-off composition and is not complete sign-off by itself.
+
+## Control Dependencies
+
+Consumer | Required predecessors | Reused output | Independent writable state
+--- | --- | --- | ---
+Every Product profile | Environment | Validated toolchain identity | Language tool caches
+Config | Environment | None | Tool caches and temporary workflow inventories
+Policy | Config for quick and full | One source-policy inventory and process | Temporary source inventory
+Modules and currency exceptions | Policy | None | Isolated manifest inventories
+Licence headers | Policy | Maintained source classification only | Optional content-addressed cache
+Go build, fix, format and lint | Product policy controls | Go package graph and language caches | Go and linter caches
+Go platform lint | Go static controls | No semantic result | Target-specific analyser caches
+Go standard test | Go static controls | Atomic coverage profile | Isolated test inventory and profile
+Go coverage | Go standard test | Exact atomic profile | No second test execution
+Go race | Go static controls | No test result | Isolated completion inventory
+Go fuzz | Go static controls | One governed target inventory | Per-target fuzz and build caches
+Rust static | Product policy controls | Cargo dependency and build state | Cargo target
+Rust test | Rust static | Discovered executable inventory | Isolated completion inventory
+Rust coverage and artefacts | Rust test | Cargo dependency state only | Isolated coverage and release targets
+Verification-script campaign | Environment | One immutable source snapshot and family checker builds | Per-family directories
+Assurance sign-off | Clean exact Product and Assurance commits | Immutable source material and control digests | Run output directory
+Assurance campaign | Assurance sign-off controls | Sign-off control results within the same run | Campaign-owned temporary directories
+
+No row authorises reuse of a behavioural pass from an earlier run. Reuse is
+limited to immutable discovery, build or profile output within the named
+source-bound execution.
+
 ## Product Controls
 
 Control | Command owner | Principal inputs | Writable state | Cache | Platform | Consumer
