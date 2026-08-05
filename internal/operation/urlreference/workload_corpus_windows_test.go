@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -167,6 +168,38 @@ func TestPerformanceWorkloadCorpusRejectsInvalidUTF8(t *testing.T) {
 	}
 	if _, err := decodePerformanceCorpus(raw); err == nil || err.Error() != "invalid UTF-8" {
 		t.Fatalf("error = %v, want invalid UTF-8", err)
+	}
+}
+
+func TestValidateCorpusJSONSurrogates(t *testing.T) {
+	for _, test := range []struct {
+		data  string
+		valid bool
+	}{
+		{`{"value":"\ud800"}`, false}, {`{"value":"\udc00"}`, false},
+		{`{"value":"\ud800x"}`, false}, {`{"value":"\ud800\u1234"}`, false},
+		{`{"value":"\ud83d\ude00"}`, true}, {`{"value":"\\ud800"}`, true},
+	} {
+		t.Run(test.data, func(t *testing.T) {
+			err := validateCorpusJSON([]byte(test.data))
+			if (err == nil) != test.valid {
+				t.Fatalf("validate error = %v, valid = %t", err, test.valid)
+			}
+		})
+	}
+}
+
+func TestPerformanceCorpusFileRejectsUnpairedSurrogate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "corpus.json")
+	if err := os.WriteFile(path, []byte(`{"input":"\ud800"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	data, err := readPerformanceCorpusFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodePerformanceCorpus(data); err == nil || err.Error() != "unpaired surrogate" {
+		t.Fatalf("decode error = %v, want unpaired surrogate", err)
 	}
 }
 
@@ -342,6 +375,9 @@ func validateCorpusJSON(data []byte) error {
 	if !utf8.Valid(data) {
 		return fmt.Errorf("invalid UTF-8")
 	}
+	if hasUnpairedCorpusSurrogate(data) {
+		return fmt.Errorf("unpaired surrogate")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	nodes := maximumCorpusJSONNodes
 	if err := scanCorpusValue(decoder, 0, &nodes); err != nil {
@@ -351,6 +387,49 @@ func validateCorpusJSON(data []byte) error {
 		return fmt.Errorf("trailing data")
 	}
 	return nil
+}
+
+func hasUnpairedCorpusSurrogate(data []byte) bool {
+	inString := false
+	for index := 0; index < len(data); index++ {
+		switch data[index] {
+		case '"':
+			inString = !inString
+		case '\\':
+			if !inString {
+				continue
+			}
+			next, invalid := inspectCorpusSurrogate(data, index)
+			if invalid {
+				return true
+			}
+			index = next
+		}
+	}
+	return false
+}
+
+func inspectCorpusSurrogate(data []byte, index int) (int, bool) {
+	if index+5 >= len(data) || data[index+1] != 'u' {
+		return min(index+1, len(data)-1), false
+	}
+	value, ok := corpusHex4(data[index+2 : index+6])
+	if !ok || value&0xf800 != 0xd800 {
+		return index + 5, false
+	}
+	if value&0xfc00 == 0xdc00 {
+		return index + 5, true
+	}
+	if index+11 >= len(data) || data[index+6] != '\\' || data[index+7] != 'u' {
+		return index + 5, true
+	}
+	low, ok := corpusHex4(data[index+8 : index+12])
+	return index + 11, !ok || low&0xfc00 != 0xdc00
+}
+
+func corpusHex4(data []byte) (uint16, bool) {
+	value, err := strconv.ParseUint(string(data), 16, 16)
+	return uint16(value), err == nil && len(data) == 4
 }
 
 func scanCorpusValue(decoder *json.Decoder, depth int, nodes *int) error {
