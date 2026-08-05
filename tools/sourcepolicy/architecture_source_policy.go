@@ -109,7 +109,7 @@ func readSourcePolicySplitBaseline(
 	if err := expectJSONEnd(decoder); err != nil {
 		return baseline, err
 	}
-	const reviewedSHA256 = "12d9948066b95831e157f92172670d6b7ed9a6d664868cf2a6a589eb1b3ba04e"
+	const reviewedSHA256 = "4723dfffbbdd88ded7795e2279eca6056bdb55633048af8d829d488105512b72"
 	digest := sha256.Sum256(data)
 	if hex.EncodeToString(digest[:]) != reviewedSHA256 ||
 		baseline.Schema != sourcePolicyBaselineSchema {

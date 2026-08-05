@@ -33,6 +33,7 @@ import (
 
 	attemptstore "celestia.research/celestia/internal/operation/urlreference/attempt"
 	"celestia.research/celestia/internal/operation/urlreference/transform"
+	"golang.org/x/sys/windows"
 )
 
 const performanceReportEnvironment = "CELESTIA_OPERATION_PERFORMANCE_REPORT"
@@ -237,6 +238,20 @@ func TestPerformanceCampaignRequiresIgnoredOutput(t *testing.T) {
 	}
 	if err := ignoredPerformanceOutput(filepath.Join(t.TempDir(), "performance.json")); err == nil {
 		t.Fatal("external output accepted")
+	}
+}
+
+func TestPerformanceCampaignRejectsReparseOutputAncestry(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "reports", "candidate", "report.json")
+	attributes := func(candidate string) (uint32, error) {
+		if candidate == filepath.Join(root, "reports") {
+			return windows.FILE_ATTRIBUTE_DIRECTORY | windows.FILE_ATTRIBUTE_REPARSE_POINT, nil
+		}
+		return windows.FILE_ATTRIBUTE_DIRECTORY, nil
+	}
+	if err := validatePerformanceOutputAncestry(root, path, attributes); !errors.Is(err, errPerformanceReport) {
+		t.Fatalf("reparse ancestry error=%v", err)
 	}
 }
 
@@ -922,7 +937,39 @@ func ignoredPerformanceOutput(path string) error {
 	if len(parts) < 2 || parts[0] != "reports" {
 		return errPerformanceReport
 	}
+	return validatePerformanceOutputAncestry(root, path, performanceFileAttributes)
+}
+
+func validatePerformanceOutputAncestry(
+	root, output string,
+	attributes func(string) (uint32, error),
+) error {
+	relative, err := filepath.Rel(root, filepath.Dir(output))
+	if err != nil || relative == "." || relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errPerformanceReport
+	}
+	current := root
+	for component := range strings.SplitSeq(relative, string(filepath.Separator)) {
+		current = filepath.Join(current, component)
+		value, err := attributes(current)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil || value&windows.FILE_ATTRIBUTE_DIRECTORY == 0 ||
+			value&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+			return errPerformanceReport
+		}
+	}
 	return nil
+}
+
+func performanceFileAttributes(path string) (uint32, error) {
+	pointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, err
+	}
+	return windows.GetFileAttributes(pointer)
 }
 
 func writeRootedPerformanceReport(root *os.Root, name string, data []byte) error {
