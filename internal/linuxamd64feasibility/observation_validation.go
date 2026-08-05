@@ -54,7 +54,25 @@ func validObservation(value observation) bool {
 		validPrimitives(value.Primitives, value.Status) &&
 		validObservationEvidence(value.Evidence, value.Primitives) &&
 		validCleanup(value.Cleanup) &&
+		validProcessEvidence(value.Cleanup, value.Primitives) &&
 		validObservationStatusInvariants(value)
+}
+
+func validProcessEvidence(
+	cleanup cleanupObservation,
+	primitives [primitiveCount]primitiveObservation,
+) bool {
+	owned := false
+	for _, member := range cleanup.Members {
+		owned = owned || member.PID != 0
+	}
+	clonePrefix := primitives[0].Outcome == "passed" &&
+		primitives[1].Outcome == "passed" && primitives[2].Outcome == "passed"
+	if owned && !clonePrefix {
+		return false
+	}
+	return primitives[11].Outcome != "passed" || (cleanup.Members[0].PID != 0 &&
+		cleanup.Members[1].PID != 0 && cleanup.Members[2].PID != 0)
 }
 
 func validObservationStatus(value string) bool {
@@ -219,14 +237,15 @@ func validObservationEvidence(
 	primitives [primitiveCount]primitiveObservation,
 ) bool {
 	cgroupPassed := primitives[0].Outcome == "passed"
-	namespacesPassed := primitives[8].Outcome == "passed"
+	namespacesPassed := primitives[7].Outcome == "passed"
+	descriptorsPassed := primitives[8].Outcome == "passed"
 	fixturePassed := primitives[9].Outcome == "passed"
 	evidenceRootPassed := primitives[12].Outcome == "passed"
 	if value == nil {
 		return !cgroupPassed && !namespacesPassed && !fixturePassed && !evidenceRootPassed
 	}
 	return validOptionalCgroup(value.Cgroup, cgroupPassed) &&
-		validOptionalNamespaces(value.Namespaces, namespacesPassed) &&
+		validOptionalNamespaces(value.Namespaces, namespacesPassed, descriptorsPassed) &&
 		validOptionalFixture(value.Fixture, fixturePassed) &&
 		validOptionalEvidenceRoot(value.Evidence, evidenceRootPassed)
 }
@@ -245,9 +264,9 @@ func validOptionalEvidenceRoot(value *evidenceRoot, required bool) bool {
 	return value == nil
 }
 
-func validOptionalNamespaces(value *namespaceObservation, required bool) bool {
+func validOptionalNamespaces(value *namespaceObservation, required, descriptorsPassed bool) bool {
 	if required {
-		return value != nil && validNamespaces(*value)
+		return value != nil && validNamespaces(*value, descriptorsPassed)
 	}
 	return value == nil
 }
@@ -261,18 +280,25 @@ func validOptionalFixture(value *fixtureObservation, required bool) bool {
 
 func validCgroup(value cgroupObservation) bool {
 	return value.MountDevice != 0 && value.MountInode != 0 &&
-		value.SubtreeDevice != 0 && value.SubtreeInode != 0
+		value.SubtreeDevice == value.MountDevice && value.SubtreeInode != 0
 }
 
 func validEvidenceRoot(value evidenceRoot) bool {
 	return (value.Filesystem == "ext4" || value.Filesystem == "xfs") && value.Device != 0
 }
 
-func validNamespaces(value namespaceObservation) bool {
-	return value.User && value.PID && value.IPC && value.UTS && value.Mount &&
-		value.Network && value.PrivateProc && value.LoopbackDisabled &&
+func validNamespaces(value namespaceObservation, descriptorsPassed bool) bool {
+	wantDescriptors := [3]int{}
+	if descriptorsPassed {
+		wantDescriptors = [3]int{0, 1, 2}
+	}
+	return validNamespaceSet(value) && value.PrivateProc && value.LoopbackDisabled &&
 		value.MountPropagation == "private" && validIDMap(value.UIDMap) &&
-		validIDMap(value.GIDMap) && value.Descriptors == [3]int{0, 1, 2}
+		validIDMap(value.GIDMap) && value.Descriptors == wantDescriptors
+}
+
+func validNamespaceSet(value namespaceObservation) bool {
+	return value.User && value.PID && value.IPC && value.UTS && value.Mount && value.Network
 }
 
 func validIDMap(values [1]idMapObservation) bool {

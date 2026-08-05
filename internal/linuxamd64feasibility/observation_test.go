@@ -103,13 +103,13 @@ func TestDecodeObservationRejectsBrokenInvariants(t *testing.T) {
 		"identity map":       func(value *observation) { value.Evidence.Namespaces.UIDMap[0].Length = 0 },
 		"cgroup":             func(value *observation) { value.Evidence.Cgroup.SubtreeInode = 0 },
 		"cgroup mount":       func(value *observation) { value.Evidence.Cgroup.MountDevice = 0 },
+		"cgroup device":      func(value *observation) { value.Evidence.Cgroup.SubtreeDevice++ },
 		"evidence root":      func(value *observation) { value.Evidence.Evidence.Filesystem = "tmpfs" },
 		"evidence device":    func(value *observation) { value.Evidence.Evidence.Device = 0 },
 		"fixture":            func(value *observation) { value.Evidence.Fixture.PTInterp = true },
 		"fixture type":       func(value *observation) { value.Evidence.Fixture.ELFType = "ET_REL" },
 		"cleanup":            func(value *observation) { value.Cleanup.Complete = false },
 		"duplicate PID":      func(value *observation) { value.Cleanup.Members[1].PID = value.Cleanup.Members[0].PID },
-		"zero PID exited":    func(value *observation) { value.Cleanup.Members[2].Exited = true },
 		"live completed PID": func(value *observation) { value.Cleanup.Members[0].Exited = false },
 		"missing evidence":   func(value *observation) { value.Evidence = nil },
 		"cancelled cleanup": func(value *observation) {
@@ -180,8 +180,29 @@ func TestDecodeObservationPreservesIncompleteCleanupFailure(t *testing.T) {
 	value.Cleanup = emptyCleanup()
 	value.Cleanup.Attempted = true
 	value.Cleanup.Members[0] = memberObservation{Role: memberRoles[0], PID: 100}
+	value.Cleanup.Members[1] = memberObservation{Role: memberRoles[1], PID: 101, Exited: true}
+	value.Cleanup.Members[2] = memberObservation{Role: memberRoles[2], PID: 102, Exited: true}
 	if _, err := decodeObservation(marshalObservation(t, value)); err != nil {
 		t.Fatalf("decode: %v", err)
+	}
+}
+
+func TestDecodeObservationRejectsInvalidProcessEvidence(t *testing.T) {
+	cases := []observation{feasibleObservation(), feasibleObservation(), feasibleObservation()}
+	cases[0].Cleanup.Members[1] = memberObservation{Role: memberRoles[1]}
+	cases[1].Cleanup.Members[2] = memberObservation{Role: memberRoles[2]}
+	cases[2].Cleanup.Members[3].Exited = true
+	for _, value := range cases {
+		if _, err := decodeObservation(marshalObservation(t, value)); err == nil {
+			t.Fatal("missing process evidence accepted")
+		}
+	}
+	for _, status := range []string{"unavailable", "failed", "cancelled", "indeterminate"} {
+		value := terminalObservation(status, status, 0)
+		value.Cleanup = feasibleObservation().Cleanup
+		if _, err := decodeObservation(marshalObservation(t, value)); err == nil {
+			t.Fatalf("%s accepted owned process before clone3", status)
+		}
 	}
 }
 
@@ -223,7 +244,7 @@ func feasibleObservation() observation {
 			Members: [memberCount]memberObservation{
 				{Role: memberRoles[0], PID: 100, Exited: true},
 				{Role: memberRoles[1], PID: 101, Exited: true},
-				{Role: memberRoles[2]},
+				{Role: memberRoles[2], PID: 102, Exited: true},
 				{Role: memberRoles[3]},
 			},
 		},
@@ -275,15 +296,18 @@ func terminalObservation(status, reason string, terminal int) observation {
 		}
 		value.Primitives[index].Outcome = outcome
 	}
+	trimTerminalEvidence(&value, terminal)
+	return value
+}
+
+func trimTerminalEvidence(value *observation, terminal int) {
 	if terminal <= 12 {
 		value.Evidence.Evidence = nil
 	}
 	if terminal <= 9 {
 		value.Evidence.Fixture = nil
 	}
-	if terminal <= 8 {
-		value.Evidence.Namespaces = nil
-	}
+	trimTerminalNamespace(value, terminal)
 	if terminal == 0 {
 		value.Evidence.Cgroup = nil
 	}
@@ -291,7 +315,14 @@ func terminalObservation(status, reason string, terminal int) observation {
 		value.Evidence.Fixture == nil && value.Evidence.Evidence == nil {
 		value.Evidence = nil
 	}
-	return value
+}
+
+func trimTerminalNamespace(value *observation, terminal int) {
+	if terminal <= 7 {
+		value.Evidence.Namespaces = nil
+	} else if terminal == 8 {
+		value.Evidence.Namespaces.Descriptors = [3]int{}
+	}
 }
 
 func emptyCleanup() cleanupObservation {
