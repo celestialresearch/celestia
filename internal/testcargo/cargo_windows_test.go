@@ -102,35 +102,15 @@ func TestBuildCancelsDescendant(t *testing.T) {
 	assertDescendantExited(t, pidPath)
 }
 
-func TestBuildRejectsLiveDescendant(t *testing.T) {
-	event, name, closeEvent := testEvent(t)
-	defer closeEvent()
+func TestBuildJoinsLiveDescendant(t *testing.T) {
 	pidPath := filepath.Join(t.TempDir(), "descendant.pid")
-	job, port, process := startHelperJob(t, "exit", pidPath, name, "")
-	defer closeStoppedJob(t, job, port, process)
-	if event, err := windows.WaitForSingleObject(event, 10_000); err != nil || event != windows.WAIT_OBJECT_0 {
-		t.Fatalf("wait for helper: event=%d error=%v", event, err)
-	}
-	err := joinTree(
-		context.Background(),
-		job,
-		port,
-		process.Process,
-		true,
-		func(ctx context.Context, job, port windows.Handle, timeout time.Duration, requireSignal bool) (bool, error) {
-			if !requireSignal {
-				return false, nil
-			}
-			return waitJobEmpty(ctx, job, port, timeout, requireSignal)
-		},
-	)
-	if err == nil || !strings.Contains(err.Error(), "cargo exited with a running descendant") {
+	if err := testBuild(t, context.Background(), "exit", pidPath, "", ""); err != nil {
 		t.Fatalf("clean parent build error = %v", err)
 	}
 	assertDescendantExited(t, pidPath)
 }
 
-func TestJoinTreeUsesCleanupBudgetForDescendants(t *testing.T) {
+func TestJoinTreeChecksDescendantsImmediately(t *testing.T) {
 	job, port, process := startHelperJob(t, "success", "", "", "")
 	defer closeStoppedJob(t, job, port, process)
 	var allowance time.Duration
@@ -142,7 +122,7 @@ func TestJoinTreeUsesCleanupBudgetForDescendants(t *testing.T) {
 		true,
 		func(_ context.Context, _, _ windows.Handle, timeout time.Duration, requireSignal bool) (bool, error) {
 			if requireSignal {
-				t.Fatal("completed descendant grace required termination")
+				t.Fatal("empty Cargo tree required termination")
 			}
 			allowance = timeout
 			return true, nil
@@ -151,8 +131,8 @@ func TestJoinTreeUsesCleanupBudgetForDescendants(t *testing.T) {
 	if err != nil {
 		t.Fatalf("join completed tree: %v", err)
 	}
-	if allowance < descendantGrace-time.Second || allowance > descendantGrace {
-		t.Fatalf("descendant grace = %v, want bounded cleanup partition", allowance)
+	if allowance != 0 {
+		t.Fatalf("descendant check = %v, want immediate", allowance)
 	}
 }
 
