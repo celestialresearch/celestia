@@ -127,6 +127,36 @@ func TestArchitectureRequiresOperationSplitDestination(t *testing.T) {
 	}
 }
 
+func TestArchitectureRequiresPerformanceSplitDestinations(t *testing.T) {
+	t.Parallel()
+
+	for _, file := range performanceSplitFiles() {
+		t.Run(file, func(t *testing.T) {
+			t.Parallel()
+			files := slices.DeleteFunc(expectedSplitFiles(), func(path string) bool {
+				return path == file
+			})
+			findings := missingSplitSourceFindings(files)
+			want := strconv.Quote(file) + ": required split source is missing"
+			if !slices.Contains(findings, want) {
+				t.Fatalf("findings = %v, want %q", findings, want)
+			}
+		})
+	}
+}
+
+func TestArchitecturePerformanceSplitDeclaration(t *testing.T) {
+	t.Parallel()
+
+	declared := performanceSplitDeclaration()
+	expected := performanceSplitFiles()
+	slices.Sort(declared)
+	slices.Sort(expected)
+	if !slices.Equal(declared, expected) {
+		t.Fatalf("declared = %v, expected = %v", declared, expected)
+	}
+}
+
 func TestArchitectureRejectsObsoletePolicySource(t *testing.T) {
 	t.Parallel()
 
@@ -296,7 +326,42 @@ func expectedOperationSplitFiles() []string {
 		"internal/operation/urlreference/verification_windows.go",
 		"internal/operation/urlreference/verification_windows_test.go",
 		"internal/operation/urlreference/workload_corpus_windows_test.go",
+		"internal/operation/urlreference/performance_campaign_unsupported_test.go",
+		"internal/operation/urlreference/performance_campaign_windows_test.go",
+		"internal/operation/urlreference/performance_decode.go",
+		"internal/operation/urlreference/performance_output_windows_test.go",
+		"internal/operation/urlreference/performance_report.go",
+		"internal/operation/urlreference/performance_report_test.go",
 	}
+}
+
+func performanceSplitFiles() []string {
+	const prefix = "internal/operation/urlreference/performance_"
+	return slices.Collect(func(yield func(string) bool) {
+		for _, file := range expectedOperationSplitFiles() {
+			if strings.HasPrefix(file, prefix) && !yield(file) {
+				return
+			}
+		}
+	})
+}
+
+func performanceSplitDeclaration() []string {
+	const directory = "internal/operation/urlreference"
+	const prefix = "performance_"
+	for _, split := range splitDirectories() {
+		if split.path != directory {
+			continue
+		}
+		return slices.Collect(func(yield func(string) bool) {
+			for _, file := range split.files {
+				if strings.HasPrefix(file, prefix) && !yield(directory+"/"+file) {
+					return
+				}
+			}
+		})
+	}
+	return nil
 }
 
 func expectedAttemptSplitFiles() []string {
