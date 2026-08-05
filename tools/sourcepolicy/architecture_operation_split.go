@@ -22,9 +22,9 @@ import (
 const (
 	operationSplitDirectory  = "internal/operation/urlreference/"
 	maxOperationSplitBytes   = 8 << 20
-	operationSplitPackageSHA = "f265a2ab85b9ce5a3d5fe1a13b85d876141cf8dcdad9e0fb6d0183d45c18bc57"
-	operationSplitSourceSHA  = "d2cc943e1814c138de9b042bcf4c53479cbe0fe50f7028bc2fd50adba571a543"
-	operationSplitTargetSHA  = "9e2571caa078280624bb24909932bcf3f704df7378b762e4cd6034e3305bef5f"
+	operationSplitPackageSHA = "0d2f18ebe1deac1744f91fff7690df765e3a2ecd78e5ef8ff27d84c0b4e86b75"
+	operationSplitSourceSHA  = "341c35c76b5d22dc361bf3d6e467f7d2afeddcfd6ab6ef0d5f4e08fc2e4f6ad6"
+	operationSplitTargetSHA  = "1c558744a08c539475ac9253c207fa89dfad1ea24aaa7d098c2862ad7b9f4dfa"
 )
 
 var operationSplitOwners = map[string]string{
@@ -39,6 +39,9 @@ var operationSplitOwners = map[string]string{
 	"operation_unsupported.go":        "platform",
 	"operation_unsupported_test.go":   "platform",
 	"operation_windows.go":            "orchestration",
+	"performance_decode.go":           "performance-report",
+	"performance_report.go":           "performance-report",
+	"performance_report_test.go":      "performance-report",
 	"platform_windows.go":             "platform",
 	"projection_windows.go":           "projection",
 	"protocol_windows_test.go":        "protocol",
