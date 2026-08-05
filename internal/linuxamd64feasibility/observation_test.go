@@ -118,7 +118,11 @@ func TestDecodeObservationRejectsBrokenInvariants(t *testing.T) {
 		},
 		"forbidden evidence": func(value *observation) {
 			*value = unavailableObservation()
-			value.Evidence = feasibleObservation().Evidence
+			value.Evidence.Fixture = feasibleObservation().Evidence.Fixture
+		},
+		"missing prefix evidence": func(value *observation) {
+			*value = unavailableObservation()
+			value.Evidence = nil
 		},
 		"unattempted complete cleanup": func(value *observation) {
 			*value = unavailableObservation()
@@ -190,16 +194,16 @@ func feasibleObservation() observation {
 			OperatingSystem: "linux", Architecture: "amd64", KernelRelease: "6.12.0",
 			BootID: "01234567-89ab-cdef-0123-456789abcdef",
 		},
-		Evidence: &feasibilityEvidence{
-			Cgroup:   cgroupObservation{MountDevice: 1, MountInode: 2, SubtreeDevice: 1, SubtreeInode: 3},
-			Evidence: evidenceRoot{Filesystem: "ext4", Device: 4},
-			Namespaces: namespaceObservation{
+		Evidence: &observationEvidence{
+			Cgroup:   &cgroupObservation{MountDevice: 1, MountInode: 2, SubtreeDevice: 1, SubtreeInode: 3},
+			Evidence: &evidenceRoot{Filesystem: "ext4", Device: 4},
+			Namespaces: &namespaceObservation{
 				User: true, PID: true, IPC: true, UTS: true, Mount: true, Network: true,
 				PrivateProc: true, LoopbackDisabled: true, MountPropagation: "private",
 				UIDMap: [1]idMapObservation{{Length: 1}}, GIDMap: [1]idMapObservation{{Length: 1}},
 				Descriptors: [3]int{0, 1, 2},
 			},
-			Fixture: fixtureObservation{
+			Fixture: &fixtureObservation{
 				SHA256: strings.Repeat("d", 64), ELFMachine: "x86_64", ELFType: "ET_EXEC",
 				Device: 5, Inode: 6,
 			},
@@ -248,7 +252,6 @@ func terminalObservation(status, reason string, terminal int) observation {
 	value := feasibleObservation()
 	value.Status = status
 	value.Reason = reason
-	value.Evidence = nil
 	value.Cleanup = emptyCleanup()
 	for index := range value.Primitives {
 		outcome := "not_run"
@@ -259,6 +262,22 @@ func terminalObservation(status, reason string, terminal int) observation {
 			outcome = status
 		}
 		value.Primitives[index].Outcome = outcome
+	}
+	if terminal <= 12 {
+		value.Evidence.Evidence = nil
+	}
+	if terminal <= 9 {
+		value.Evidence.Fixture = nil
+	}
+	if terminal <= 8 {
+		value.Evidence.Namespaces = nil
+	}
+	if terminal == 0 {
+		value.Evidence.Cgroup = nil
+	}
+	if value.Evidence.Cgroup == nil && value.Evidence.Namespaces == nil &&
+		value.Evidence.Fixture == nil && value.Evidence.Evidence == nil {
+		value.Evidence = nil
 	}
 	return value
 }

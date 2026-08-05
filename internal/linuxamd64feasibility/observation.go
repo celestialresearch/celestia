@@ -27,7 +27,7 @@ type observation struct {
 	ProbeSHA256   string                               `json:"probe_sha256"`
 	Host          hostObservation                      `json:"host"`
 	Primitives    [primitiveCount]primitiveObservation `json:"primitives"`
-	Evidence      *feasibilityEvidence                 `json:"evidence"`
+	Evidence      *observationEvidence                 `json:"evidence"`
 	Cleanup       cleanupObservation                   `json:"cleanup"`
 }
 
@@ -38,11 +38,11 @@ type hostObservation struct {
 	BootID          string `json:"boot_id"`
 }
 
-type feasibilityEvidence struct {
-	Cgroup     cgroupObservation    `json:"cgroup"`
-	Evidence   evidenceRoot         `json:"evidence_root"`
-	Namespaces namespaceObservation `json:"namespaces"`
-	Fixture    fixtureObservation   `json:"fixture"`
+type observationEvidence struct {
+	Cgroup     *cgroupObservation    `json:"cgroup"`
+	Evidence   *evidenceRoot         `json:"evidence_root"`
+	Namespaces *namespaceObservation `json:"namespaces"`
+	Fixture    *fixtureObservation   `json:"fixture"`
 }
 
 type cgroupObservation struct {

@@ -52,6 +52,7 @@ func validObservation(value observation) bool {
 		validHash(value.ProbeSHA256) &&
 		validHost(value.Host) &&
 		validPrimitives(value.Primitives, value.Status) &&
+		validObservationEvidence(value.Evidence, value.Primitives) &&
 		validCleanup(value.Cleanup) &&
 		validObservationStatusInvariants(value)
 }
@@ -195,14 +196,14 @@ func validObservationStatusInvariants(value observation) bool {
 	switch value.Status {
 	case "feasible":
 		return value.Reason == "all_primitives_passed" &&
-			validEvidence(value.Evidence) && completeCleanup(value.Cleanup)
+			completeCleanup(value.Cleanup)
 	case "cancelled":
-		return value.Reason == "cancelled" && value.Evidence == nil &&
+		return value.Reason == "cancelled" &&
 			completeCleanup(value.Cleanup)
 	case "failed":
-		return value.Evidence == nil
+		return true
 	case "unavailable", "indeterminate":
-		return value.Reason != "all_primitives_passed" && value.Evidence == nil &&
+		return value.Reason != "all_primitives_passed" &&
 			validRefusalCleanup(value.Cleanup)
 	default:
 		return false
@@ -213,10 +214,49 @@ func validRefusalCleanup(value cleanupObservation) bool {
 	return !value.Attempted || completeCleanup(value)
 }
 
-func validEvidence(value *feasibilityEvidence) bool {
-	return value != nil && validCgroup(value.Cgroup) &&
-		validEvidenceRoot(value.Evidence) && validNamespaces(value.Namespaces) &&
-		validFixture(value.Fixture)
+func validObservationEvidence(
+	value *observationEvidence,
+	primitives [primitiveCount]primitiveObservation,
+) bool {
+	cgroupPassed := primitives[0].Outcome == "passed"
+	namespacesPassed := primitives[8].Outcome == "passed"
+	fixturePassed := primitives[9].Outcome == "passed"
+	evidenceRootPassed := primitives[12].Outcome == "passed"
+	if value == nil {
+		return !cgroupPassed && !namespacesPassed && !fixturePassed && !evidenceRootPassed
+	}
+	return validOptionalCgroup(value.Cgroup, cgroupPassed) &&
+		validOptionalNamespaces(value.Namespaces, namespacesPassed) &&
+		validOptionalFixture(value.Fixture, fixturePassed) &&
+		validOptionalEvidenceRoot(value.Evidence, evidenceRootPassed)
+}
+
+func validOptionalCgroup(value *cgroupObservation, required bool) bool {
+	if required {
+		return value != nil && validCgroup(*value)
+	}
+	return value == nil
+}
+
+func validOptionalEvidenceRoot(value *evidenceRoot, required bool) bool {
+	if required {
+		return value != nil && validEvidenceRoot(*value)
+	}
+	return value == nil
+}
+
+func validOptionalNamespaces(value *namespaceObservation, required bool) bool {
+	if required {
+		return value != nil && validNamespaces(*value)
+	}
+	return value == nil
+}
+
+func validOptionalFixture(value *fixtureObservation, required bool) bool {
+	if required {
+		return value != nil && validFixture(*value)
+	}
+	return value == nil
 }
 
 func validCgroup(value cgroupObservation) bool {
