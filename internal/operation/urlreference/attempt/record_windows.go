@@ -17,7 +17,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -50,10 +49,7 @@ func createRecordTempWith(
 	if err != nil {
 		return nil, err
 	}
-	attributes := windows.SecurityAttributes{
-		Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
-		SecurityDescriptor: descriptor,
-	}
+	attributes := ownedSecurityAttributes(descriptor)
 	for range 8 {
 		temporaryName, err := operations.name(name)
 		if err != nil {

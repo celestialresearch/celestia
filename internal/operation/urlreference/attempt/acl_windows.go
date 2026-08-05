@@ -268,6 +268,15 @@ func secureDirectoryDescriptor() (*windows.SECURITY_DESCRIPTOR, error) {
 	)
 }
 
+func ownedSecurityAttributes(
+	descriptor *windows.SECURITY_DESCRIPTOR,
+) windows.SecurityAttributes {
+	return windows.SecurityAttributes{
+		Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
+		SecurityDescriptor: descriptor,
+	}
+}
+
 func secureDirectoryDescriptorWith(
 	current func() (*windows.SID, error),
 	parse func(string) (*windows.SECURITY_DESCRIPTOR, error),

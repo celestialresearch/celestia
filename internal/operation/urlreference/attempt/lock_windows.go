@@ -17,7 +17,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -60,10 +59,8 @@ func openAttemptLockFileWith(
 		if err != nil {
 			return nil, err
 		}
-		attributes = &windows.SecurityAttributes{
-			Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
-			SecurityDescriptor: descriptor,
-		}
+		value := ownedSecurityAttributes(descriptor)
+		attributes = &value
 	}
 	file, err := open(
 		directory,

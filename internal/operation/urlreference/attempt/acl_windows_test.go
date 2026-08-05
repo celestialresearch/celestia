@@ -24,6 +24,17 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+func TestOwnedSecurityAttributes(t *testing.T) {
+	t.Parallel()
+
+	descriptor := &windows.SECURITY_DESCRIPTOR{}
+	attributes := ownedSecurityAttributes(descriptor)
+	if attributes.Length != uint32(unsafe.Sizeof(attributes)) ||
+		attributes.SecurityDescriptor != descriptor {
+		t.Fatalf("attributes = %+v", attributes)
+	}
+}
+
 func TestEvidenceACERejectsInvalidSID(t *testing.T) {
 	t.Parallel()
 

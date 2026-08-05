@@ -18,7 +18,6 @@ import (
 	"golang.org/x/sys/windows"
 	"os"
 	"path/filepath"
-	"unsafe"
 )
 
 type evidenceDirectoryOperations struct {
@@ -81,10 +80,7 @@ func createEvidenceDirectoryWith(
 	if err != nil {
 		return err
 	}
-	attributes := windows.SecurityAttributes{
-		Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
-		SecurityDescriptor: descriptor,
-	}
+	attributes := ownedSecurityAttributes(descriptor)
 	if err := operations.create(pointer, &attributes); err != nil {
 		return err
 	}
