@@ -81,8 +81,8 @@ func writeOrMatchReceiptMeasured(
 		TerminalHash:  terminalHash,
 		TerminalState: state,
 	}
-	duration := time.Since(started)
-	return duration, writeOrMatchRecord(path, receiptFile, receipt)
+	err = writeOrMatchRecord(path, receiptFile, receipt)
+	return time.Since(started), err
 }
 
 func publishMarker(path, attemptID string) error {

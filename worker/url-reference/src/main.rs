@@ -31,7 +31,9 @@ fn run() -> Result<ExitCode, ()> {
     let data = read()?;
     let request = parse(&data)?;
     let start = Instant::now();
-    let output = match transform(&request.input, &request.mode) {
+    let transformed = transform(&request.input, &request.mode);
+    let transform_duration = duration_ns(start);
+    let output = match transformed {
         Ok(output) => output,
         Err(()) => {
             let response = Response {
@@ -51,7 +53,7 @@ fn run() -> Result<ExitCode, ()> {
                     code: "invalid_reference",
                     message: "input does not satisfy the URL-reference contract",
                 }],
-                duration_ns: duration_ns(start),
+                duration_ns: transform_duration,
             };
             write(&response)?;
             return Ok(ExitCode::from(2));
@@ -74,7 +76,7 @@ fn run() -> Result<ExitCode, ()> {
         output_sha256: Some(request::sha256(&output)),
         output: Some(output),
         diagnostics: Vec::new(),
-        duration_ns: duration_ns(start),
+        duration_ns: transform_duration,
     };
     write(&response)?;
     Ok(ExitCode::SUCCESS)
