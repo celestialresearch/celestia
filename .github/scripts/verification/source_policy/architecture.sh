@@ -74,8 +74,8 @@ for variable in GOFLAGS GOENV; do
     return 1
   }
 done
-mkdir -p "$work_dir/config-bin"
-architecture_policy="$work_dir/config-bin/sourcepolicy"
+mkdir -p "$work_dir/architecture-bin"
+architecture_policy="$work_dir/architecture-bin/sourcepolicy"
 (
   cd "$architecture_dir"
   go build -o "$architecture_policy" ./tools/sourcepolicy
