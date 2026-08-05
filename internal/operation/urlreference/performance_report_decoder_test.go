@@ -24,7 +24,11 @@ import (
 	"unicode/utf8"
 )
 
-const maxPerformanceReportBytes = 16 << 20
+const (
+	maxPerformanceReportBytes   = 16 << 20
+	maxPerformanceMemoryBytes   = 64 << 20
+	maxPerformanceEvidenceBytes = 2 << 20
+)
 
 var (
 	identifierPerformance = regexp.MustCompile(`^[a-z0-9][a-z0-9._/-]{0,127}$`)
@@ -175,8 +179,13 @@ func validSample(sample performanceSample, sequence uint64, environmentID string
 
 func validResources(resources resourceMeasurement) bool {
 	return resources.Measured && resources.PeakWorkingSetBytes > 0 &&
-		resources.PeakProcessCommitBytes > 0 && resources.PeakJobCommitBytes > 0 &&
-		resources.EvidenceBytes > 0 && resources.WorkerImageBytes > 0
+		resources.PeakWorkingSetBytes <= maxPerformanceMemoryBytes &&
+		resources.PeakProcessCommitBytes > 0 &&
+		resources.PeakProcessCommitBytes <= maxPerformanceMemoryBytes &&
+		resources.PeakJobCommitBytes > 0 &&
+		resources.PeakJobCommitBytes <= maxPerformanceMemoryBytes &&
+		resources.EvidenceBytes > 0 && resources.EvidenceBytes <= maxPerformanceEvidenceBytes &&
+		resources.WorkerImageBytes > 0
 }
 
 func validToolchains(toolchains []string) bool {

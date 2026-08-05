@@ -40,10 +40,7 @@ import (
 
 const performanceReportEnvironment = "CELESTIA_OPERATION_PERFORMANCE_REPORT"
 
-const (
-	maximumCampaignEvidenceBytes = 2 << 20
-	maximumCampaignEvidenceFiles = 4
-)
+const maximumCampaignEvidenceFiles = 4
 
 type campaignOperation struct {
 	operation    *Operation
@@ -113,10 +110,10 @@ func TestPerformanceManifestBindsResourceOwners(t *testing.T) {
 		manifest.Bounds.MemoryBytes != uint64(workerprotocol.MemoryBytes) ||
 		manifest.Bounds.OutputBytes != uint64(maxPerformanceReportBytes) ||
 		manifest.Bounds.WorkerTimeMilliseconds != uint64(workerprotocol.TimeoutMS) ||
-		manifest.Bounds.PersistenceBytes != uint64(maximumCampaignEvidenceBytes) {
+		manifest.Bounds.PersistenceBytes != uint64(maxPerformanceEvidenceBytes) {
 		t.Fatalf("bounds=%+v", manifest.Bounds)
 	}
-	want := fmt.Sprintf("One attempt bundle and %d aggregate output bytes", maximumCampaignEvidenceBytes)
+	want := fmt.Sprintf("One attempt bundle and %d aggregate output bytes", maxPerformanceEvidenceBytes)
 	matched := 0
 	for _, resource := range manifest.Resources {
 		if resource.ID == "CEL-PERF-RESOURCE-002" {
@@ -882,7 +879,7 @@ func (meter *evidenceMeter) addFile(entry os.DirEntry) error {
 		return errPerformanceReport
 	}
 	size, err := nonNegativeUint64(info.Size())
-	if err != nil || size > maximumCampaignEvidenceBytes-meter.bytes {
+	if err != nil || size > maxPerformanceEvidenceBytes-meter.bytes {
 		return errPerformanceReport
 	}
 	meter.bytes += size

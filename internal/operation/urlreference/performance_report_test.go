@@ -122,6 +122,26 @@ func performanceReportSemanticCases(
 		"empty required resource": func() []byte {
 			return marshalPerformanceReport(t, emptyRequiredResource(clonePerformanceReport(t, valid)))
 		},
+		"working set exceeds memory bound": func() []byte {
+			return marshalPerformanceReport(t, excessiveResource(t, clonePerformanceReport(t, valid), func(resources *resourceMeasurement) {
+				resources.PeakWorkingSetBytes = maxPerformanceMemoryBytes + 1
+			}))
+		},
+		"process commit exceeds memory bound": func() []byte {
+			return marshalPerformanceReport(t, excessiveResource(t, clonePerformanceReport(t, valid), func(resources *resourceMeasurement) {
+				resources.PeakProcessCommitBytes = maxPerformanceMemoryBytes + 1
+			}))
+		},
+		"job commit exceeds memory bound": func() []byte {
+			return marshalPerformanceReport(t, excessiveResource(t, clonePerformanceReport(t, valid), func(resources *resourceMeasurement) {
+				resources.PeakJobCommitBytes = maxPerformanceMemoryBytes + 1
+			}))
+		},
+		"evidence exceeds persistence bound": func() []byte {
+			return marshalPerformanceReport(t, excessiveResource(t, clonePerformanceReport(t, valid), func(resources *resourceMeasurement) {
+				resources.EvidenceBytes = maxPerformanceEvidenceBytes + 1
+			}))
+		},
 		"total overflow": func() []byte { return marshalPerformanceReport(t, overflowingTotal(clonePerformanceReport(t, valid))) },
 		"unknown phase":  func() []byte { return marshalPerformanceReport(t, unknownPhase(clonePerformanceReport(t, valid))) },
 		"mismatched statistics": func() []byte {
@@ -429,6 +449,21 @@ func unmeasuredResource(report performanceReport) performanceReport {
 
 func emptyRequiredResource(report performanceReport) performanceReport {
 	report.Workloads[0].Cold.Samples[0].Resources.PeakWorkingSetBytes = 0
+	return report
+}
+
+func excessiveResource(
+	t *testing.T,
+	report performanceReport,
+	mutate func(*resourceMeasurement),
+) performanceReport {
+	t.Helper()
+	mutate(&report.Workloads[0].Cold.Samples[0].Resources)
+	statistics, err := calculateStatistics(report.Workloads[0].Cold.Samples)
+	if err != nil {
+		t.Fatalf("calculate statistics: %v", err)
+	}
+	report.Workloads[0].Cold.Statistics = statistics
 	return report
 }
 
