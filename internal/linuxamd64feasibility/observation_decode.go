@@ -25,7 +25,7 @@ func decodeObservation(data []byte) (observation, error) {
 	if len(data) == 0 || len(data) > maxObservationBytes || !utf8.Valid(data) {
 		return observation{}, errObservationInvalid
 	}
-	if !canonicalObservationJSON(data) || !uniqueObservationFields(data) {
+	if !uniqueObservationFields(data) || !canonicalObservationJSON(data) {
 		return observation{}, errObservationInvalid
 	}
 	var result observation

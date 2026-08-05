@@ -29,6 +29,10 @@ func TestDecodeObservationAcceptsCanonicalFeasibleEvidence(t *testing.T) {
 
 func TestDecodeObservationRejectsInvalidEnvelope(t *testing.T) {
 	valid := marshalObservation(t, feasibleObservation())
+	deep := append(bytes.Repeat([]byte("["), 34), '0')
+	deep = append(deep, bytes.Repeat([]byte("]"), 34)...)
+	manyTokens := append([]byte("["), bytes.Repeat([]byte("0,"), 1025)...)
+	manyTokens[len(manyTokens)-1] = ']'
 	cases := map[string][]byte{
 		"empty":              nil,
 		"invalid UTF-8":      append(valid[:10], 0xff),
@@ -48,6 +52,11 @@ func TestDecodeObservationRejectsInvalidEnvelope(t *testing.T) {
 			[]byte(`"kernel_release":"6.12.0"`),
 			[]byte(`"kernel_release":"\ud800"`), 1),
 		"noncanonical number": bytes.Replace(valid, []byte(`"device":1`), []byte(`"device":1.0`), 1),
+		"scalar":              []byte("1"),
+		"unterminated array":  []byte("["),
+		"unterminated object": []byte("{"),
+		"excessive depth":     deep,
+		"token budget":        manyTokens,
 	}
 	for name, data := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -60,22 +69,48 @@ func TestDecodeObservationRejectsInvalidEnvelope(t *testing.T) {
 
 func TestDecodeObservationRejectsBrokenInvariants(t *testing.T) {
 	cases := map[string]func(*observation){
-		"identity":         func(value *observation) { value.ProductCommit = "invalid" },
-		"host":             func(value *observation) { value.Host.OperatingSystem = "windows" },
-		"status":           func(value *observation) { value.Status = "proposed" },
-		"primitive order":  func(value *observation) { value.Primitives[0].ID = "file_fsync" },
-		"primitive suffix": func(value *observation) { value.Primitives[2].Outcome = "not_run" },
+		"identity":          func(value *observation) { value.ProductCommit = "invalid" },
+		"nonhex identity":   func(value *observation) { value.ProductCommit = strings.Repeat("g", 40) },
+		"uppercase hash":    func(value *observation) { value.ProbeSHA256 = strings.Repeat("A", 64) },
+		"empty reason":      func(value *observation) { value.Reason = "" },
+		"reason character":  func(value *observation) { value.Reason = "not-valid" },
+		"reason length":     func(value *observation) { value.Reason = strings.Repeat("a", 129) },
+		"host":              func(value *observation) { value.Host.OperatingSystem = "windows" },
+		"host architecture": func(value *observation) { value.Host.Architecture = "arm64" },
+		"kernel control":    func(value *observation) { value.Host.KernelRelease = "6.12\n" },
+		"boot ID separator": func(value *observation) { value.Host.BootID = strings.Repeat("a", 36) },
+		"boot ID character": func(value *observation) { value.Host.BootID = "01234567-89ab-cdef-0123-456789abcdeg" },
+		"boot ID length":    func(value *observation) { value.Host.BootID = "short" },
+		"status":            func(value *observation) { value.Status = "proposed" },
+		"primitive order":   func(value *observation) { value.Primitives[0].ID = "file_fsync" },
+		"primitive suffix":  func(value *observation) { value.Primitives[2].Outcome = "not_run" },
 		"primitive duplicate": func(value *observation) {
 			*value = unavailableObservation()
 			value.Primitives[3].Outcome = "unavailable"
 		},
+		"missing terminal": func(value *observation) {
+			*value = unavailableObservation()
+			for index := range value.Primitives {
+				value.Primitives[index].Outcome = "passed"
+			}
+		},
+		"wrong terminal": func(value *observation) {
+			*value = unavailableObservation()
+			value.Primitives[2].Outcome = "failed"
+		},
 		"feasible primitive": func(value *observation) { value.Primitives[0].Outcome = "failed" },
 		"namespace":          func(value *observation) { value.Evidence.Namespaces.Descriptors[2] = 3 },
+		"identity map":       func(value *observation) { value.Evidence.Namespaces.UIDMap[0].Length = 0 },
 		"cgroup":             func(value *observation) { value.Evidence.Cgroup.SubtreeInode = 0 },
+		"cgroup mount":       func(value *observation) { value.Evidence.Cgroup.MountDevice = 0 },
 		"evidence root":      func(value *observation) { value.Evidence.Evidence.Filesystem = "tmpfs" },
+		"evidence device":    func(value *observation) { value.Evidence.Evidence.Device = 0 },
 		"fixture":            func(value *observation) { value.Evidence.Fixture.PTInterp = true },
+		"fixture type":       func(value *observation) { value.Evidence.Fixture.ELFType = "ET_REL" },
 		"cleanup":            func(value *observation) { value.Cleanup.Complete = false },
 		"duplicate PID":      func(value *observation) { value.Cleanup.Members[1].PID = value.Cleanup.Members[0].PID },
+		"zero PID exited":    func(value *observation) { value.Cleanup.Members[2].Exited = true },
+		"live completed PID": func(value *observation) { value.Cleanup.Members[0].Exited = false },
 		"missing evidence":   func(value *observation) { value.Evidence = nil },
 		"cancelled cleanup": func(value *observation) {
 			*value = cancelledObservation()
@@ -84,6 +119,17 @@ func TestDecodeObservationRejectsBrokenInvariants(t *testing.T) {
 		"forbidden evidence": func(value *observation) {
 			*value = unavailableObservation()
 			value.Evidence = feasibleObservation().Evidence
+		},
+		"unattempted complete cleanup": func(value *observation) {
+			*value = unavailableObservation()
+			value.Cleanup.Complete = true
+		},
+		"unattempted nonempty cleanup": func(value *observation) {
+			*value = unavailableObservation()
+			value.Cleanup.CgroupEmpty = true
+		},
+		"complete nonempty cleanup": func(value *observation) {
+			value.Cleanup.CgroupEmpty = false
 		},
 	}
 	for name, mutate := range cases {
