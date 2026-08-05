@@ -94,18 +94,6 @@ func defaultSuspendedProcessOperations() suspendedProcessOperations {
 	}
 }
 
-func defaultStartupStopOperations() startupStopOperations {
-	return startupStopOperations{
-		closeChild:   (*pipeSet).closeChildEnds,
-		terminateJob: windows.TerminateJobObject,
-		terminateProcess: func(process windows.Handle, _ uint32) error {
-			return windows.TerminateProcess(process, 1)
-		},
-		wait:        waitCleanup,
-		closeHandle: windows.CloseHandle,
-	}
-}
-
 func (resources *launchResources) start(
 	ctx context.Context,
 	startupDeadline time.Time,
@@ -163,7 +151,15 @@ func (resources *launchResources) stopStart(
 	info windows.ProcessInformation,
 	assigned bool,
 ) error {
-	return resources.stopStartWith(info, assigned, defaultStartupStopOperations())
+	return resources.stopStartWith(info, assigned, startupStopOperations{
+		closeChild:   (*pipeSet).closeChildEnds,
+		terminateJob: windows.TerminateJobObject,
+		terminateProcess: func(process windows.Handle, _ uint32) error {
+			return windows.TerminateProcess(process, 1)
+		},
+		wait:        waitCleanup,
+		closeHandle: windows.CloseHandle,
+	})
 }
 
 func (resources *launchResources) stopStartWith(
