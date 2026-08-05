@@ -318,6 +318,15 @@ or hostile-fixture behaviour; no delay is used to make an ordinary assertion
 eventually pass. Standard, race and fuzz discovery remains separate where the
 campaign or target inventory is independently owned.
 
+Windows AMD64 quick-profile measurements at Product `c2d87e7` used an Intel
+Core i5-13400F with 16 logical processors, 34,185,990,144 bytes of memory, Go
+1.26.5 and Rust 1.97.1. Three warm runs took 158.0, 116.7 and 115.2 seconds
+(median 116.7; range 42.8). Three runs with a new empty Go build cache and the
+existing module download cache took 263.9, 199.5 and 196.8 seconds (median
+199.5; range 67.1). Currency, verification-script and Go campaign controls
+were disabled according to the quick profile; ambiguous branch-wide changes
+conservatively selected all Go packages.
+
 CI runs race and active fuzz controls in a separate blocking matrix for every
 qualified Product runner. Local full verification retains both controls. The
 green `b34f75d` run spent 93 seconds on race and 15 seconds on fuzz for Linux
