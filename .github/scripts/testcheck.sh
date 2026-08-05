@@ -43,12 +43,12 @@ trap cleanup EXIT
 trap 'exit 130' HUP INT TERM
 
 go_inventory() {
-	if [[ "$fixture_mode" == --fixture ]]; then
-		[[ -n "${TESTINVENTORY_BIN:-}" ]] || return 2
-		"$TESTINVENTORY_BIN" go >"$temporary/expected"
-	else
-		go run ./tools/sourcepolicy go-test-inventory >"$temporary/expected"
-	fi
+  if [[ "$fixture_mode" == --fixture ]]; then
+    [[ -n "${TESTINVENTORY_BIN:-}" ]] || return 2
+    "$TESTINVENTORY_BIN" go >"$temporary/expected"
+  else
+    go run ./tools/sourcepolicy go-test-inventory >"$temporary/expected"
+  fi
 }
 
 select_quick_go_path() {
@@ -94,6 +94,8 @@ select_quick_go_path() {
 }
 
 expand_quick_go_packages() {
+  local pipeline_status
+
   if ! go list -f '{{.ImportPath}}	{{join .Imports " "}}' ./... >"$temporary/quick-graph"; then
     return 1
   fi
@@ -133,7 +135,8 @@ expand_quick_go_packages() {
     }
   ' "$temporary/quick-direct" "$temporary/quick-propagate" \
     "$temporary/quick-graph" | LC_ALL=C sort
-  [[ "${PIPESTATUS[0]}" == 0 ]]
+  pipeline_status=("${PIPESTATUS[@]}")
+  [[ "${pipeline_status[0]}" == 0 && "${pipeline_status[1]}" == 0 ]]
 }
 
 quick_go_packages() {
@@ -219,9 +222,13 @@ go_tests() {
   case "$profile" in
   quick)
     arguments=(-p=2)
+    if ! quick_go_packages >"$temporary/quick-selection"; then
+      printf 'Quick Go package selection failed.\n' >&2
+      return 1
+    fi
     while IFS= read -r package; do
       [[ -n "$package" ]] && packages+=("$package")
-    done < <(quick_go_packages)
+    done <"$temporary/quick-selection"
     if ((${#packages[@]} == 0)); then
       printf 'No changed Go packages require tests.\n'
       return
@@ -245,18 +252,18 @@ go_tests() {
   ((${#packages[@]} > 0)) || packages=(./...)
 
   started=$(date +%s)
-	if ! go_inventory; then
+  if ! go_inventory; then
     printf '        %-34s[FAIL] %ss\n' 'Go Test Discovery' \
       "$(($(date +%s) - started))"
     return 1
-	fi
-	if [[ "$profile" == quick && "${packages[0]}" != ./... ]]; then
-		printf '%s\n' "${packages[@]}" | LC_ALL=C sort -u >"$temporary/quick-packages"
-		awk -F '\t' 'NR == FNR { selected[$1] = 1; next }
-		  selected[$1] { print }' "$temporary/quick-packages" \
-		  "$temporary/expected" >"$temporary/quick-expected"
-		mv -- "$temporary/quick-expected" "$temporary/expected"
-	fi
+  fi
+  if [[ "$profile" == quick && "${packages[0]}" != ./... ]]; then
+    printf '%s\n' "${packages[@]}" | LC_ALL=C sort -u >"$temporary/quick-packages"
+    awk -F '\t' 'NR == FNR { selected[$1] = 1; next }
+      selected[$1] { print }' "$temporary/quick-packages" \
+      "$temporary/expected" >"$temporary/quick-expected"
+    mv -- "$temporary/quick-expected" "$temporary/expected"
+  fi
   printf '        %-34s[PASS] %ss\n' 'Go Test Discovery' \
     "$(($(date +%s) - started))"
   : >"$temporary/observed"

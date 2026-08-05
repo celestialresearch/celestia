@@ -190,6 +190,22 @@ if [[ "$output" != ./... ]]; then
 fi
 rm -f -- "$selector/unknown.file"
 
+mkdir -p "$work/fail-sort"
+cat >"$work/fail-sort/sort" <<'EOF'
+#!/usr/bin/env bash
+exit 7
+EOF
+chmod +x "$work/fail-sort/sort"
+printf '\n' >>"$selector/$transform/base.go"
+output=$(PATH="$work/fail-sort:$PATH" \
+  bash "$selector/.github/scripts/testcheck.sh" go-packages)
+if [[ "$output" != ./... ]]; then
+  printf 'quick selection did not fail closed after graph failure:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+git -C "$selector" checkout -q -- "$transform/base.go"
+
 set +e
 PATH="$work/bin:$PATH" TESTINVENTORY_BIN="$work/bin/testinventory" \
   SIGNAL_PARENT=true \
