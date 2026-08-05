@@ -16,6 +16,7 @@ package attemptstore
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestPublishResultDistinguishesReleaseFailure(t *testing.T) {
@@ -76,6 +77,34 @@ func TestPublishClassifiesReleaseAfterPublication(t *testing.T) {
 	activeAttemptLocks.Delete(owner.key)
 	if _, err := store.Inspect(accepted.Request.AttemptID); err != nil {
 		t.Fatalf("published attempt not inspectable: %v", err)
+	}
+}
+
+func TestPublishMeasuresOwnerRelease(t *testing.T) {
+	store := newTestStore(t)
+	accepted, admittedAt := testAccepted(t)
+	attempt, err := store.Stage(accepted, admittedAt)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	clock := time.Unix(0, 0)
+	if err := attempt.publishMeasured(
+		testObservationFor(t, accepted),
+		func() error {
+			clock = clock.Add(time.Hour)
+			return attempt.closeLocked()
+		},
+		func() time.Time { return clock },
+	); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	timings := attempt.PublicationTimings()
+	if !timings.DurablePublicationMeasured {
+		t.Fatal("durable publication was not measured")
+	}
+	want := time.Hour - timings.Receipt
+	if timings.DurablePublication != want {
+		t.Fatalf("durable publication=%s want=%s", timings.DurablePublication, want)
 	}
 }
 

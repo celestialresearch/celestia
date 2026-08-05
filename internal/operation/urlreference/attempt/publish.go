@@ -40,14 +40,26 @@ type pendingRemovalOperations struct {
 }
 
 func (attempt *Attempt) Publish(observation Observation) error {
+	return attempt.publishMeasured(observation, attempt.closeLocked, time.Now)
+}
+
+func (attempt *Attempt) publishMeasured(
+	observation Observation,
+	release func() error,
+	now func() time.Time,
+) error {
 	attempt.mu.Lock()
 	defer attempt.mu.Unlock()
 	if attempt.closed {
 		return fmt.Errorf("%w: attempt ownership released", ErrInvalid)
 	}
+	started := now()
 	timings, err := attempt.publishLockedMeasured(observation)
+	releaseErr := release()
+	timings.DurablePublication = max(now().Sub(started)-timings.Receipt, 0)
+	timings.DurablePublicationMeasured = true
 	attempt.publication = timings
-	return publishResult(err, attempt.closeLocked())
+	return publishResult(err, releaseErr)
 }
 
 func (attempt *Attempt) publishLocked(observation Observation) error {
@@ -58,14 +70,6 @@ func (attempt *Attempt) publishLocked(observation Observation) error {
 func (attempt *Attempt) publishLockedMeasured(
 	observation Observation,
 ) (timings PublicationTimings, err error) {
-	started := time.Now()
-	defer func() {
-		timings.DurablePublication = max(
-			time.Since(started)-timings.Receipt,
-			0,
-		)
-		timings.DurablePublicationMeasured = true
-	}()
 	if err := validateObservation(observation); err != nil ||
 		observation.AttemptID != attempt.admitted.AttemptID {
 		return timings, fmt.Errorf("%w: observation", ErrInvalid)

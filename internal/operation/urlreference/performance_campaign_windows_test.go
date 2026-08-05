@@ -26,6 +26,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -277,6 +278,13 @@ func TestPerformanceCampaignMeasuresPublishedEvidence(t *testing.T) {
 	}
 	if !validCampaignResult(result, timings, *result.Response.Output) {
 		t.Fatal("verified operation rejected")
+	}
+	phases := campaignPhases(timings)
+	publication := slices.IndexFunc(phases, func(phase phaseMeasurement) bool {
+		return phase.ID == "durable_publication"
+	})
+	if publication < 0 || phases[publication].DurationNS != durationNanoseconds(timings.Publication) {
+		t.Fatal("durable publication phase did not retain its timing")
 	}
 	failedCleanup := result
 	failedCleanup.Err = ErrCleanup
