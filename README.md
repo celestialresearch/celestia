@@ -79,5 +79,8 @@ code; they do not authenticate a deliberately hostile test executable.
 
 Package overrides use:
 ```text
-package celestia.research/celestia/example 95
+package windows amd64 celestia.research/celestia/example 95
 ```
+
+Each override applies only to its exact supported Go OS and architecture. It
+is rejected if the named package is absent on that target.

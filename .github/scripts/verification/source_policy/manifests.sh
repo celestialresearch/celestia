@@ -18,7 +18,7 @@ root=$1
 work_dir=$2
 output=
 status=0
-printf 'default 90\npackage celestia.research/coverage/tools/sourcepolicy 0\n' \
+printf 'default 90\npackage windows amd64 celestia.research/coverage/tools/sourcepolicy 0\n' \
   >"$work_dir/.github/.coverage"
 cat >"$work_dir/go.mod" <<'EOF'
 module celestia.research/coverage

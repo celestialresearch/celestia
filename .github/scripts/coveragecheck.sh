@@ -24,33 +24,59 @@ usage() {
 }
 
 load_policy() {
-  local configured first second third extra
+  local configured configured_package configured_package_existing
+  local configured_target fifth first fourth second third extra
 
   default_floor=
   package_floors=
-  while read -r first second third extra; do
+  coverage_target=$(go env GOOS) || {
+    printf '%s: unable to determine Go target\n' "$policy" >&2
+    return 2
+  }
+  configured=$(go env GOARCH) || {
+    printf '%s: unable to determine Go target\n' "$policy" >&2
+    return 2
+  }
+  coverage_target+="/$configured"
+  known_targets=$(go tool dist list) || {
+    printf '%s: unable to list Go targets\n' "$policy" >&2
+    return 2
+  }
+  while read -r first second third fourth fifth extra; do
     [[ -n "${first:-}" ]] || continue
     [[ "$first" != \#* ]] || continue
-    [[ -z "${extra:-}" ]] || {
-      printf '%s: invalid coverage policy entry\n' "$policy" >&2
-      return 2
-    }
     case "$first" in
     default)
-      [[ -z "${third:-}" && -z "$default_floor" ]] || return 2
+      [[ -n "${second:-}" && -z "${third:-}" && -z "${fourth:-}" &&
+        -z "${fifth:-}" && -z "${extra:-}" && -z "$default_floor" ]] || {
+        printf '%s: invalid default coverage policy\n' "$policy" >&2
+        return 2
+      }
       default_floor=$second
       ;;
     package)
-      [[ -n "${second:-}" && -n "${third:-}" ]] || return 2
-      while read -r configured _; do
-        [[ -n "${configured:-}" ]] || continue
-        if [[ "$configured" == "$second" ]]; then
-          printf '%s: duplicate coverage policy for %s\n' \
-            "$policy" "$second" >&2
+      [[ -n "${second:-}" && -n "${third:-}" && -n "${fourth:-}" &&
+        -n "${fifth:-}" && -z "${extra:-}" ]] || {
+        printf '%s: invalid package coverage policy\n' "$policy" >&2
+        return 2
+      }
+      configured_target=$second/$third
+      configured_package=$fourth
+      configured=$fifth
+      target_is_known "$configured_target" || {
+        printf '%s: unknown Go target %s\n' "$policy" "$configured_target" >&2
+        return 2
+      }
+      while IFS=$'\t' read -r configured_target configured_package_existing _; do
+        [[ -n "${configured_target:-}" ]] || continue
+        if [[ "$configured_target" == "$second/$third" &&
+          "$configured_package_existing" == "$configured_package" ]]; then
+          printf '%s: duplicate coverage policy for %s on %s\n' \
+            "$policy" "$configured_package" "$second/$third" >&2
           return 2
         fi
       done <<<"$package_floors"
-      package_floors+="$second $third"$'\n'
+      package_floors+="$second/$third"$'\t'"$configured_package"$'\t'"$configured"$'\n'
       ;;
     *)
       printf '%s: unknown coverage policy key %s\n' "$policy" "$first" >&2
@@ -60,10 +86,21 @@ load_policy() {
   done <"$policy"
 
   validate_percentage "$default_floor" default
-  while read -r first second; do
-    [[ -n "${first:-}" ]] || continue
-    validate_percentage "$second" "$first"
+  while IFS=$'\t' read -r configured_target configured_package configured; do
+    [[ -n "${configured_target:-}" ]] || continue
+    validate_percentage "$configured" "$configured_package"
   done <<<"$package_floors"
+}
+
+target_is_known() {
+  local target=$1
+
+  [[ "$target" == */* && "$target" != */ && "$target" != /* ]] || return 1
+  grep -Fqx -- "$target" <<<"$known_targets"
+}
+
+target_applies() {
+  [[ "$1" == "$coverage_target" ]]
 }
 
 validate_percentage() {
@@ -81,31 +118,23 @@ validate_percentage() {
 create_report() {
   local profile=$1
   local report=$2
-  local packages=$3
+  local package_file=$3
   local failure_output=$4
   local go_profile=$profile
-  local package_file
 
   case "$(uname -s 2>/dev/null)" in
   CYGWIN*) go_profile=$(cygpath -w "$profile") ;;
   esac
   : >"$report"
-  package_file=$report.packages
-  printf '%s\n' "$packages" >"$package_file"
   if ! go test -p=1 -count=1 -covermode=atomic \
     -coverprofile="$go_profile" ./... 2>&1 |
     tail -c "$max_failure_output_bytes" >"$failure_output"; then
     printf 'coverage tests failed (last %s bytes):\n' \
       "$max_failure_output_bytes" >&2
     cat "$failure_output" >&2
-    rm -f -- "$package_file"
     return 1
   fi
-  report_profile "$profile" "$report" "$package_file" || {
-    rm -f -- "$package_file"
-    return 1
-  }
-  rm -f -- "$package_file"
+  report_profile "$profile" "$report" "$package_file"
 }
 
 report_profile() {
@@ -158,22 +187,26 @@ report_profile() {
 
 floor_for() {
   local package=$1
-  local configured floor
+  local configured configured_package configured_target floor
 
   floor=$default_floor
-  while read -r configured value; do
-    [[ -n "${configured:-}" ]] || continue
-    if [[ "$configured" == "$package" ]]; then
-      floor=$value
-      break
+  while IFS=$'\t' read -r configured_target configured_package configured; do
+    [[ -n "${configured_target:-}" ]] || continue
+    if [[ "$configured_target" == "$coverage_target" &&
+      "$configured_package" == "$package" ]]; then
+      printf '%s\n' "$configured"
+      return
     fi
   done <<<"$package_floors"
   printf '%s\n' "$floor"
 }
 
 enforce_report() {
-  local actual configured floor package status=0
+  local actual configured_package configured_target floor package package_file
+  local status=0
   local seen=$'\n'
+
+  package_file=$2
 
   while IFS=$'\t' read -r package actual; do
     [[ -n "$package" ]] || continue
@@ -184,10 +217,16 @@ enforce_report() {
     seen+="$package"$'\n'
   done <"$1"
 
-  while read -r configured floor; do
-    [[ -n "${configured:-}" ]] || continue
-    if [[ "$seen" != *$'\n'"$configured"$'\n'* ]]; then
-      printf 'coverage policy names unknown package %s\n' "$configured" >&2
+  while IFS=$'\t' read -r configured_target configured_package floor; do
+    [[ -n "${configured_target:-}" ]] || continue
+    target_applies "$configured_target" || continue
+    if ! grep -Fqx -- "$configured_package" "$package_file"; then
+      printf 'coverage policy names unknown package %s\n' \
+        "$configured_package" >&2
+      status=1
+    elif [[ "$seen" != *$'\n'"$configured_package"$'\n'* ]]; then
+      printf 'coverage policy names package without coverage %s\n' \
+        "$configured_package" >&2
       status=1
     fi
   done <<<"$package_floors"
@@ -213,8 +252,9 @@ run_check() {
   package_file=$report.packages
   failure_output=$(mktemp "${TMPDIR:-/tmp}/celestia-coverage-failure.XXXXXX")
   trap 'rm -f -- "${profile:-}" "${report:-}" "${package_file:-}" "${failure_output:-}"' EXIT
-  create_report "$profile" "$report" "$packages" "$failure_output"
-  enforce_report "$report"
+  printf '%s\n' "$packages" >"$package_file"
+  create_report "$profile" "$report" "$package_file" "$failure_output"
+  enforce_report "$report" "$package_file"
   rm -f -- "$profile" "$report" "$package_file" "$failure_output"
   trap - EXIT
 }
@@ -253,7 +293,7 @@ enforce_profile() (
   trap 'rm -f -- "$report" "$package_file"' EXIT
   printf '%s\n' "$packages" >"$package_file"
   report_profile "$profile" "$report" "$package_file"
-  enforce_report "$report"
+  enforce_report "$report" "$package_file"
   rm -f -- "$report" "$package_file"
 )
 
