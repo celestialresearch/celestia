@@ -60,6 +60,7 @@
   ],
   "declared_packages": [
     "internal/execution/supervision",
+    "internal/testcargo",
     "internal/operation/urlreference",
     "internal/operation/urlreference/admission",
     "internal/operation/urlreference/attempt",

@@ -16,11 +16,11 @@ package urloperation
 import (
 	"celestia.research/celestia/internal/operation/urlreference/admission"
 	"celestia.research/celestia/internal/operation/urlreference/transform"
+	"celestia.research/celestia/internal/testcargo"
 	"context"
 	"fmt"
 	"golang.org/x/sys/windows"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -35,42 +35,26 @@ func TestMain(testingMain *testing.M) {
 		os.Exit(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	command := exec.CommandContext(
-		ctx,
-		"cargo",
-		"build",
-		"--workspace",
-		"--all-targets",
-		"--locked",
-		"--target",
-		"x86_64-pc-windows-msvc",
-	)
-	command.Dir = root
-	command.Env = cargoTargetEnvironment(os.Environ(), filepath.Join(root, "target", "celestia-tests"))
-	command.Stdout = os.Stderr
-	command.Stderr = os.Stderr
-	if err := command.Run(); err != nil {
+	if err := testcargo.Build(ctx, testcargo.Request{
+		Arguments: []string{"build", "--workspace", "--all-targets", "--locked", "--target", "x86_64-pc-windows-msvc"},
+		Directory: root,
+		Environment: cargoTargetEnvironment(
+			os.Environ(), filepath.Join(root, "target", "celestia-tests"),
+		),
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "build production worker: %v\n", err)
 		os.Exit(1)
 	}
-	qualification := exec.CommandContext(
-		ctx,
-		"cargo",
-		"build",
-		"--manifest-path",
-		"worker/qualification-fixtures/Cargo.toml",
-		"--bins",
-		"--locked",
-		"--target",
-		"x86_64-pc-windows-msvc",
-	)
-	qualification.Dir = root
-	qualification.Env = cargoTargetEnvironment(
-		os.Environ(), filepath.Join(root, "target", "celestia-qualification-tests"),
-	)
-	qualification.Stdout = os.Stderr
-	qualification.Stderr = os.Stderr
-	if err := qualification.Run(); err != nil {
+	if err := testcargo.Build(ctx, testcargo.Request{
+		Arguments: []string{
+			"build", "--manifest-path", "worker/qualification-fixtures/Cargo.toml", "--bins", "--locked",
+			"--target", "x86_64-pc-windows-msvc",
+		},
+		Directory: root,
+		Environment: cargoTargetEnvironment(
+			os.Environ(), filepath.Join(root, "target", "celestia-qualification-tests"),
+		),
+	}); err != nil {
 		fmt.Fprintf(os.Stderr, "build qualification fixtures: %v\n", err)
 		os.Exit(1)
 	}

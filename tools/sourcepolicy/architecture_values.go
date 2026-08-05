@@ -35,6 +35,7 @@ func expectedProhibitedSegments() []string {
 func expectedPackages() []string {
 	return []string{
 		"internal/execution/supervision",
+		"internal/testcargo",
 		"internal/operation/urlreference",
 		"internal/operation/urlreference/admission", "internal/operation/urlreference/attempt",
 		"internal/operation/urlreference/protocol", "internal/operation/urlreference/transform",

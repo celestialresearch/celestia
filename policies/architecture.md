@@ -22,10 +22,11 @@ path segments so a specific domain term containing the same letters is not
 rejected as a substring.
 
 ## Package Ownership
-The current Production packages are the six governed URL-reference packages
-and the two repository-policy tools declared in the machine policy. An
-unregistered flat package, forwarding package or duplicate implementation is
-rejected.
+The current governed repository packages are the six Production URL-reference
+packages, the Windows test Cargo owner and the two repository-policy tools
+declared in the machine policy. `internal/testcargo` is test support only and
+cannot become runtime authority. An unregistered flat package, forwarding
+package or duplicate implementation is rejected.
 
 Every package requires one concise package comment describing its present
 owner and authority in `doc.go`.
@@ -47,7 +48,9 @@ The following directions are always rejected:
 - the independent Assurance oracle importing Production.
 
 Tests and platform files receive no broad exception. Imports are checked by
-exact module and package prefixes.
+exact module and package prefixes. The Windows test Cargo owner is restricted
+to the supervision qualification test and the two URL-operation test files
+that build fixed worker inputs.
 
 ## Prohibited Paths
 The six obsolete package roots cannot be recreated. They have no forwarding,

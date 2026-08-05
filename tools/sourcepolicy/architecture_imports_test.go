@@ -85,6 +85,15 @@ func TestArchitectureImportsRejectTestDirectionBypass(t *testing.T) {
 	if err != nil || len(findings) != 0 {
 		t.Fatalf("qualification test dependency rejected: %v, %v", findings, err)
 	}
+	readFile = func(string) ([]byte, error) {
+		return []byte("package example\nimport _ \"" + architectureModule + "/internal/testcargo\"\n"), nil
+	}
+	findings, err = architectureImportFindings(
+		[]string{supervisionQualificationTest}, readFile,
+	)
+	if err != nil || len(findings) != 0 {
+		t.Fatalf("qualification test Cargo owner rejected: %v, %v", findings, err)
+	}
 }
 
 func TestArchitectureImportsNormaliseMigrationOwners(t *testing.T) {
@@ -96,6 +105,24 @@ func TestArchitectureImportsNormaliseMigrationOwners(t *testing.T) {
 	)
 	if reason == "" {
 		t.Fatal("transformation import of execution accepted")
+	}
+}
+
+func TestArchitectureImportsRestrictTestCargoOwner(t *testing.T) {
+	t.Parallel()
+
+	readFile := func(string) ([]byte, error) {
+		return []byte("package example\nimport _ \"" + testCargoImport + "\"\n"), nil
+	}
+	findings, err := architectureImportFindings(
+		[]string{"internal/operation/urlreference/operation_windows.go"}, readFile,
+	)
+	if err != nil || len(findings) != 1 || !strings.Contains(findings[0], "test Cargo owner") {
+		t.Fatalf("runtime test Cargo import accepted: %v, %v", findings, err)
+	}
+	findings, err = architectureImportFindings([]string{urlOperationTestSupport}, readFile)
+	if err != nil || len(findings) != 0 {
+		t.Fatalf("declared test Cargo import rejected: %v, %v", findings, err)
 	}
 }
 

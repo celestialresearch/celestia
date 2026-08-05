@@ -65,6 +65,22 @@ func TestArchitectureOwnsOperationAtFinalPath(t *testing.T) {
 	}
 }
 
+func TestArchitectureOwnsTestCargoAtFinalPath(t *testing.T) {
+	t.Parallel()
+
+	policy := validArchitectureFixturePolicy()
+	if !slices.Contains(policy.Packages, "internal/testcargo") {
+		t.Fatal("test Cargo owner is not governed")
+	}
+	if findings := architecturePathFindings(
+		[]string{"internal/testcargo/rogue/helper.go"}, nil, policy,
+	); !slices.ContainsFunc(findings, func(finding string) bool {
+		return strings.Contains(finding, "source owner is not declared")
+	}) {
+		t.Fatalf("nested test Cargo source accepted: %v", findings)
+	}
+}
+
 func TestArchitectureSourceOwnership(t *testing.T) {
 	t.Parallel()
 

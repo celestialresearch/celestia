@@ -35,6 +35,7 @@ import (
 	attemptstore "celestia.research/celestia/internal/operation/urlreference/attempt"
 	workerprotocol "celestia.research/celestia/internal/operation/urlreference/protocol"
 	"celestia.research/celestia/internal/operation/urlreference/transform"
+	"celestia.research/celestia/internal/testcargo"
 )
 
 const performanceReportEnvironment = "CELESTIA_OPERATION_PERFORMANCE_REPORT"
@@ -562,14 +563,14 @@ func performanceWorker(t *testing.T) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	targetDirectory := filepath.Join(t.TempDir(), "cargo-target")
-	command := exec.CommandContext(ctx, "cargo", "build",
-		"--release", "--locked", "--target", "x86_64-pc-windows-msvc",
-		"--package", "celestia-url-reference", "--bin", "celestia-url-reference")
-	command.Dir = root
-	command.Env = append(os.Environ(), "CARGO_TARGET_DIR="+targetDirectory)
-	command.Stdout = os.Stderr
-	command.Stderr = os.Stderr
-	if err := command.Run(); err != nil {
+	if err := testcargo.Build(ctx, testcargo.Request{
+		Arguments: []string{
+			"build", "--release", "--locked", "--target", "x86_64-pc-windows-msvc",
+			"--package", "celestia-url-reference", "--bin", "celestia-url-reference",
+		},
+		Directory:   root,
+		Environment: cargoTargetEnvironment(os.Environ(), targetDirectory),
+	}); err != nil {
 		t.Fatalf("build release worker: %v", err)
 	}
 	path := filepath.Join(

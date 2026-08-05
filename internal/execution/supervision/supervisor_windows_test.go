@@ -15,6 +15,7 @@ package supervision_test
 
 import (
 	"celestia.research/celestia/internal/execution/supervision"
+	"celestia.research/celestia/internal/testcargo"
 
 	"context"
 	"crypto/sha256"
@@ -25,7 +26,6 @@ import (
 	"math"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"testing"
@@ -45,34 +45,19 @@ func TestMain(testingMain *testing.M) {
 			os.Exit(1)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		command := exec.CommandContext(
-			ctx,
-			"cargo",
-			"build",
-			"--workspace",
-			"--all-targets",
-			"--locked",
-		)
-		command.Dir = root
-		command.Stdout = os.Stderr
-		command.Stderr = os.Stderr
-		if err := command.Run(); err != nil {
+		if err := testcargo.Build(ctx, testcargo.Request{
+			Arguments: []string{"build", "--workspace", "--all-targets", "--locked"},
+			Directory: root,
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "build production worker: %v\n", err)
 			os.Exit(1)
 		}
-		qualification := exec.CommandContext(
-			ctx,
-			"cargo",
-			"build",
-			"--manifest-path",
-			"worker/qualification-fixtures/Cargo.toml",
-			"--bins",
-			"--locked",
-		)
-		qualification.Dir = root
-		qualification.Stdout = os.Stderr
-		qualification.Stderr = os.Stderr
-		if err := qualification.Run(); err != nil {
+		if err := testcargo.Build(ctx, testcargo.Request{
+			Arguments: []string{
+				"build", "--manifest-path", "worker/qualification-fixtures/Cargo.toml", "--bins", "--locked",
+			},
+			Directory: root,
+		}); err != nil {
 			fmt.Fprintf(os.Stderr, "build qualification fixtures: %v\n", err)
 			os.Exit(1)
 		}

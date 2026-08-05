@@ -29,7 +29,7 @@ const (
 	supervisionSplitDirectory  = "internal/execution/supervision/"
 	maxSupervisionSplitBytes   = 16 << 20
 	supervisionSplitPackageSHA = "9c90ef95f0d7cdace7b699acbc660febc48608fe9fd47c4a7ab1312ce3c87db2"
-	supervisionSplitSourceSHA  = "e8284926337fa91256ce6c3be6cb6c71fe0160582be664d1f5f88517d36e1a1f"
+	supervisionSplitSourceSHA  = "9649be4a93aa0c7400752afd5b9fccf3c30e7c9ff1d919ff66aa0b7654e2176d"
 	supervisionSplitTargetSHA  = "423c4b184bb6519c5778c83048160eb86059245c7beaf053ab636c67a2e69281"
 	supervisionStartBodySHA    = "8d88e58ec4bc67bb6e6cac752d6bda1d5e6cc4411b4c2531cc3ea0583c523485"
 	supervisionStartFile       = supervisionSplitDirectory + "process_start_windows.go"

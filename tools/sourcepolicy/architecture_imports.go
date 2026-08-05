@@ -21,7 +21,12 @@ import (
 	"strings"
 )
 
-const supervisionQualificationTest = "internal/execution/supervision/supervisor_windows_test.go"
+const (
+	supervisionQualificationTest = "internal/execution/supervision/supervisor_windows_test.go"
+	urlOperationTestSupport      = "internal/operation/urlreference/test_support_windows_test.go"
+	urlOperationPerformance      = "internal/operation/urlreference/performance_campaign_windows_test.go"
+	testCargoImport              = architectureModule + "/internal/testcargo"
+)
 
 func architectureImportFindings(
 	files []string,
@@ -49,7 +54,7 @@ func architectureImportFindings(
 				findings = append(findings, file+": Cgo is not declared by the architecture constitution")
 				continue
 			}
-			reason := forbiddenArchitectureImport(path.Dir(file), imported)
+			reason := forbiddenArchitectureFileImport(file, path.Dir(file), imported)
 			if file == supervisionQualificationTest {
 				reason = forbiddenSupervisionQualificationImport(imported)
 			}
@@ -73,6 +78,7 @@ func forbiddenSupervisionQualificationImport(imported string) string {
 		architectureModule + "/internal/operation/urlreference/admission",
 		architectureModule + "/internal/operation/urlreference/transform",
 		architectureModule + "/internal/operation/urlreference/protocol",
+		testCargoImport,
 	}
 	if slices.Contains(allowed, imported) ||
 		!strings.HasPrefix(imported, architectureModule+"/internal/") {
@@ -82,8 +88,15 @@ func forbiddenSupervisionQualificationImport(imported string) string {
 }
 
 func forbiddenArchitectureImport(importer, imported string) string {
+	return forbiddenArchitectureFileImport("", importer, imported)
+}
+
+func forbiddenArchitectureFileImport(file, importer, imported string) string {
 	if reason := forbiddenExternalArchitectureImport(imported); reason != "" {
 		return reason
+	}
+	if imported == testCargoImport && !testCargoImportAllowed(file) {
+		return "test Cargo owner is restricted to its declared Windows test files"
 	}
 	relative := strings.TrimPrefix(imported, architectureModule+"/")
 	if relative == imported {
@@ -97,6 +110,10 @@ func forbiddenArchitectureImport(importer, imported string) string {
 		return reason
 	}
 	return forbiddenOperationImport(importer, relative)
+}
+
+func testCargoImportAllowed(file string) bool {
+	return file == supervisionQualificationTest || file == urlOperationTestSupport || file == urlOperationPerformance
 }
 
 func forbiddenCommandImport(importer, imported string) string {
