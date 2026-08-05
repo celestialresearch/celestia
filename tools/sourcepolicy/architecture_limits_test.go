@@ -13,6 +13,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -34,30 +35,60 @@ func TestArchitectureReadBudgetRejectsAggregateInput(t *testing.T) {
 	}
 }
 
-func TestArchitectureEvaluationDeadline(t *testing.T) {
+func TestArchitectureEvaluationJoinsBlockedReader(t *testing.T) {
 	t.Parallel()
 
 	release := make(chan struct{})
-	finished := make(chan struct{})
-	var stderr bytes.Buffer
-	status := runArchitecturePolicyWithin(
-		&stderr,
-		func() ([]string, error) {
-			<-release
-			close(finished)
-			return nil, nil
-		},
-		noExecutableSources,
-		func(string) ([]byte, error) { return nil, nil },
-		20*time.Millisecond,
-	)
-	if status != 1 || !strings.Contains(stderr.String(), "deadline") {
-		t.Fatalf("status = %d, stderr = %q", status, stderr.String())
+	readerFinished := make(chan struct{})
+	started := make(chan struct{})
+	returned := make(chan int, 1)
+	released := false
+	releaseReader := func() {
+		if !released {
+			close(release)
+			released = true
+		}
 	}
-	close(release)
+	var stderr bytes.Buffer
+	t.Cleanup(func() {
+		releaseReader()
+		select {
+		case <-readerFinished:
+		case <-time.After(time.Second):
+			t.Error("blocked architecture reader did not finish")
+		}
+	})
+	go func() {
+		returned <- runArchitecturePolicy(
+			&stderr,
+			func() ([]string, error) { return []string{"go.mod"}, nil },
+			noExecutableSources,
+			func(string) ([]byte, error) {
+				close(started)
+				<-release
+				close(readerFinished)
+				return nil, errors.New("reader released")
+			},
+		)
+	}()
+	<-started
 	select {
-	case <-finished:
+	case status := <-returned:
+		t.Fatalf("blocked evaluation returned status %d", status)
+	default:
+	}
+	releaseReader()
+	select {
+	case <-readerFinished:
 	case <-time.After(time.Second):
-		t.Fatal("blocked architecture evaluation did not finish")
+		t.Fatal("blocked architecture reader did not finish")
+	}
+	select {
+	case status := <-returned:
+		if status != 1 || !strings.Contains(stderr.String(), "reader released") {
+			t.Fatalf("status = %d, stderr = %q", status, stderr.String())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("blocked architecture evaluation did not join")
 	}
 }

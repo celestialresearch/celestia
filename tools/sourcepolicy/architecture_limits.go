@@ -13,13 +13,9 @@ package main
 
 import (
 	"errors"
-	"time"
 )
 
-const (
-	maxArchitectureInputBytes = 16 << 20
-	maxArchitectureDuration   = 30 * time.Second
-)
+const maxArchitectureInputBytes = 16 << 20
 
 type architectureReadBudget struct {
 	read      func(string) ([]byte, error)

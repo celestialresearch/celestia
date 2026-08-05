@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"time"
 )
 
 func runArchitecturePolicy(
@@ -25,61 +24,23 @@ func runArchitecturePolicy(
 	executableInventory func([]string) ([]string, error),
 	readFile func(string) ([]byte, error),
 ) int {
-	return runArchitecturePolicyWithin(
-		stderr, inventory, executableInventory, readFile,
-		maxArchitectureDuration,
-	)
-}
-
-type architectureEvaluation struct {
-	findings []string
-	err      error
-}
-
-func runArchitecturePolicyWithin(
-	stderr io.Writer,
-	inventory func() ([]string, error),
-	executableInventory func([]string) ([]string, error),
-	readFile func(string) ([]byte, error),
-	duration time.Duration,
-) int {
-	result := make(chan architectureEvaluation, 1)
-	go func() {
-		findings, err := evaluateArchitecture(
-			inventory, executableInventory, readFile,
-		)
-		result <- architectureEvaluation{findings: findings, err: err}
-	}()
-	timer := time.NewTimer(duration)
-	defer timer.Stop()
-	select {
-	case evaluation := <-result:
-		return architectureEvaluationStatus(stderr, evaluation)
-	case <-timer.C:
-		select {
-		case evaluation := <-result:
-			return architectureEvaluationStatus(stderr, evaluation)
-		default:
-		}
-		writeArchitectureError(
-			stderr, errors.New("architecture evaluation deadline exceeded"),
-		)
-		return 1
-	}
+	// Readers are not cancellable. Returning early would detach repository work.
+	findings, err := evaluateArchitecture(inventory, executableInventory, readFile)
+	return architectureEvaluationStatus(stderr, findings, err)
 }
 
 func architectureEvaluationStatus(
-	stderr io.Writer, evaluation architectureEvaluation,
+	stderr io.Writer, findings []string, err error,
 ) int {
-	if evaluation.err != nil {
-		writeArchitectureError(stderr, evaluation.err)
+	if err != nil {
+		writeArchitectureError(stderr, err)
 		return 1
 	}
-	if len(evaluation.findings) == 0 {
+	if len(findings) == 0 {
 		return 0
 	}
 	writeArchitectureError(
-		stderr, errors.New(strings.Join(evaluation.findings, "\n")),
+		stderr, errors.New(strings.Join(findings, "\n")),
 	)
 	return 1
 }
