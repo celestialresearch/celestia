@@ -47,6 +47,17 @@ original_path=$PATH
 PATH="$toolchain_dir:$PATH"
 export ACTIONCHECK_TEST_TOOLCHAIN_VALUE=$toolchain_value
 first_key=$(cache_key)
+renamed_action="$work_dir/renamed-action.yml"
+mv -- "$action_file" "$renamed_action"
+action_file=$renamed_action
+renamed_key=$(cache_key)
+[[ "$first_key" != "$renamed_key" ]] || {
+  printf 'action cache ignored an action path\n' >&2
+  exit 1
+}
+mv -- "$action_file" "$work_dir/action.yml"
+action_file="$work_dir/action.yml"
+
 printf 'exceptions-v2\n' >"$currency_file"
 second_key=$(cache_key)
 [[ "$first_key" != "$second_key" ]] || {

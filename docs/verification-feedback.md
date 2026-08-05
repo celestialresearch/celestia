@@ -146,10 +146,11 @@ action lookup.
 
 Action cache-key construction previously started one `git hash-object` process
 for every governed action and policy file. It now sends the same ordered,
-NUL-delimited path inventory through bounded `xargs -0` batches. The cache
-self-test uses a deterministic toolchain while mutating non-toolchain inputs
-then changes that toolchain for the dedicated relevance case. Its focused warm
-observation fell from 20 seconds to 4.5 seconds without removing an input case.
+NUL-delimited path inventory through bounded `xargs -0` batches and hashes the
+ordered paths as well as their content. The cache self-test uses a deterministic
+toolchain while mutating non-toolchain inputs, renaming an action then changing
+that toolchain for the dedicated relevance case. Its focused warm observation
+fell from 20 seconds to 4.5 seconds without removing an input case.
 
 Action verification previously parsed and validated every workflow once to
 inventory remote actions then again to enforce permissions. One source-bound

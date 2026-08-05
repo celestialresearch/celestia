@@ -310,6 +310,7 @@ cache_key() (
     "$module_sum_file" >>"$inventory"
 
   {
+    cat "$inventory"
     xargs -0 "$git_hash_bin" hash-object -- <"$inventory"
     toolchain_fingerprint
     git --version
