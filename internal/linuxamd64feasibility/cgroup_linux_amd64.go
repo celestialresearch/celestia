@@ -80,10 +80,9 @@ func openCgroupDirectory(root string) (cgroupDirectory, error) {
 	if err != nil {
 		return cgroupDirectory{}, err
 	}
-	for _, part := range strings.Split(strings.TrimPrefix(root, "/"), "/") {
+	for part := range strings.SplitSeq(strings.TrimPrefix(root, "/"), "/") {
 		if part == "" || part == "." || part == ".." {
-			_ = unix.Close(fd)
-			return cgroupDirectory{}, unix.EINVAL
+			return cgroupDirectory{}, errors.Join(unix.EINVAL, unix.Close(fd))
 		}
 		next, openErr := unix.Openat(fd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 		closeErr := unix.Close(fd)
@@ -91,8 +90,7 @@ func openCgroupDirectory(root string) (cgroupDirectory, error) {
 			return cgroupDirectory{}, errors.Join(openErr, closeErr)
 		}
 		if closeErr != nil {
-			_ = unix.Close(next)
-			return cgroupDirectory{}, closeErr
+			return cgroupDirectory{}, errors.Join(closeErr, unix.Close(next))
 		}
 		fd = next
 	}
@@ -144,11 +142,11 @@ func (directory cgroupDirectory) mountRoot() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer mounts.Close()
-	mount, _, err := mountedFilesystemIdentity(
+	mount, _, parseErr := mountedFilesystemIdentity(
 		io.LimitReader(mounts, maxMountinfoBytes+1),
 		path.Clean(resolved),
 	)
+	err = errors.Join(parseErr, mounts.Close())
 	return err == nil && mount == path.Clean(resolved), err
 }
 

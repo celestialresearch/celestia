@@ -17,8 +17,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"golang.org/x/sys/unix"
 )
 
 func TestOwnedCgroupLeafRemovesCreatedDirectory(t *testing.T) {
@@ -59,7 +57,7 @@ func TestOwnedCgroupLeafRefusesReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open root: %v", err)
 	}
-	defer directory.close()
+	defer closeCgroupDirectory(t, directory)
 	leaf, err := directory.createLeaf()
 	if err != nil {
 		t.Fatalf("create leaf: %v", err)
@@ -81,7 +79,6 @@ func TestOwnedCgroupLeafRefusesReplacement(t *testing.T) {
 	if _, err := os.Stat(name); err != nil {
 		t.Fatalf("replacement missing: %v", err)
 	}
-	_ = unix.Close(leaf.fd)
 }
 
 func TestCgroupLeafPreservesRefusalAfterCleanupFailure(t *testing.T) {
@@ -90,7 +87,7 @@ func TestCgroupLeafPreservesRefusalAfterCleanupFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open root: %v", err)
 	}
-	defer directory.close()
+	defer closeCgroupDirectory(t, directory)
 	result := useCgroupLeaf(directory, func(leaf ownedCgroupLeaf) cgroupResult {
 		name := filepath.Join(root, leaf.name)
 		if err := os.Rename(name, name+"-moved"); err != nil {
@@ -172,9 +169,18 @@ func TestCgroupDirectoryRefusesLinksAndParentTraversal(t *testing.T) {
 	for _, value := range []string{link, root + "/../root"} {
 		directory, err := openCgroupDirectory(value)
 		if err == nil {
-			_ = directory.close()
+			if closeErr := directory.close(); closeErr != nil {
+				t.Errorf("close unsafe root: %v", closeErr)
+			}
 			t.Fatalf("opened unsafe root %q", value)
 		}
+	}
+}
+
+func closeCgroupDirectory(t *testing.T, directory cgroupDirectory) {
+	t.Helper()
+	if err := directory.close(); err != nil {
+		t.Errorf("close root: %v", err)
 	}
 }
 

@@ -45,13 +45,12 @@ func rootFilesystem(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer mounts.Close()
 	name, err = filepath.Abs(name)
 	if err != nil {
 		return "", err
 	}
-	mounted, err := mountedFilesystem(io.LimitReader(mounts, maxMountinfoBytes+1), filepath.Clean(name))
-	if err != nil {
+	mounted, parseErr := mountedFilesystem(io.LimitReader(mounts, maxMountinfoBytes+1), filepath.Clean(name))
+	if err := errors.Join(parseErr, mounts.Close()); err != nil {
 		return "", err
 	}
 	return evidenceFilesystem(filesystem, mounted), nil
