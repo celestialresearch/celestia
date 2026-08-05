@@ -86,31 +86,24 @@ func TestPerformanceManifestBindsResourceOwners(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(root, "docs", "contracts", "governed_url_reference_performance_v1.json"))
+	repository, err := os.OpenRoot(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var manifest struct {
-		Bounds struct {
-			Processes              uint64 `json:"processes"`
-			MemoryBytes            uint64 `json:"memory_bytes"`
-			OutputBytes            uint64 `json:"output_bytes"`
-			WorkerTimeMilliseconds uint64 `json:"worker_time_milliseconds"`
-			PersistenceBytes       uint64 `json:"persistence_bytes"`
-		} `json:"bounds"`
-		Resources []struct {
-			ID    string `json:"id"`
-			Bound string `json:"bound"`
-		} `json:"resources"`
+	t.Cleanup(func() {
+		if err := repository.Close(); err != nil {
+			t.Errorf("close repository root: %v", err)
+		}
+	})
+	data, err := repository.ReadFile("docs/contracts/governed_url_reference_performance_v1.json")
+	if err != nil {
+		t.Fatal(err)
 	}
+	var manifest performanceManifestBounds
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Bounds.Processes != uint64(workerprotocol.Processes) ||
-		manifest.Bounds.MemoryBytes != uint64(workerprotocol.MemoryBytes) ||
-		manifest.Bounds.OutputBytes != uint64(maxPerformanceReportBytes) ||
-		manifest.Bounds.WorkerTimeMilliseconds != uint64(workerprotocol.TimeoutMS) ||
-		manifest.Bounds.PersistenceBytes != uint64(maxPerformanceEvidenceBytes) {
+	if !validPerformanceManifestBounds(manifest.Bounds) {
 		t.Fatalf("bounds=%+v", manifest.Bounds)
 	}
 	want := fmt.Sprintf("One attempt bundle and %d aggregate output bytes", maxPerformanceEvidenceBytes)
@@ -126,6 +119,30 @@ func TestPerformanceManifestBindsResourceOwners(t *testing.T) {
 	if matched != 1 {
 		t.Fatalf("temporary evidence resources=%d", matched)
 	}
+}
+
+type performanceManifestBounds struct {
+	Bounds    performanceBounds `json:"bounds"`
+	Resources []struct {
+		ID    string `json:"id"`
+		Bound string `json:"bound"`
+	} `json:"resources"`
+}
+
+type performanceBounds struct {
+	Processes              uint64 `json:"processes"`
+	MemoryBytes            uint64 `json:"memory_bytes"`
+	OutputBytes            uint64 `json:"output_bytes"`
+	WorkerTimeMilliseconds uint64 `json:"worker_time_milliseconds"`
+	PersistenceBytes       uint64 `json:"persistence_bytes"`
+}
+
+func validPerformanceManifestBounds(bounds performanceBounds) bool {
+	return bounds.Processes == uint64(workerprotocol.Processes) &&
+		bounds.MemoryBytes == uint64(workerprotocol.MemoryBytes) &&
+		bounds.OutputBytes == uint64(maxPerformanceReportBytes) &&
+		bounds.WorkerTimeMilliseconds == uint64(workerprotocol.TimeoutMS) &&
+		bounds.PersistenceBytes == uint64(maxPerformanceEvidenceBytes)
 }
 
 func TestPerformanceCampaignUsesFreshColdAndSharedWarmOperation(t *testing.T) {

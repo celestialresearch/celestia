@@ -96,6 +96,7 @@ func performanceReportSemanticCases(
 	t *testing.T,
 	valid performanceReport,
 ) map[string]func() []byte {
+	t.Helper()
 	return map[string]func() []byte{
 		"missing phase":      func() []byte { return marshalPerformanceReport(t, missingPhase(clonePerformanceReport(t, valid))) },
 		"duplicate phase":    func() []byte { return marshalPerformanceReport(t, duplicatePhase(clonePerformanceReport(t, valid))) },
@@ -159,6 +160,7 @@ func performanceReportBindingCases(
 	t *testing.T,
 	valid performanceReport,
 ) map[string]func() []byte {
+	t.Helper()
 	return map[string]func() []byte{
 		"wrong corpus digest": func() []byte {
 			report := clonePerformanceReport(t, valid)
