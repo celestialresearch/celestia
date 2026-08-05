@@ -66,6 +66,24 @@ func TestPerformanceCampaignRequiresIgnoredOutput(t *testing.T) {
 	}
 }
 
+func TestPerformanceCampaignRefusesExternalOutputBeforeProbe(t *testing.T) {
+	probed := false
+	err := validateCampaignOutput(
+		filepath.Join(t.TempDir(), "performance.json"),
+		ignoredPerformanceOutput,
+		func(string) error {
+			probed = true
+			return nil
+		},
+	)
+	if !errors.Is(err, errPerformanceReport) {
+		t.Fatalf("external output error=%v", err)
+	}
+	if probed {
+		t.Fatal("external output was probed")
+	}
+}
+
 func TestPerformanceCampaignRejectsReparseOutputAncestry(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "reports", "candidate", "report.json")

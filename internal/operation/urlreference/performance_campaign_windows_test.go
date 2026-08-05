@@ -444,11 +444,8 @@ func TestPerformanceCampaignMeasuresPublishedEvidence(t *testing.T) {
 
 func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCampaign, error) {
 	t.Helper()
-	if err := validatePerformanceOutput(output); err != nil {
-		return performanceCampaign{}, fmt.Errorf("validate performance report path: %w", err)
-	}
-	if err := ignoredPerformanceOutput(output); err != nil {
-		return performanceCampaign{}, fmt.Errorf("validate performance report ignore: %w", err)
+	if err := validateCampaignOutput(output, ignoredPerformanceOutput, validatePerformanceOutput); err != nil {
+		return performanceCampaign{}, err
 	}
 	root, err := repositoryRoot()
 	if err != nil {
@@ -504,6 +501,20 @@ func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCa
 			return writePerformanceReport(output, report)
 		},
 	}, nil
+}
+
+func validateCampaignOutput(
+	output string,
+	authorise func(string) error,
+	probe func(string) error,
+) error {
+	if err := authorise(output); err != nil {
+		return fmt.Errorf("validate performance report ignore: %w", err)
+	}
+	if err := probe(output); err != nil {
+		return fmt.Errorf("validate performance report path: %w", err)
+	}
+	return nil
 }
 
 func performanceWorker(t *testing.T) string {
