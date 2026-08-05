@@ -13,12 +13,22 @@
 
 package linuxamd64feasibility
 
-import "golang.org/x/sys/unix"
+import (
+	"bufio"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"golang.org/x/sys/unix"
+)
 
 const (
 	cgroup2Filesystem = 0x63677270
 	ext4Filesystem    = 0xef53
 	xfsFilesystem     = 0x58465342
+	maxMountinfoBytes = 1 << 20
 )
 
 func cgroupV2(name string) (bool, error) {
@@ -31,22 +41,78 @@ func rootFilesystem(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return evidenceFilesystem(filesystem), nil
+	mounts, err := os.Open("/proc/self/mountinfo")
+	if err != nil {
+		return "", err
+	}
+	defer mounts.Close()
+	name, err = filepath.Abs(name)
+	if err != nil {
+		return "", err
+	}
+	mounted, err := mountedFilesystem(io.LimitReader(mounts, maxMountinfoBytes+1), filepath.Clean(name))
+	if err != nil {
+		return "", err
+	}
+	return evidenceFilesystem(filesystem, mounted), nil
 }
 
 func isCgroupV2(filesystem int64) bool {
 	return filesystem == cgroup2Filesystem
 }
 
-func evidenceFilesystem(filesystem int64) string {
-	switch filesystem {
-	case ext4Filesystem:
+func evidenceFilesystem(filesystem int64, mounted string) string {
+	switch {
+	case filesystem == ext4Filesystem && mounted == "ext4":
 		return "ext4"
-	case xfsFilesystem:
+	case filesystem == xfsFilesystem && mounted == "xfs":
 		return "xfs"
 	default:
 		return "unsupported"
 	}
+}
+
+func mountedFilesystem(reader io.Reader, target string) (string, error) {
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 4096), maxMountinfoBytes)
+	bestMount := ""
+	bestFilesystem := ""
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		separator := fieldIndex(fields, "-")
+		if len(fields) < 7 || separator < 6 || separator+1 >= len(fields) {
+			return "", errors.New("malformed mountinfo")
+		}
+		mount := unescapeMountPath(fields[4])
+		if containsPath(mount, target) && len(mount) > len(bestMount) {
+			bestMount = mount
+			bestFilesystem = fields[separator+1]
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
+	}
+	if bestMount == "" {
+		return "", errors.New("mount not found")
+	}
+	return bestFilesystem, nil
+}
+
+func fieldIndex(fields []string, value string) int {
+	for index, field := range fields {
+		if field == value {
+			return index
+		}
+	}
+	return -1
+}
+
+func unescapeMountPath(value string) string {
+	return strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`).Replace(value)
+}
+
+func containsPath(mount, target string) bool {
+	return target == mount || mount == "/" || strings.HasPrefix(target, mount+"/")
 }
 
 func filesystemType(name string) (int64, error) {
