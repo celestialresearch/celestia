@@ -239,12 +239,21 @@ After source-policy consolidation, one equivalent warm Policy observation was
 Test Skips and less than one second for its other four checks. This single
 observation demonstrates removed orchestration but is not a stable benchmark.
 
-ShellCheck now analyses two dependency-complete groups concurrently. The root
+ShellCheck initially analysed two dependency-complete groups concurrently. The root
 and action-policy group includes the shared verification fixture; the
 verification group retains its complete fixture closure. On the same Windows
 host, one sequential warm observation took 62 seconds and the two-group form
 took 22 seconds. Three complete warm Config observations after the change took
 33.3, 34.9 and 36.3 seconds. Both groups have controlled failure evidence.
+
+The maintained shell corpus has four independently analysable families: root,
+action policy, verification and source policy. Against Product `3df05da`,
+three alternating warm comparisons recorded 46, 45 and 46 seconds for the
+two-group ShellCheck stage and 42, 39 and 38 seconds for the byte-identical
+four-group candidate. The median fell from 46 to 39 seconds on the measured
+host. Each group has a controlled failure fixture; groups receive the source
+files needed for indirect function and sourced-file analysis and write
+diagnostics to separate temporary files.
 
 Licence verification now classifies files and compares the ten required header
 lines with Bash built-ins. Three equivalent warm Windows observations fell

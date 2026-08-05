@@ -150,7 +150,9 @@ EOF
 chmod +x "$fake_bin/go"
 for failed_path in \
   .github/scripts/actioncheck/cache_test.sh \
-  .github/scripts/verification/coverage_test.sh; do
+  .github/scripts/changecheck.sh \
+  .github/scripts/verification/coverage_test.sh \
+  .github/scripts/verification/source_policy/architecture.sh; do
   shellcheck_log="$work_dir/shellcheck.log"
   : >"$shellcheck_log"
   set +e
@@ -173,8 +175,8 @@ for failed_path in \
       "$failed_path" "$output" >&2
     return 1
   }
-  [[ $(wc -l <"$shellcheck_log") -eq 2 ]] || {
-    printf 'Config did not run both ShellCheck groups: %s\n' "$failed_path" >&2
+  [[ $(wc -l <"$shellcheck_log") -eq 4 ]] || {
+    printf 'Config did not run all ShellCheck groups: %s\n' "$failed_path" >&2
     return 1
   }
 done

@@ -168,25 +168,33 @@ check_config() {
 }
 
 check_shell() (
-  local base=()
+  local action=()
   local finished
   local output_dir
   local pid
   local pids=()
+  local root=()
   local script_list
   local status=0
   local verification=()
+  local verification_source_policy=()
 
   script_list=$(find .github/scripts -type f -name '*.sh' -print | sort) ||
     return
   while IFS= read -r script; do
     [[ -n "$script" ]] || continue
     case "$script" in
+      .github/scripts/verification/source_policy/*)
+        verification_source_policy+=("$script")
+        ;;
       .github/scripts/verification/*)
         verification+=("$script")
         ;;
-      .github/scripts/actioncheck/* | .github/scripts/*.sh)
-        base+=("$script")
+      .github/scripts/actioncheck/*)
+        action+=("$script")
+        ;;
+      .github/scripts/*.sh)
+        root+=("$script")
         ;;
       *)
         printf 'Unassigned shell source: %s\n' "$script" >&2
@@ -194,26 +202,36 @@ check_shell() (
         ;;
     esac
   done <<<"$script_list"
-  ((${#base[@]} > 0 && ${#verification[@]} > 0)) || return 1
+  ((${#action[@]} > 0 && ${#root[@]} > 0 &&
+    ${#verification[@]} > 0 && ${#verification_source_policy[@]} > 0)) ||
+    return 1
 
-  # Root tests source the verification fixture, so both analysis groups need it.
-  base+=(.github/scripts/verification/fixture.sh)
+  # Test groups include the source files they analyse indirectly.
+  action+=(.github/scripts/actioncheck.sh)
+  root+=(.github/scripts/verification/fixture.sh)
+  verification_source_policy+=(.github/scripts/verification/fixture.sh)
   output_dir=$(mktemp -d "${TMPDIR:-/tmp}/celestia-shellcheck.XXXXXX") ||
     return 1
   trap 'rm -rf -- "$output_dir"' EXIT
   trap 'exit 1' HUP INT TERM
 
-  go tool shellcheck --severity=style "${base[@]}" \
-    >"$output_dir/base" 2>&1 &
+  go tool shellcheck --severity=style "${root[@]}" \
+    >"$output_dir/root" 2>&1 &
+  pids+=("$!")
+  go tool shellcheck --severity=style "${action[@]}" \
+    >"$output_dir/action" 2>&1 &
   pids+=("$!")
   go tool shellcheck --severity=style "${verification[@]}" \
     >"$output_dir/verification" 2>&1 &
+  pids+=("$!")
+  go tool shellcheck --severity=style "${verification_source_policy[@]}" \
+    >"$output_dir/verification-source-policy" 2>&1 &
   pids+=("$!")
 
   for pid in "${pids[@]}"; do
     wait "$pid" || status=1
   done
-  for finished in base verification; do
+  for finished in root action verification verification-source-policy; do
     [[ ! -s "$output_dir/$finished" ]] || cat -- "$output_dir/$finished"
   done
   return "$status"
