@@ -9,5 +9,14 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-// Package linuxamd64feasibility owns bounded Linux AMD64 feasibility controls.
+//go:build !linux || !amd64
+
 package linuxamd64feasibility
+
+import "testing"
+
+func TestCgroupPrimitiveRequiresLinuxAMD64(t *testing.T) {
+	if result := cgroupPrimitive("ignored"); result != unavailableCgroup("linux_amd64_required") {
+		t.Fatalf("result=%+v", result)
+	}
+}

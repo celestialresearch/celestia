@@ -18,6 +18,11 @@ The maintainer-only `tools/linuxamd64feasibility` preflight performs bounded
 read-only checks and emits only `unavailable` or `indeterminate`. It is not a
 release artefact and cannot qualify the platform.
 
+The internal cgroup checkpoint validates a caller-supplied delegated cgroup v2
+root then creates and removes one owned empty leaf. It does not start a
+process, change a controller value, retain an observation or enable Linux
+operation execution or attempt persistence.
+
 The `celestia.linux-amd64-feasibility-observation.v1` schema is reserved for a
 future native probe. Its synthetic fixtures prove only strict decoding and
 state validation. They do not qualify Linux, enable operation execution or

@@ -18,8 +18,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
 const (
@@ -150,32 +148,15 @@ func inspectCgroup(source preflightSource, platform string) (preflightResult, bo
 }
 
 func inspectControllers(controllers []byte, platform string) (preflightResult, bool) {
-	valid, complete := requiredControllers(controllers)
+	available, valid := cgroupControllers(controllers)
 	if !valid {
 		return indeterminate("cgroup_controllers_malformed", platform), true
 	}
-	if !complete {
+	if !available["cpu"] || !available["memory"] || !available["pids"] {
 		return unavailable("cgroup_controllers_missing", platform), true
 	}
 	return preflightResult{}, false
 }
-
-func requiredControllers(data []byte) (bool, bool) {
-	if len(data) == 0 || !utf8.Valid(data) {
-		return false, false
-	}
-	controllers := map[string]bool{}
-	for name := range strings.FieldsSeq(string(data)) {
-		if strings.IndexFunc(name, func(character rune) bool {
-			return unicode.IsControl(character) || character > unicode.MaxASCII
-		}) >= 0 {
-			return false, false
-		}
-		controllers[name] = true
-	}
-	return true, controllers["cpu"] && controllers["memory"] && controllers["pids"]
-}
-
 func unavailable(reason, platform string) preflightResult {
 	return preflightResult{
 		SchemaVersion: schemaVersion,
