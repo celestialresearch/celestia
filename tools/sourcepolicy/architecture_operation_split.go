@@ -22,9 +22,9 @@ import (
 const (
 	operationSplitDirectory  = "internal/operation/urlreference/"
 	maxOperationSplitBytes   = 8 << 20
-	operationSplitPackageSHA = "9d0b7c75dd9064313946cdf21586fff6c90c8fd73f8c52a9c4ca040503037aa1"
-	operationSplitSourceSHA  = "f33b5b8a3a3dcc5e40f8141d1795e69e9b001a8f8f29eecb1cff8d24476385de"
-	operationSplitTargetSHA  = "02262fa1df8e89fe16902e54ced9615cea1a115879023b7dca5887205494042b"
+	operationSplitPackageSHA = "232b7f68185459946d4cfa1354a4b0718b2cfb3c75ffe2b0c393c3a61db1ad87"
+	operationSplitSourceSHA  = "d1c72365f894c290aee57179c56c16ebdd99cd8f9659968d13f768f01c09ff94"
+	operationSplitTargetSHA  = "04a16a0bb3e8375d859580e150d9ae61c7c4a954e1a81ee228e4605926c74dc4"
 )
 
 var operationSplitOwners = map[string]string{
@@ -52,6 +52,7 @@ var operationSplitOwners = map[string]string{
 	"test_support_windows_test.go":             "test-support",
 	"verification_windows.go":                  "verification",
 	"verification_windows_test.go":             "verification",
+	"workload_corpus_test.go":                  "performance-corpus",
 	"workload_corpus_windows_test.go":          "performance-corpus",
 }
 

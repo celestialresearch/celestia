@@ -50,7 +50,7 @@ func TestOperationSplitInventoryBindsOwner(t *testing.T) {
 	}
 	owners := map[string]string{}
 	maps.Copy(owners, operationSplitOwners)
-	owners["evidence_windows.go"] = "projection"
+	owners["workload_corpus_test.go"] = "performance-report"
 	got, err := operationSplitInventoryFor(files, readSource, owners)
 	if err != nil {
 		t.Fatalf("mutated inventory: %v", err)

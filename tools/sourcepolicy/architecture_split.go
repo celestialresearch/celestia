@@ -93,6 +93,7 @@ func splitDirectories() []splitDirectory {
 				"protocol_windows_test.go", "publication_windows_test.go",
 				"test_support_windows_test.go", "verification_windows.go",
 				"verification_windows_test.go", "workload_corpus_windows_test.go",
+				"workload_corpus_test.go",
 				"performance_campaign_unsupported_test.go", "performance_campaign_windows_test.go",
 				"performance_report_decoder_test.go", "performance_output_windows_test.go",
 				"performance_report_model_test.go", "performance_report_test.go",
