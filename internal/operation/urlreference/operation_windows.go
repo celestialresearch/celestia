@@ -61,6 +61,7 @@ type operationTimings struct {
 	Publication  time.Duration
 	Receipt      time.Duration
 	Total        time.Duration
+	Resources    supervision.Resources
 	measured     phaseMask
 }
 
@@ -106,6 +107,7 @@ func (timings *operationTimings) absorb(
 	timings.Output = process.Timings.Output
 	timings.Diagnostics = process.Timings.Diagnostics
 	timings.Lifecycle = process.Timings.Lifecycle
+	timings.Resources = process.Resources
 	timings.Protocol = response.Protocol
 	timings.Verification = response.Verification
 	if process.Timings.PreparationMeasured {

@@ -15,6 +15,7 @@ package urloperation
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -46,6 +47,12 @@ func TestOperationMeasuresEveryPhase(t *testing.T) {
 	if result.Process.Timings != (supervision.Timings{}) {
 		t.Fatal("caller result exposes internal phase timings")
 	}
+	if result.Process.Resources != (supervision.Resources{}) {
+		t.Fatal("caller result exposes internal resource measurements")
+	}
+	if !timings.Resources.Measured || timings.Resources.Err != nil {
+		t.Fatalf("resource measurements = %+v", timings.Resources)
+	}
 }
 
 func TestOperationDoesNotMeasureMissingVerification(t *testing.T) {
@@ -70,6 +77,25 @@ func TestOperationDoesNotMeasureMissingVerification(t *testing.T) {
 	if !timings.ProtocolMeasured || !timings.WorkerMeasured ||
 		timings.VerificationMeasured {
 		t.Fatalf("rejected response timings = %+v", timings)
+	}
+}
+
+func TestOperationKeepsResourceFailureInternal(t *testing.T) {
+	failure := errors.New("query resource measurements")
+	process := supervision.Outcome{
+		Status:          supervision.Completed,
+		CleanupComplete: true,
+		Resources:       supervision.Resources{Err: failure},
+	}
+	var timings operationTimings
+	timings.absorb(process, responseTimings{})
+	if !errors.Is(timings.Resources.Err, failure) {
+		t.Fatalf("resource error = %v", timings.Resources.Err)
+	}
+	projected := callerProcess(process)
+	if projected.Status != supervision.Completed || !projected.CleanupComplete ||
+		projected.Resources != (supervision.Resources{}) {
+		t.Fatalf("projected process = %+v", projected)
 	}
 }
 

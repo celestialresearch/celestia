@@ -56,6 +56,7 @@ type Outcome struct {
 	CleanupComplete bool
 	Err             error
 	Timings         Timings
+	Resources       Resources
 }
 
 type Timings struct {
@@ -71,6 +72,23 @@ type Timings struct {
 	OutputMeasured      bool
 	DiagnosticsMeasured bool
 	LifecycleMeasured   bool
+}
+
+// Resources contains non-authoritative Windows process measurements. Commit
+// and I/O values are Job Object aggregates; only PeakWorkingSet is resident.
+type Resources struct {
+	CPUTime           time.Duration
+	PeakWorkingSet    uint64
+	PeakProcessCommit uint64
+	PeakJobCommit     uint64
+	ReadOperations    uint64
+	WriteOperations   uint64
+	OtherOperations   uint64
+	ReadBytes         uint64
+	WriteBytes        uint64
+	OtherBytes        uint64
+	Measured          bool
+	Err               error
 }
 
 func New(workerPath string, limits Limits) (*Supervisor, error) {

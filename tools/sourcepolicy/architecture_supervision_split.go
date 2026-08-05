@@ -28,54 +28,56 @@ import (
 const (
 	supervisionSplitDirectory  = "internal/execution/supervision/"
 	maxSupervisionSplitBytes   = 16 << 20
-	supervisionSplitPackageSHA = "eb7c1708a470fd614025a75081168a20efbd51f2207d003d29e57a97eaa41843"
-	supervisionSplitSourceSHA  = "02fcad48062f509aa9da56cab6f6ef662f74ec3c5115d2be5ce6eea01ac0f7f5"
-	supervisionSplitTargetSHA  = "d1a257b599cd2a7eb2367b7f26ef81e99f0aedcd36548d1e71e7090536d7ad31"
+	supervisionSplitPackageSHA = "9c90ef95f0d7cdace7b699acbc660febc48608fe9fd47c4a7ab1312ce3c87db2"
+	supervisionSplitSourceSHA  = "de57058e0f17ba32ed42e3d372545f35fbd730ffa4e764dcd373d49585f8ff5c"
+	supervisionSplitTargetSHA  = "561257e57c4d85f4e18af96e7c36cfff763b098f68c960352adad7fc76e9b7e2"
 	supervisionStartBodySHA    = "8d88e58ec4bc67bb6e6cac752d6bda1d5e6cc4411b4c2531cc3ea0583c523485"
 	supervisionStartFile       = supervisionSplitDirectory + "process_start_windows.go"
 	supervisionStartFunction   = "startSuspendedWith"
 )
 
 var supervisionSplitOwners = map[string]string{
-	"cleanup_windows.go":                  "cleanup",
-	"cleanup_windows_test.go":             "cleanup",
-	"container_errors_windows_test.go":    "launch",
-	"container_fault_windows_test.go":     "launch",
-	"doc.go":                              "contract",
-	"environment_windows_test.go":         "launch",
-	"image_errors_windows_test.go":        "image",
-	"image_windows.go":                    "image",
-	"image_windows_test.go":               "image",
-	"launch_preparation_windows_test.go":  "launch",
-	"launch_windows.go":                   "launch",
-	"native_fault_windows_test.go":        "native",
-	"native_layout_windows_test.go":       "native",
-	"native_pointer_windows.go":           "native",
-	"native_stream_windows_test.go":       "native",
-	"native_test_helpers_windows_test.go": "native",
-	"native_wait_windows_test.go":         "native",
-	"native_windows.go":                   "native",
-	"observation_windows.go":              "observation",
-	"outcome_windows.go":                  "outcome",
-	"outcome_windows_test.go":             "outcome",
-	"pipes_windows.go":                    "streams",
-	"process_start_fault_windows_test.go": "startup",
-	"process_start_windows.go":            "startup",
-	"process_tree_windows_test.go":        "qualification",
-	"resource_close_windows_test.go":      "resources",
-	"resources_windows.go":                "resources",
-	"runtime_windows.go":                  "launch",
-	"startup_cleanup_windows_test.go":     "cleanup",
-	"stream_result_windows_test.go":       "streams",
-	"stream_windows.go":                   "streams",
-	"supervisor.go":                       "contract",
-	"supervisor_unsupported.go":           "platform",
-	"supervisor_unsupported_test.go":      "platform",
-	"supervisor_windows.go":               "orchestration",
-	"supervisor_windows_test.go":          "qualification",
-	"timing_windows.go":                   "timing",
-	"wait_windows.go":                     "wait",
-	"wait_windows_test.go":                "wait",
+	"cleanup_windows.go":                   "cleanup",
+	"cleanup_windows_test.go":              "cleanup",
+	"container_errors_windows_test.go":     "launch",
+	"container_fault_windows_test.go":      "launch",
+	"doc.go":                               "contract",
+	"environment_windows_test.go":          "launch",
+	"image_errors_windows_test.go":         "image",
+	"image_windows.go":                     "image",
+	"image_windows_test.go":                "image",
+	"launch_preparation_windows_test.go":   "launch",
+	"launch_windows.go":                    "launch",
+	"native_fault_windows_test.go":         "native",
+	"native_layout_windows_test.go":        "native",
+	"native_pointer_windows.go":            "native",
+	"native_stream_windows_test.go":        "native",
+	"native_test_helpers_windows_test.go":  "native",
+	"native_wait_windows_test.go":          "native",
+	"native_windows.go":                    "native",
+	"observation_windows.go":               "observation",
+	"outcome_windows.go":                   "outcome",
+	"outcome_windows_test.go":              "outcome",
+	"pipes_windows.go":                     "streams",
+	"process_start_fault_windows_test.go":  "startup",
+	"process_start_windows.go":             "startup",
+	"process_tree_windows_test.go":         "qualification",
+	"resource_close_windows_test.go":       "resources",
+	"resource_measurement_windows.go":      "resources",
+	"resource_measurement_windows_test.go": "resources",
+	"resources_windows.go":                 "resources",
+	"runtime_windows.go":                   "launch",
+	"startup_cleanup_windows_test.go":      "cleanup",
+	"stream_result_windows_test.go":        "streams",
+	"stream_windows.go":                    "streams",
+	"supervisor.go":                        "contract",
+	"supervisor_unsupported.go":            "platform",
+	"supervisor_unsupported_test.go":       "platform",
+	"supervisor_windows.go":                "orchestration",
+	"supervisor_windows_test.go":           "qualification",
+	"timing_windows.go":                    "timing",
+	"wait_windows.go":                      "wait",
+	"wait_windows_test.go":                 "wait",
 }
 
 func supervisionSplitDeclarationFindings(

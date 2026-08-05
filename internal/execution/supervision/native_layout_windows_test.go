@@ -76,4 +76,18 @@ func TestNativeStructureLayouts(t *testing.T) {
 	if offset := unsafe.Offsetof(accounting.activeProcesses); offset != 40 {
 		t.Fatalf("active process offset = %d, want 40", offset)
 	}
+	var resources jobBasicAndIOAccounting
+	if size := unsafe.Sizeof(resources); size != 96 {
+		t.Fatalf("job resource size = %d, want 96", size)
+	}
+	if offset := unsafe.Offsetof(resources.io); offset != 48 {
+		t.Fatalf("job I/O offset = %d, want 48", offset)
+	}
+	var counters processMemoryCounters
+	if size := unsafe.Sizeof(counters); size != 72 {
+		t.Fatalf("process counters size = %d, want 72", size)
+	}
+	if offset := unsafe.Offsetof(counters.peakWorkingSet); offset != 8 {
+		t.Fatalf("peak working set offset = %d, want 8", offset)
+	}
 }
