@@ -458,6 +458,7 @@ devcheck_config_test.sh
 rust_config_test.sh
 rust_integration_test.sh
 rust_artefact_test.sh
+modcheck_cache_test.sh
 coverage_test.sh
 source_policy_test.sh
 licence_test.sh

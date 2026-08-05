@@ -126,8 +126,17 @@ check_update_diff() (
   return "$status"
 )
 
-cache_key() {
+cache_key() (
+  local inventory
+
+  inventory=$(mktemp "${TMPDIR:-/tmp}/celestia-module-cache.XXXXXX")
+  trap 'rm -f -- "$inventory"' EXIT HUP INT TERM
+  if ! "$git_bin" ls-files -co --exclude-standard -z -- '*.go' >"$inventory"; then
+    return 1
+  fi
   {
+    cat "$inventory"
+    xargs -0 "$git_bin" hash-object -- <"$inventory"
     "$git_bin" hash-object go.mod
     if [[ -f go.sum ]]; then
       "$git_bin" hash-object go.sum
@@ -135,9 +144,10 @@ cache_key() {
       printf 'no-go-sum\n'
     fi
     "$git_bin" hash-object .github/scripts/modcheck.sh
-    go env GOVERSION GOOS GOARCH
+    go env GOVERSION GOOS GOARCH CGO_ENABLED GOFLAGS GOPRIVATE GONOPROXY \
+      GONOSUMDB GOPROXY GOSUMDB
   } | "$git_bin" hash-object --stdin
-}
+)
 
 check_cached_update_diff() {
   local cache_file
@@ -175,30 +185,36 @@ check_cached_update_diff() {
   fi
 }
 
-if (($# != 1)); then
-  usage
-  exit 2
-fi
+main() {
+  if (($# != 1)); then
+    usage
+    return 2
+  fi
 
-case "$1" in
-tidy)
-  verify_tidy
-  ;;
-verify)
-  verify_modules
-  ;;
-diff)
-  verify_modules
-  check_update_diff
-  ;;
-cached-diff)
-  check_cached_update_diff
-  ;;
-update)
-  update_modules
-  ;;
-*)
-  usage
-  exit 2
-  ;;
-esac
+  case "$1" in
+  tidy)
+    verify_tidy
+    ;;
+  verify)
+    verify_modules
+    ;;
+  diff)
+    verify_modules
+    check_update_diff
+    ;;
+  cached-diff)
+    check_cached_update_diff
+    ;;
+  update)
+    update_modules
+    ;;
+  *)
+    usage
+    return 2
+    ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

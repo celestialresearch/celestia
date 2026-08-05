@@ -277,6 +277,12 @@ seconds for tidiness and 3.1 seconds for complete verification. Sign-off still
 runs both `go mod verify` and tidiness. A controlled direct-import fixture
 proved that quick tidiness rejects source-to-manifest drift.
 
+The cached module update-diff check binds its marker to ordered Go source paths
+and content, module files, its checker, the Go platform and module-resolution
+environment. Its focused fixture rejects stale markers and proves that source
+content, source paths and proxy policy each change the key. Sign-off module
+verification remains uncached.
+
 Licence verification now classifies files and compares the ten required header
 lines with Bash built-ins. Three equivalent warm Windows observations fell
 from 30.0, 30.1 and 31.2 seconds to 0.83, 0.87 and 0.90 seconds. Diff, repair,
