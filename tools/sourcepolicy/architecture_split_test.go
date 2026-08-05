@@ -328,9 +328,9 @@ func expectedOperationSplitFiles() []string {
 		"internal/operation/urlreference/workload_corpus_windows_test.go",
 		"internal/operation/urlreference/performance_campaign_unsupported_test.go",
 		"internal/operation/urlreference/performance_campaign_windows_test.go",
-		"internal/operation/urlreference/performance_decode.go",
+		"internal/operation/urlreference/performance_report_decoder_test.go",
 		"internal/operation/urlreference/performance_output_windows_test.go",
-		"internal/operation/urlreference/performance_report.go",
+		"internal/operation/urlreference/performance_report_model_test.go",
 		"internal/operation/urlreference/performance_report_test.go",
 	}
 }
