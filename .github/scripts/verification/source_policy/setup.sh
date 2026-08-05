@@ -18,6 +18,7 @@ root=$1
 work_dir=$2
 governed_manifests=(
   docs/contracts/governed_url_reference_v1.json
+  docs/contracts/governed_url_reference_performance_v1.json
   docs/contracts/cel_struct_001.json
   docs/contracts/cel_struct_003.json
   docs/contracts/cel_struct_004a.json
