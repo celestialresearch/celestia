@@ -132,6 +132,9 @@ func TestDecodeObservationRejectsBrokenInvariants(t *testing.T) {
 			*value = unavailableObservation()
 			value.Cleanup.CgroupEmpty = true
 		},
+		"unattempted started cleanup": func(value *observation) {
+			*value = terminalObservation("indeterminate", "process_state_indeterminate", 3)
+		},
 		"complete nonempty cleanup": func(value *observation) {
 			value.Cleanup.CgroupEmpty = false
 		},
@@ -179,6 +182,13 @@ func TestDecodeObservationPreservesIncompleteCleanupFailure(t *testing.T) {
 	value.Cleanup.Members[0] = memberObservation{Role: memberRoles[0], PID: 100}
 	if _, err := decodeObservation(marshalObservation(t, value)); err != nil {
 		t.Fatalf("decode: %v", err)
+	}
+}
+
+func TestDecodeObservationRejectsUnattemptedStartedFailureCleanup(t *testing.T) {
+	value := terminalObservation("failed", "process_failed", 3)
+	if _, err := decodeObservation(marshalObservation(t, value)); err == nil {
+		t.Fatal("unattempted started failure cleanup accepted")
 	}
 }
 
@@ -235,7 +245,9 @@ func unavailableAfterCleanupObservation() observation {
 }
 
 func failedObservation() observation {
-	return terminalObservation("failed", "fixture_failed", 9)
+	value := terminalObservation("failed", "fixture_failed", 9)
+	value.Cleanup = feasibleObservation().Cleanup
+	return value
 }
 
 func cancelledObservation() observation {

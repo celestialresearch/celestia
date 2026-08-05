@@ -201,17 +201,17 @@ func validObservationStatusInvariants(value observation) bool {
 		return value.Reason == "cancelled" &&
 			completeCleanup(value.Cleanup)
 	case "failed":
-		return true
+		return value.Primitives[2].Outcome != "passed" || value.Cleanup.Attempted
 	case "unavailable", "indeterminate":
 		return value.Reason != "all_primitives_passed" &&
-			validRefusalCleanup(value.Cleanup)
+			validRefusalCleanup(value.Cleanup, value.Primitives[2].Outcome == "passed")
 	default:
 		return false
 	}
 }
 
-func validRefusalCleanup(value cleanupObservation) bool {
-	return !value.Attempted || completeCleanup(value)
+func validRefusalCleanup(value cleanupObservation, childStarted bool) bool {
+	return (!childStarted && !value.Attempted) || completeCleanup(value)
 }
 
 func validObservationEvidence(
