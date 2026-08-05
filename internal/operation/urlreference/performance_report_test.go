@@ -21,6 +21,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	workerprotocol "celestia.research/celestia/internal/operation/urlreference/protocol"
 )
 
 func TestPerformanceReport_DecodesCalculatedReport(t *testing.T) {
@@ -117,6 +119,9 @@ func performanceReportSemanticCases(
 		"invalid attempt":    func() []byte { return marshalPerformanceReport(t, invalidAttempt(clonePerformanceReport(t, valid))) },
 		"unverified outcome": func() []byte { return marshalPerformanceReport(t, unverifiedSample(clonePerformanceReport(t, valid))) },
 		"incomplete cleanup": func() []byte { return marshalPerformanceReport(t, incompleteCleanup(clonePerformanceReport(t, valid))) },
+		"worker transform exceeds execution bound": func() []byte {
+			return marshalPerformanceReport(t, excessiveWorkerTransform(t, clonePerformanceReport(t, valid)))
+		},
 		"unmeasured resource": func() []byte {
 			return marshalPerformanceReport(t, unmeasuredResource(clonePerformanceReport(t, valid)))
 		},
@@ -231,6 +236,28 @@ func TestPerformanceReport_RejectsPhaseBeyondTotal(t *testing.T) {
 	phases[0].DurationNS = phases[len(phases)-1].DurationNS + 1
 	if validSamplePhases(phases) {
 		t.Fatal("phase beyond total was accepted")
+	}
+}
+
+func TestPerformanceReport_EnforcesWorkerBound(t *testing.T) {
+	phases := testPerformanceSample(1, 1).Phases
+	for index := range phases {
+		if phases[index].ID == "worker_transform" ||
+			phases[index].ID == "total_latency" {
+			phases[index].DurationNS = uint64(workerprotocol.MaxDurationNS)
+		}
+	}
+	if !validSamplePhases(phases) {
+		t.Fatal("worker duration at the execution bound was rejected")
+	}
+	for index := range phases {
+		if phases[index].ID == "worker_transform" ||
+			phases[index].ID == "total_latency" {
+			phases[index].DurationNS++
+		}
+	}
+	if validSamplePhases(phases) {
+		t.Fatal("worker duration above the execution bound was accepted")
 	}
 }
 
@@ -466,6 +493,35 @@ func excessiveResource(
 		t.Fatalf("calculate statistics: %v", err)
 	}
 	report.Workloads[0].Cold.Statistics = statistics
+	return report
+}
+
+func excessiveWorkerTransform(
+	t *testing.T,
+	report performanceReport,
+) performanceReport {
+	t.Helper()
+	profile := &report.Workloads[0].Cold
+	duration := uint64(workerprotocol.MaxDurationNS) + 1
+	for sample := range profile.Samples {
+		for phase := range profile.Samples[sample].Phases {
+			if profile.Samples[sample].Phases[phase].ID == "worker_transform" ||
+				profile.Samples[sample].Phases[phase].ID == "total_latency" {
+				profile.Samples[sample].Phases[phase].DurationNS = duration
+			}
+		}
+	}
+	for phase := range profile.Statistics.Phases {
+		if profile.Statistics.Phases[phase].ID == "worker_transform" ||
+			profile.Statistics.Phases[phase].ID == "total_latency" {
+			profile.Statistics.Phases[phase].P50 = duration
+			profile.Statistics.Phases[phase].P95 = duration
+			profile.Statistics.Phases[phase].P99 = duration
+		}
+	}
+	profile.Statistics.ThroughputMilliOpsPerSecond = throughput(
+		uint64(len(profile.Samples)), duration*uint64(len(profile.Samples)),
+	)
 	return report
 }
 

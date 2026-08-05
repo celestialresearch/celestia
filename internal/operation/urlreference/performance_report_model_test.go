@@ -15,6 +15,8 @@ import (
 	"errors"
 	"math"
 	"slices"
+
+	workerprotocol "celestia.research/celestia/internal/operation/urlreference/protocol"
 )
 
 const (
@@ -259,6 +261,10 @@ func validSamplePhases(phases []phaseMeasurement) bool {
 	total := phases[len(phases)-1].DurationNS
 	for index, phase := range phases {
 		if phase.ID != performancePhases[index] || phase.DurationNS > total {
+			return false
+		}
+		if phase.ID == "worker_transform" &&
+			phase.DurationNS > uint64(workerprotocol.MaxDurationNS) {
 			return false
 		}
 	}
