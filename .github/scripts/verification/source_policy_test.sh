@@ -440,6 +440,11 @@ main() {
         "$((script_finished - script_started))"
       return "$script_status"
     fi
+    if [[ "$script" == architecture.sh &&
+      -e "$work_dir/config-bin/sourcepolicy" ]]; then
+      printf 'architecture fixture replaced the candidate checker\n' >&2
+      return 1
+    fi
     printf '%s\n' "$script" >>"$executed"
     index=$((index + 1))
   done
