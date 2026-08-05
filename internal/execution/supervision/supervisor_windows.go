@@ -29,6 +29,8 @@ type Supervisor struct {
 	limits     Limits
 }
 
+var errInvalid = errors.New("invalid process supervision configuration")
+
 type supervisorCreationOperations struct {
 	open  func(string) (*os.File, error)
 	hash  func(*os.File) ([32]byte, error)

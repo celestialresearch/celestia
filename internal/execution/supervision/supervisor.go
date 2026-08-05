@@ -19,7 +19,6 @@ import (
 
 var (
 	ErrUnavailable = errors.New("process supervision unavailable")
-	errInvalid     = errors.New("invalid process supervision configuration")
 )
 
 type Status string
