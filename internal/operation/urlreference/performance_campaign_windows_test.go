@@ -686,7 +686,10 @@ func (campaign performanceCampaign) measureProfile(
 		sample.Sequence = uint64(index + 1)
 		sample.EnvironmentID = campaign.environment.Identity
 		if !validSample(sample, sample.Sequence, campaign.environment.Identity) {
-			return performanceProfile{}, fmt.Errorf("measure %s/%s %d: %w", workload.ID, mode, index+1, errPerformanceReport)
+			return performanceProfile{}, fmt.Errorf(
+				"measure %s/%s %d: %w: sample=%+v",
+				workload.ID, mode, index+1, errPerformanceReport, sample,
+			)
 		}
 		profile.Samples = append(profile.Samples, sample)
 	}
