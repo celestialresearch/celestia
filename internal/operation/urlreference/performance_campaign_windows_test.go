@@ -334,13 +334,21 @@ func TestPerformanceCampaignMeasuresPublishedEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, _ := operation.executeMeasured(
+	result, timings := operation.executeMeasured(
 		context.Background(),
 		"https://example.test/",
 		urlreference.Defang,
 	)
 	if result.Status != Verified {
 		t.Fatalf("result=%+v", result)
+	}
+	if !validCampaignResult(result, timings, *result.Response.Output) {
+		t.Fatal("verified operation rejected")
+	}
+	failedCleanup := result
+	failedCleanup.Err = ErrCleanup
+	if validCampaignResult(failedCleanup, timings, *result.Response.Output) {
+		t.Fatal("cleanup failure accepted")
 	}
 	bytes, err := campaignEvidenceBytes(root, result.AttemptID)
 	if err != nil || bytes == 0 {
@@ -373,7 +381,7 @@ func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCa
 	if err := requireCleanPerformanceCheckout(root); err != nil {
 		return performanceCampaign{}, err
 	}
-	corpusData, err := os.ReadFile(performanceCorpusPath)
+	corpusData, err := readPerformanceCorpusFile(performanceCorpusPath)
 	if err != nil {
 		return performanceCampaign{}, fmt.Errorf("read performance corpus: %w", err)
 	}
@@ -638,7 +646,7 @@ func verifiedCampaignResult(
 }
 
 func validCampaignResult(result Result, timings operationTimings, expected string) bool {
-	return result.Status == Verified && result.AttemptID != "" && result.Response != nil &&
+	return result.Err == nil && result.Status == Verified && result.AttemptID != "" && result.Response != nil &&
 		result.Response.Output != nil && *result.Response.Output == expected &&
 		result.Process.CleanupComplete && timings.measured == allMeasuredPhases &&
 		timings.Resources.Measured && timings.Resources.Err == nil

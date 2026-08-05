@@ -17,9 +17,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -30,8 +32,9 @@ import (
 )
 
 const (
-	performanceCorpusPath = "../../../testdata/url-reference-performance-workload-v1.json"
-	performanceInputBytes = 4096
+	performanceCorpusPath  = "../../../testdata/url-reference-performance-workload-v1.json"
+	performanceInputBytes  = 4096
+	maximumCorpusFileBytes = 1 << 20
 )
 
 type performanceCorpus struct {
@@ -150,6 +153,22 @@ func TestPerformanceWorkloadCorpusRejectsInvalidRows(t *testing.T) {
 	}
 }
 
+func TestPerformanceCorpusFileIsBounded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "corpus.json")
+	if err := os.WriteFile(path, bytes.Repeat([]byte{'x'}, maximumCorpusFileBytes), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := readPerformanceCorpusFile(path); err != nil || len(data) != maximumCorpusFileBytes {
+		t.Fatalf("boundary bytes=%d error=%v", len(data), err)
+	}
+	if err := os.WriteFile(path, bytes.Repeat([]byte{'x'}, maximumCorpusFileBytes+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readPerformanceCorpusFile(path); err == nil {
+		t.Fatal("oversized corpus accepted")
+	}
+}
+
 func TestPerformanceWorkloadCorpusRejectsEveryValidationBranch(t *testing.T) {
 	tests := []struct {
 		name string
@@ -245,7 +264,7 @@ func loadPerformanceCorpus(t *testing.T) performanceCorpus {
 
 func readPerformanceCorpus(t *testing.T) performanceCorpus {
 	t.Helper()
-	data, err := os.ReadFile(performanceCorpusPath)
+	data, err := readPerformanceCorpusFile(performanceCorpusPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,6 +273,25 @@ func readPerformanceCorpus(t *testing.T) performanceCorpus {
 		t.Fatal(err)
 	}
 	return corpus
+}
+
+func readPerformanceCorpusFile(path string) ([]byte, error) {
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return nil, err
+	}
+	file, err := root.Open(filepath.Base(path))
+	if err != nil {
+		return nil, errors.Join(err, root.Close())
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maximumCorpusFileBytes+1))
+	if closeErr := errors.Join(file.Close(), root.Close()); readErr != nil || closeErr != nil {
+		return nil, errors.Join(readErr, closeErr)
+	}
+	if len(data) == 0 || len(data) > maximumCorpusFileBytes {
+		return nil, fmt.Errorf("corpus size")
+	}
+	return data, nil
 }
 
 func decodePerformanceCorpus(data []byte) (performanceCorpus, error) {
