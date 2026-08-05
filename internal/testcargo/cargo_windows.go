@@ -37,6 +37,8 @@ const (
 	jobPollInterval      = 50 * time.Millisecond
 )
 
+var isProcessInJob = windows.NewLazySystemDLL("kernel32.dll").NewProc("IsProcessInJob")
+
 // Request describes one Cargo build owned by a Windows test.
 type Request struct {
 	Arguments   []string
@@ -709,26 +711,60 @@ func jobProcessHandles(job windows.Handle) ([]windows.Handle, error) {
 		if list.count > available {
 			return nil, errors.New("query terminated Cargo process tree: invalid process count")
 		}
-		return openJobProcesses(processIDs(list))
+		return openJobProcesses(job, processIDs(list))
 	}
 }
 
-func openJobProcesses(ids []uintptr) ([]windows.Handle, error) {
+func openJobProcesses(job windows.Handle, ids []uintptr) ([]windows.Handle, error) {
 	handles := make([]windows.Handle, 0, len(ids))
 	for _, id := range ids {
 		if id > uintptr(^uint32(0)) {
 			return nil, errors.New("query terminated Cargo process tree: invalid process identity")
 		}
-		handle, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(id))
+		handle, err := windows.OpenProcess(
+			windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION,
+			false,
+			uint32(id),
+		)
 		if errors.Is(err, windows.ERROR_INVALID_PARAMETER) {
 			continue
 		}
 		if err != nil {
 			return nil, errors.Join(fmt.Errorf("open terminated Cargo process: %w", err), closeProcessHandles(handles))
 		}
+		member, err := processBelongsToJob(handle, job)
+		if err != nil {
+			return nil, errors.Join(
+				fmt.Errorf("validate terminated Cargo process: %w", err),
+				closeHandle("close unrelated Cargo process", handle),
+				closeProcessHandles(handles),
+			)
+		}
+		if !member {
+			if err := closeHandle("close unrelated Cargo process", handle); err != nil {
+				return nil, errors.Join(err, closeProcessHandles(handles))
+			}
+			continue
+		}
 		handles = append(handles, handle)
 	}
 	return handles, nil
+}
+
+func processBelongsToJob(process, job windows.Handle) (bool, error) {
+	var member int32
+	result, _, callErr := isProcessInJob.Call(
+		uintptr(process),
+		uintptr(job),
+		uintptr(nativePointer(&member)),
+	)
+	if result != 0 {
+		return member != 0, nil
+	}
+	if callErr != nil && !errors.Is(callErr, windows.ERROR_SUCCESS) {
+		return false, callErr
+	}
+	return false, errors.New("IsProcessInJob failed")
 }
 
 func nextProcessListSize(current, assigned, count uint32) (uint32, error) {
