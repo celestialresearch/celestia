@@ -60,6 +60,26 @@ func TestSourceFileFindings(t *testing.T) {
 	}
 }
 
+func TestSourceLineCount(t *testing.T) {
+	t.Parallel()
+
+	for name, test := range map[string]struct {
+		source string
+		want   int
+	}{
+		"empty":        {source: "", want: 0},
+		"terminated":   {source: "first\nsecond\n", want: 2},
+		"unterminated": {source: "first\nsecond", want: 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := sourceLineCount([]byte(test.source)); got != test.want {
+				t.Fatalf("sourceLineCount() = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
 func TestRunSourceFileModeFailures(t *testing.T) {
 	t.Parallel()
 	inventoryFailure := func() ([]string, error) {
