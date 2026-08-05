@@ -44,18 +44,6 @@ const (
 	maximumCampaignEvidenceFiles = 4
 )
 
-var fullCampaignWorkloads = map[string]string{
-	"shortest_fang":             "shortest-fang",
-	"shortest_defang":           "shortest-defang",
-	"ordinary":                  "ordinary",
-	"ipv4":                      "ipv4",
-	"ipv6":                      "ipv6",
-	"escaped_percent_non_ascii": "escaped_percent_non_ascii",
-	"maximum_input":             "maximum_input",
-	"maximum_label":             "maximum_label",
-	"maximum_host":              "maximum_host",
-}
-
 type campaignOperation struct {
 	operation    *Operation
 	evidenceRoot string
@@ -546,7 +534,7 @@ func newOperationPerformanceCampaign(t *testing.T, output string) (performanceCa
 		},
 		execute: campaignOperationSample,
 		publish: func(report performanceReport) error {
-			return writePerformanceReport(output, report)
+			return writePerformanceReport(output, report, corpus, corpusDigest(corpusData))
 		},
 	}, nil
 }
@@ -639,7 +627,7 @@ func (campaign performanceCampaign) run(ctx context.Context) (performanceReport,
 	if err := cleanCampaignOperation(warm); err != nil || measureErr != nil {
 		return performanceReport{}, errors.Join(measureErr, err)
 	}
-	if campaign.requireFull && !validPerformanceReport(report) {
+	if campaign.requireFull && !validPerformanceReport(report, campaign.corpus, campaign.corpusSHA256) {
 		return performanceReport{}, errPerformanceReport
 	}
 	if campaign.publish != nil {
@@ -671,23 +659,6 @@ func validCampaignCounts(campaign performanceCampaign) bool {
 	}
 	return !campaign.requireFull ||
 		(campaign.coldCount == coldSampleCount && campaign.warmCount == warmSampleCount)
-}
-
-func validFullCampaignCorpus(corpus performanceCorpus) bool {
-	if validateCorpusHeader(corpus) != nil || validateCorpusRows(corpus) != nil {
-		return false
-	}
-	accepted := 0
-	for _, workload := range corpus.Cases {
-		if !workload.Eligible {
-			continue
-		}
-		if fullCampaignWorkloads[workload.Class] != workload.ID {
-			return false
-		}
-		accepted++
-	}
-	return accepted == len(fullCampaignWorkloads)
 }
 
 func (campaign performanceCampaign) measureWorkload(
@@ -945,19 +916,6 @@ func nonNegativeUint64(value int64) (uint64, error) {
 		return 0, errPerformanceReport
 	}
 	return uint64(value), nil
-}
-
-func corpusDigest(data []byte) string {
-	digest := sha256.Sum256(data)
-	return hex.EncodeToString(digest[:])
-}
-
-func workloadDigest(workload performanceWorkloadCase) string {
-	data, err := json.Marshal(workload)
-	if err != nil {
-		return ""
-	}
-	return corpusDigest(data)
 }
 
 func operationPerformanceEnvironment(worker string) (performanceEnvironment, error) {

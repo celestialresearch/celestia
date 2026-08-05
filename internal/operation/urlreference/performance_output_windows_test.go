@@ -27,21 +27,22 @@ import (
 
 func TestPerformanceCampaignWritesOnlyCompleteReport(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "report.json")
-	report := testPerformanceReport(t)
-	if err := writePerformanceReport(path, report); err != nil {
+	corpus, corpusSHA256 := testPerformanceCorpus(t)
+	report := testPerformanceReport(t, corpus, corpusSHA256)
+	if err := writePerformanceReport(path, report, corpus, corpusSHA256); err != nil {
 		t.Fatalf("write report: %v", err)
 	}
 	data, err := readRootedPerformanceReport(path)
 	if err != nil {
 		t.Fatalf("read report: %v", err)
 	}
-	if _, err := decodePerformanceReport(strings.NewReader(string(data))); err != nil {
+	if _, err := decodePerformanceReport(strings.NewReader(string(data)), corpus, corpusSHA256); err != nil {
 		t.Fatalf("decode report: %v", err)
 	}
-	if err := writePerformanceReport(path, report); err == nil {
+	if err := writePerformanceReport(path, report, corpus, corpusSHA256); err == nil {
 		t.Fatal("existing report was replaced")
 	}
-	if err := writePerformanceReport(filepath.Join(t.TempDir(), "invalid.json"), performanceReport{}); err == nil {
+	if err := writePerformanceReport(filepath.Join(t.TempDir(), "invalid.json"), performanceReport{}, corpus, corpusSHA256); err == nil {
 		t.Fatal("invalid report was published")
 	}
 }
@@ -108,7 +109,8 @@ func TestPerformanceCampaignDoesNotReplaceRacedReport(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	data := marshalPerformanceReport(t, testPerformanceReport(t))
+	corpus, corpusSHA256 := testPerformanceCorpus(t)
+	data := marshalPerformanceReport(t, testPerformanceReport(t, corpus, corpusSHA256))
 	err = writeRootedPerformanceReportWith(root, "report.json", data, func(_, name string) error {
 		if err := root.WriteFile(name, []byte("existing"), 0o600); err != nil {
 			return err
@@ -124,15 +126,20 @@ func TestPerformanceCampaignDoesNotReplaceRacedReport(t *testing.T) {
 	}
 }
 
-func writePerformanceReport(path string, report performanceReport) error {
-	if !validPerformanceReport(report) {
+func writePerformanceReport(
+	path string,
+	report performanceReport,
+	corpus performanceCorpus,
+	corpusSHA256 string,
+) error {
+	if !validPerformanceReport(report, corpus, corpusSHA256) {
 		return errPerformanceReport
 	}
 	data, err := json.Marshal(report)
 	if err != nil {
 		return err
 	}
-	if _, err := decodePerformanceReport(strings.NewReader(string(data))); err != nil {
+	if _, err := decodePerformanceReport(strings.NewReader(string(data)), corpus, corpusSHA256); err != nil {
 		return err
 	}
 	root, name, err := rootedPath(path)

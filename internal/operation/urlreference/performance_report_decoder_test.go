@@ -28,10 +28,13 @@ const maxPerformanceReportBytes = 16 << 20
 
 var (
 	identifierPerformance = regexp.MustCompile(`^[a-z0-9][a-z0-9._/-]{0,127}$`)
-	workloadPerformance   = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
 )
 
-func decodePerformanceReport(reader io.Reader) (performanceReport, error) {
+func decodePerformanceReport(
+	reader io.Reader,
+	corpus performanceCorpus,
+	corpusSHA256 string,
+) (performanceReport, error) {
 	data, err := io.ReadAll(io.LimitReader(reader, maxPerformanceReportBytes+1))
 	if err != nil || len(data) == 0 || len(data) > maxPerformanceReportBytes || !utf8.Valid(data) {
 		return performanceReport{}, errPerformanceReport
@@ -39,7 +42,8 @@ func decodePerformanceReport(reader io.Reader) (performanceReport, error) {
 	var report performanceReport
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&report) != nil || !performanceEnd(decoder) || !validPerformanceReport(report) {
+	if decoder.Decode(&report) != nil || !performanceEnd(decoder) ||
+		!validPerformanceReport(report, corpus, corpusSHA256) {
 		return performanceReport{}, errPerformanceReport
 	}
 	canonical, err := json.Marshal(report)
@@ -54,39 +58,52 @@ func performanceEnd(decoder *json.Decoder) bool {
 	return decoder.Decode(&trailing) == io.EOF
 }
 
-func validPerformanceReport(report performanceReport) bool {
-	if !validPerformanceHeader(report) {
+func validPerformanceReport(
+	report performanceReport,
+	corpus performanceCorpus,
+	corpusSHA256 string,
+) bool {
+	if !validPerformanceHeader(report, corpusSHA256) || !validFullCampaignCorpus(corpus) {
 		return false
 	}
-	classes := make(map[string]struct{}, len(report.Workloads))
-	workloads := make(map[string]struct{}, len(report.Workloads))
+	accepted := acceptedPerformanceWorkloads(corpus)
+	if len(report.Workloads) != len(accepted) {
+		return false
+	}
 	attempts := make(map[string]struct{}, len(report.Workloads)*(coldSampleCount+warmSampleCount))
-	for _, workload := range report.Workloads {
+	for index, workload := range report.Workloads {
+		expected := accepted[index]
 		if !validWorkload(workload, report.Environment.Identity) {
 			return false
 		}
-		if _, duplicate := classes[workload.Class]; duplicate {
-			return false
-		}
-		if _, duplicate := workloads[workload.WorkloadID]; duplicate {
+		if workload.Class != expected.Class || workload.WorkloadID != expected.ID ||
+			workload.WorkloadSHA256 != workloadDigest(expected) {
 			return false
 		}
 		if !addReportAttempts(attempts, workload) {
 			return false
 		}
-		classes[workload.Class] = struct{}{}
-		workloads[workload.WorkloadID] = struct{}{}
 	}
 	return true
 }
 
-func validPerformanceHeader(report performanceReport) bool {
+func acceptedPerformanceWorkloads(corpus performanceCorpus) []performanceWorkloadCase {
+	accepted := make([]performanceWorkloadCase, 0, len(acceptedClasses))
+	for _, workload := range corpus.Cases {
+		if workload.Eligible {
+			accepted = append(accepted, workload)
+		}
+	}
+	return accepted
+}
+
+func validPerformanceHeader(report performanceReport, corpusSHA256 string) bool {
 	return report.SchemaVersion == performanceReportSchema &&
 		report.CorpusVersion == performanceCorpusSchema &&
 		report.Calculation == performanceCalculation &&
-		validPerformanceHash(report.CorpusSHA256) &&
+		validPerformanceHash(corpusSHA256) && report.CorpusSHA256 == corpusSHA256 &&
 		validEnvironment(report.Environment) &&
-		len(report.Workloads) > 0 && len(report.Workloads) <= 128
+		len(report.Workloads) == len(acceptedClasses)
 }
 
 func addReportAttempts(attempts map[string]struct{}, workload performanceWorkload) bool {
@@ -113,11 +130,6 @@ func validEnvironment(environment performanceEnvironment) bool {
 }
 
 func validWorkload(workload performanceWorkload, environmentID string) bool {
-	if !workloadPerformance.MatchString(workload.Class) ||
-		!workloadPerformance.MatchString(workload.WorkloadID) ||
-		!validPerformanceHash(workload.WorkloadSHA256) {
-		return false
-	}
 	return validProfile(workload.Cold, "cold", coldSampleCount, environmentID) &&
 		validProfile(workload.Warm, "warm", warmSampleCount, environmentID)
 }

@@ -14,6 +14,7 @@ package urloperation
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"math"
@@ -23,7 +24,8 @@ import (
 )
 
 func TestPerformanceReport_DecodesCalculatedReport(t *testing.T) {
-	report := testPerformanceReport(t)
+	corpus, corpusSHA256 := testPerformanceCorpus(t)
+	report := testPerformanceReport(t, corpus, corpusSHA256)
 	data, err := json.Marshal(report)
 	if err != nil {
 		t.Fatalf("marshal report: %v", err)
@@ -32,10 +34,10 @@ func TestPerformanceReport_DecodesCalculatedReport(t *testing.T) {
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("unmarshal report: %v", err)
 	}
-	if !validPerformanceReport(parsed) {
+	if !validPerformanceReport(parsed, corpus, corpusSHA256) {
 		t.Fatal("valid report failed semantic validation")
 	}
-	decoded, err := decodePerformanceReport(bytes.NewReader(data))
+	decoded, err := decodePerformanceReport(bytes.NewReader(data), corpus, corpusSHA256)
 	if err != nil {
 		t.Fatalf("decode report: %v", err)
 	}
@@ -45,7 +47,8 @@ func TestPerformanceReport_DecodesCalculatedReport(t *testing.T) {
 }
 
 func TestPerformanceReport_RejectsHostileInput(t *testing.T) {
-	valid := testPerformanceReport(t)
+	corpus, corpusSHA256 := testPerformanceCorpus(t)
+	valid := testPerformanceReport(t, corpus, corpusSHA256)
 	data := marshalPerformanceReport(t, valid)
 	tests := map[string]func() []byte{
 		"unknown field":   func() []byte { return replaceOne(data, []byte("}"), []byte(",\"unknown\":1}")) },
@@ -103,10 +106,55 @@ func TestPerformanceReport_RejectsHostileInput(t *testing.T) {
 			report.Calculation = "different"
 			return marshalPerformanceReport(t, report)
 		},
+		"wrong corpus digest": func() []byte {
+			report := clonePerformanceReport(t, valid)
+			report.CorpusSHA256 = strings.Repeat("f", 64)
+			return marshalPerformanceReport(t, report)
+		},
+		"wrong workload class": func() []byte {
+			report := clonePerformanceReport(t, valid)
+			report.Workloads[0].Class = "active-dns"
+			return marshalPerformanceReport(t, report)
+		},
+		"wrong workload ID": func() []byte {
+			report := clonePerformanceReport(t, valid)
+			report.Workloads[0].WorkloadID = "active-dns-defang"
+			return marshalPerformanceReport(t, report)
+		},
+		"wrong workload digest": func() []byte {
+			report := clonePerformanceReport(t, valid)
+			report.Workloads[0].WorkloadSHA256 = strings.Repeat("f", 64)
+			return marshalPerformanceReport(t, report)
+		},
+		"reordered workloads": func() []byte {
+			report := clonePerformanceReport(t, valid)
+			report.Workloads[0], report.Workloads[1] = report.Workloads[1], report.Workloads[0]
+			return marshalPerformanceReport(t, report)
+		},
+		"missing workload": func() []byte {
+			report := clonePerformanceReport(t, valid)
+			report.Workloads = report.Workloads[1:]
+			return marshalPerformanceReport(t, report)
+		},
+		"additional workload": func() []byte {
+			report := clonePerformanceReport(t, valid)
+			additional := report.Workloads[0]
+			additional.Class = "active-dns"
+			additional.WorkloadID = "active-dns-defang"
+			additional.WorkloadSHA256 = strings.Repeat("f", 64)
+			for index := range additional.Cold.Samples {
+				additional.Cold.Samples[index].AttemptID = performanceTestIdentity(uint64(1_000 + index))
+			}
+			for index := range additional.Warm.Samples {
+				additional.Warm.Samples[index].AttemptID = performanceTestIdentity(uint64(2_000 + index))
+			}
+			report.Workloads = append(report.Workloads, additional)
+			return marshalPerformanceReport(t, report)
+		},
 	}
 	for name, build := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := decodePerformanceReport(bytes.NewReader(build()))
+			_, err := decodePerformanceReport(bytes.NewReader(build()), corpus, corpusSHA256)
 			if !errors.Is(err, errPerformanceReport) {
 				t.Fatalf("decode error = %v, want invalid report", err)
 			}
@@ -148,14 +196,29 @@ func TestPerformanceReport_RejectsStatisticsOverflow(t *testing.T) {
 	}
 }
 
-func testPerformanceReport(t *testing.T) performanceReport {
+func testPerformanceCorpus(t *testing.T) (performanceCorpus, string) {
 	t.Helper()
-	cold := testPerformanceProfile(t, "cold", coldSampleCount, 0)
-	warm := testPerformanceProfile(t, "warm", warmSampleCount, coldSampleCount)
+	data, err := readPerformanceCorpusFile(performanceCorpusPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	corpus, err := decodePerformanceCorpus(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return corpus, corpusDigest(data)
+}
+
+func testPerformanceReport(
+	t *testing.T,
+	corpus performanceCorpus,
+	corpusSHA256 string,
+) performanceReport {
+	t.Helper()
 	report := performanceReport{
 		SchemaVersion: performanceReportSchema,
 		CorpusVersion: performanceCorpusSchema,
-		CorpusSHA256:  strings.Repeat("a", 64),
+		CorpusSHA256:  corpusSHA256,
 		Calculation:   performanceCalculation,
 		Environment: performanceEnvironment{
 			Platform:      "windows/amd64",
@@ -166,13 +229,16 @@ func testPerformanceReport(t *testing.T) performanceReport {
 			WorkerSHA256:  strings.Repeat("c", 64),
 			ProductCommit: strings.Repeat("d", 40),
 		},
-		Workloads: []performanceWorkload{{
-			Class:          "active-dns",
-			WorkloadID:     "active-dns-defang",
-			WorkloadSHA256: strings.Repeat("e", 64),
-			Cold:           cold,
-			Warm:           warm,
-		}},
+	}
+	for _, workload := range acceptedPerformanceWorkloads(corpus) {
+		start := uint64(len(report.Workloads) * (coldSampleCount + warmSampleCount))
+		report.Workloads = append(report.Workloads, performanceWorkload{
+			Class:          workload.Class,
+			WorkloadID:     workload.ID,
+			WorkloadSHA256: workloadDigest(workload),
+			Cold:           testPerformanceProfile(t, "cold", coldSampleCount, start),
+			Warm:           testPerformanceProfile(t, "warm", warmSampleCount, start+coldSampleCount),
+		})
 	}
 	report.Environment.Identity = performanceEnvironmentIdentity(report.Environment)
 	for index := range report.Workloads {
@@ -229,11 +295,9 @@ func testPerformanceSample(sequence, identity uint64) performanceSample {
 }
 
 func performanceTestIdentity(sequence uint64) string {
-	seed := byte(0)
-	for range sequence {
-		seed++
-	}
-	return base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{seed}, 32))
+	var value [32]byte
+	binary.BigEndian.PutUint64(value[24:], sequence)
+	return base64.RawURLEncoding.EncodeToString(value[:])
 }
 
 func marshalPerformanceReport(t *testing.T, report performanceReport) []byte {
