@@ -1,0 +1,242 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "cel-plat-linux-amd64-feas-001",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "A named native Linux AMD64 host is classified feasible or unavailable while Production execution and persistence remain unsupported",
+  "owner": "Linux AMD64 feasibility probe",
+  "inputs": [
+    {
+      "id": "CEL-PLAT-INPUT-001",
+      "media_type": "application/vnd.celestia.linux-host+json",
+      "maximum_bytes": 65536,
+      "validation": "Bounded canonical host, kernel, boot, cgroup v2, filesystem, namespace, fixture and probe identities"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-PLAT-OUTPUT-001",
+      "media_type": "application/vnd.celestia.linux-feasibility+json",
+      "maximum_bytes": 1048576,
+      "validation": "Canonical primitive, process-accounting and hostile-fixture outcomes bound to exact Product, probe and fixture identities"
+    }
+  ],
+  "canonical_state": [
+    "Linux operation and attempt persistence remain unsupported",
+    "A feasibility observation is non-authoritative platform evidence",
+    "Windows AMD64 remains the only qualified operation boundary",
+    "Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes",
+    "A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values, Linux architecture, kernel release, boot ID, cgroup mount and subtree identities, filesystem type and device, namespace configuration and primitive outcomes"
+  ],
+  "derived_state": [
+    "Primitive availability and first refusal reason"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-PLAT-EFFECT-001",
+      "kind": "temporary native feasibility fixtures",
+      "authority": "CEL-PLAT-AUTH-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-PLAT-AUTH-001",
+      "owner": "Linux AMD64 feasibility probe",
+      "grant": "Create only bounded temporary cgroups, explicitly mapped namespaces, files and hostile fixture processes beneath declared local roots",
+      "refusal": "Reject missing delegation, isolation, cleanup, durability or observation identity"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-PLAT-TRUST-001",
+      "source": "native Linux host",
+      "target": "Linux AMD64 feasibility probe",
+      "treatment": "Query bounded primitives and challenge them with hostile fixtures"
+    },
+    {
+      "id": "CEL-PLAT-TRUST-002",
+      "source": "feasibility observation",
+      "target": "later platform decision",
+      "treatment": "Bind exact identities without treating feasibility as operation qualification"
+    }
+  ],
+  "bounds": {
+    "processes": 4,
+    "memory_bytes": 268435456,
+    "output_bytes": 1048576,
+    "worker_time_milliseconds": 2000,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-PLAT-RESOURCE-001",
+      "kind": "process",
+      "owner": "Linux AMD64 feasibility probe",
+      "acquisition": "Use clone3(CLONE_INTO_CGROUP) to create the namespace bootstrap atomically in the delegated cgroup before execution",
+      "bound": "At most four accounted cgroup members: bootstrap or fixture, one deliberate descendant, one challenge helper and one remaining owned slot; 2000 milliseconds per fixture",
+      "release": "Kill and join the complete owned cgroup tree after recording every member PID and role",
+      "cleanup_failure": "Record failure and do not claim feasibility",
+      "cancellation": "Kill the owned cgroup tree when the probe context ends",
+      "join": "Observe cgroup emptiness and every owned process exit before returning; missing accounting fails the observation"
+    },
+    {
+      "id": "CEL-PLAT-RESOURCE-002",
+      "kind": "durable",
+      "owner": "Linux AMD64 feasibility probe",
+      "acquisition": "Create one bounded same-directory temporary record beneath the named local evidence root",
+      "bound": "At most 1048576 retained bytes",
+      "release": "Fsync the temporary file, publish with renameat2(RENAME_NOREPLACE), fsync the parent directory, inspect then remove only the owned fixture tree",
+      "cleanup_failure": "Record failure and retain no feasibility claim",
+      "recovery": "Discard incomplete probe output and regenerate after owned-resource cleanup"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Production execution and attempt persistence remain unavailable during feasibility",
+      "evidence": "No native feasibility observation retained"
+    },
+    {
+      "os": "other",
+      "arch": "other",
+      "support": "unsupported",
+      "refusal": "Outside the feasibility slice",
+      "evidence": "Manifest scope"
+    }
+  ],
+  "states": [
+    {"id": "proposed", "kind": "intermediate"},
+    {"id": "feasible", "kind": "success"},
+    {"id": "unavailable", "kind": "refusal"},
+    {"id": "failed", "kind": "failure"},
+    {"id": "cancelled", "kind": "cancellation"},
+    {"id": "indeterminate", "kind": "indeterminate"}
+  ],
+  "allowed_transitions": [
+    {"from": "proposed", "to": "feasible"},
+    {"from": "proposed", "to": "unavailable"},
+    {"from": "proposed", "to": "failed"},
+    {"from": "proposed", "to": "cancelled"},
+    {"from": "proposed", "to": "indeterminate"}
+  ],
+  "prohibited_transitions": [
+    {"from": "feasible", "to": "proposed"}, {"from": "feasible", "to": "unavailable"}, {"from": "feasible", "to": "failed"}, {"from": "feasible", "to": "cancelled"}, {"from": "feasible", "to": "indeterminate"},
+    {"from": "unavailable", "to": "proposed"}, {"from": "unavailable", "to": "feasible"}, {"from": "unavailable", "to": "failed"}, {"from": "unavailable", "to": "cancelled"}, {"from": "unavailable", "to": "indeterminate"},
+    {"from": "failed", "to": "proposed"}, {"from": "failed", "to": "feasible"}, {"from": "failed", "to": "unavailable"}, {"from": "failed", "to": "cancelled"}, {"from": "failed", "to": "indeterminate"},
+    {"from": "cancelled", "to": "proposed"}, {"from": "cancelled", "to": "feasible"}, {"from": "cancelled", "to": "unavailable"}, {"from": "cancelled", "to": "failed"}, {"from": "cancelled", "to": "indeterminate"},
+    {"from": "indeterminate", "to": "proposed"}, {"from": "indeterminate", "to": "feasible"}, {"from": "indeterminate", "to": "unavailable"}, {"from": "indeterminate", "to": "failed"}, {"from": "indeterminate", "to": "cancelled"}
+  ],
+  "invariants": [
+    {
+      "id": "CEL-PLAT-INV-001",
+      "statement": "No fixture process executes before clone3(CLONE_INTO_CGROUP) places its bootstrap in the owned cgroup, every required containment primitive succeeds and root-relative resolution refuses links and path escapes",
+      "owner": "Linux AMD64 feasibility probe",
+      "severity": "high",
+      "boundary": "native process creation",
+      "falsifier": "A fixture begins outside the owned cgroup, user mapping, mount, /proc or loopback state differs from the observation or it gains network, host-file or ambient descriptor access",
+      "production_controls": [
+        {"id": "CEL-PLAT-PROD-001", "owner": "native hostile feasibility fixtures"}
+      ],
+      "assurance_controls": [
+        {"id": "CEL-PLAT-ASSURE-001", "owner": "independent Linux containment rulepack"}
+      ],
+      "platforms": ["linux/amd64"],
+      "residual_uncertainty": "Feasibility does not qualify the complete operation"
+    },
+    {
+      "id": "CEL-PLAT-INV-002",
+      "statement": "The feasibility slice cannot enable Linux operation or attempt persistence constructors",
+      "owner": "Production architecture policy",
+      "severity": "high",
+      "boundary": "Product source and build tags",
+      "falsifier": "A Linux caller constructs the supervisor, operation or attempt store",
+      "production_controls": [
+        {"id": "CEL-PLAT-PROD-002", "owner": "source policy and unsupported-platform tests"}
+      ],
+      "assurance_controls": [
+        {"id": "CEL-PLAT-ASSURE-002", "owner": "independent architecture check"}
+      ],
+      "platforms": ["linux/amd64"],
+      "residual_uncertainty": "A later enablement slice must replace this refusal coherently"
+    },
+    {
+      "id": "CEL-PLAT-INV-003",
+      "statement": "Feasibility requires canonical named native host, cgroup, namespace, fixture, probe and filesystem evidence",
+      "owner": "Linux AMD64 feasibility probe",
+      "severity": "medium",
+      "boundary": "observation publication",
+      "falsifier": "Cross-compiled, emulated, skipped, incomplete or identity-unbound evidence is accepted",
+      "production_controls": [
+        {"id": "CEL-PLAT-PROD-003", "owner": "observation validator"}
+      ],
+      "assurance_controls": [
+        {"id": "CEL-PLAT-ASSURE-003", "owner": "independent observation validation"}
+      ],
+      "platforms": ["linux/amd64"],
+      "residual_uncertainty": "One host cannot establish other-kernel or filesystem support"
+    },
+    {
+      "id": "CEL-PLAT-INV-004",
+      "statement": "A feasible observation proves same-directory file fsync, renameat2(RENAME_NOREPLACE) and parent-directory fsync on the named local filesystem",
+      "owner": "Linux AMD64 feasibility probe",
+      "severity": "high",
+      "boundary": "feasibility publication",
+      "falsifier": "A missing, unsupported or failed durability primitive still produces feasible",
+      "production_controls": [
+        {"id": "CEL-PLAT-PROD-004", "owner": "native publication feasibility fixture"}
+      ],
+      "assurance_controls": [
+        {"id": "CEL-PLAT-ASSURE-004", "owner": "independent Linux publication rulepack"}
+      ],
+      "platforms": ["linux/amd64"],
+      "residual_uncertainty": "This checks declared primitives rather than all filesystem crash semantics"
+    }
+  ],
+  "success_semantics": "Feasible means every declared primitive, canonical identity and hostile fixture passed on the named native host while the Production operation remained unavailable",
+  "refusal_semantics": "Unavailable identifies the first missing authority or primitive, including clone3(CLONE_INTO_CGROUP), namespace mapping, descriptor allowlist, static fixture identity, process accounting or publication primitive, before worker execution",
+  "failure_semantics": "Probe, fixture, cleanup or observation failure cannot produce a feasible result",
+  "cancellation_semantics": "Cancellation terminates and joins every probe-owned process and retains no success claim",
+  "indeterminate_semantics": "Missing, contradictory or unbound host evidence cannot produce a feasibility claim",
+  "recovery_semantics": "Partial probe output is non-canonical and is regenerated after complete owned-resource cleanup",
+  "compatibility_or_reset_policy": "Unused pre-release feasibility formats are replaced coherently with no compatibility reader",
+  "falsifiers": [
+    "A fixture executes before clone3(CLONE_INTO_CGROUP) placement",
+    "User mapping, mount propagation, /proc or network-loopback state differs from the observation",
+    "A network, host-file or descriptor escape succeeds",
+    "A descendant survives owned-tree cleanup or process accounting exceeds four",
+    "Filesystem durability is inferred without file fsync, renameat2(RENAME_NOREPLACE) and parent-directory fsync evidence",
+    "Linux operation or persistence becomes constructible"
+  ],
+  "production_controls": [
+    {"id": "CEL-PLAT-PROD-001", "owner": "native hostile feasibility fixtures"},
+    {"id": "CEL-PLAT-PROD-002", "owner": "source policy and unsupported-platform tests"},
+    {"id": "CEL-PLAT-PROD-003", "owner": "observation validator"},
+    {"id": "CEL-PLAT-PROD-004", "owner": "native publication feasibility fixture"}
+  ],
+  "assurance_controls": [
+    {"id": "CEL-PLAT-ASSURE-001", "owner": "independent Linux containment rulepack"},
+    {"id": "CEL-PLAT-ASSURE-002", "owner": "independent architecture check"},
+    {"id": "CEL-PLAT-ASSURE-003", "owner": "independent observation validation"},
+    {"id": "CEL-PLAT-ASSURE-004", "owner": "independent Linux publication rulepack"}
+  ],
+  "residual_limitations": [
+    "Feasibility is not Linux operation or attempt-persistence support",
+    "One host does not qualify other kernels or filesystems",
+    "Linux ARM64 is outside scope",
+    "Seccomp, Landlock, SELinux, AppArmor and other LSM controls are not qualified"
+  ],
+  "non_goals": [
+    "Enable Linux operation or attempt persistence",
+    "Change Windows semantics",
+    "Add a common platform abstraction",
+    "Add a dependency, container, daemon, pool or persistent worker",
+    "Qualify Linux ARM64"
+  ],
+  "deletion_criteria": [
+    "Delete only when a reviewed Linux AMD64 vertical-slice contract supersedes every probe, fixture, observation and reader"
+  ]
+}

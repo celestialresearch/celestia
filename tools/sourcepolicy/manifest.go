@@ -56,6 +56,8 @@ const (
 	assuranceSplitSHA       = "9c4f5785d284471430c5045d50ebcafd14f7f64dfc6c704c6799985b769bddd2"
 	freezeSplitPath         = "docs/contracts/cel_split_008.json"
 	freezeSplitSHA          = "5a82cf664db889462ab050c2585ef9130fd117acda5703f07f85d38fb88e1c6a"
+	linuxFeasibilityPath    = "docs/contracts/cel_plat_linux_amd64_feas_001.json"
+	linuxFeasibilitySHA     = "bf0039f9c8aaeb13d565d8088827bdc3062b2c5a21a1f2bebcb667fdc28673ac"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {
@@ -81,6 +83,7 @@ func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) 
 		{policyTestSplitPath, policyTestSplitSHA},
 		{assuranceSplitPath, assuranceSplitSHA},
 		{freezeSplitPath, freezeSplitSHA},
+		{linuxFeasibilityPath, linuxFeasibilitySHA},
 	}
 	status := 0
 	for _, manifest := range manifests {
