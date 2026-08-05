@@ -35,7 +35,8 @@ part of the CI sign-off composition and is not complete sign-off by itself.
 
 Quick testing selects a modified package-local test without its importers. A
 transformation-source change selects that package and every transitive reverse
-dependant. Documentation-only changes select no Go test package.
+dependant through production, internal-test and external-test imports.
+Documentation-only changes select no Go test package.
 
 Deleted files, build constraints, tools, protocols, persistence, supervision,
 operation orchestration, module state, policy and unknown paths select all Go

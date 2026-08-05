@@ -96,7 +96,8 @@ select_quick_go_path() {
 expand_quick_go_packages() {
   local pipeline_status
 
-  if ! go list -f '{{.ImportPath}}	{{join .Imports " "}}' ./... >"$temporary/quick-graph"; then
+  if ! go list -f '{{.ImportPath}}	{{join .Imports " "}} {{join .TestImports " "}} {{join .XTestImports " "}}' \
+    ./... >"$temporary/quick-graph"; then
     return 1
   fi
   awk -F '\t' -v direct_file="$temporary/quick-direct" \
@@ -154,7 +155,8 @@ quick_go_packages() {
       return
     }
   else
-    base=HEAD
+    printf './...\n'
+    return
   fi
   if ! git diff --no-renames --name-status -z "$base" -- >"$temporary/changes" ||
     ! git ls-files --others --exclude-standard -z >"$temporary/untracked"; then

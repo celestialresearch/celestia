@@ -82,7 +82,7 @@ chmod +x "$work/bin/rust-test"
 selector=$work/selector
 transform=internal/operation/urlreference/transform
 mkdir -p "$selector/.github/scripts" "$selector/$transform" \
-  "$selector/internal/use" "$selector/docs"
+  "$selector/internal/use" "$selector/internal/testuse" "$selector/docs"
 cp "$root/.github/scripts/testcheck.sh" "$selector/.github/scripts/testcheck.sh"
 printf '.cache/\n' >"$selector/.gitignore"
 cat >"$selector/go.mod" <<'EOF'
@@ -109,6 +109,20 @@ import "fixture.invalid/selector/internal/operation/urlreference/transform"
 
 func Value() int { return transform.Value() }
 EOF
+cat >"$selector/internal/testuse/use_test.go" <<'EOF'
+package testuse_test
+
+import (
+	"testing"
+
+	"fixture.invalid/selector/internal/operation/urlreference/transform"
+)
+
+func TestTransform(t *testing.T) {
+	t.Helper()
+	_ = transform.Value()
+}
+EOF
 printf 'fixture\n' >"$selector/docs/readme.md"
 git -C "$selector" init -q
 git -C "$selector" config user.name Fixture
@@ -117,6 +131,7 @@ git -C "$selector" config commit.gpgsign false
 git -C "$selector" config core.autocrlf false
 git -C "$selector" add -A
 git -C "$selector" commit -q -m base
+git -C "$selector" update-ref refs/remotes/origin/main HEAD
 
 printf '\n' >>"$selector/$transform/base_test.go"
 output=$(bash "$selector/.github/scripts/testcheck.sh" go-packages)
@@ -129,11 +144,24 @@ git -C "$selector" checkout -q -- "$transform/base_test.go"
 
 printf '\n' >>"$selector/$transform/base.go"
 output=$(bash "$selector/.github/scripts/testcheck.sh" go-packages)
-if [[ "$output" != $'fixture.invalid/selector/internal/operation/urlreference/transform\nfixture.invalid/selector/internal/use' ]]; then
+if [[ "$output" != $'fixture.invalid/selector/internal/operation/urlreference/transform\nfixture.invalid/selector/internal/testuse\nfixture.invalid/selector/internal/use' ]]; then
   printf 'quick selection missed a reverse dependency:\n%s\n' "$output" >&2
   exit 1
 fi
 git -C "$selector" checkout -q -- "$transform/base.go"
+
+printf '\n' >>"$selector/$transform/base.go"
+git -C "$selector" add "$transform/base.go"
+git -C "$selector" commit -q -m changed
+git -C "$selector" update-ref -d refs/remotes/origin/main
+output=$(bash "$selector/.github/scripts/testcheck.sh" go-packages)
+if [[ "$output" != ./... ]]; then
+  printf 'quick selection did not fail closed without its base ref:\n%s\n' \
+    "$output" >&2
+  exit 1
+fi
+git -C "$selector" reset -q --hard HEAD^
+git -C "$selector" update-ref refs/remotes/origin/main HEAD
 
 printf '\n' >>"$selector/docs/readme.md"
 output=$(bash "$selector/.github/scripts/testcheck.sh" go-packages)
