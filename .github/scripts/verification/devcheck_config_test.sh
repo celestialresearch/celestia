@@ -39,6 +39,7 @@ verify_module_cache() (
 
   cd "$module_dir"
   # shellcheck source=.github/scripts/modcheck.sh
+  # shellcheck disable=SC1091 # The source is copied into the isolated fixture.
   source ./.github/scripts/modcheck.sh
 
   first=$(cache_key)
