@@ -295,6 +295,7 @@ func expectedOperationSplitFiles() []string {
 		"internal/operation/urlreference/test_support_windows_test.go",
 		"internal/operation/urlreference/verification_windows.go",
 		"internal/operation/urlreference/verification_windows_test.go",
+		"internal/operation/urlreference/workload_corpus_windows_test.go",
 	}
 }
 

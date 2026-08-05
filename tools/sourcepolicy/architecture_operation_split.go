@@ -22,30 +22,31 @@ import (
 const (
 	operationSplitDirectory  = "internal/operation/urlreference/"
 	maxOperationSplitBytes   = 8 << 20
-	operationSplitPackageSHA = "cfb9040d3a48b4c7333f61a0cdbcd16dda47e25c83287dcdf315200cbd803bf0"
-	operationSplitSourceSHA  = "153b033414629a272ed685e90e26c1b9dc36a85f392f99415d06d600afdc5156"
-	operationSplitTargetSHA  = "f73ace4cd93e856f539bedeccb78ad910832c7bd36e7888cf2577f8a2f531ff8"
+	operationSplitPackageSHA = "f265a2ab85b9ce5a3d5fe1a13b85d876141cf8dcdad9e0fb6d0183d45c18bc57"
+	operationSplitSourceSHA  = "d2cc943e1814c138de9b042bcf4c53479cbe0fe50f7028bc2fd50adba571a543"
+	operationSplitTargetSHA  = "9e2571caa078280624bb24909932bcf3f704df7378b762e4cd6034e3305bef5f"
 )
 
 var operationSplitOwners = map[string]string{
-	"admission_windows_test.go":     "admission",
-	"benchmark_windows_test.go":     "benchmark",
-	"cancellation_windows_test.go":  "cancellation",
-	"diagnostics_windows_test.go":   "diagnostics",
-	"doc.go":                        "contract",
-	"evidence_windows.go":           "evidence",
-	"execution_windows_test.go":     "execution",
-	"operation.go":                  "contract",
-	"operation_unsupported.go":      "platform",
-	"operation_unsupported_test.go": "platform",
-	"operation_windows.go":          "orchestration",
-	"platform_windows.go":           "platform",
-	"projection_windows.go":         "projection",
-	"protocol_windows_test.go":      "protocol",
-	"publication_windows_test.go":   "publication",
-	"test_support_windows_test.go":  "test-support",
-	"verification_windows.go":       "verification",
-	"verification_windows_test.go":  "verification",
+	"admission_windows_test.go":       "admission",
+	"benchmark_windows_test.go":       "benchmark",
+	"cancellation_windows_test.go":    "cancellation",
+	"diagnostics_windows_test.go":     "diagnostics",
+	"doc.go":                          "contract",
+	"evidence_windows.go":             "evidence",
+	"execution_windows_test.go":       "execution",
+	"operation.go":                    "contract",
+	"operation_unsupported.go":        "platform",
+	"operation_unsupported_test.go":   "platform",
+	"operation_windows.go":            "orchestration",
+	"platform_windows.go":             "platform",
+	"projection_windows.go":           "projection",
+	"protocol_windows_test.go":        "protocol",
+	"publication_windows_test.go":     "publication",
+	"test_support_windows_test.go":    "test-support",
+	"verification_windows.go":         "verification",
+	"verification_windows_test.go":    "verification",
+	"workload_corpus_windows_test.go": "performance-corpus",
 }
 
 func operationSplitDeclarationFindings(
