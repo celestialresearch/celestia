@@ -15,20 +15,28 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 
 	"celestia.research/celestia/internal/linuxamd64feasibility"
 )
 
 func main() {
-	os.Exit(runMain(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(runMain(os.Args[1:], os.Stdout, os.Stderr, runBootstrapMain))
 }
 
-func runMain(arguments []string, stdout, stderr io.Writer) int {
+func runMain(arguments []string, stdout, stderr io.Writer, bootstrap func() int) int {
 	if len(arguments) == 1 && arguments[0] == "--bootstrap" {
-		return runBootstrap(os.NewFile(4, "clone3-gate"), os.NewFile(3, "clone3-ready"),
-			os.NewFile(5, "hostile-fixture"))
+		return bootstrap()
 	}
 	return run(arguments, stdout, stderr)
+}
+
+func runBootstrapMain() int {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		return 1
+	}
+	return runBootstrap(os.NewFile(4, "clone3-gate"), os.NewFile(3, "clone3-ready"),
+		os.NewFile(5, "hostile-fixture"))
 }
 
 func runBootstrap(gate, ready, fixture *os.File) int {

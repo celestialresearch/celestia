@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -43,13 +44,27 @@ func TestBootstrapStatus(t *testing.T) {
 func TestRunMainDispatchesOrdinaryMode(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if status := runMain(nil, &stdout, &stderr); status != 2 || stdout.Len() != 0 || stderr.Len() == 0 {
+	if status := runMain(nil, &stdout, &stderr, func() int { return 1 }); status != 2 || stdout.Len() != 0 || stderr.Len() == 0 {
 		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
 }
 
 func TestRunMainDispatchesBootstrapMode(t *testing.T) {
-	if status := runMain([]string{"--bootstrap"}, &bytes.Buffer{}, &bytes.Buffer{}); status != 1 {
+	called := false
+	bootstrap := func() int {
+		called = true
+		return 1
+	}
+	if status := runMain([]string{"--bootstrap"}, &bytes.Buffer{}, &bytes.Buffer{}, bootstrap); status != 1 || !called {
+		t.Fatalf("status=%d", status)
+	}
+}
+
+func TestBootstrapMainRefusesUnsupportedPlatform(t *testing.T) {
+	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+		return
+	}
+	if status := runBootstrapMain(); status != 1 {
 		t.Fatalf("status=%d", status)
 	}
 }
