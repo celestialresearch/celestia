@@ -17,7 +17,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -101,11 +100,10 @@ func startClone3Child(leaf ownedCgroupLeaf, command *exec.Cmd) (*clone3Child, er
 	child := &clone3Child{pipes: pipes, pidfd: -1}
 	child.command = command
 	child.command.ExtraFiles = []*os.File{pipes.readyWrite, pipes.gateRead}
-	child.command.SysProcAttr = &syscall.SysProcAttr{
-		UseCgroupFD: true,
-		CgroupFD:    leaf.fd,
-		PidFD:       &child.pidfd,
+	if err := configureClone3Namespaces(child.command, leaf); err != nil {
+		return nil, errors.Join(pipes.closeChildEnds(), pipes.closeParentEnds(), err)
 	}
+	child.command.SysProcAttr.PidFD = &child.pidfd
 	if err := child.command.Start(); err != nil {
 		return nil, errors.Join(pipes.closeChildEnds(), pipes.closeParentEnds(), err)
 	}
