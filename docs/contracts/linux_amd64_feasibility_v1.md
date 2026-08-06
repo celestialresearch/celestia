@@ -33,6 +33,18 @@ not validate bootstrap identity, claim instruction-level suspension before
 `exec`, retain an observation or enable Linux operation execution or attempt
 persistence.
 
+The internal durability checkpoint accepts one caller-supplied absolute root
+of at most 64 components and 255 bytes per component only on Linux AMD64. It
+opens every component without following links, requires root or current-user
+custody of the path, binds the opened root to one ext4 or XFS mount and creates
+one owned fixture directory. The checkpoint writes and syncs one exact
+temporary record, publishes it with
+`renameat2(RENAME_NOREPLACE)`, syncs the containing directory, reopens and
+verifies the exact record then removes only identity-matched files and syncs
+their parent directories. The first primitive outcome remains separate from
+cleanup completion. This is filesystem feasibility only: it retains no record,
+does not implement attempt persistence and has no native runtime observation.
+
 The `celestia.linux-amd64-feasibility-observation.v1` schema is reserved for a
 future native probe. Its synthetic fixtures prove only strict decoding and
 state validation. They do not qualify Linux, enable operation execution or
