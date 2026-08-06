@@ -53,12 +53,11 @@ func TestMountedFilesystem(t *testing.T) {
 }
 
 func TestMountedFilesystemIdentifiesMountRoot(t *testing.T) {
-	mount, filesystem, err := mountedFilesystemIdentity(
-		strings.NewReader("2 1 8:2 / /evidence rw - xfs /dev/data rw\n"),
-		"/evidence",
-	)
-	if err != nil || mount != "/evidence" || filesystem != "xfs" {
-		t.Fatalf("mount=%q filesystem=%q error=%v", mount, filesystem, err)
+	entry, err := mountedFilesystemEntry(
+		strings.NewReader("2 1 8:2 / /evidence rw - xfs /dev/data rw\n"), "/evidence")
+	if err != nil || entry.Mount != "/evidence" || entry.Filesystem != "xfs" ||
+		entry.Major != 8 || entry.Minor != 2 {
+		t.Fatalf("entry=%+v error=%v", entry, err)
 	}
 }
 
@@ -66,6 +65,30 @@ func TestMountedFilesystemRejectsInvalidInput(t *testing.T) {
 	for _, input := range []string{"invalid\n", strings.Repeat("a", maxMountinfoBytes+1)} {
 		if _, err := mountedFilesystem(strings.NewReader(input), "/evidence"); err == nil {
 			t.Fatal("invalid mountinfo accepted")
+		}
+	}
+}
+
+func TestMountDeviceRequiresCanonicalPair(t *testing.T) {
+	for _, value := range []string{"", "8", "8:", ":2", "8:2:1", "-1:2", "8:-2", "x:2", "08:2", "8:+2"} {
+		if _, _, err := mountDevice(value); err == nil {
+			t.Fatalf("accepted %q", value)
+		}
+	}
+	major, minor, err := mountDevice("259:65535")
+	if err != nil || major != 259 || minor != 65535 {
+		t.Fatalf("major=%d minor=%d err=%v", major, minor, err)
+	}
+}
+
+func TestMountPathRequiresCanonicalEscapes(t *testing.T) {
+	value, err := unescapeMountPath(`/evidence\040root/path\134name`)
+	if err != nil || value != "/evidence root/path\\name" {
+		t.Fatalf("value=%q err=%v", value, err)
+	}
+	for _, value := range []string{`/bad\`, `/bad\04`, `/bad\041`, `/bad\999`, "/bad\x00"} {
+		if _, err := unescapeMountPath(value); err == nil {
+			t.Fatalf("accepted %q", value)
 		}
 	}
 }
