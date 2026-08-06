@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -37,6 +38,7 @@ type pendingRemovalOperations struct {
 	linked func(string, os.FileInfo) bool
 	secure func(string) error
 	remove func(string) error
+	sync   func(string) error
 }
 
 func (attempt *Attempt) Publish(observation Observation) error {
@@ -178,6 +180,7 @@ func removePendingDirectory(path string) error {
 			linked: pathIsLinked,
 			secure: secureEvidenceTree,
 			remove: os.Remove,
+			sync:   syncDirectory,
 		},
 	)
 }
@@ -202,6 +205,9 @@ func removePendingDirectoryWith(
 	}
 	if err := operations.remove(path); err != nil {
 		return fmt.Errorf("remove pending attempt: %w", err)
+	}
+	if err := operations.sync(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("sync pending attempts: %w", err)
 	}
 	return nil
 }

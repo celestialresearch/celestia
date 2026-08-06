@@ -142,6 +142,10 @@ func TestRemovePendingReportsSecurityFailure(t *testing.T) {
 				t.Fatal("remove called after security failure")
 				return nil
 			},
+			sync: func(string) error {
+				t.Fatal("sync called after security failure")
+				return nil
+			},
 		},
 	)
 	if !errors.Is(err, failure) {

@@ -34,8 +34,8 @@ const (
 	attemptSplitDirectory  = "internal/operation/urlreference/attempt/"
 	maxAttemptSplitBytes   = 16 << 20
 	attemptSplitPackageSHA = "0b93d68a511272c4aa0315def748218c6b477e0e591a0d18dc955ec68e5b7154"
-	attemptSplitSourceSHA  = "2140543a32d4d8f6215555a32390148015912bb99b717a75fd09fbbb9b4a7de7"
-	attemptSplitTargetSHA  = "a68858013c8e040763b37c1b77d2432b1660d2ab746df4ead73caac9b1ef4848"
+	attemptSplitSourceSHA  = "ad34105c8c061048b670e61fb87de9173c9fc286614d433bef625cfe4e14f5c5"
+	attemptSplitTargetSHA  = "a3be936f6a83846c14523f098915b9cf6ea497c19427c0759626c85e88e42b8d"
 )
 
 type attemptSplitInventory struct {
