@@ -135,7 +135,7 @@ func inspectCgroup(source preflightSource, platform string) (preflightResult, bo
 	if result, refused := inspectControllers(controllers, platform); refused {
 		return result, true
 	}
-	for _, name := range []string{"cgroup.kill", "pids.max", "memory.max", "cpu.max"} {
+	for _, name := range []string{"cgroup.kill", "pids.max", "memory.max", "memory.swap.max", "cpu.max"} {
 		mode, err := source.lstat(cgroupRoot + "/" + name)
 		if errors.Is(err, fs.ErrNotExist) {
 			return unavailable("cgroup_delegation_missing", platform), true

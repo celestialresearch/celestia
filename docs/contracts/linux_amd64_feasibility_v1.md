@@ -74,7 +74,8 @@ inspection evidence exists.
 
 ## Required evidence
 - A writable delegated cgroup v2 subtree exposes `cgroup.kill`, `pids.max`,
-  `memory.max` and `cpu.max`.
+  `memory.max`, `memory.swap.max` and `cpu.max`. The memory probe sets
+  `memory.swap.max` to zero so swap cannot enlarge the declared memory bound.
 - The launch primitive is `clone3` with `CLONE_INTO_CGROUP`; it places the
   bootstrap in the owned cgroup atomically. Missing kernel support, an invalid
   cgroup file descriptor or any other placement method is unavailable.

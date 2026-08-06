@@ -36,6 +36,7 @@ var cgroupLeafFiles = [...]string{
 	"cgroup.freeze",
 	"pids.max",
 	"memory.max",
+	"memory.swap.max",
 	"cpu.max",
 }
 

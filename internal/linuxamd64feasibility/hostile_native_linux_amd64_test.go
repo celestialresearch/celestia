@@ -331,6 +331,9 @@ func applyNativeFixtureLimits(leaf ownedCgroupLeaf, options nativeFixtureOptions
 		if err := leaf.write("memory.max", []byte(options.memoryMax)); err != nil {
 			return cgroupWriteResult(err)
 		}
+		if err := leaf.write("memory.swap.max", []byte("0")); err != nil {
+			return cgroupWriteResult(err)
+		}
 	}
 	return passedCgroup()
 }
