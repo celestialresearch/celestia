@@ -15,6 +15,7 @@ package linuxamd64feasibility
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"syscall"
@@ -33,6 +34,7 @@ func TestClone3CgroupHelper(t *testing.T) {
 	gate := os.NewFile(uintptr(4), "clone3-gate")
 	ready := os.NewFile(uintptr(3), "clone3-ready")
 	if err := runClone3Bootstrap(gate, ready, func() error { return nil }); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(4)
 	}
 	os.Exit(5)
@@ -122,5 +124,6 @@ func TestClone3CgroupPrimitiveRefusesOrdinaryRoot(t *testing.T) {
 func clone3TestCommand(t *testing.T) *exec.Cmd {
 	t.Helper()
 	command := exec.CommandContext(t.Context(), "/proc/self/exe", "-test.run=^TestClone3CgroupHelper$", "--", clone3HelperArgument)
+	command.Stderr = &nativeFixtureOutput{}
 	return command
 }

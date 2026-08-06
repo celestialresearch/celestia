@@ -49,9 +49,10 @@ func TestClone3CgroupPrimitiveNative(t *testing.T) {
 			t.Errorf("close fixture: %v", err)
 		}
 	}()
-	result := clone3CgroupPrimitive(root, clone3TestCommand(t), file)
+	command := clone3TestCommand(t)
+	result := clone3CgroupPrimitive(root, command, file)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
-		t.Fatalf("result=%+v", result)
+		t.Fatalf("result=%+v stderr=%q", result, command.Stderr)
 	}
 }
 
