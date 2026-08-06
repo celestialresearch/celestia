@@ -111,10 +111,10 @@ func (fixture *ownedFixture) writeTemporary() error {
 	fixture.temporary = &fixtureFile{name: durabilityTemporary, identity: identity}
 	data := []byte(durabilityRecordData)
 	if err := writeAll(func(data []byte) (int, error) { return unix.Write(fd, data) }, data); err != nil {
-		return errors.Join(err, unix.Close(fd))
+		return fixture.finishTemporaryFailure(fd, err)
 	}
 	if err := unix.Fsync(fd); err != nil {
-		return errors.Join(err, unix.Close(fd))
+		return fixture.finishTemporaryFailure(fd, err)
 	}
 	identity, err = fixtureFileIdentity(fd, fixture.root.euid, fixture.root.device)
 	closeErr := unix.Close(fd)
@@ -126,6 +126,17 @@ func (fixture *ownedFixture) writeTemporary() error {
 	}
 	fixture.temporary.identity = identity
 	return closeErr
+}
+
+func (fixture *ownedFixture) finishTemporaryFailure(fd int, cause error) error {
+	identity, identityErr := fixtureFileIdentity(fd, fixture.root.euid, fixture.root.device)
+	if identityErr == nil && fixture.temporary != nil &&
+		identity.device == fixture.temporary.identity.device && identity.inode == fixture.temporary.identity.inode {
+		fixture.temporary.identity = identity
+	} else if identityErr == nil {
+		identityErr = errDurabilityRootUnsafe
+	}
+	return errors.Join(cause, identityErr, unix.Close(fd))
 }
 
 func fixtureFileIdentity(fd int, euid uint32, device uint64) (fileIdentity, error) {

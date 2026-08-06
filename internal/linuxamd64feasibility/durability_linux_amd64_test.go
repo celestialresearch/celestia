@@ -176,6 +176,39 @@ func TestDurabilityPublishDoesNotReplace(t *testing.T) {
 	}
 }
 
+func TestDurabilityCleanupRemovesPartialOwnedTemporary(t *testing.T) {
+	root, rootPath := testDurabilityRoot(t)
+	fixture, err := root.createFixture()
+	if err != nil {
+		t.Fatalf("create fixture: %v", err)
+	}
+	fixturePath := filepath.Join(rootPath, fixture.name)
+	t.Cleanup(func() {
+		if err := os.RemoveAll(fixturePath); err != nil {
+			t.Errorf("remove fixture path: %v", err)
+		}
+	})
+	fd, err := unix.Openat(fixture.fd, durabilityTemporary,
+		unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := fixtureFileIdentity(fd, fixture.root.euid, fixture.root.device)
+	if err != nil {
+		t.Fatal(errors.Join(err, unix.Close(fd)))
+	}
+	fixture.temporary = &fixtureFile{name: durabilityTemporary, identity: identity}
+	if _, err := unix.Write(fd, []byte("partial")); err != nil {
+		t.Fatal(errors.Join(err, unix.Close(fd)))
+	}
+	if err := fixture.finishTemporaryFailure(fd, unix.EIO); !errors.Is(err, unix.EIO) {
+		t.Fatalf("finish failure: %v", err)
+	}
+	if err := fixture.remove(); err != nil {
+		t.Fatalf("remove fixture: %v", err)
+	}
+}
+
 func TestDurabilityCleanupRefusesReplacement(t *testing.T) {
 	root, rootPath := testDurabilityRoot(t)
 	fixture, err := root.createFixture()
