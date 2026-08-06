@@ -18,7 +18,7 @@ import (
 	"os"
 )
 
-var errBootstrapUnsupported = errors.New("Linux AMD64 bootstrap required")
+var errBootstrapUnsupported = errors.New("linux AMD64 bootstrap required")
 
 func Bootstrap(*os.File, *os.File) error {
 	return errBootstrapUnsupported
