@@ -334,6 +334,8 @@ add_case "$suite" execution-test-reject internal/execution/supervision/rogue_tes
 add_case "$suite" linux-feasibility-reject internal/linuxamd64feasibility/example.go \
   celestia.research/celestia/internal/operation/urlreference \
   'Linux feasibility preflight must not import Production owners'
+add_case "$suite" linux-feasibility-tool-accept tools/linuxamd64feasibility/allowed.go \
+  celestia.research/celestia/internal/linuxamd64feasibility
 add_case "$suite" linux-feasibility-tool-reject tools/linuxamd64feasibility/example.go \
   celestia.research/celestia/internal/operation/urlreference \
   'Linux feasibility tool imports only its preflight owner'
