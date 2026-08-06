@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 const clone3HelperArgument = "clone3-gate-helper"
@@ -94,6 +96,15 @@ func TestClone3StartRejectsCallerOwnedProcessState(t *testing.T) {
 				t.Fatalf("child=%v err=%v", child, err)
 			}
 		})
+	}
+}
+
+func TestClone3StartResultPreservesCause(t *testing.T) {
+	for _, cause := range []error{unix.EPERM, unix.EIO} {
+		result := clone3StartResult(cause)
+		if !errors.Is(result.cause, cause) {
+			t.Fatalf("cause = %v, want %v", result.cause, cause)
+		}
 	}
 }
 

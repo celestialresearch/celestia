@@ -187,9 +187,13 @@ func clone3LimitResult(err error) cgroupResult {
 
 func clone3StartResult(err error) cgroupResult {
 	if cgroupUnavailableError(err) || errors.Is(err, unix.ENOSYS) {
-		return unavailableCgroup("clone3_unavailable")
+		result := unavailableCgroup("clone3_unavailable")
+		result.cause = err
+		return result
 	}
-	return indeterminateCgroup("clone3_start_indeterminate")
+	result := indeterminateCgroup("clone3_start_indeterminate")
+	result.cause = err
+	return result
 }
 
 func clone3MembershipResult(err error) cgroupResult {

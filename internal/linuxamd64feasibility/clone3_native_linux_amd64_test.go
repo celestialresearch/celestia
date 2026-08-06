@@ -34,6 +34,6 @@ func TestClone3CgroupPrimitiveNative(t *testing.T) {
 	}()
 	result := clone3CgroupPrimitive(root, clone3TestCommand(t), file)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
-		t.Fatalf("result=%+v", result)
+		t.Fatalf("result=%+v cause=%v", result, result.cause)
 	}
 }
