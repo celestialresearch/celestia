@@ -23,6 +23,12 @@ import (
 
 const bootstrapHostname = "celestia-feasibility"
 
+const (
+	bootstrapRoot    = "/tmp/celestia-root"
+	bootstrapOldRoot = bootstrapRoot + "/old-root"
+	bootstrapProc    = bootstrapRoot + "/proc"
+)
+
 func Bootstrap(gate, ready, fixture *os.File) error {
 	if gate == nil || ready == nil || fixture == nil {
 		return unix.EINVAL
@@ -52,7 +58,7 @@ func prepareClone3Namespace() error {
 	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		return err
 	}
-	if err := unix.Mount("proc", "/proc", "proc", unix.MS_NOSUID|unix.MS_NODEV|unix.MS_NOEXEC, ""); err != nil {
+	if err := prepareClone3Filesystem(); err != nil {
 		return err
 	}
 	loopback, err := net.InterfaceByName("lo")
@@ -63,4 +69,36 @@ func prepareClone3Namespace() error {
 		return errors.New("loopback is enabled")
 	}
 	return nil
+}
+
+func prepareClone3Filesystem() error {
+	const mountFlags = unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC
+	if err := unix.Mount("tmpfs", "/tmp", "tmpfs", mountFlags, "size=16m,nr_inodes=1024,mode=0700"); err != nil {
+		return err
+	}
+	if err := unix.Mkdir(bootstrapRoot, 0o700); err != nil {
+		return err
+	}
+	if err := unix.Mount("tmpfs", bootstrapRoot, "tmpfs", mountFlags, "size=16m,nr_inodes=1024,mode=0700"); err != nil {
+		return err
+	}
+	if err := unix.Mkdir(bootstrapOldRoot, 0o700); err != nil {
+		return err
+	}
+	if err := unix.Mkdir(bootstrapProc, 0o500); err != nil {
+		return err
+	}
+	if err := unix.Mount("proc", bootstrapProc, "proc", mountFlags, ""); err != nil {
+		return err
+	}
+	if err := unix.PivotRoot(bootstrapRoot, bootstrapOldRoot); err != nil {
+		return err
+	}
+	if err := unix.Chdir("/"); err != nil {
+		return err
+	}
+	if err := unix.Unmount("/old-root", unix.MNT_DETACH); err != nil {
+		return err
+	}
+	return unix.Rmdir("/old-root")
 }
