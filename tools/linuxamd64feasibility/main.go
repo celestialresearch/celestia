@@ -25,13 +25,14 @@ func main() {
 
 func runMain(arguments []string, stdout, stderr io.Writer) int {
 	if len(arguments) == 1 && arguments[0] == "--bootstrap" {
-		return runBootstrap(os.NewFile(4, "clone3-gate"), os.NewFile(3, "clone3-ready"))
+		return runBootstrap(os.NewFile(4, "clone3-gate"), os.NewFile(3, "clone3-ready"),
+			os.NewFile(5, "hostile-fixture"))
 	}
 	return run(arguments, stdout, stderr)
 }
 
-func runBootstrap(gate, ready *os.File) int {
-	return bootstrapStatus(linuxamd64feasibility.Bootstrap(gate, ready))
+func runBootstrap(gate, ready, fixture *os.File) int {
+	return bootstrapStatus(linuxamd64feasibility.Bootstrap(gate, ready, fixture))
 }
 
 func bootstrapStatus(err error) int {

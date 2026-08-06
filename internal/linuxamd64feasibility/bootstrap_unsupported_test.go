@@ -21,7 +21,7 @@ import (
 func TestBootstrapRequiresLinuxAMD64(t *testing.T) {
 	t.Parallel()
 
-	if err := Bootstrap(nil, nil); !errors.Is(err, errBootstrapUnsupported) {
+	if err := Bootstrap(nil, nil, nil); !errors.Is(err, errBootstrapUnsupported) {
 		t.Fatalf("Bootstrap() error = %v", err)
 	}
 }

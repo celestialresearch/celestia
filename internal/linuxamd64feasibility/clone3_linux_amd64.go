@@ -30,7 +30,7 @@ type clone3Child struct {
 	pidfd   int
 }
 
-func clone3CgroupPrimitive(root string, command *exec.Cmd) (result cgroupResult) {
+func clone3CgroupPrimitive(root string, command *exec.Cmd, fixture *os.File) (result cgroupResult) {
 	directory, err := openCgroupDirectory(root)
 	if err != nil {
 		return cgroupOpenResult(err)
@@ -42,16 +42,16 @@ func clone3CgroupPrimitive(root string, command *exec.Cmd) (result cgroupResult)
 		return result
 	}
 	return useCgroupLeaf(directory, func(leaf ownedCgroupLeaf) cgroupResult {
-		return runClone3Leaf(leaf, command)
+		return runClone3Leaf(leaf, command, fixture)
 	})
 }
 
-func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd) (result cgroupResult) {
+func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd, fixture *os.File) (result cgroupResult) {
 	deadline := time.Now().Add(clone3ProbeTimeout)
 	if err := leaf.write("pids.max", []byte("1")); err != nil {
 		return clone3LimitResult(err)
 	}
-	child, err := startClone3Child(leaf, command)
+	child, err := startClone3Child(leaf, command, fixture)
 	if child == nil {
 		return clone3StartResult(err)
 	}
@@ -88,9 +88,9 @@ func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd) (result cgroupResult
 	return cgroupResult{Outcome: "passed", Reason: "clone3_gate_proved"}
 }
 
-func startClone3Child(leaf ownedCgroupLeaf, command *exec.Cmd) (*clone3Child, error) {
+func startClone3Child(leaf ownedCgroupLeaf, command *exec.Cmd, fixture *os.File) (*clone3Child, error) {
 	if command == nil || command.Path == "" || command.Process != nil ||
-		len(command.ExtraFiles) != 0 || command.SysProcAttr != nil {
+		len(command.ExtraFiles) != 0 || command.SysProcAttr != nil || fixture == nil {
 		return nil, unix.EINVAL
 	}
 	pipes, err := newClone3Pipes()
@@ -99,7 +99,7 @@ func startClone3Child(leaf ownedCgroupLeaf, command *exec.Cmd) (*clone3Child, er
 	}
 	child := &clone3Child{pipes: pipes, pidfd: -1}
 	child.command = command
-	child.command.ExtraFiles = []*os.File{pipes.readyWrite, pipes.gateRead}
+	child.command.ExtraFiles = []*os.File{pipes.readyWrite, pipes.gateRead, fixture}
 	if err := configureClone3Namespaces(child.command, leaf); err != nil {
 		return nil, errors.Join(pipes.closeChildEnds(), pipes.closeParentEnds(), err)
 	}

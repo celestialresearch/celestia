@@ -23,12 +23,23 @@ import (
 
 const bootstrapHostname = "celestia-feasibility"
 
-func Bootstrap(gate, ready *os.File) error {
-	if gate == nil || ready == nil {
+func Bootstrap(gate, ready, fixture *os.File) error {
+	if gate == nil || ready == nil || fixture == nil {
 		return unix.EINVAL
 	}
 	err := runClone3Bootstrap(gate, ready, prepareClone3Namespace)
-	return errors.Join(err, gate.Close(), ready.Close())
+	if err != nil {
+		return errors.Join(err, gate.Close(), ready.Close(), fixture.Close())
+	}
+	if err := unix.CloseRange(6, ^uint(0), unix.CLOSE_RANGE_UNSHARE); err != nil {
+		return errors.Join(err, gate.Close(), ready.Close(), fixture.Close())
+	}
+	unix.CloseOnExec(int(fixture.Fd()))
+	if err := errors.Join(gate.Close(), ready.Close()); err != nil {
+		return errors.Join(err, fixture.Close())
+	}
+	err = unix.Exec("/proc/self/fd/5", []string{"celestia-hostile-fixture"}, []string{})
+	return errors.Join(err, fixture.Close())
 }
 
 func prepareClone3Namespace() error {

@@ -37,17 +37,21 @@ The maintainer feasibility executable has a private bootstrap mode used only
 after atomic cgroup placement. The bootstrap requires PID 1 in the new PID
 namespace, sets a fixed UTS hostname, makes mount propagation private, mounts a
 new `/proc` instance and refuses an enabled loopback interface before reporting
-ready. It closes its two control descriptors on every return. This checkpoint
-does not restrict the remaining filesystem view, execute a hostile fixture or
-establish the final descriptor allowlist; those remain qualification work.
+ready. The bootstrap receives the validated fixture as descriptor `5`. After
+the second gate it closes every descriptor above `5`, marks `5` close-on-exec,
+closes both control descriptors then executes `/proc/self/fd/5` with an empty
+environment. The fixture therefore inherits only descriptors `0`, `1` and `2`.
+This checkpoint does not restrict the remaining filesystem view or implement
+the hostile escape probes; those remain qualification work.
 
 The fixture-image checkpoint opens one canonical relative path beneath an
 absolute non-linked root through `openat2`. Resolution refuses symlinks, magic
 links, mount crossings and path escapes. The opened descriptor must identify a
 single-linked, same-user, size-bounded AMD64 ELF executable that is not
 group-writable or world-writable and has no `PT_INTERP`; its SHA-256, device and
-inode are derived from that descriptor. This checkpoint does not execute the
-image or establish the namespace filesystem allowlist.
+inode are derived from that descriptor. The bootstrap execution described
+above consumes this identity but does not establish the namespace filesystem
+allowlist.
 
 The internal durability checkpoint accepts one caller-supplied absolute root
 of at most 64 components and 255 bytes per component only on Linux AMD64. It

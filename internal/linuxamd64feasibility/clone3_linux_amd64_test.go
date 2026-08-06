@@ -89,7 +89,7 @@ func TestClone3StartRejectsCallerOwnedProcessState(t *testing.T) {
 	}
 	for name, command := range cases {
 		t.Run(name, func(t *testing.T) {
-			child, err := startClone3Child(ownedCgroupLeaf{}, command)
+			child, err := startClone3Child(ownedCgroupLeaf{}, command, file)
 			if child != nil || !errors.Is(err, syscall.EINVAL) {
 				t.Fatalf("child=%v err=%v", child, err)
 			}
@@ -98,7 +98,14 @@ func TestClone3StartRejectsCallerOwnedProcessState(t *testing.T) {
 }
 
 func TestClone3CgroupPrimitiveRefusesOrdinaryRoot(t *testing.T) {
-	result := clone3CgroupPrimitive(t.TempDir(), clone3TestCommand(t))
+	file, err := os.Open("/dev/null")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := clone3CgroupPrimitive(t.TempDir(), clone3TestCommand(t), file)
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if result.Outcome != "unavailable" || result.Reason != "cgroup_v2_missing" {
 		t.Fatalf("result=%+v", result)
 	}

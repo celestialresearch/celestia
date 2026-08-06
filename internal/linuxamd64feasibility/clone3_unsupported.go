@@ -13,8 +13,11 @@
 
 package linuxamd64feasibility
 
-import "os/exec"
+import (
+	"os"
+	"os/exec"
+)
 
-func clone3CgroupPrimitive(string, *exec.Cmd) cgroupResult {
+func clone3CgroupPrimitive(string, *exec.Cmd, *os.File) cgroupResult {
 	return unavailableCgroup("linux_amd64_required")
 }

@@ -19,7 +19,7 @@ import (
 )
 
 func TestClone3CgroupPrimitiveRefusesUnsupportedPlatform(t *testing.T) {
-	result := clone3CgroupPrimitive("ignored", exec.CommandContext(t.Context(), "ignored"))
+	result := clone3CgroupPrimitive("ignored", exec.CommandContext(t.Context(), "ignored"), nil)
 	if result != unavailableCgroup("linux_amd64_required") {
 		t.Fatalf("result=%+v", result)
 	}
