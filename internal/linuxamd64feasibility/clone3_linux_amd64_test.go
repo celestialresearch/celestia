@@ -99,12 +99,9 @@ func TestClone3StartRejectsCallerOwnedProcessState(t *testing.T) {
 	}
 }
 
-func TestClone3StartResultPreservesCause(t *testing.T) {
-	for _, cause := range []error{unix.EPERM, unix.EIO} {
-		result := clone3StartResult(cause)
-		if !errors.Is(result.cause, cause) {
-			t.Fatalf("cause = %v, want %v", result.cause, cause)
-		}
+func TestClone3StartResultDistinguishesPlacementDenial(t *testing.T) {
+	if result := clone3StartResult(unix.EACCES); result.Reason != "clone3_placement_denied" {
+		t.Fatalf("result = %+v", result)
 	}
 }
 

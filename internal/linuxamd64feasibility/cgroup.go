@@ -29,7 +29,6 @@ type cgroupResult struct {
 	Reason           string
 	CleanupAttempted bool
 	CleanupComplete  bool
-	cause            error
 }
 
 func unavailableCgroup(reason string) cgroupResult {
