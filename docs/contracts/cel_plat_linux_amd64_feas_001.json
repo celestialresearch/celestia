@@ -77,7 +77,7 @@
       "kind": "process",
       "owner": "Linux AMD64 feasibility probe",
       "acquisition": "Use clone3(CLONE_INTO_CGROUP) to create the namespace bootstrap atomically in the delegated cgroup before execution",
-      "bound": "At most four accounted cgroup members: bootstrap or fixture, one deliberate descendant, one challenge helper and one remaining owned slot; 2000 milliseconds per fixture",
+      "bound": "At most four accounted cgroup members: bootstrap or fixture, one deliberate descendant, one challenge helper and one remaining owned slot; hostile memory is limited to 67108864 bytes with memory.swap.max set to zero; 2000 milliseconds per fixture",
       "release": "Kill and join the complete owned cgroup tree after recording every member PID and role",
       "cleanup_failure": "Record failure and do not claim feasibility",
       "cancellation": "Kill the owned cgroup tree when the probe context ends",
