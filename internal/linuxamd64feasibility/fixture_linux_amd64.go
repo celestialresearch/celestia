@@ -33,7 +33,7 @@ func openStaticFixture(root, relative string) (*os.File, fixtureObservation, err
 	if !validFixturePath(root, relative) {
 		return nil, fixtureObservation{}, unix.EINVAL
 	}
-	rootFD, err := unix.Open(root, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	rootFD, err := openFixtureRoot(root)
 	if err != nil {
 		return nil, fixtureObservation{}, err
 	}
@@ -55,6 +55,30 @@ func openStaticFixture(root, relative string) (*os.File, fixtureObservation, err
 		return nil, fixtureObservation{}, errors.Join(err, file.Close())
 	}
 	return file, identity, nil
+}
+
+func openFixtureRoot(root string) (int, error) {
+	parts, err := durabilityRootParts(root)
+	if err != nil {
+		return -1, err
+	}
+	fd, err := unix.Open("/", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, err
+	}
+	for _, part := range parts {
+		next, openErr := unix.Openat(fd, part,
+			unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+		closeErr := unix.Close(fd)
+		if err := errors.Join(openErr, closeErr); err != nil {
+			if openErr == nil {
+				err = errors.Join(err, unix.Close(next))
+			}
+			return -1, err
+		}
+		fd = next
+	}
+	return fd, nil
 }
 
 func validFixturePath(root, relative string) bool {
@@ -93,7 +117,7 @@ func staticFixtureIdentity(file *os.File) (fixtureObservation, error) {
 
 func validFixtureStat(information unix.Stat_t, euid uint32) bool {
 	return information.Mode&unix.S_IFMT == unix.S_IFREG && information.Uid == euid &&
-		information.Mode&0o022 == 0 && information.Mode&0o111 != 0 && information.Nlink == 1 &&
+		information.Mode&0o022 == 0 && information.Mode&0o100 != 0 && information.Nlink == 1 &&
 		information.Size > 0 && information.Size <= maxFixtureBytes
 }
 

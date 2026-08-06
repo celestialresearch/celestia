@@ -75,6 +75,34 @@ func TestOpenStaticFixtureRejectsMutableImage(t *testing.T) {
 	}
 }
 
+func TestOpenStaticFixtureRejectsLinkedRootComponent(t *testing.T) {
+	t.Parallel()
+
+	parent := t.TempDir()
+	realRoot := filepath.Join(parent, "real")
+	if err := os.Mkdir(realRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(parent, "link")
+	if err := os.Symlink(realRoot, link); err != nil {
+		t.Fatal(err)
+	}
+	if file, _, err := openStaticFixture(link, "fixture"); file != nil || err == nil {
+		t.Fatalf("file=%v err=%v", file, err)
+	}
+}
+
+func TestFixtureRequiresOwnerExecutePermission(t *testing.T) {
+	t.Parallel()
+
+	information := unix.Stat_t{
+		Mode: unix.S_IFREG | 0o401, Uid: uint32(os.Geteuid()), Nlink: 1, Size: 1,
+	}
+	if validFixtureStat(information, uint32(os.Geteuid())) {
+		t.Fatal("fixture without owner execute permission accepted")
+	}
+}
+
 func TestFixtureRejectsInterpreter(t *testing.T) {
 	image := &elf.File{Progs: []*elf.Prog{{ProgHeader: elf.ProgHeader{Type: elf.PT_INTERP}}}}
 	if !hasInterpreter(image) {
