@@ -138,6 +138,59 @@ func TestCgroupLeafRequiresEmptyEventsAndControls(t *testing.T) {
 	}
 }
 
+func TestNativeFixtureMemoryLimitDisablesSwap(t *testing.T) {
+	root := t.TempDir()
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer closeCgroupDirectory(t, directory)
+	leaf, err := directory.createLeaf()
+	if err != nil {
+		t.Fatalf("create leaf: %v", err)
+	}
+	leafPath := filepath.Join(root, leaf.name)
+	for _, name := range []string{"memory.max", "memory.swap.max"} {
+		writeLeafFile(t, leafPath, name, "")
+	}
+	defer func() {
+		for _, name := range []string{"memory.max", "memory.swap.max"} {
+			if err := os.Remove(filepath.Join(leafPath, name)); err != nil {
+				t.Errorf("remove %s: %v", name, err)
+			}
+		}
+		if err := leaf.remove(); err != nil {
+			t.Errorf("remove leaf: %v", err)
+		}
+	}()
+
+	options := nativeFixtureOptions{memoryMax: nativeMemoryLimit}
+	if result := applyNativeFixtureLimits(leaf, options); result.Outcome != "passed" {
+		t.Fatalf("result=%+v", result)
+	}
+	assertLeafFile(t, leafPath, "memory.max", nativeMemoryLimit)
+	assertLeafFile(t, leafPath, "memory.swap.max", "0")
+
+	if err := os.Remove(filepath.Join(leafPath, "memory.swap.max")); err != nil {
+		t.Fatalf("remove swap control: %v", err)
+	}
+	if result := applyNativeFixtureLimits(leaf, options); result.Outcome == "passed" {
+		t.Fatal("missing swap control accepted")
+	}
+	writeLeafFile(t, leafPath, "memory.swap.max", "")
+}
+
+func assertLeafFile(t *testing.T, root, name, expected string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, name))
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	if string(data) != expected {
+		t.Fatalf("%s = %q, want %q", name, data, expected)
+	}
+}
+
 func removeMockCgroupFiles(t *testing.T, leafPath string) {
 	t.Helper()
 	for _, name := range append([]string{"cgroup.events"}, cgroupLeafFiles[:]...) {
