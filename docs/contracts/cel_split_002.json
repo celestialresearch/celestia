@@ -284,7 +284,8 @@
         }
       ],
       "platforms": [
-        "windows/amd64"
+        "windows/amd64",
+        "linux/amd64"
       ],
       "residual_uncertainty": "Static declaration inventory does not prove persistence semantic equivalence"
     },
@@ -308,7 +309,8 @@
         }
       ],
       "platforms": [
-        "windows/amd64"
+        "windows/amd64",
+        "linux/amd64"
       ],
       "residual_uncertainty": "Source layout is structural evidence and does not prove interruption behaviour"
     },
@@ -332,9 +334,10 @@
         }
       ],
       "platforms": [
-        "windows/amd64"
+        "windows/amd64",
+        "linux/amd64"
       ],
-      "residual_uncertainty": "Native Windows filesystem behaviour remains qualified only on Windows AMD64"
+      "residual_uncertainty": "Native filesystem behaviour remains separately qualified on each supported platform"
     }
   ],
   "success_semantics": "Accepted means the exact declared source split preserves symbols, tests, record bytes, atomicity, locks, corruption refusal, interruption recovery and state transitions",
@@ -381,7 +384,7 @@
   ],
   "residual_limitations": [
     "This structural split does not establish new persistence or operation behaviour",
-    "Native Windows persistence remains separately governed",
+    "Native Windows and Linux AMD64 persistence remain separately governed and qualified",
     "Exact-pair sign-off requires committed clean Product and Assurance candidates"
   ],
   "non_goals": [
