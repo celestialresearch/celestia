@@ -259,14 +259,25 @@ fn exhaust_memory(value: &str) {
     let Ok(bytes) = value.parse::<usize>() else {
         std::process::exit(64);
     };
+    if bytes == 0 {
+        report(false);
+        return;
+    }
     let mut memory = Vec::<u8>::new();
     if memory.try_reserve_exact(bytes).is_err() {
         report(false);
         return;
     }
-    memory.resize(bytes, 1);
-    std::hint::black_box(&memory);
-    report(memory.len() == bytes);
+    memory.resize(bytes, 0);
+    for offset in (0..bytes).step_by(4096) {
+        // SAFETY: offset is within the allocated vector.
+        unsafe { memory.as_mut_ptr().add(offset).write_volatile(1) };
+    }
+    let committed = (0..bytes).step_by(4096).all(|offset| {
+        // SAFETY: offset is within the allocated vector.
+        unsafe { memory.as_ptr().add(offset).read_volatile() == 1 }
+    });
+    report(committed);
 }
 
 fn connect(value: &str) -> bool {
