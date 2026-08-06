@@ -95,10 +95,11 @@ func TestOpenStaticFixtureRejectsLinkedRootComponent(t *testing.T) {
 func TestFixtureRequiresOwnerExecutePermission(t *testing.T) {
 	t.Parallel()
 
+	const owner = uint32(1000)
 	information := unix.Stat_t{
-		Mode: unix.S_IFREG | 0o401, Uid: uint32(os.Geteuid()), Nlink: 1, Size: 1,
+		Mode: unix.S_IFREG | 0o401, Uid: owner, Nlink: 1, Size: 1,
 	}
-	if validFixtureStat(information, uint32(os.Geteuid())) {
+	if validFixtureStat(information, owner) {
 		t.Fatal("fixture without owner execute permission accepted")
 	}
 }

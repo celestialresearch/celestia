@@ -236,7 +236,19 @@ func TestDurabilityCleanupRefusesReplacement(t *testing.T) {
 	if err := fixture.remove(); err == nil {
 		t.Fatal("replacement removed")
 	}
-	if data := readTestFixtureFile(t, fixture.fd, durabilityTemporary); string(data) != "replacement" {
+	replacement, err := unix.Openat(
+		fixture.root.fd, fixture.name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0,
+	)
+	if err != nil {
+		t.Fatalf("open retained fixture: %v", err)
+	}
+	defer func() {
+		if err := unix.Close(replacement); err != nil {
+			t.Errorf("close retained fixture: %v", err)
+		}
+	}()
+	data := readTestFixtureFile(t, replacement, durabilityTemporary)
+	if string(data) != "replacement" {
 		t.Fatalf("replacement=%q", data)
 	}
 }

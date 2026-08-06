@@ -126,6 +126,7 @@ func TestCgroupLeafRequiresEmptyEventsAndControls(t *testing.T) {
 	for _, name := range cgroupLeafFiles {
 		writeLeafFile(t, leafPath, name, "")
 	}
+	defer removeMockCgroupFiles(t, leafPath)
 	if result := validateCgroupLeaf(leaf); result.Outcome != "passed" {
 		t.Fatalf("result=%+v", result)
 	}
@@ -134,6 +135,15 @@ func TestCgroupLeafRequiresEmptyEventsAndControls(t *testing.T) {
 	}
 	if result := validateCgroupLeaf(leaf); result.Reason != "cgroup_leaf_populated" {
 		t.Fatalf("result=%+v", result)
+	}
+}
+
+func removeMockCgroupFiles(t *testing.T, leafPath string) {
+	t.Helper()
+	for _, name := range append([]string{"cgroup.events"}, cgroupLeafFiles[:]...) {
+		if err := os.Remove(filepath.Join(leafPath, name)); err != nil {
+			t.Errorf("remove %s: %v", name, err)
+		}
 	}
 }
 
