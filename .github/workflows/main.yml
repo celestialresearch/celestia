@@ -124,7 +124,10 @@ jobs:
           grep -qw cpu "$root/cgroup.subtree_control"
           grep -qw memory "$root/cgroup.subtree_control"
           grep -qw pids "$root/cgroup.subtree_control"
+          driver="$root/driver"
+          mkdir "$driver"
           printf 'CELESTIA_CGROUP_ROOT=%s\n' "$root" >>"$GITHUB_ENV"
+          printf 'CELESTIA_CGROUP_DRIVER=%s\n' "$driver" >>"$GITHUB_ENV"
           restriction=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
           if [[ -e $restriction ]]; then
             original=$(<"$restriction")
@@ -136,7 +139,9 @@ jobs:
       - name: Qualify Linux Placement
         if: matrix.name == 'Linux AMD64'
         shell: bash
-        run: go test -count=1 -run '^TestClone3CgroupPrimitiveNative$' ./internal/linuxamd64feasibility
+        run: |
+          printf '%s\n' "$$" | sudo tee "$CELESTIA_CGROUP_DRIVER/cgroup.procs" >/dev/null
+          go test -count=1 -run '^TestClone3CgroupPrimitiveNative$' ./internal/linuxamd64feasibility
       - name: Verify
         shell: bash
         env:
