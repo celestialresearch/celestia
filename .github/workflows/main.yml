@@ -112,6 +112,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --locked \
+            --target x86_64-unknown-linux-musl \
+            --manifest-path worker/qualification-fixtures/Cargo.toml \
+            --bin celestia-hostile-worker
+          fixture=$PWD/worker/qualification-fixtures/target/x86_64-unknown-linux-musl/release/celestia-hostile-worker
+          test -x "$fixture"
+          printf 'CELESTIA_HOSTILE_FIXTURE=%s\n' "$fixture" >>"$GITHUB_ENV"
           unit=celestia-qualification-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}
           sudo systemd-run --quiet --unit="$unit" --property=Delegate=yes \
             --property=DelegateSubgroup=keeper \
@@ -140,9 +148,12 @@ jobs:
         if: matrix.name == 'Linux AMD64'
         shell: bash
         run: |
+          test -n "$CELESTIA_CGROUP_ROOT"
+          test -d "$CELESTIA_CGROUP_DRIVER"
+          test -x "$CELESTIA_HOSTILE_FIXTURE"
           printf '%s\n' "$$" | sudo tee "$CELESTIA_CGROUP_DRIVER/cgroup.procs" >/dev/null
           go test -count=1 \
-            -run '^(TestClone3CgroupPrimitiveNative|TestClone3BootstrapNative)$' \
+            -run '^(TestClone3CgroupPrimitiveNative|TestClone3BootstrapNative|TestLinuxHostileFixtureNative)$' \
             ./internal/linuxamd64feasibility
       - name: Verify
         shell: bash
