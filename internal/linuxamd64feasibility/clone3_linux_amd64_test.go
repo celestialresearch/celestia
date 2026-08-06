@@ -22,15 +22,15 @@ import (
 	"time"
 )
 
-const clone3HelperEnvironment = "CELESTIA_CLONE3_HELPER=1"
+const clone3HelperArgument = "clone3-gate-helper"
 
 func TestClone3CgroupHelper(t *testing.T) {
-	if os.Getenv("CELESTIA_CLONE3_HELPER") != "1" {
+	if len(os.Args) == 0 || os.Args[len(os.Args)-1] != clone3HelperArgument {
 		return
 	}
 	gate := os.NewFile(uintptr(4), "clone3-gate")
 	ready := os.NewFile(uintptr(3), "clone3-ready")
-	if err := runClone3Bootstrap(gate, ready); err != nil {
+	if err := runClone3Bootstrap(gate, ready, func() error { return nil }); err != nil {
 		os.Exit(4)
 	}
 	os.Exit(5)
@@ -46,8 +46,7 @@ func TestClone3GateRequiresRelease(t *testing.T) {
 			t.Errorf("close parent pipes: %v", err)
 		}
 	}()
-	command := exec.CommandContext(t.Context(), "/proc/self/exe", "-test.run=^TestClone3CgroupHelper$")
-	command.Env = []string{clone3HelperEnvironment}
+	command := exec.CommandContext(t.Context(), "/proc/self/exe", "-test.run=^TestClone3CgroupHelper$", "--", clone3HelperArgument)
 	command.ExtraFiles = []*os.File{pipes.readyWrite, pipes.gateRead}
 	if err := command.Start(); err != nil {
 		t.Fatalf("start helper: %v", err)
@@ -107,7 +106,6 @@ func TestClone3CgroupPrimitiveRefusesOrdinaryRoot(t *testing.T) {
 
 func clone3TestCommand(t *testing.T) *exec.Cmd {
 	t.Helper()
-	command := exec.CommandContext(t.Context(), "/proc/self/exe", "-test.run=^TestClone3CgroupHelper$")
-	command.Env = []string{clone3HelperEnvironment}
+	command := exec.CommandContext(t.Context(), "/proc/self/exe", "-test.run=^TestClone3CgroupHelper$", "--", clone3HelperArgument)
 	return command
 }

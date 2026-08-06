@@ -14,50 +14,39 @@ package linuxamd64feasibility
 import (
 	"bytes"
 	"errors"
-	"io"
 	"testing"
 )
 
 func TestClone3BootstrapRequiresGateBeforeReady(t *testing.T) {
 	gate := bytes.NewBuffer([]byte{clone3GateByte, clone3GateByte})
-	var ready bytes.Buffer
-	if err := runClone3Bootstrap(gate, &ready); err != nil {
+	prepared := false
+	ready := preparationWriter{prepared: &prepared}
+	if err := runClone3Bootstrap(gate, &ready, func() error { prepared = true; return nil }); err != nil {
 		t.Fatalf("run bootstrap: %v", err)
 	}
-	if gate.Len() != 0 || !bytes.Equal(ready.Bytes(), []byte{clone3ReadyByte}) {
+	if !prepared || gate.Len() != 0 || !bytes.Equal(ready.Bytes(), []byte{clone3ReadyByte}) {
 		t.Fatalf("gate=%d ready=%q", gate.Len(), ready.Bytes())
 	}
 }
 
-func runClone3Bootstrap(gate io.Reader, ready io.Writer) error {
-	if err := readClone3Byte(gate, clone3GateByte); err != nil {
-		return err
-	}
-	if err := writeClone3Byte(ready, clone3ReadyByte); err != nil {
-		return err
-	}
-	return readClone3Byte(gate, clone3GateByte)
+type preparationWriter struct {
+	prepared *bool
+	bytes.Buffer
 }
 
-func readClone3Byte(reader io.Reader, expected byte) error {
-	var value [1]byte
-	count, err := reader.Read(value[:])
-	if err != nil {
-		return err
+func (writer *preparationWriter) Write(data []byte) (int, error) {
+	if writer.prepared == nil || !*writer.prepared {
+		return 0, errors.New("bootstrap reported ready before preparation")
 	}
-	if count != 1 || value[0] != expected {
-		return errors.New("unexpected clone3 gate byte")
-	}
-	return nil
+	return writer.Buffer.Write(data)
 }
 
-func writeClone3Byte(writer io.Writer, value byte) error {
-	count, err := writer.Write([]byte{value})
-	if err != nil {
-		return err
+func TestClone3BootstrapRejectsPreparationFailure(t *testing.T) {
+	t.Parallel()
+
+	want := errors.New("prepare")
+	err := runClone3Bootstrap(bytes.NewBuffer([]byte{clone3GateByte}), &bytes.Buffer{}, func() error { return want })
+	if !errors.Is(err, want) {
+		t.Fatalf("runClone3Bootstrap() error = %v", err)
 	}
-	if count != 1 {
-		return errors.New("short clone3 ready write")
-	}
-	return nil
 }

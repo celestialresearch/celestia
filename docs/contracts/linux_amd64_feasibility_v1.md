@@ -33,6 +33,14 @@ not validate bootstrap identity, claim instruction-level suspension before
 `exec`, retain an observation or enable Linux operation execution or attempt
 persistence.
 
+The maintainer feasibility executable has a private bootstrap mode used only
+after atomic cgroup placement. The bootstrap requires PID 1 in the new PID
+namespace, sets a fixed UTS hostname, makes mount propagation private, mounts a
+new `/proc` instance and refuses an enabled loopback interface before reporting
+ready. It closes its two control descriptors on every return. This checkpoint
+does not restrict the remaining filesystem view, execute a hostile fixture or
+establish the final descriptor allowlist; those remain qualification work.
+
 The internal durability checkpoint accepts one caller-supplied absolute root
 of at most 64 components and 255 bytes per component only on Linux AMD64. It
 opens every component without following links, requires root or current-user

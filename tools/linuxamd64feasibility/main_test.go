@@ -28,6 +28,12 @@ func TestRunRequiresOneRoot(t *testing.T) {
 	}
 }
 
+func TestBootstrapRefusesUnsupportedPlatform(t *testing.T) {
+	if status := runBootstrap(nil, nil); status != 1 {
+		t.Fatalf("status = %d", status)
+	}
+}
+
 func TestRunEmitsPreflightResult(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
