@@ -1,6 +1,8 @@
 # Attempt Evidence v1
 
-Status: implemented for the internal URL-reference operation.
+Status: implemented for the internal URL-reference operation on Windows AMD64.
+The same store semantics are implemented on Linux AMD64 but operation execution
+and native persistence qualification remain unavailable there.
 
 ## Layout
 
@@ -34,14 +36,17 @@ publication marker. A bundle without a valid publication marker is not a
 durable terminal outcome.
 
 ## Atomicity and Recovery
-- The evidence root may be created only beneath an existing secure directory
-  with the protected single-user Windows ACL used by evidence directories.
-  `New` does not create missing ancestor directories.
+- The evidence root may be created only beneath an existing secure directory.
+  Windows requires the protected single-user ACL used by evidence directories.
+  Linux AMD64 requires current-user ownership, no group or world write access
+  and a local ext4 or XFS filesystem. `New` does not create missing ancestor
+  directories.
 - Windows evidence roots require a fixed local drive whose DOS device target is
   a hard-disk volume. UNC, device, mapped, substituted, removable and RAM-disk
   roots are rejected before evidence access.
-- Attempt persistence is supported only on Windows. Other operating systems
-  fail before evidence access with `ErrUnsupported`.
+- Attempt persistence is implemented on Windows and Linux AMD64. Other
+  operating systems fail before evidence access with `ErrUnsupported`. Linux
+  operation execution remains unavailable until native qualification passes.
 - Each attempt has a permanent lock file. Its operating-system exclusive lock
   is held from staging through terminal publication.
 - Writers publish `admitted.json` before creating the permanent ownership
@@ -56,14 +61,17 @@ durable terminal outcome.
 - Lock files are never replaced or removed, preventing ownership from splitting
   across different filesystem objects.
 - Pending and published directory creation refuses duplicate identities.
-- Every record is flushed then published to its final name without replacement
-  using a write-through Windows move.
-- Under exclusive recovery ownership, Windows removes only recognised writer
-  temporary names left by an interrupted record publication.
+- Every record is flushed then published to its final name without replacement.
+  Windows uses a write-through move. Linux uses
+  `renameat2(RENAME_NOREPLACE)` through a no-follow directory descriptor then
+  flushes that directory.
+- Under exclusive recovery ownership the store removes only recognised writer
+  temporary names left by interrupted record publication.
 - A receipt is published only after both referenced records are readable and
   hashed.
 - The complete bundle is moved without replacement into the published namespace
-  before `publication.json` is created.
+  before `publication.json` is created. Linux flushes both the pending and
+  published parent directories after the move.
 - Inspection accepts only fixed record names, regular files, matching attempt
   identities, matching schema versions, matching terminal states and matching
   hashes. It validates the retained protocol relationship without replaying

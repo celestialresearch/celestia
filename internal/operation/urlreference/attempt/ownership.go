@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows || (linux && amd64)
 
 package attemptstore
 
@@ -38,11 +38,6 @@ type ownershipInspectionOperations struct {
 }
 
 const ownershipMarkerSuffix = ".owned"
-
-func (store *Store) createOwnershipMarker(attemptID string) (err error) {
-	_, err = store.createOwnershipMarkerState(attemptID)
-	return err
-}
 
 func (store *Store) createOwnershipMarkerState(
 	attemptID string,

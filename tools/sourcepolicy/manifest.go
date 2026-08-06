@@ -43,7 +43,7 @@ const (
 	splitManifestPath       = "docs/contracts/cel_split_001.json"
 	splitManifestSHA        = "7985a96078eecb71200cfe7fabbdc5c8368afd0e7ef17e9d1a996868fc401c5d"
 	attemptSplitPath        = "docs/contracts/cel_split_002.json"
-	attemptSplitSHA         = "9c9ccaa4732cb47123e80148d5b7611644c98df7103489c89bd8aa59af997269"
+	attemptSplitSHA         = "6f8fa3ca40ebda984b5ccc63387df6f134540050e6bb5b1181c3241dcb8029ba"
 	supervisionSplitPath    = "docs/contracts/cel_split_003.json"
 	supervisionSplitSHA     = "347b056e760c122cabe9f970c35cbf0e7abcbeab9d9e5781bb34768d6ebf3305"
 	operationSplitPath      = "docs/contracts/cel_split_004.json"

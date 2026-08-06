@@ -29,6 +29,7 @@
     "Record shape, evidence binding and closed state transitions are owned by record_validation.go, observation_validation.go and transition.go",
     "Reservation, ownership marker and rooted lock validation are owned by lock.go, ownership.go and lock_root.go",
     "Windows atomic publication, ACL validation and interrupted-record repair are owned by publish_windows.go, acl_windows.go and repair_windows.go",
+    "Linux AMD64 no-replace publication, ext4 or XFS validation, ownership, locking and interrupted-record repair are owned by the linux_amd64 platform files",
     "Tests are redistributed only by the behaviour and fault boundary named in the maintained plan"
   ],
   "derived_state": [
@@ -103,6 +104,13 @@
       "support": "supported",
       "refusal": "",
       "evidence": "Native Production and Assurance policy execution"
+    },
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Focused ext4-backed attempt-store tests; native platform qualification remains separate"
     }
   ],
   "states": [

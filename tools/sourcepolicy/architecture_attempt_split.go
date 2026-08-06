@@ -33,9 +33,9 @@ import (
 const (
 	attemptSplitDirectory  = "internal/operation/urlreference/attempt/"
 	maxAttemptSplitBytes   = 16 << 20
-	attemptSplitPackageSHA = "192a264c5ee60a59a1b5a6fcb9badd0460e41516c6c9b01d0d43e09fbb362438"
-	attemptSplitSourceSHA  = "2ef97cc35c075eab6ea3f69d89cfb64088bf694ef76a91661a5989b0d1e5dbe6"
-	attemptSplitTargetSHA  = "604d8a869f4ab12a4611f39de0c9dc2f755a8122be45ec0b4a8cb8fdf5e52997"
+	attemptSplitPackageSHA = "729b55b118a47499bf2d7c341c283c12e3f273d36c1df2d52943160457404c68"
+	attemptSplitSourceSHA  = "754c9f88e6c4494590cbd7ff3f29745e619ff81aca9438bbdf7478ef512a1036"
+	attemptSplitTargetSHA  = "47ebbc353f1942b63c183d32eabed91d65bf953853aaf20aeeff901e4f73f968"
 )
 
 type attemptSplitInventory struct {

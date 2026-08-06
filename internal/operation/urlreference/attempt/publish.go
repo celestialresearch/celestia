@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows || (linux && amd64)
 
 package attemptstore
 
@@ -60,11 +60,6 @@ func (attempt *Attempt) publishMeasured(
 	timings.DurablePublicationMeasured = true
 	attempt.publication = timings
 	return publishResult(err, releaseErr)
-}
-
-func (attempt *Attempt) publishLocked(observation Observation) error {
-	_, err := attempt.publishLockedMeasured(observation)
-	return err
 }
 
 func (attempt *Attempt) publishLockedMeasured(

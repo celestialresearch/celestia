@@ -135,7 +135,7 @@ func TestHasOwnershipMarkerReportsOpenFailure(t *testing.T) {
 	store := newTestStore(t)
 	accepted, _ := testAccepted(t)
 	attemptID := accepted.Request.AttemptID
-	if err := store.createOwnershipMarker(attemptID); err != nil {
+	if _, err := store.createOwnershipMarkerState(attemptID); err != nil {
 		t.Fatalf("create marker fixture: %v", err)
 	}
 	directory := filepath.Join(store.root, locksDirectory)
