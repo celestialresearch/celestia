@@ -209,11 +209,5 @@ type durabilityFile struct {
 }
 
 func (file *durabilityFile) Read(data []byte) (int, error) {
-	for {
-		count, err := unix.Read(file.fd, data)
-		if errors.Is(err, unix.EINTR) {
-			continue
-		}
-		return count, err
-	}
+	return readUnixFD(file.fd, data)
 }

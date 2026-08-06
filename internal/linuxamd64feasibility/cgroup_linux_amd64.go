@@ -312,10 +312,17 @@ type unixFile struct {
 }
 
 func (file *unixFile) Read(data []byte) (int, error) {
+	return readUnixFD(file.fd, data)
+}
+
+func readUnixFD(fd int, data []byte) (int, error) {
 	for {
-		count, err := unix.Read(file.fd, data)
+		count, err := unix.Read(fd, data)
 		if errors.Is(err, unix.EINTR) {
 			continue
+		}
+		if count == 0 && err == nil {
+			return 0, io.EOF
 		}
 		return count, err
 	}

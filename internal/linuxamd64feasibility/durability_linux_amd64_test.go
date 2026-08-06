@@ -103,6 +103,22 @@ func TestDurabilityWriteHandlesPartialAndInterruptedWrites(t *testing.T) {
 	}
 }
 
+func TestUnixReadReturnsEOF(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "read-eof")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close: %v", err)
+		}
+	})
+
+	if count, err := readUnixFD(int(file.Fd()), make([]byte, 1)); count != 0 || !errors.Is(err, io.EOF) {
+		t.Fatalf("read = (%d, %v)", count, err)
+	}
+}
+
 func TestDurabilityFailureClassification(t *testing.T) {
 	unavailable := durabilityFailure(unix.EROFS, "unavailable", "indeterminate")
 	if unavailable.Outcome != "unavailable" || unavailable.Reason != "unavailable" {
