@@ -166,7 +166,7 @@ func waitClone3Command(command *exec.Cmd) bool {
 		return true
 	}
 	if exitError, ok := errors.AsType[*exec.ExitError](err); ok && exitError != nil {
-		return command.ProcessState != nil && command.ProcessState.Exited()
+		return command.ProcessState != nil
 	}
 	return false
 }
