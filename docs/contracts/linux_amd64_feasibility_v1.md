@@ -41,6 +41,14 @@ ready. It closes its two control descriptors on every return. This checkpoint
 does not restrict the remaining filesystem view, execute a hostile fixture or
 establish the final descriptor allowlist; those remain qualification work.
 
+The fixture-image checkpoint opens one canonical relative path beneath an
+absolute non-linked root through `openat2`. Resolution refuses symlinks, magic
+links, mount crossings and path escapes. The opened descriptor must identify a
+single-linked, same-user, size-bounded AMD64 ELF executable that is not
+group-writable or world-writable and has no `PT_INTERP`; its SHA-256, device and
+inode are derived from that descriptor. This checkpoint does not execute the
+image or establish the namespace filesystem allowlist.
+
 The internal durability checkpoint accepts one caller-supplied absolute root
 of at most 64 components and 255 bytes per component only on Linux AMD64. It
 opens every component without following links, requires root or current-user
