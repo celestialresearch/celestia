@@ -116,6 +116,7 @@ jobs:
           sudo systemd-run --quiet --unit="$unit" --property=Delegate=yes \
             --property=DelegateSubgroup=keeper \
             --service-type=exec --uid="$(id -u)" sleep infinity
+          printf 'CELESTIA_CGROUP_UNIT=%s\n' "$unit" >>"$GITHUB_ENV"
           group=$(systemctl show --property=ControlGroup --value "$unit")
           test -n "$group"
           root="/sys/fs/cgroup$group"
@@ -124,7 +125,14 @@ jobs:
           grep -qw memory "$root/cgroup.subtree_control"
           grep -qw pids "$root/cgroup.subtree_control"
           printf 'CELESTIA_CGROUP_ROOT=%s\n' "$root" >>"$GITHUB_ENV"
-          printf 'CELESTIA_CGROUP_UNIT=%s\n' "$unit" >>"$GITHUB_ENV"
+          restriction=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          if [[ -e $restriction ]]; then
+            original=$(<"$restriction")
+            printf 'CELESTIA_USERNS_RESTRICTION=%s\n' "$original" >>"$GITHUB_ENV"
+            if [[ $original != 0 ]]; then
+              sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0
+            fi
+          fi
       - name: Qualify Linux Placement
         if: matrix.name == 'Linux AMD64'
         shell: bash
@@ -145,9 +153,15 @@ jobs:
         if: always() && matrix.name == 'Linux AMD64'
         shell: bash
         run: |
+          status=0
           if [[ -n ${CELESTIA_CGROUP_UNIT:-} ]]; then
-            sudo systemctl stop "$CELESTIA_CGROUP_UNIT"
+            sudo systemctl stop "$CELESTIA_CGROUP_UNIT" || status=$?
           fi
+          if [[ -n ${CELESTIA_USERNS_RESTRICTION:-} ]]; then
+            sudo sysctl -q -w \
+              kernel.apparmor_restrict_unprivileged_userns="$CELESTIA_USERNS_RESTRICTION" || status=$?
+          fi
+          exit "$status"
 
   go-campaign:
     name: Go Campaign (${{ matrix.name }})
