@@ -58,7 +58,7 @@ fn run_fixture() {
         "environment" => report(env::vars_os().next().is_some()),
         "descriptors" => report(unexpected_descriptors()),
         "credentials" => report(credentials_available()),
-        "memory" => exhaust_memory(),
+        "memory" => exhaust_memory(value),
         _ => std::process::exit(64),
     }
 }
@@ -255,14 +255,18 @@ fn credentials_available() -> bool {
     false
 }
 
-fn exhaust_memory() {
+fn exhaust_memory(value: &str) {
+    let Ok(bytes) = value.parse::<usize>() else {
+        std::process::exit(64);
+    };
     let mut memory = Vec::<u8>::new();
-    if memory.try_reserve_exact(134_217_728).is_err() {
+    if memory.try_reserve_exact(bytes).is_err() {
         report(false);
         return;
     }
-    memory.resize(134_217_728, 1);
-    report(memory.len() == 134_217_728);
+    memory.resize(bytes, 1);
+    std::hint::black_box(&memory);
+    report(memory.len() == bytes);
 }
 
 fn connect(value: &str) -> bool {

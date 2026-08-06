@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ import (
 const (
 	nativeFixtureOutputLimit = 1 << 10
 	nativeMemoryLimit        = "67108864"
+	nativeMemoryRequest      = "134217728"
 )
 
 var errNativeFixtureOutput = errors.New("native fixture output exceeds limit")
@@ -42,9 +44,10 @@ type nativeFixtureOptions struct {
 }
 
 type nativeFixtureState struct {
-	output   string
-	success  bool
-	timedOut bool
+	output    string
+	success   bool
+	timedOut  bool
+	oomKilled bool
 }
 
 type nativeFixtureOutput struct {
@@ -96,9 +99,10 @@ func TestLinuxHostileFixtureNative(t *testing.T) {
 	}
 	t.Run("memory", func(t *testing.T) {
 		state := runNativeFixture(t, nativeFixtureOptions{
-			mode: "memory", memoryMax: nativeMemoryLimit, allowStderr: true,
+			mode: "memory", value: nativeMemoryRequest,
+			memoryMax: nativeMemoryLimit, allowStderr: true,
 		})
-		if state.output == "allowed" || (state.success && state.output != "denied") {
+		if !state.oomKilled || state.output == "allowed" || state.success {
 			t.Fatalf("state = %+v", state)
 		}
 	})
@@ -186,7 +190,75 @@ func runNativeFixtureLeaf(
 	}
 	observed, childReaped := observeNativeFixture(child, options, &output, &stderr, state)
 	reaped = childReaped
+	if options.memoryMax != "" && observed.Outcome == "passed" {
+		state.oomKilled, err = nativeMemoryOOMKilled(leaf)
+		if err != nil || !state.oomKilled {
+			return indeterminateCgroup("fixture_memory_limit_unproven")
+		}
+	}
 	return observed
+}
+
+func nativeMemoryOOMKilled(leaf ownedCgroupLeaf) (bool, error) {
+	data, err := leaf.read("memory.events", maxCgroupEventsBytes)
+	if err != nil {
+		return false, err
+	}
+	return memoryOOMKilled(data)
+}
+
+func memoryOOMKilled(data []byte) (bool, error) {
+	if len(data) == 0 || len(data) > maxCgroupEventsBytes || data[len(data)-1] != '\n' {
+		return false, errCgroupEventsMalformed
+	}
+	found, killed := false, false
+	fieldsSeen := make(map[string]bool)
+	for line := range strings.SplitSeq(string(data[:len(data)-1]), "\n") {
+		name, valueText, ok := strings.Cut(line, " ")
+		if !ok || !validCgroupName(name) || fieldsSeen[name] || valueText == "" ||
+			strings.Contains(valueText, " ") || (len(valueText) > 1 && valueText[0] == '0') {
+			return false, errCgroupEventsMalformed
+		}
+		fieldsSeen[name] = true
+		value, err := strconv.ParseUint(valueText, 10, 64)
+		if err != nil {
+			return false, errCgroupEventsMalformed
+		}
+		if name == "oom_kill" {
+			found, killed = true, value > 0
+		}
+	}
+	if !found {
+		return false, errCgroupEventsMalformed
+	}
+	return killed, nil
+}
+
+func TestMemoryOOMKillEvidence(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		data   string
+		killed bool
+		valid  bool
+	}{
+		{data: "low 0\noom 1\noom_kill 1\n", killed: true, valid: true},
+		{data: "low 0\noom 0\noom_kill 0\n", valid: true},
+		{data: "low 0\noom 1\n"},
+		{data: "oom_kill invalid\n"},
+		{data: "oom_kill 1 unexpected\n"},
+		{data: "oom_kill 1\nbroken\n"},
+		{data: "oom_kill 1\noom_kill 0\n"},
+		{data: "oom_kill 01\n"},
+		{data: "oom_kill\t1\n"},
+		{data: "oom_kill 1"},
+	}
+	for _, test := range tests {
+		killed, err := memoryOOMKilled([]byte(test.data))
+		if killed != test.killed || (err == nil) != test.valid {
+			t.Fatalf("data=%q killed=%t error=%v", test.data, killed, err)
+		}
+	}
 }
 
 func prepareNativeFixture(leaf ownedCgroupLeaf, child *clone3Child) cgroupResult {
