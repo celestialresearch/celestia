@@ -47,6 +47,7 @@ func clone3CgroupPrimitive(root string, command *exec.Cmd) (result cgroupResult)
 }
 
 func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd) (result cgroupResult) {
+	deadline := time.Now().Add(clone3ProbeTimeout)
 	if err := leaf.write("pids.max", []byte("1")); err != nil {
 		return clone3LimitResult(err)
 	}
@@ -55,7 +56,7 @@ func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd) (result cgroupResult
 		return clone3StartResult(err)
 	}
 	defer func() {
-		result = cleanupClone3Child(result, leaf, child)
+		result = cleanupClone3Child(result, leaf, child, deadline)
 	}()
 	if err != nil {
 		return clone3StartResult(err)
@@ -66,7 +67,6 @@ func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd) (result cgroupResult
 	if err := verifyClone3Membership(leaf, child.command.Process.Pid); err != nil {
 		return clone3MembershipResult(err)
 	}
-	deadline := time.Now().Add(clone3ProbeTimeout)
 	if err := leaf.freeze(deadline); err != nil {
 		return clone3FreezeResult(err)
 	}
@@ -121,8 +121,7 @@ func verifyClone3Membership(leaf ownedCgroupLeaf, pid int) error {
 	return nil
 }
 
-func cleanupClone3Child(result cgroupResult, leaf ownedCgroupLeaf, child *clone3Child) cgroupResult {
-	deadline := time.Now().Add(clone3ProbeTimeout)
+func cleanupClone3Child(result cgroupResult, leaf ownedCgroupLeaf, child *clone3Child, deadline time.Time) cgroupResult {
 	complete := true
 	if err := leaf.write("cgroup.kill", []byte("1")); err != nil {
 		complete = false
