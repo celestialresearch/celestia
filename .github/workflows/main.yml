@@ -117,8 +117,15 @@ jobs:
             --target x86_64-unknown-linux-musl \
             --manifest-path worker/qualification-fixtures/Cargo.toml \
             --bin celestia-hostile-worker
-          fixture=$PWD/worker/qualification-fixtures/target/x86_64-unknown-linux-musl/release/celestia-hostile-worker
-          test -x "$fixture"
+          built=$PWD/worker/qualification-fixtures/target/x86_64-unknown-linux-musl/release/celestia-hostile-worker
+          test -x "$built"
+          fixture_dir=$(mktemp -d "$RUNNER_TEMP/celestia-hostile.XXXXXX")
+          printf 'CELESTIA_HOSTILE_FIXTURE_DIR=%s\n' "$fixture_dir" >>"$GITHUB_ENV"
+          fixture=$fixture_dir/celestia-hostile-worker
+          install -m 0500 "$built" "$fixture"
+          test "$(stat -c %u "$fixture")" = "$(id -u)"
+          test "$(stat -c %h "$fixture")" = 1
+          test "$(stat -c %a "$fixture")" = 500
           printf 'CELESTIA_HOSTILE_FIXTURE=%s\n' "$fixture" >>"$GITHUB_ENV"
           unit=celestia-qualification-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}
           sudo systemd-run --quiet --unit="$unit" --property=Delegate=yes \
@@ -178,6 +185,15 @@ jobs:
           if [[ -n ${CELESTIA_USERNS_RESTRICTION:-} ]]; then
             sudo sysctl -q -w \
               kernel.apparmor_restrict_unprivileged_userns="$CELESTIA_USERNS_RESTRICTION" || status=$?
+          fi
+          if [[ -n ${CELESTIA_HOSTILE_FIXTURE_DIR:-} ]]; then
+            case $CELESTIA_HOSTILE_FIXTURE_DIR in
+              "$RUNNER_TEMP"/celestia-hostile.*)
+                rm -f -- "$CELESTIA_HOSTILE_FIXTURE_DIR/celestia-hostile-worker" || status=$?
+                rmdir -- "$CELESTIA_HOSTILE_FIXTURE_DIR" || status=$?
+                ;;
+              *) status=1 ;;
+            esac
           fi
           exit "$status"
 
