@@ -141,7 +141,9 @@ jobs:
         shell: bash
         run: |
           printf '%s\n' "$$" | sudo tee "$CELESTIA_CGROUP_DRIVER/cgroup.procs" >/dev/null
-          go test -count=1 -run '^TestClone3CgroupPrimitiveNative$' ./internal/linuxamd64feasibility
+          go test -count=1 \
+            -run '^(TestClone3CgroupPrimitiveNative|TestClone3BootstrapNative)$' \
+            ./internal/linuxamd64feasibility
       - name: Verify
         shell: bash
         env:
