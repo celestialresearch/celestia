@@ -29,13 +29,22 @@ import (
 
 const maxFixtureBytes = 16 << 20
 
-func openStaticFixture(root, relative string) (*os.File, fixtureObservation, error) {
+type fixtureIdentity struct {
+	SHA256     string
+	ELFMachine string
+	ELFType    string
+	PTInterp   bool
+	Device     uint64
+	Inode      uint64
+}
+
+func openStaticFixture(root, relative string) (*os.File, fixtureIdentity, error) {
 	if !validFixturePath(root, relative) {
-		return nil, fixtureObservation{}, unix.EINVAL
+		return nil, fixtureIdentity{}, unix.EINVAL
 	}
 	rootFD, err := openFixtureRoot(root)
 	if err != nil {
-		return nil, fixtureObservation{}, err
+		return nil, fixtureIdentity{}, err
 	}
 	how := &unix.OpenHow{
 		Flags: uint64(unix.O_RDONLY | unix.O_CLOEXEC | unix.O_NOFOLLOW),
@@ -47,12 +56,12 @@ func openStaticFixture(root, relative string) (*os.File, fixtureObservation, err
 		if fd >= 0 {
 			err = errors.Join(err, unix.Close(fd))
 		}
-		return nil, fixtureObservation{}, err
+		return nil, fixtureIdentity{}, err
 	}
 	file := os.NewFile(uintptr(fd), relative)
 	identity, err := staticFixtureIdentity(file)
 	if err != nil {
-		return nil, fixtureObservation{}, errors.Join(err, file.Close())
+		return nil, fixtureIdentity{}, errors.Join(err, file.Close())
 	}
 	return file, identity, nil
 }
@@ -91,24 +100,24 @@ func validFixturePath(root, relative string) bool {
 		!strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
 
-func staticFixtureIdentity(file *os.File) (fixtureObservation, error) {
+func staticFixtureIdentity(file *os.File) (fixtureIdentity, error) {
 	var information unix.Stat_t
 	if err := unix.Fstat(int(file.Fd()), &information); err != nil {
-		return fixtureObservation{}, err
+		return fixtureIdentity{}, err
 	}
 	euid := os.Geteuid()
 	if euid < 0 || uint64(euid) > math.MaxUint32 || !validFixtureStat(information, uint32(euid)) {
-		return fixtureObservation{}, errors.New("unsafe fixture file")
+		return fixtureIdentity{}, errors.New("unsafe fixture file")
 	}
 	fixtureType, err := staticELFType(file)
 	if err != nil {
-		return fixtureObservation{}, err
+		return fixtureIdentity{}, err
 	}
 	hash := sha256.New()
 	if _, err := io.Copy(hash, io.NewSectionReader(file, 0, information.Size)); err != nil {
-		return fixtureObservation{}, err
+		return fixtureIdentity{}, err
 	}
-	return fixtureObservation{
+	return fixtureIdentity{
 		SHA256: hex.EncodeToString(hash.Sum(nil)), ELFMachine: "x86_64",
 		ELFType: fixtureType, PTInterp: false,
 		Device: information.Dev, Inode: information.Ino,
