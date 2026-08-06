@@ -20,14 +20,22 @@ import (
 )
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "--bootstrap" {
-		os.Exit(runBootstrap(os.NewFile(4, "clone3-gate"), os.NewFile(3, "clone3-ready")))
+	os.Exit(runMain(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func runMain(arguments []string, stdout, stderr io.Writer) int {
+	if len(arguments) == 1 && arguments[0] == "--bootstrap" {
+		return runBootstrap(os.NewFile(4, "clone3-gate"), os.NewFile(3, "clone3-ready"))
 	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	return run(arguments, stdout, stderr)
 }
 
 func runBootstrap(gate, ready *os.File) int {
-	if err := linuxamd64feasibility.Bootstrap(gate, ready); err != nil {
+	return bootstrapStatus(linuxamd64feasibility.Bootstrap(gate, ready))
+}
+
+func bootstrapStatus(err error) int {
+	if err != nil {
 		return 1
 	}
 	return 0

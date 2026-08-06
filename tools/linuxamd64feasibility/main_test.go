@@ -34,6 +34,26 @@ func TestBootstrapRefusesUnsupportedPlatform(t *testing.T) {
 	}
 }
 
+func TestBootstrapStatus(t *testing.T) {
+	if bootstrapStatus(nil) != 0 || bootstrapStatus(errors.New("bootstrap")) != 1 {
+		t.Fatal("incorrect bootstrap status")
+	}
+}
+
+func TestRunMainDispatchesOrdinaryMode(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if status := runMain(nil, &stdout, &stderr); status != 2 || stdout.Len() != 0 || stderr.Len() == 0 {
+		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunMainDispatchesBootstrapMode(t *testing.T) {
+	if status := runMain([]string{"--bootstrap"}, &bytes.Buffer{}, &bytes.Buffer{}); status != 1 {
+		t.Fatalf("status=%d", status)
+	}
+}
+
 func TestRunEmitsPreflightResult(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
