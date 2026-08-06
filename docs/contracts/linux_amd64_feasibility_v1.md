@@ -65,8 +65,10 @@ enable attempt persistence.
   `/proc` is a newly mounted private instance with no host process view.
 - PID, IPC and UTS namespaces are private. The network namespace has no
   network configuration and loopback remains down.
-- Only file descriptors `0`, `1` and `2` are inherited by the bootstrap and
-  fixture. The observation proves the allowlist.
+- The qualification bootstrap inherits descriptors `0`, `1` and `2` plus two
+  fixed control pipes used only for pre-payload gating. It closes both control
+  descriptors before fixture `exec`. The hostile fixture inherits only
+  descriptors `0`, `1` and `2`; the observation proves both allowlists.
 - The fixture is an exact static AMD64 ELF image. The observation records its
   SHA-256, ELF machine and type, absence of `PT_INTERP`, executable inode and
   device plus the probe executable SHA-256. No ambient loader identity is
