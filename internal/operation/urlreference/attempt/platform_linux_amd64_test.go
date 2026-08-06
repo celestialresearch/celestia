@@ -24,8 +24,8 @@ import (
 func TestLinuxEvidenceFilesystemTypes(t *testing.T) {
 	t.Parallel()
 
-	if !validEvidenceFilesystemType(ext4Magic) || !validEvidenceFilesystemType(xfsMagic) ||
-		validEvidenceFilesystemType(0x794c7630) {
+	if !validEvidenceFilesystemType("ext4") || !validEvidenceFilesystemType("xfs") ||
+		validEvidenceFilesystemType("ext3") || validEvidenceFilesystemType("") {
 		t.Fatal("filesystem allowlist is incorrect")
 	}
 }

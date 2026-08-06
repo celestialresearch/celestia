@@ -151,6 +151,9 @@ func forbiddenURLReferenceImport(importer, imported string) string {
 		!strings.HasPrefix(imported, "internal/") {
 		return ""
 	}
+	if importer == root+"/attempt" && imported == "internal/linuxamd64feasibility" {
+		return ""
+	}
 	allowed := map[string][]string{
 		root + "/attempt":   {root + "/admission", root + "/protocol", root + "/transform"},
 		root + "/admission": {root + "/protocol", root + "/transform"},

@@ -37,7 +37,8 @@ func cgroupV2(name string) (bool, error) {
 	return isCgroupV2(filesystem), err
 }
 
-func rootFilesystem(name string) (string, error) {
+// EvidenceFilesystem identifies a supported local evidence filesystem.
+func EvidenceFilesystem(name string) (string, error) {
 	filesystem, err := filesystemType(name)
 	if err != nil {
 		return "", err
@@ -55,6 +56,10 @@ func rootFilesystem(name string) (string, error) {
 		return "", err
 	}
 	return evidenceFilesystem(filesystem, mounted), nil
+}
+
+func rootFilesystem(name string) (string, error) {
+	return EvidenceFilesystem(name)
 }
 
 func isCgroupV2(filesystem int64) bool {

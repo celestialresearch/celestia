@@ -108,6 +108,21 @@ func TestArchitectureImportsNormaliseMigrationOwners(t *testing.T) {
 	}
 }
 
+func TestArchitectureImportsAllowAttemptFilesystemOwner(t *testing.T) {
+	t.Parallel()
+
+	const attempt = "internal/operation/urlreference/attempt"
+	if reason := forbiddenURLReferenceImport(attempt, "internal/linuxamd64feasibility"); reason != "" {
+		t.Fatalf("filesystem owner rejected: %s", reason)
+	}
+	if reason := forbiddenURLReferenceImport(attempt, "internal/linuxamd64feasibility/rogue"); reason == "" {
+		t.Fatal("filesystem subpackage accepted")
+	}
+	if reason := forbiddenURLReferenceImport(attempt, "internal/execution/supervision"); reason == "" {
+		t.Fatal("unrelated Production owner accepted")
+	}
+}
+
 func TestArchitectureImportsRestrictTestCargoOwner(t *testing.T) {
 	t.Parallel()
 

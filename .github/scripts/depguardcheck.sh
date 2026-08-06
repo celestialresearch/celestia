@@ -349,6 +349,9 @@ add_case "$suite" command-reject cmd/example/main.go \
 add_case "$suite" operation-reject internal/operation/urlreference/example.go \
   celestia.research/celestia/internal/operation/other \
   'operation roots import only their own declared subpackages'
+add_case "$suite" attempt-linux-filesystem-accept \
+  internal/operation/urlreference/attempt/allowed_linux.go \
+  celestia.research/celestia/internal/linuxamd64feasibility
 add_case "$suite" attempt-reject internal/operation/urlreference/attempt/example.go \
   celestia.research/celestia/internal/execution/supervision \
   'attempt evidence imports only lower URL-reference owners'

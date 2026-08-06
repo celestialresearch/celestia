@@ -19,12 +19,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"golang.org/x/sys/unix"
-)
-
-const (
-	ext4Magic = 0xef53
-	xfsMagic  = 0x58465342
+	"celestia.research/celestia/internal/linuxamd64feasibility"
 )
 
 func validEvidenceRootPath(path string) bool {
@@ -46,18 +41,18 @@ func secureEvidenceParent(path string) error {
 }
 
 func validEvidenceFilesystem(path string) error {
-	var stat unix.Statfs_t
-	if err := unix.Statfs(path, &stat); err != nil {
+	filesystem, err := linuxamd64feasibility.EvidenceFilesystem(path)
+	if err != nil {
 		return err
 	}
-	if !validEvidenceFilesystemType(stat.Type) {
+	if !validEvidenceFilesystemType(filesystem) {
 		return ErrCorrupt
 	}
 	return nil
 }
 
-func validEvidenceFilesystemType(value int64) bool {
-	return value == ext4Magic || value == xfsMagic
+func validEvidenceFilesystemType(value string) bool {
+	return value == "ext4" || value == "xfs"
 }
 
 func secureEvidenceTree(path string) error {

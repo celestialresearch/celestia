@@ -95,14 +95,14 @@ func TestMountPathRequiresCanonicalEscapes(t *testing.T) {
 
 func TestFilesystemInspection(t *testing.T) {
 	root := t.TempDir()
-	if _, err := rootFilesystem(root); err != nil {
+	if _, err := EvidenceFilesystem(root); err != nil {
 		t.Fatalf("root filesystem: %v", err)
 	}
 	if _, err := cgroupV2(root); err != nil {
 		t.Fatalf("cgroup filesystem: %v", err)
 	}
 	missing := filepath.Join(root, "missing")
-	if _, err := rootFilesystem(missing); err == nil {
+	if _, err := EvidenceFilesystem(missing); err == nil {
 		t.Fatal("missing root filesystem accepted")
 	}
 	if _, err := cgroupV2(missing); err == nil {

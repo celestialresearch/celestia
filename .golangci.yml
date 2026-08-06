@@ -44,7 +44,7 @@ linters:
           files:
             - "**/tools/linuxamd64feasibility/*.go"
           allow:
-            - "celestia.research/celestia/internal/linuxamd64feasibility"
+            - "celestia.research/celestia/internal/linuxamd64feasibility$"
           deny:
             - pkg: "celestia.research/celestia/internal"
               desc: Linux feasibility tool imports only its preflight owner
@@ -89,6 +89,7 @@ linters:
             - "**/internal/operation/urlreference/attempt/*.go"
             - "**/internal/operation/urlreference/attempt/**/*.go"
           allow:
+            - "celestia.research/celestia/internal/linuxamd64feasibility$"
             - "celestia.research/celestia/internal/operation/urlreference/admission"
             - "celestia.research/celestia/internal/operation/urlreference/protocol"
             - "celestia.research/celestia/internal/operation/urlreference/transform"
