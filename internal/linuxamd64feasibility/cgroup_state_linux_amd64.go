@@ -20,6 +20,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var errCgroupDeadlineExceeded = errors.New("cgroup deadline exceeded")
+
 func (leaf ownedCgroupLeaf) freeze(deadline time.Time) error {
 	if err := leaf.write("cgroup.freeze", []byte("1")); err != nil {
 		return err

@@ -14,6 +14,8 @@
 package linuxamd64feasibility
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path"
@@ -22,6 +24,31 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+const (
+	durabilityFixturePrefix = "celestia-durability-"
+	durabilityTemporary     = ".record.tmp"
+	durabilityRecord        = "record"
+	durabilityRecordData    = "celestia-linux-amd64-feasibility\n"
+	maxDurabilityComponents = 64
+	maxDurabilityNameBytes  = 255
+)
+
+func passedDurability(reason string) durabilityResult {
+	return durabilityResult{Outcome: "passed", Reason: reason}
+}
+
+func indeterminateDurability(reason string) durabilityResult {
+	return durabilityResult{Outcome: "indeterminate", Reason: reason}
+}
+
+func durabilityName() (string, error) {
+	var token [12]byte
+	if _, err := rand.Read(token[:]); err != nil {
+		return "", err
+	}
+	return durabilityFixturePrefix + hex.EncodeToString(token[:]), nil
+}
 
 var (
 	errDurabilityRootInvalid   = errors.New("invalid durability root")

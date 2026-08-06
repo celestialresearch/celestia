@@ -20,9 +20,8 @@ import (
 const maxCgroupEventsBytes = 4 << 10
 
 var (
-	errCgroupDeadlineExceeded = errors.New("cgroup deadline exceeded")
-	errCgroupEventsMalformed  = errors.New("malformed cgroup events")
-	errCgroupEventsOversized  = errors.New("oversized cgroup events")
+	errCgroupEventsMalformed = errors.New("malformed cgroup events")
+	errCgroupEventsOversized = errors.New("oversized cgroup events")
 )
 
 type cgroupResult struct {

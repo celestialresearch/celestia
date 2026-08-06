@@ -11,20 +11,6 @@
 
 package linuxamd64feasibility
 
-import (
-	"crypto/rand"
-	"encoding/hex"
-)
-
-const (
-	durabilityFixturePrefix = "celestia-durability-"
-	durabilityTemporary     = ".record.tmp"
-	durabilityRecord        = "record"
-	durabilityRecordData    = "celestia-linux-amd64-feasibility\n"
-	maxDurabilityComponents = 64
-	maxDurabilityNameBytes  = 255
-)
-
 type durabilityResult struct {
 	Outcome          string
 	Reason           string
@@ -32,16 +18,8 @@ type durabilityResult struct {
 	CleanupComplete  bool
 }
 
-func passedDurability(reason string) durabilityResult {
-	return durabilityResult{Outcome: "passed", Reason: reason}
-}
-
 func unavailableDurability(reason string) durabilityResult {
 	return durabilityResult{Outcome: "unavailable", Reason: reason}
-}
-
-func indeterminateDurability(reason string) durabilityResult {
-	return durabilityResult{Outcome: "indeterminate", Reason: reason}
 }
 
 func finishDurabilityCleanup(result durabilityResult, cleanupError error) durabilityResult {
@@ -52,12 +30,4 @@ func finishDurabilityCleanup(result durabilityResult, cleanupError error) durabi
 		result.CleanupComplete = false
 	}
 	return result
-}
-
-func durabilityName() (string, error) {
-	var token [12]byte
-	if _, err := rand.Read(token[:]); err != nil {
-		return "", err
-	}
-	return durabilityFixturePrefix + hex.EncodeToString(token[:]), nil
 }
