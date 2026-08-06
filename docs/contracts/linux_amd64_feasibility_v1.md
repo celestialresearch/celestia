@@ -72,11 +72,6 @@ observation. The Production attempt store uses the same declared ext4/XFS
 durability boundary but remains unqualified until native recovery and
 inspection evidence exists.
 
-The `celestia.linux-amd64-feasibility-observation.v1` schema is reserved for a
-future native probe. Its synthetic fixtures prove only strict decoding and
-state validation. They do not qualify Linux, enable operation execution or
-qualify attempt persistence.
-
 ## Required evidence
 - A writable delegated cgroup v2 subtree exposes `cgroup.kill`, `pids.max`,
   `memory.max` and `cpu.max`.
