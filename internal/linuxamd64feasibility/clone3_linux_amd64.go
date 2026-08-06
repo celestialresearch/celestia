@@ -22,7 +22,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const clone3ProbeTimeout = 2 * time.Second
+const (
+	clone3ProbeTimeout = 2 * time.Second
+	clone3TaskLimit    = "4"
+)
 
 type clone3Child struct {
 	command *exec.Cmd
@@ -48,7 +51,7 @@ func clone3CgroupPrimitive(root string, command *exec.Cmd, fixture *os.File) (re
 
 func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd, fixture *os.File) (result cgroupResult) {
 	deadline := time.Now().Add(clone3ProbeTimeout)
-	if err := leaf.write("pids.max", []byte("1")); err != nil {
+	if err := leaf.write("pids.max", []byte(clone3TaskLimit)); err != nil {
 		return clone3LimitResult(err)
 	}
 	child, err := startClone3Child(leaf, command, fixture)

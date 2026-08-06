@@ -29,7 +29,7 @@ func configureClone3Namespaces(command *exec.Cmd, leaf ownedCgroupLeaf) error {
 	if uid < 0 || gid < 0 {
 		return unix.EINVAL
 	}
-	command.Env = []string{}
+	command.Env = []string{"GOMAXPROCS=1"}
 	command.SysProcAttr = &syscall.SysProcAttr{
 		Cloneflags:                 requiredNamespaceFlags,
 		Credential:                 &syscall.Credential{Uid: 0, Gid: 0, NoSetGroups: true},

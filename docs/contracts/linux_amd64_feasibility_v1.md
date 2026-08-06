@@ -21,9 +21,11 @@ release artefact and cannot qualify the platform.
 The internal cgroup checkpoint validates a caller-supplied delegated cgroup v2
 root under exclusive same-authority custody then creates and removes one owned
 empty leaf. A native qualification harness may provide one bootstrap command to
-the placement primitive. The primitive sets `pids.max` to one then starts the
-bootstrap through Go's clone3-backed cgroup file descriptor path. The bootstrap
-blocks on an inherited gate before its payload; the checkpoint verifies leaf
+the placement primitive. The primitive sets `pids.max` to four then starts the
+bootstrap through Go's clone3-backed cgroup file descriptor path. The Go
+bootstrap receives only `GOMAXPROCS=1` so its runtime remains within that task
+ceiling. It blocks on an inherited gate before its payload; the checkpoint
+verifies leaf
 membership, freezes the leaf, releases the gate, proves that no ready byte is
 produced before thaw then kills and reaps the bootstrap. Same-authority
 processes outside that custody boundary can defeat filesystem ownership and are

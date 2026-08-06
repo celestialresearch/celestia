@@ -28,7 +28,8 @@ func TestClone3NamespaceConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	attributes := command.SysProcAttr
-	if !validNamespaceAttributes(attributes) || len(command.Env) != 0 {
+	if !validNamespaceAttributes(attributes) ||
+		len(command.Env) != 1 || command.Env[0] != "GOMAXPROCS=1" {
 		t.Fatalf("namespace attributes = %#v environment = %#v", attributes, command.Env)
 	}
 	if !validIDMapping(attributes.UidMappings) || !validIDMapping(attributes.GidMappings) {
