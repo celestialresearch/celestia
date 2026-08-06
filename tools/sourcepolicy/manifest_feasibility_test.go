@@ -48,7 +48,7 @@ type linuxResource struct {
 	Release     string `json:"release"`
 }
 
-func TestLinuxAMD64FeasibilityManifestPreservesUnsupportedBoundary(t *testing.T) {
+func TestLinuxAMD64FeasibilityManifestPreservesQualificationBoundary(t *testing.T) {
 	t.Chdir("../..")
 	data, err := os.ReadFile(linuxFeasibilityPath)
 	if err != nil {
@@ -65,7 +65,7 @@ func TestLinuxAMD64FeasibilityManifestPreservesUnsupportedBoundary(t *testing.T)
 		{`"platforms": [`, `"platforms": [{"os":"linux","arch":"amd64","support":"supported"},`},
 		{`"invariants": [`, `"invariants": [{"id":"CEL-PLAT-INV-002","statement":"Linux constructors may be enabled"},`},
 		{`"resources": [`, `"resources": [{"kind":"process","acquisition":"post-start placement","release":"none"},`},
-		{"The feasibility slice cannot enable Linux operation or attempt persistence constructors", "Linux operation is enabled"},
+		{"The feasibility slice cannot enable Linux operation constructors or claim qualified attempt persistence", "Linux operation is enabled"},
 		{"clone3(CLONE_INTO_CGROUP)", "post-start cgroup placement"},
 		{"Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes", "Resolve paths beneath the temporary root"},
 		{"A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2", "A fixture uses isolated namespaces"},
@@ -73,7 +73,7 @@ func TestLinuxAMD64FeasibilityManifestPreservesUnsupportedBoundary(t *testing.T)
 		{"named local ext4 or XFS evidence root", "named local evidence root"},
 		{"Fsync the temporary file, publish with renameat2(RENAME_NOREPLACE), fsync the parent directory", "Publish the temporary file"},
 		{"A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values", "A feasible observation records the platform"},
-		{"Enable Linux operation or attempt persistence", "Enable Linux ARM64"},
+		{"Enable Linux operation or claim attempt-persistence qualification", "Enable Linux ARM64"},
 	}
 	for _, mutation := range mutations {
 		changed := bytes.Replace(data, []byte(mutation.old), []byte(mutation.new), 1)
@@ -94,7 +94,7 @@ func validateLinuxFeasibilityManifest(data []byte) error {
 	if manifest.SliceID != "cel-plat-linux-amd64-feas-001" ||
 		manifest.Owner != "Linux AMD64 feasibility probe" ||
 		!linuxCanonicalStateRetained(manifest.CanonicalState) ||
-		!slices.Contains(manifest.NonGoals, "Enable Linux operation or attempt persistence") ||
+		!slices.Contains(manifest.NonGoals, "Enable Linux operation or claim attempt-persistence qualification") ||
 		!linuxPlatformUnsupported(manifest.Platforms) ||
 		!linuxInvariantRetained(manifest.Invariants) ||
 		!linuxResourcesRetained(manifest.Resources) {
@@ -105,7 +105,7 @@ func validateLinuxFeasibilityManifest(data []byte) error {
 
 func linuxCanonicalStateRetained(state []string) bool {
 	required := []string{
-		"Linux operation and attempt persistence remain unsupported",
+		"Linux operation execution remains unsupported and attempt persistence remains unqualified",
 		"Windows AMD64 remains the only qualified operation boundary",
 		"Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes",
 		"A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2",
@@ -146,7 +146,7 @@ func linuxInvariantRetained(invariants []linuxInvariant) bool {
 		strings.Contains(ids["CEL-PLAT-INV-001"], "only descriptors 0, 1 and 2") &&
 		strings.Contains(ids["CEL-PLAT-INV-001"], "static x86-64 ELF identity with no PT_INTERP") &&
 		strings.Contains(ids["CEL-PLAT-INV-001"], "root-relative resolution refuses links and path escapes") &&
-		ids["CEL-PLAT-INV-002"] == "The feasibility slice cannot enable Linux operation or attempt persistence constructors" &&
+		ids["CEL-PLAT-INV-002"] == "The feasibility slice cannot enable Linux operation constructors or claim qualified attempt persistence" &&
 		ids["CEL-PLAT-INV-003"] != "" && ids["CEL-PLAT-INV-004"] != ""
 }
 

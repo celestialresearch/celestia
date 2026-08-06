@@ -2,9 +2,9 @@
 
 ## Status
 
-Proposed feasibility work only. Linux operation execution and attempt
-persistence remain unsupported. Windows AMD64 remains the sole qualified
-operation boundary. The
+Proposed feasibility work only. Linux operation execution remains unsupported.
+Linux AMD64 attempt storage is implemented but has no native qualification.
+Windows AMD64 remains the sole qualified operation boundary. The
 [machine-readable manifest](cel_plat_linux_amd64_feas_001.json) is authoritative;
 this file is its review summary.
 
@@ -30,8 +30,8 @@ processes outside that custody boundary can defeat filesystem ownership and are
 not an isolation target. The result retains the first primitive outcome
 separately from cleanup completion. This is payload-gate evidence only: it does
 not validate bootstrap identity, claim instruction-level suspension before
-`exec`, retain an observation or enable Linux operation execution or attempt
-persistence.
+`exec`, retain an observation, enable Linux operation execution or qualify
+attempt persistence.
 
 The maintainer feasibility executable has a private bootstrap mode used only
 after atomic cgroup placement. The bootstrap requires PID 1 in the new PID
@@ -65,13 +65,15 @@ temporary record, publishes it with
 `renameat2(RENAME_NOREPLACE)`, syncs the containing directory, reopens and
 verifies the exact record then removes only identity-matched files and syncs
 their parent directories. The first primitive outcome remains separate from
-cleanup completion. This is filesystem feasibility only: it retains no record,
-does not implement attempt persistence and has no native runtime observation.
+cleanup completion. This checkpoint retains no record and has no native runtime
+observation. The Production attempt store uses the same declared ext4/XFS
+durability boundary but remains unqualified until native recovery and
+inspection evidence exists.
 
 The `celestia.linux-amd64-feasibility-observation.v1` schema is reserved for a
 future native probe. Its synthetic fixtures prove only strict decoding and
 state validation. They do not qualify Linux, enable operation execution or
-enable attempt persistence.
+qualify attempt persistence.
 
 ## Required evidence
 - A writable delegated cgroup v2 subtree exposes `cgroup.kill`, `pids.max`,
@@ -141,10 +143,11 @@ must state and test any such control it relies on.
 - A descendant survives owned-tree cleanup or process accounting exceeds four.
 - Filesystem durability is inferred without the required file and directory
   synchronisation plus no-replace rename evidence.
-- Linux operation or persistence becomes constructible during feasibility.
+- Linux operation execution becomes constructible or attempt persistence is
+  reported qualified without the required native evidence.
 
 ## Non-goals
-- Implement Linux execution, persistence or a portable supervision layer.
+- Implement Linux execution or a portable supervision layer.
 - Qualify Linux ARM64, macOS or any BSD.
 - Add a dependency, container, daemon, worker pool or persistent worker.
 - Change Windows behaviour, URL grammar, protocol, evidence records or
