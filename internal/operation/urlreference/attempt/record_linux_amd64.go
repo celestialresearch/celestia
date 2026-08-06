@@ -42,5 +42,6 @@ func createRecordTemp(path, name string) (file *os.File, err error) {
 		}
 		return file, err
 	}
-	return nil, errors.New("create unique record file")
+	err = errors.New("create unique record file")
+	return
 }
