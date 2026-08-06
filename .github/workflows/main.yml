@@ -107,6 +107,23 @@ jobs:
           tool: |
             cargo-audit@0.22.2
             cargo-deny@0.20.2
+      - name: Setup Linux Qualification
+        if: matrix.name == 'Linux AMD64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          unit=celestia-qualification-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}
+          sudo systemd-run --quiet --unit="$unit" --property=Delegate=yes \
+            --service-type=exec --uid="$(id -u)" sleep infinity
+          group=$(systemctl show --property=ControlGroup --value "$unit")
+          test -n "$group"
+          root="/sys/fs/cgroup$group"
+          printf 'CELESTIA_CGROUP_ROOT=%s\n' "$root" >>"$GITHUB_ENV"
+          printf 'CELESTIA_CGROUP_UNIT=%s\n' "$unit" >>"$GITHUB_ENV"
+      - name: Qualify Linux Placement
+        if: matrix.name == 'Linux AMD64'
+        shell: bash
+        run: go test -count=1 -run '^TestClone3CgroupPrimitiveNative$' ./internal/linuxamd64feasibility
       - name: Verify
         shell: bash
         env:
@@ -119,6 +136,13 @@ jobs:
           DEVCHECK_SUPPLY_CHAIN: ${{ matrix.supply-chain }}
           GOFLAGS: ${{ matrix.go-flags }}
         run: bash ./.github/scripts/devcheck.sh
+      - name: Cleanup Linux Qualification
+        if: always() && matrix.name == 'Linux AMD64'
+        shell: bash
+        run: |
+          if [[ -n ${CELESTIA_CGROUP_UNIT:-} ]]; then
+            sudo systemctl stop "$CELESTIA_CGROUP_UNIT"
+          fi
 
   go-campaign:
     name: Go Campaign (${{ matrix.name }})
