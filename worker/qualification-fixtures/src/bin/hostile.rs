@@ -55,6 +55,8 @@ fn run_fixture() {
         "grandchild" => spawn_child(),
         "network" => report(connect(value)),
         "file" => report(fs::read(value).is_ok()),
+        "environment" => report(env::vars_os().next().is_some()),
+        "descriptors" => report(unexpected_descriptors()),
         "credentials" => report(credentials_available()),
         "memory" => exhaust_memory(),
         _ => std::process::exit(64),
@@ -268,4 +270,14 @@ fn connect(value: &str) -> bool {
         return false;
     };
     TcpStream::connect_timeout(&address, Duration::from_millis(100)).is_ok()
+}
+
+#[cfg(target_os = "linux")]
+fn unexpected_descriptors() -> bool {
+    (3..64).any(|descriptor| fs::read_link(format!("/proc/self/fd/{descriptor}")).is_ok())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn unexpected_descriptors() -> bool {
+    false
 }
