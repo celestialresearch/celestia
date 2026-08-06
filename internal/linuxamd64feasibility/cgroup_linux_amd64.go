@@ -33,6 +33,7 @@ const (
 
 var cgroupLeafFiles = [...]string{
 	"cgroup.kill",
+	"cgroup.freeze",
 	"pids.max",
 	"memory.max",
 	"cpu.max",
@@ -176,8 +177,13 @@ func useCgroupLeaf(directory cgroupDirectory, validate func(ownedCgroupLeaf) cgr
 		return cgroupLeafResult(err)
 	}
 	result := validate(leaf)
+	completed := leaf.remove() == nil
+	if result.CleanupAttempted {
+		result.CleanupComplete = result.CleanupComplete && completed
+		return result
+	}
 	result.CleanupAttempted = true
-	result.CleanupComplete = leaf.remove() == nil
+	result.CleanupComplete = completed
 	return result
 }
 
@@ -253,6 +259,17 @@ func (leaf ownedCgroupLeaf) writable(name string) error {
 	return unix.Close(fd)
 }
 
+func (leaf ownedCgroupLeaf) write(name string, data []byte) error {
+	fd, err := unix.Openat(leaf.fd, name, unix.O_WRONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	file := unixFile{fd: fd}
+	writeErr := writeUnixFile(&file, data)
+	closeErr := file.Close()
+	return errors.Join(writeErr, closeErr)
+}
+
 func cgroupOpenResult(err error) cgroupResult {
 	if cgroupUnavailableError(err) {
 		return unavailableCgroup("cgroup_root_unavailable")
@@ -306,4 +323,21 @@ func (file *unixFile) Read(data []byte) (int, error) {
 
 func (file *unixFile) Close() error {
 	return unix.Close(file.fd)
+}
+
+func writeUnixFile(file *unixFile, data []byte) error {
+	for len(data) != 0 {
+		count, err := unix.Write(file.fd, data)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return io.ErrShortWrite
+		}
+		data = data[count:]
+	}
+	return nil
 }

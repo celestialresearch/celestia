@@ -78,3 +78,56 @@ func TestCgroupCleanupPreservesPrimitiveOutcome(t *testing.T) {
 		t.Fatalf("failed=%+v", failed)
 	}
 }
+
+func TestCgroupEventsRequireFrozenState(t *testing.T) {
+	cases := map[string]struct {
+		input  string
+		frozen bool
+		err    error
+	}{
+		"frozen":           {input: "populated 1\nfrozen 1\n", frozen: true},
+		"not frozen":       {input: "populated 1\nfrozen 0\n"},
+		"missing frozen":   {input: "populated 1\n", err: errCgroupEventsMalformed},
+		"duplicate frozen": {input: "frozen 0\nfrozen 1\n", err: errCgroupEventsMalformed},
+	}
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			frozen, err := cgroupFrozen([]byte(test.input))
+			if !errors.Is(err, test.err) || frozen != test.frozen {
+				t.Fatalf("frozen=%t err=%v", frozen, err)
+			}
+		})
+	}
+}
+
+func TestCgroupProcessesRequireCanonicalPIDs(t *testing.T) {
+	cases := map[string]struct {
+		input string
+		found bool
+		err   error
+	}{
+		"present":             {input: "101\n102\n", found: true},
+		"absent":              {input: "101\n102\n"},
+		"missing newline":     {input: "102", err: errCgroupEventsMalformed},
+		"zero":                {input: "0\n", err: errCgroupEventsMalformed},
+		"leading zero":        {input: "0102\n", err: errCgroupEventsMalformed},
+		"non numeric":         {input: "one\n", err: errCgroupEventsMalformed},
+		"empty":               {err: errCgroupEventsMalformed},
+		"non-positive target": {input: "102\n", err: errCgroupEventsMalformed},
+	}
+	for name, test := range cases {
+		t.Run(name, func(t *testing.T) {
+			target := 102
+			if name == "absent" {
+				target = 103
+			}
+			if name == "non-positive target" {
+				target = 0
+			}
+			found, err := cgroupContainsPID([]byte(test.input), target)
+			if !errors.Is(err, test.err) || found != test.found {
+				t.Fatalf("found=%t err=%v", found, err)
+			}
+		})
+	}
+}

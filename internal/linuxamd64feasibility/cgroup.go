@@ -13,14 +13,16 @@ package linuxamd64feasibility
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 )
 
 const maxCgroupEventsBytes = 4 << 10
 
 var (
-	errCgroupEventsMalformed = errors.New("malformed cgroup events")
-	errCgroupEventsOversized = errors.New("oversized cgroup events")
+	errCgroupDeadlineExceeded = errors.New("cgroup deadline exceeded")
+	errCgroupEventsMalformed  = errors.New("malformed cgroup events")
+	errCgroupEventsOversized  = errors.New("oversized cgroup events")
 )
 
 type cgroupResult struct {
@@ -76,6 +78,14 @@ func validCgroupName(name string) bool {
 }
 
 func cgroupPopulated(data []byte) (bool, error) {
+	return cgroupEventValue(data, "populated")
+}
+
+func cgroupFrozen(data []byte) (bool, error) {
+	return cgroupEventValue(data, "frozen")
+}
+
+func cgroupEventValue(data []byte, target string) (bool, error) {
 	if len(data) == 0 {
 		return false, errCgroupEventsMalformed
 	}
@@ -86,19 +96,40 @@ func cgroupPopulated(data []byte) (bool, error) {
 		return false, errCgroupEventsMalformed
 	}
 	fields := make(map[string]bool)
-	populated, found := false, false
+	value, found := false, false
 	for line := range strings.SplitSeq(string(data[:len(data)-1]), "\n") {
-		name, value, ok := strings.Cut(line, " ")
-		if !ok || !validCgroupName(name) || (value != "0" && value != "1") || fields[name] {
+		name, state, ok := strings.Cut(line, " ")
+		if !ok || !validCgroupName(name) || (state != "0" && state != "1") || fields[name] {
 			return false, errCgroupEventsMalformed
 		}
 		fields[name] = true
-		if name == "populated" {
-			populated, found = value == "1", true
+		if name == target {
+			value, found = state == "1", true
 		}
 	}
 	if !found {
 		return false, errCgroupEventsMalformed
 	}
-	return populated, nil
+	return value, nil
+}
+
+func cgroupContainsPID(data []byte, target int) (bool, error) {
+	if target <= 0 || len(data) == 0 || len(data) > maxCgroupEventsBytes ||
+		data[len(data)-1] != '\n' {
+		return false, errCgroupEventsMalformed
+	}
+	found := false
+	for value := range strings.SplitSeq(string(data[:len(data)-1]), "\n") {
+		if value == "" || (len(value) > 1 && value[0] == '0') {
+			return false, errCgroupEventsMalformed
+		}
+		pid, err := strconv.Atoi(value)
+		if err != nil || pid <= 0 {
+			return false, errCgroupEventsMalformed
+		}
+		if pid == target {
+			found = true
+		}
+	}
+	return found, nil
 }

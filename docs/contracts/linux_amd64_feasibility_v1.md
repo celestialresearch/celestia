@@ -20,11 +20,18 @@ release artefact and cannot qualify the platform.
 
 The internal cgroup checkpoint validates a caller-supplied delegated cgroup v2
 root under exclusive same-authority custody then creates and removes one owned
-empty leaf. Same-authority processes outside that custody boundary can defeat
-filesystem ownership and are not an isolation target. The result retains the
-first primitive outcome separately from cleanup completion. It does not start a
-process, change a controller value, retain an observation or enable Linux
-operation execution or attempt persistence.
+empty leaf. A native qualification harness may provide one bootstrap command to
+the placement primitive. The primitive sets `pids.max` to one then starts the
+bootstrap through Go's clone3-backed cgroup file descriptor path. The bootstrap
+blocks on an inherited gate before its payload; the checkpoint verifies leaf
+membership, freezes the leaf, releases the gate, proves that no ready byte is
+produced before thaw then kills and reaps the bootstrap. Same-authority
+processes outside that custody boundary can defeat filesystem ownership and are
+not an isolation target. The result retains the first primitive outcome
+separately from cleanup completion. This is payload-gate evidence only: it does
+not validate bootstrap identity, claim instruction-level suspension before
+`exec`, retain an observation or enable Linux operation execution or attempt
+persistence.
 
 The `celestia.linux-amd64-feasibility-observation.v1` schema is reserved for a
 future native probe. Its synthetic fixtures prove only strict decoding and
