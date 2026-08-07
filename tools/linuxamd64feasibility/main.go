@@ -30,11 +30,6 @@ func runMain(arguments []string, stdout, stderr io.Writer, bootstrap func() int)
 	return run(arguments, stdout, stderr)
 }
 
-func runBootstrapMain() int {
-	return runBootstrap(os.NewFile(4, "clone3-gate"), os.NewFile(3, "clone3-ready"),
-		os.NewFile(5, "hostile-fixture"))
-}
-
 func runBootstrap(gate, ready, fixture *os.File) int {
 	return bootstrapStatus(linuxamd64feasibility.Bootstrap(gate, ready, fixture))
 }
