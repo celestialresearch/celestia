@@ -186,6 +186,9 @@ func clone3CoverageHelperCommand(t *testing.T, testName, argument string) *exec.
 		}
 	})
 	command.Stdin = directory
+	separator, helperArgument := command.Args[len(command.Args)-2], command.Args[len(command.Args)-1]
+	command.Args = append(command.Args[:len(command.Args)-2],
+		"-test.gocoverdir=/proc/self/fd/0", separator, helperArgument)
 	return command
 }
 
