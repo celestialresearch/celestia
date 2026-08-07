@@ -154,6 +154,16 @@ func TestCgroupInvalidDescriptors(t *testing.T) {
 	}
 }
 
+func TestCgroupDirectoryDescriptorFailures(t *testing.T) {
+	directory := cgroupDirectory{fd: -1}
+	if _, err := directory.createLeaf(); err == nil {
+		t.Fatal("leaf created through invalid directory")
+	}
+	if err := directory.close(); err == nil {
+		t.Fatal("invalid directory close succeeded")
+	}
+}
+
 func TestCgroupNameBoundaries(t *testing.T) {
 	for _, name := range []string{"", "CPU", "cpu.max", "pids-"} {
 		if validCgroupName(name) {
