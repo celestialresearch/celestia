@@ -169,7 +169,7 @@ func TestClone3LeafRejectsMissingExecutable(t *testing.T) {
 	}()
 	command := exec.CommandContext(t.Context(), "/missing-celestia-helper")
 	result := runClone3Leaf(ownedCgroupLeaf{fd: directory.fd}, command, fixture)
-	if result.Outcome != "unavailable" || result.Reason != "clone3_unavailable" {
+	if result.Outcome != "indeterminate" || result.Reason != "clone3_start_indeterminate" {
 		t.Fatalf("result=%+v", result)
 	}
 }
