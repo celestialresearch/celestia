@@ -224,6 +224,90 @@ func TestDurabilityComponentBoundaries(t *testing.T) {
 	}
 }
 
+func TestDurabilityRecordIdentityRejectsWrongTypes(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "identity")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close file: %v", err)
+		}
+	}()
+	var fileStat unix.Stat_t
+	if err := unix.Fstat(int(file.Fd()), &fileStat); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixtureDirectoryIdentity(int(file.Fd()), fileStat.Uid, fileStat.Dev); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("file accepted as directory: %v", err)
+	}
+
+	directory, _ := testDurabilityRoot(t)
+	if _, err := fixtureFileIdentity(directory.fd, directory.euid, directory.device); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("directory accepted as file: %v", err)
+	}
+}
+
+func TestDurabilityPublicationRejectsInvalidState(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	if err := fixture.publish(); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("publish without temporary: %v", err)
+	}
+	if err := fixture.verify(); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("verify without final: %v", err)
+	}
+	if err := fixture.writeTemporary(); err != nil {
+		t.Fatalf("write temporary: %v", err)
+	}
+	fixture.final = &fixtureFile{}
+	if err := fixture.publish(); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("publish with final: %v", err)
+	}
+}
+
+func TestDurabilityVerificationRejectsChangedContent(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	if err := fixture.writeTemporary(); err != nil {
+		t.Fatalf("write temporary: %v", err)
+	}
+	if err := fixture.publish(); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	fd, err := unix.Openat(fixture.fd, durabilityRecord, unix.O_WRONLY|unix.O_TRUNC|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		t.Fatalf("open record: %v", err)
+	}
+	if err := errors.Join(writeAll(func(data []byte) (int, error) { return unix.Write(fd, data) }, []byte("changed")), unix.Close(fd)); err != nil {
+		t.Fatalf("change record: %v", err)
+	}
+	if err := fixture.verify(); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("changed record accepted: %v", err)
+	}
+}
+
+func TestDurabilityReadRejectsOversizedRecord(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "oversized")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close file: %v", err)
+		}
+	}()
+	if _, err := file.Write([]byte("too large")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readDurabilityFile(int(file.Fd()), 3); !errors.Is(err, io.ErrShortBuffer) {
+		t.Fatalf("oversized record error = %v", err)
+	}
+}
+
 func TestDurabilityPublishDoesNotReplace(t *testing.T) {
 	root, rootPath := testDurabilityRoot(t)
 	fixture, err := root.createFixture()
@@ -360,6 +444,20 @@ func testDurabilityRoot(t *testing.T) (durabilityRoot, string) {
 		t.Fatalf("stat root: %v", err)
 	}
 	return durabilityRoot{fd: fd, device: information.Dev, euid: information.Uid}, name
+}
+
+func testOwnedFixture(t *testing.T) (ownedFixture, func()) {
+	t.Helper()
+	root, rootPath := testDurabilityRoot(t)
+	fixture, err := root.createFixture()
+	if err != nil {
+		t.Fatalf("create fixture: %v", err)
+	}
+	return fixture, func() {
+		if err := os.RemoveAll(filepath.Join(rootPath, fixture.name)); err != nil {
+			t.Errorf("remove fixture: %v", err)
+		}
+	}
 }
 
 func readTestFixtureFile(t *testing.T, root int, name string) []byte {
