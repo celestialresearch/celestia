@@ -299,6 +299,92 @@ func TestClone3FailureResults(t *testing.T) {
 	}
 }
 
+func TestClone3LeafStateFailures(t *testing.T) {
+	failure := errors.New("clone3 leaf failure")
+	tests := map[string]struct {
+		mutate  func(*clone3LeafOps, *clone3Child)
+		outcome string
+		reason  string
+		cleanup bool
+	}{
+		"limit": {func(ops *clone3LeafOps, _ *clone3Child) {
+			ops.writeLimit = func() error { return failure }
+		}, "indeterminate", "clone3_process_limit_indeterminate", false},
+		"start": {func(ops *clone3LeafOps, _ *clone3Child) {
+			ops.start = func() (*clone3Child, error) { return nil, failure }
+		}, "indeterminate", "clone3_start_indeterminate", false},
+		"partial start": {func(ops *clone3LeafOps, child *clone3Child) {
+			ops.start = func() (*clone3Child, error) { return child, failure }
+		}, "indeterminate", "clone3_start_indeterminate", true},
+		"pidfd": {func(_ *clone3LeafOps, child *clone3Child) {
+			child.pidfd = -1
+		}, "unavailable", "clone3_pidfd_unavailable", true},
+		"membership": {func(ops *clone3LeafOps, _ *clone3Child) {
+			ops.membership = func(*clone3Child) error { return failure }
+		}, "indeterminate", "clone3_membership_indeterminate", true},
+		"freeze": {func(ops *clone3LeafOps, _ *clone3Child) {
+			ops.freeze = func(time.Time) error { return failure }
+		}, "indeterminate", "cgroup_freeze_indeterminate", true},
+		"before freeze": {func(ops *clone3LeafOps, _ *clone3Child) {
+			ops.readyEmpty = func(*clone3Child) error { return failure }
+		}, "indeterminate", "clone3_payload_before_freeze", true},
+		"release": {func(ops *clone3LeafOps, _ *clone3Child) {
+			ops.release = func(*clone3Child) error { return failure }
+		}, "indeterminate", "clone3_gate_release_failed", true},
+		"before thaw": {func(ops *clone3LeafOps, _ *clone3Child) {
+			calls := 0
+			ops.readyEmpty = func(*clone3Child) error {
+				calls++
+				if calls == 2 {
+					return failure
+				}
+				return nil
+			}
+		}, "indeterminate", "clone3_payload_before_thaw", true},
+		"thaw": {func(ops *clone3LeafOps, _ *clone3Child) {
+			ops.thaw = func(time.Time) error { return failure }
+		}, "indeterminate", "cgroup_freeze_indeterminate", true},
+		"ready": {func(ops *clone3LeafOps, _ *clone3Child) {
+			ops.waitReady = func(*clone3Child, time.Time) error { return failure }
+		}, "indeterminate", "clone3_gate_indeterminate", true},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			child := &clone3Child{pidfd: 1}
+			cleaned := false
+			operations := successfulClone3LeafOps(child, &cleaned)
+			test.mutate(&operations, child)
+			result := runClone3LeafWith(operations, time.Now().Add(time.Second))
+			if result.Outcome != test.outcome || result.Reason != test.reason || cleaned != test.cleanup {
+				t.Fatalf("result=%+v cleaned=%t", result, cleaned)
+			}
+		})
+	}
+	cleaned := false
+	child := &clone3Child{pidfd: 1}
+	result := runClone3LeafWith(successfulClone3LeafOps(child, &cleaned), time.Now().Add(time.Second))
+	if result.Outcome != "passed" || result.Reason != "clone3_gate_proved" || !cleaned {
+		t.Fatalf("result=%+v cleaned=%t", result, cleaned)
+	}
+}
+
+func successfulClone3LeafOps(child *clone3Child, cleaned *bool) clone3LeafOps {
+	return clone3LeafOps{
+		writeLimit: func() error { return nil },
+		start:      func() (*clone3Child, error) { return child, nil },
+		cleanup: func(result cgroupResult, _ *clone3Child) cgroupResult {
+			*cleaned = true
+			return result
+		},
+		membership: func(*clone3Child) error { return nil },
+		readyEmpty: func(*clone3Child) error { return nil },
+		release:    func(*clone3Child) error { return nil },
+		waitReady:  func(*clone3Child, time.Time) error { return nil },
+		freeze:     func(time.Time) error { return nil },
+		thaw:       func(time.Time) error { return nil },
+	}
+}
+
 func TestClone3CgroupPrimitiveRefusesOrdinaryRoot(t *testing.T) {
 	file, err := os.Open("/dev/null")
 	if err != nil {

@@ -52,15 +52,46 @@ func clone3CgroupPrimitive(root string, command *exec.Cmd, fixture *os.File) (re
 
 func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd, fixture *os.File) (result cgroupResult) {
 	deadline := time.Now().Add(clone3ProbeTimeout)
-	if err := leaf.write("pids.max", []byte(clone3BootstrapTaskLimit)); err != nil {
+	return runClone3LeafWith(clone3LeafOps{
+		writeLimit: func() error { return leaf.write("pids.max", []byte(clone3BootstrapTaskLimit)) },
+		start:      func() (*clone3Child, error) { return startClone3Child(leaf, command, fixture) },
+		cleanup: func(result cgroupResult, child *clone3Child) cgroupResult {
+			return cleanupClone3Child(result, leaf, child, deadline)
+		},
+		membership: func(child *clone3Child) error {
+			return verifyClone3Membership(leaf, child.command.Process.Pid)
+		},
+		readyEmpty: func(child *clone3Child) error { return child.pipes.readyEmpty() },
+		release:    func(child *clone3Child) error { return child.pipes.release() },
+		waitReady: func(child *clone3Child, deadline time.Time) error {
+			return child.pipes.waitReady(deadline)
+		},
+		freeze: leaf.freeze, thaw: leaf.thaw,
+	}, deadline)
+}
+
+type clone3LeafOps struct {
+	writeLimit func() error
+	start      func() (*clone3Child, error)
+	cleanup    func(cgroupResult, *clone3Child) cgroupResult
+	membership func(*clone3Child) error
+	readyEmpty func(*clone3Child) error
+	release    func(*clone3Child) error
+	waitReady  func(*clone3Child, time.Time) error
+	freeze     func(time.Time) error
+	thaw       func(time.Time) error
+}
+
+func runClone3LeafWith(operations clone3LeafOps, deadline time.Time) (result cgroupResult) {
+	if err := operations.writeLimit(); err != nil {
 		return clone3LimitResult(err)
 	}
-	child, err := startClone3Child(leaf, command, fixture)
+	child, err := operations.start()
 	if child == nil {
 		return clone3StartResult(err)
 	}
 	defer func() {
-		result = cleanupClone3Child(result, leaf, child, deadline)
+		result = operations.cleanup(result, child)
 	}()
 	if err != nil {
 		return clone3StartResult(err)
@@ -68,25 +99,25 @@ func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd, fixture *os.File) (r
 	if child.pidfd < 0 {
 		return unavailableCgroup("clone3_pidfd_unavailable")
 	}
-	if err := verifyClone3Membership(leaf, child.command.Process.Pid); err != nil {
+	if err := operations.membership(child); err != nil {
 		return clone3MembershipResult(err)
 	}
-	if err := leaf.freeze(deadline); err != nil {
+	if err := operations.freeze(deadline); err != nil {
 		return clone3FreezeResult(err)
 	}
-	if err := child.pipes.readyEmpty(); err != nil {
+	if err := operations.readyEmpty(child); err != nil {
 		return indeterminateCgroup("clone3_payload_before_freeze")
 	}
-	if err := child.pipes.release(); err != nil {
+	if err := operations.release(child); err != nil {
 		return indeterminateCgroup("clone3_gate_release_failed")
 	}
-	if err := child.pipes.readyEmpty(); err != nil {
+	if err := operations.readyEmpty(child); err != nil {
 		return indeterminateCgroup("clone3_payload_before_thaw")
 	}
-	if err := leaf.thaw(deadline); err != nil {
+	if err := operations.thaw(deadline); err != nil {
 		return clone3FreezeResult(err)
 	}
-	if err := child.pipes.waitReady(deadline); err != nil {
+	if err := operations.waitReady(child, deadline); err != nil {
 		return clone3ReadyResult(err)
 	}
 	return cgroupResult{Outcome: "passed", Reason: "clone3_gate_proved"}
