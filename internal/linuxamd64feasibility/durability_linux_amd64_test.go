@@ -324,6 +324,45 @@ func TestDurabilityVerificationRejectsChangedContent(t *testing.T) {
 	}
 }
 
+func TestDurabilityVerificationRejectsSameSizeSubstitution(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	if err := fixture.writeTemporary(); err != nil {
+		t.Fatalf("write temporary: %v", err)
+	}
+	if err := fixture.publish(); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	fd, err := unix.Openat(fixture.fd, durabilityRecord, unix.O_WRONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		t.Fatalf("open record: %v", err)
+	}
+	replacement := strings.Repeat("x", len(durabilityRecordData))
+	if err := errors.Join(writeAll(func(data []byte) (int, error) { return unix.Write(fd, data) }, []byte(replacement)), unix.Close(fd)); err != nil {
+		t.Fatalf("replace record: %v", err)
+	}
+	if err := fixture.verify(); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("substituted record accepted: %v", err)
+	}
+}
+
+func TestDurabilityVerificationRejectsMissingRecord(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	if err := fixture.writeTemporary(); err != nil {
+		t.Fatalf("write temporary: %v", err)
+	}
+	if err := fixture.publish(); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if err := unix.Unlinkat(fixture.fd, durabilityRecord, 0); err != nil {
+		t.Fatalf("remove record: %v", err)
+	}
+	if err := fixture.verify(); !errors.Is(err, unix.ENOENT) {
+		t.Fatalf("missing final state accepted: %v", err)
+	}
+}
+
 func TestDurabilityReadRejectsOversizedRecord(t *testing.T) {
 	file, err := os.CreateTemp(t.TempDir(), "oversized")
 	if err != nil {
