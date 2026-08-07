@@ -167,6 +167,63 @@ func TestDurabilityRootClassification(t *testing.T) {
 	}
 }
 
+func TestDurabilityErrorBoundaries(t *testing.T) {
+	if allDurabilityErrorsUnavailable(nil) {
+		t.Fatal("empty joined error classified unavailable")
+	}
+	if allDurabilityErrorsUnavailable([]error{unix.EPERM, unix.EIO}) {
+		t.Fatal("mixed joined error classified unavailable")
+	}
+	for _, err := range []error{
+		unix.EACCES, unix.EINVAL, unix.ELOOP, unix.ENOENT, unix.ENOSYS,
+		unix.ENOTDIR, unix.EOPNOTSUPP, unix.EPERM, unix.EROFS,
+	} {
+		if !durabilityUnavailableError(err) {
+			t.Fatalf("error not classified unavailable: %v", err)
+		}
+	}
+	if _, err := durabilityDescriptorPath(-1); err == nil {
+		t.Fatal("invalid descriptor path accepted")
+	}
+}
+
+func TestDurabilityComponentBoundaries(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "component")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close component: %v", err)
+		}
+	}()
+	var fileStat unix.Stat_t
+	if err := unix.Fstat(int(file.Fd()), &fileStat); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureDurabilityComponent(int(file.Fd()), fileStat.Uid, false); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("regular component error = %v", err)
+	}
+
+	directory := t.TempDir()
+	fd, err := unix.Open(directory, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := unix.Close(fd); err != nil {
+			t.Errorf("close directory: %v", err)
+		}
+	}()
+	var directoryStat unix.Stat_t
+	if err := unix.Fstat(fd, &directoryStat); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureDurabilityComponent(fd, directoryStat.Uid+1, true); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("foreign root error = %v", err)
+	}
+}
+
 func TestDurabilityPublishDoesNotReplace(t *testing.T) {
 	root, rootPath := testDurabilityRoot(t)
 	fixture, err := root.createFixture()
