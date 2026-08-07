@@ -31,6 +31,12 @@ func TestBootstrapMainFailsClosed(t *testing.T) {
 	testBootstrapMainFailsClosed(t)
 }
 
+func TestBootstrapRejectsMissingFiles(t *testing.T) {
+	if status := runBootstrap(nil, nil, nil); status != 1 {
+		t.Fatalf("bootstrap status = %d", status)
+	}
+}
+
 func testBootstrapMainFailsClosed(t *testing.T) {
 	t.Helper()
 	readyRead, readyWrite := testPipe(t)

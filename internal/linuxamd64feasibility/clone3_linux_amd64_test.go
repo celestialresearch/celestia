@@ -107,6 +107,38 @@ func TestClone3StartResultDistinguishesPlacementDenial(t *testing.T) {
 	}
 }
 
+func TestClone3FailureResults(t *testing.T) {
+	unknown := errors.New("unknown failure")
+	tests := map[string]struct {
+		result cgroupResult
+		want   cgroupResult
+	}{
+		"limit unavailable": {clone3LimitResult(unix.EPERM),
+			unavailableCgroup("clone3_process_limit_unavailable")},
+		"limit indeterminate": {clone3LimitResult(unknown),
+			indeterminateCgroup("clone3_process_limit_indeterminate")},
+		"start unavailable":   {clone3StartResult(unix.ENOSYS), unavailableCgroup("clone3_unavailable")},
+		"start indeterminate": {clone3StartResult(unknown), indeterminateCgroup("clone3_start_indeterminate")},
+		"membership unavailable": {clone3MembershipResult(unix.EACCES),
+			unavailableCgroup("clone3_membership_unavailable")},
+		"membership indeterminate": {clone3MembershipResult(unknown),
+			indeterminateCgroup("clone3_membership_indeterminate")},
+		"freeze unavailable": {clone3FreezeResult(errCgroupDeadlineExceeded),
+			unavailableCgroup("cgroup_freeze_unavailable")},
+		"freeze indeterminate": {clone3FreezeResult(unknown),
+			indeterminateCgroup("cgroup_freeze_indeterminate")},
+		"ready unavailable":   {clone3ReadyResult(unix.EPIPE), unavailableCgroup("clone3_gate_unavailable")},
+		"ready indeterminate": {clone3ReadyResult(unknown), indeterminateCgroup("clone3_gate_indeterminate")},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if test.result != test.want {
+				t.Fatalf("result=%+v want=%+v", test.result, test.want)
+			}
+		})
+	}
+}
+
 func TestClone3CgroupPrimitiveRefusesOrdinaryRoot(t *testing.T) {
 	file, err := os.Open("/dev/null")
 	if err != nil {

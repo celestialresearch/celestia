@@ -19,7 +19,85 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"golang.org/x/sys/unix"
 )
+
+func TestBootstrapRejectsMissingFiles(t *testing.T) {
+	if err := Bootstrap(nil, nil, nil); !errors.Is(err, unix.EINVAL) {
+		t.Fatalf("Bootstrap() error = %v", err)
+	}
+}
+
+func TestCgroupFailureResults(t *testing.T) {
+	unknown := errors.New("unknown failure")
+	tests := map[string]struct {
+		result cgroupResult
+		want   cgroupResult
+	}{
+		"open unavailable":   {cgroupOpenResult(unix.EPERM), unavailableCgroup("cgroup_root_unavailable")},
+		"open indeterminate": {cgroupOpenResult(unknown), indeterminateCgroup("cgroup_root_indeterminate")},
+		"leaf unavailable":   {cgroupLeafResult(unix.EROFS), unavailableCgroup("cgroup_leaf_unavailable")},
+		"leaf indeterminate": {cgroupLeafResult(unknown), indeterminateCgroup("cgroup_leaf_indeterminate")},
+		"read unavailable":   {cgroupReadResult(unix.ENOENT, "control"), unavailableCgroup("control_unavailable")},
+		"read indeterminate": {cgroupReadResult(unknown, "control"), indeterminateCgroup("control_indeterminate")},
+		"write unavailable": {cgroupWriteResult(unix.EACCES),
+			unavailableCgroup("cgroup_leaf_controls_unavailable")},
+		"write indeterminate": {cgroupWriteResult(unknown),
+			indeterminateCgroup("cgroup_leaf_controls_indeterminate")},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if test.result != test.want {
+				t.Fatalf("result=%+v want=%+v", test.result, test.want)
+			}
+		})
+	}
+}
+
+func TestCgroupInvalidDescriptors(t *testing.T) {
+	leaf := ownedCgroupLeaf{fd: -1}
+	deadline := time.Now().Add(time.Second)
+	for name, operation := range map[string]func() error{
+		"freeze":     func() error { return leaf.freeze(deadline) },
+		"thaw":       func() error { return leaf.thaw(deadline) },
+		"wait empty": func() error { return leaf.waitEmpty(deadline) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := operation(); err == nil {
+				t.Fatal("invalid descriptor accepted")
+			}
+		})
+	}
+	if found, err := leaf.containsPID(1); found || err == nil {
+		t.Fatalf("contains PID = (%t, %v)", found, err)
+	}
+	if _, err := cgroupEvent(nil, "unknown"); !errors.Is(err, errCgroupEventsMalformed) {
+		t.Fatalf("unknown event error = %v", err)
+	}
+	if _, err := pollDescriptor(-1); !errors.Is(err, unix.EOVERFLOW) {
+		t.Fatalf("negative descriptor error = %v", err)
+	}
+	if _, err := pollDescriptor(1 << 31); !errors.Is(err, unix.EOVERFLOW) {
+		t.Fatalf("oversized descriptor error = %v", err)
+	}
+	if descriptor, err := pollDescriptor(1); descriptor != 1 || err != nil {
+		t.Fatalf("descriptor = (%d, %v)", descriptor, err)
+	}
+	if milliseconds, expired := pollMilliseconds(time.Now().Add(-time.Second)); milliseconds != 0 || !expired {
+		t.Fatalf("expired poll = (%d, %t)", milliseconds, expired)
+	}
+	if count, err := readUnixFD(-1, make([]byte, 1)); count > 0 || err == nil {
+		t.Fatalf("read = (%d, %v)", count, err)
+	}
+	if err := writeUnixFile(&unixFile{fd: -1}, []byte("x")); err == nil {
+		t.Fatal("write to invalid descriptor succeeded")
+	}
+	if err := writeUnixFile(&unixFile{fd: -1}, nil); err != nil {
+		t.Fatalf("empty write error = %v", err)
+	}
+}
 
 func TestOwnedCgroupLeafRemovesCreatedDirectory(t *testing.T) {
 	root := t.TempDir()

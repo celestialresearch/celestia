@@ -15,6 +15,7 @@ package linuxamd64feasibility
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -131,6 +132,38 @@ func TestDurabilityFailureClassification(t *testing.T) {
 	joined := durabilityFailure(errors.Join(unix.EROFS, unix.EIO), "unavailable", "indeterminate")
 	if joined.Outcome != "indeterminate" || joined.Reason != "indeterminate" {
 		t.Fatalf("joined=%+v", joined)
+	}
+}
+
+func TestDurabilityRootClassification(t *testing.T) {
+	tests := map[string]struct {
+		err  error
+		want durabilityResult
+	}{
+		"invalid": {errDurabilityRootInvalid, unavailableDurability("evidence_root_invalid")},
+		"unsafe":  {errDurabilityRootUnsafe, unavailableDurability("evidence_root_unsafe")},
+		"filesystem": {errDurabilityFilesystem,
+			unavailableDurability("evidence_root_unsupported_filesystem")},
+		"mount": {errDurabilityMountMismatch,
+			unavailableDurability("evidence_root_unsupported_filesystem")},
+		"unavailable":   {unix.EPERM, unavailableDurability("evidence_root_unsafe")},
+		"indeterminate": {unix.EIO, indeterminateDurability("evidence_root_indeterminate")},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if result := durabilityRootResult(test.err); result != test.want {
+				t.Fatalf("result=%+v want=%+v", result, test.want)
+			}
+		})
+	}
+	if durabilityUnavailableError(nil) {
+		t.Fatal("nil error classified unavailable")
+	}
+	if !durabilityUnavailableError(fmt.Errorf("wrapped: %w", unix.EROFS)) {
+		t.Fatal("wrapped refusal classified indeterminate")
+	}
+	if !durabilityUnavailableError(errors.Join(unix.EPERM, unix.ENOENT)) {
+		t.Fatal("joined refusals classified indeterminate")
 	}
 }
 
