@@ -356,6 +356,54 @@ func TestDurabilityFailedWriteRejectsReplacement(t *testing.T) {
 	}
 }
 
+func TestDurabilityPublishRejectsChangedTemporary(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	if err := fixture.writeTemporary(); err != nil {
+		t.Fatalf("write temporary: %v", err)
+	}
+	fd, err := unix.Openat(fixture.fd, durabilityTemporary, unix.O_WRONLY|unix.O_APPEND|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := errors.Join(writeAll(func(data []byte) (int, error) { return unix.Write(fd, data) }, []byte("x")), unix.Close(fd)); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.publish(); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("changed temporary accepted: %v", err)
+	}
+}
+
+func TestDurabilityCleanupRejectsMissingOwnedNames(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	if err := fixture.writeTemporary(); err != nil {
+		t.Fatalf("write temporary: %v", err)
+	}
+	if err := unix.Unlinkat(fixture.fd, durabilityTemporary, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.removeFile(*fixture.temporary); !errors.Is(err, unix.ENOENT) {
+		t.Fatalf("missing record error = %v", err)
+	}
+	rootPath, err := durabilityDescriptorPath(fixture.root.fd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(rootPath, fixture.name+"-moved")
+	defer func() {
+		if err := os.RemoveAll(moved); err != nil {
+			t.Errorf("remove moved fixture: %v", err)
+		}
+	}()
+	if err := os.Rename(filepath.Join(rootPath, fixture.name), moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.namedIdentity(); !errors.Is(err, unix.ENOENT) {
+		t.Fatalf("missing fixture error = %v", err)
+	}
+}
+
 func TestDurabilityFixtureCloseIsIdempotent(t *testing.T) {
 	fixture := ownedFixture{fd: -1}
 	if err := fixture.close(); err != nil {
