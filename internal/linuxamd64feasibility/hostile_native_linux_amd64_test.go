@@ -214,13 +214,7 @@ func memoryOOMKilled(data []byte) (bool, error) {
 	found, killed := false, false
 	fieldsSeen := make(map[string]bool)
 	for line := range strings.SplitSeq(string(data[:len(data)-1]), "\n") {
-		name, valueText, ok := strings.Cut(line, " ")
-		if !ok || !validCgroupName(name) || fieldsSeen[name] || valueText == "" ||
-			strings.Contains(valueText, " ") || (len(valueText) > 1 && valueText[0] == '0') {
-			return false, errCgroupEventsMalformed
-		}
-		fieldsSeen[name] = true
-		value, err := strconv.ParseUint(valueText, 10, 64)
+		name, value, err := parseMemoryEvent(line, fieldsSeen)
 		if err != nil {
 			return false, errCgroupEventsMalformed
 		}
@@ -232,6 +226,20 @@ func memoryOOMKilled(data []byte) (bool, error) {
 		return false, errCgroupEventsMalformed
 	}
 	return killed, nil
+}
+
+func parseMemoryEvent(line string, fieldsSeen map[string]bool) (string, uint64, error) {
+	name, valueText, ok := strings.Cut(line, " ")
+	if !ok || !validCgroupName(name) || fieldsSeen[name] || valueText == "" ||
+		strings.Contains(valueText, " ") || (len(valueText) > 1 && valueText[0] == '0') {
+		return "", 0, errCgroupEventsMalformed
+	}
+	value, err := strconv.ParseUint(valueText, 10, 64)
+	if err != nil {
+		return "", 0, errCgroupEventsMalformed
+	}
+	fieldsSeen[name] = true
+	return name, value, nil
 }
 
 func TestMemoryOOMKillEvidence(t *testing.T) {
