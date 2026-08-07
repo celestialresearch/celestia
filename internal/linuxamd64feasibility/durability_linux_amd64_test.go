@@ -266,6 +266,43 @@ func TestDurabilityPublicationRejectsInvalidState(t *testing.T) {
 	}
 }
 
+func TestDurabilityTemporaryRejectsExistingRecord(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	fd, err := unix.Openat(fixture.fd, durabilityTemporary,
+		unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Close(fd); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.writeTemporary(); !errors.Is(err, unix.EEXIST) {
+		t.Fatalf("existing temporary error = %v", err)
+	}
+}
+
+func TestDurabilityFailedWriteRejectsReplacement(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	fd, err := unix.Openat(fixture.fd, durabilityTemporary,
+		unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.temporary = &fixtureFile{name: durabilityTemporary, identity: fileIdentity{}}
+	if err := fixture.finishTemporaryFailure(fd, unix.EIO); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("replacement error = %v", err)
+	}
+}
+
+func TestDurabilityFixtureCloseIsIdempotent(t *testing.T) {
+	fixture := ownedFixture{fd: -1}
+	if err := fixture.close(); err != nil {
+		t.Fatalf("closed fixture: %v", err)
+	}
+}
+
 func TestDurabilityVerificationRejectsChangedContent(t *testing.T) {
 	fixture, cleanup := testOwnedFixture(t)
 	defer cleanup()
