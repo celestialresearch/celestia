@@ -42,7 +42,7 @@ func (leaf ownedCgroupLeaf) waitEmpty(deadline time.Time) error {
 
 func (leaf ownedCgroupLeaf) waitEvent(name string, want bool, deadline time.Time) error {
 	for {
-		data, err := leaf.read("cgroup.events", maxCgroupEventsBytes)
+		data, err := leaf.read("cgroup.events")
 		if err != nil {
 			return err
 		}
@@ -57,7 +57,7 @@ func (leaf ownedCgroupLeaf) waitEvent(name string, want bool, deadline time.Time
 }
 
 func (leaf ownedCgroupLeaf) containsPID(pid int) (bool, error) {
-	data, err := leaf.read("cgroup.procs", maxCgroupEventsBytes)
+	data, err := leaf.read("cgroup.procs")
 	if err != nil {
 		return false, err
 	}

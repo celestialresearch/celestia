@@ -200,7 +200,7 @@ func runNativeFixtureLeaf(
 }
 
 func nativeMemoryOOMKilled(leaf ownedCgroupLeaf) (bool, error) {
-	data, err := leaf.read("memory.events", maxCgroupEventsBytes)
+	data, err := leaf.read("memory.events")
 	if err != nil {
 		return false, err
 	}

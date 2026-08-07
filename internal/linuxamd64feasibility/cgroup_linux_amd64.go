@@ -197,7 +197,7 @@ func cgroupLeafName() (string, error) {
 }
 
 func validateCgroupLeaf(leaf ownedCgroupLeaf) cgroupResult {
-	events, err := leaf.read("cgroup.events", maxCgroupEventsBytes)
+	events, err := leaf.read("cgroup.events")
 	if err != nil {
 		return cgroupReadResult(err, "cgroup_events")
 	}
@@ -248,8 +248,8 @@ func (directory cgroupDirectory) read(name string, limit int) ([]byte, error) {
 	return data, errors.Join(readErr, closeErr)
 }
 
-func (leaf ownedCgroupLeaf) read(name string, limit int) ([]byte, error) {
-	return cgroupDirectory{fd: leaf.fd}.read(name, limit)
+func (leaf ownedCgroupLeaf) read(name string) ([]byte, error) {
+	return cgroupDirectory{fd: leaf.fd}.read(name, maxCgroupEventsBytes)
 }
 
 func (leaf ownedCgroupLeaf) writable(name string) error {
