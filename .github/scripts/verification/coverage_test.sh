@@ -141,6 +141,11 @@ set -e
   printf 'coverage enforcement accepted an under-covered profile\n' >&2
   return 1
 }
+[[ "$output" == *'b/b.go:'*'Second'*'0.0%'* ]] || {
+  printf 'coverage enforcement omitted the uncovered function:\n%s\n' \
+    "$output" >&2
+  return 1
+}
 sed '1s/atomic/count/' "$work_dir/under.out" >"$work_dir/non-atomic.out"
 set +e
 output=$(cd "$work_dir" && \

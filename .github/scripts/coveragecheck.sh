@@ -309,7 +309,11 @@ enforce_profile() (
   trap 'rm -f -- "$report" "$package_file"' EXIT
   printf '%s\n' "$packages" >"$package_file"
   report_profile "$profile" "$report" "$package_file"
-  enforce_report "$report" "$package_file"
+  if ! enforce_report "$report" "$package_file"; then
+    printf '\nNon-fully-covered functions (maximum 200):\n' >&2
+    report_uncovered "$profile" >&2
+    return 1
+  fi
   rm -f -- "$report" "$package_file"
 )
 
