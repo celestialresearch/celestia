@@ -24,6 +24,48 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+func TestFixturePathAndELFBoundaries(t *testing.T) {
+	root := t.TempDir()
+	for _, relative := range []string{"", ".", "..", "../fixture", "/fixture", "a\x00b", "a/../fixture"} {
+		if validFixturePath(root, relative) {
+			t.Fatalf("invalid fixture path accepted: %q", relative)
+		}
+	}
+	if !validFixturePath(root, "nested/fixture") {
+		t.Fatal("valid fixture path rejected")
+	}
+	if snapshot, err := sealedFixtureSnapshot(nil); snapshot != nil || err == nil {
+		t.Fatalf("nil snapshot = (%v, %v)", snapshot, err)
+	}
+
+	file, err := os.CreateTemp(t.TempDir(), "not-elf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close fixture: %v", err)
+		}
+	}()
+	if _, err := staticELFType(file); err == nil {
+		t.Fatal("non-ELF fixture accepted")
+	}
+	image := &elf.File{Progs: []*elf.Prog{
+		{ProgHeader: elf.ProgHeader{Type: elf.PT_LOAD, Flags: elf.PF_R}},
+		{ProgHeader: elf.ProgHeader{Type: elf.PT_LOAD, Flags: elf.PF_X}},
+	}}
+	if !hasExecutableLoad(image) {
+		t.Fatal("executable load rejected")
+	}
+	if hasInterpreter(image) {
+		t.Fatal("missing interpreter reported")
+	}
+	image.Progs = append(image.Progs, &elf.Prog{ProgHeader: elf.ProgHeader{Type: elf.PT_INTERP}})
+	if !hasInterpreter(image) {
+		t.Fatal("interpreter omitted")
+	}
+}
+
 func TestOpenStaticFixtureBindsExactImage(t *testing.T) {
 	root := t.TempDir()
 	writeStaticTestExecutable(t, filepath.Join(root, "fixture"))
