@@ -32,6 +32,7 @@ func TestBootstrapMainFailsClosed(t *testing.T) {
 }
 
 func testBootstrapMainFailsClosed(t *testing.T) {
+	t.Helper()
 	readyRead, readyWrite := testPipe(t)
 	gateRead, gateWrite := testPipe(t)
 	fixture, err := os.Open(os.DevNull)
