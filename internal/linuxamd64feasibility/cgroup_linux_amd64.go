@@ -219,6 +219,9 @@ func (directory cgroupDirectory) read(name string, limit int) ([]byte, error) {
 	file := unixFile{fd: fd}
 	data, readErr := io.ReadAll(io.LimitReader(&file, int64(limit)+1))
 	closeErr := file.Close()
+	if len(data) > limit {
+		return nil, errors.Join(readErr, closeErr, io.ErrShortBuffer)
+	}
 	return data, errors.Join(readErr, closeErr)
 }
 

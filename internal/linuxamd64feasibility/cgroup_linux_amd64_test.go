@@ -162,6 +162,19 @@ func TestCgroupDescriptorBoundaries(t *testing.T) {
 	if err := leaf.writable("missing"); err == nil {
 		t.Fatal("invalid writable descriptor accepted")
 	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "oversized"), []byte("abcd"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeCgroupDirectory(t, directory)
+	data, err := directory.read("oversized", 3)
+	if data != nil || !errors.Is(err, io.ErrShortBuffer) {
+		t.Fatalf("bounded read = (%q, %v)", data, err)
+	}
 }
 
 func TestOwnedCgroupLeafRemovesCreatedDirectory(t *testing.T) {
@@ -281,6 +294,43 @@ func TestCgroupLeafRequiresEmptyEventsAndControls(t *testing.T) {
 	if result := validateCgroupLeaf(leaf); result.Reason != "cgroup_leaf_populated" {
 		t.Fatalf("result=%+v", result)
 	}
+}
+
+func TestCgroupLeafRefusesMalformedState(t *testing.T) {
+	root := t.TempDir()
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer closeCgroupDirectory(t, directory)
+	leaf, err := directory.createLeaf()
+	if err != nil {
+		t.Fatalf("create leaf: %v", err)
+	}
+	leafPath := filepath.Join(root, leaf.name)
+	writeLeafFile(t, leafPath, "cgroup.events", "malformed\n")
+	for _, name := range cgroupLeafFiles {
+		writeLeafFile(t, leafPath, name, "")
+	}
+	defer func() {
+		removeMockCgroupFiles(t, leafPath)
+		if err := leaf.remove(); err != nil {
+			t.Errorf("remove leaf: %v", err)
+		}
+	}()
+	if result := validateCgroupLeaf(leaf); result.Reason != "cgroup_events_malformed" {
+		t.Fatalf("malformed result=%+v", result)
+	}
+	if err := os.WriteFile(filepath.Join(leafPath, "cgroup.events"), []byte("populated 0\n"), 0o600); err != nil {
+		t.Fatalf("restore events: %v", err)
+	}
+	if err := os.Remove(filepath.Join(leafPath, cgroupLeafFiles[0])); err != nil {
+		t.Fatalf("remove control: %v", err)
+	}
+	if result := validateCgroupLeaf(leaf); result.Reason != "cgroup_leaf_controls_unavailable" {
+		t.Fatalf("missing control result=%+v", result)
+	}
+	writeLeafFile(t, leafPath, cgroupLeafFiles[0], "")
 }
 
 func TestNativeFixtureMemoryLimitDisablesSwap(t *testing.T) {
