@@ -18,9 +18,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"os"
 	"path"
-	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -102,13 +100,6 @@ func (directory cgroupDirectory) close() error {
 }
 
 func validateDelegatedCgroup(directory cgroupDirectory) cgroupResult {
-	root, err := directory.mountRoot()
-	if err != nil {
-		return indeterminateCgroup("cgroup_root_indeterminate")
-	}
-	if root {
-		return unavailableCgroup("cgroup_root_not_delegated")
-	}
 	var information unix.Statfs_t
 	if err := unix.Fstatfs(directory.fd, &information); err != nil {
 		return indeterminateCgroup("cgroup_filesystem_indeterminate")
@@ -131,23 +122,6 @@ func validateDelegatedCgroup(directory cgroupDirectory) cgroupResult {
 		return unavailableCgroup("cgroup_delegation_missing")
 	}
 	return passedCgroup()
-}
-
-func (directory cgroupDirectory) mountRoot() (bool, error) {
-	resolved, err := os.Readlink("/proc/self/fd/" + strconv.Itoa(directory.fd))
-	if err != nil {
-		return false, err
-	}
-	mounts, err := os.Open("/proc/self/mountinfo")
-	if err != nil {
-		return false, err
-	}
-	mount, _, parseErr := mountedFilesystemIdentity(
-		io.LimitReader(mounts, maxMountinfoBytes+1),
-		path.Clean(resolved),
-	)
-	err = errors.Join(parseErr, mounts.Close())
-	return err == nil && mount == path.Clean(resolved), err
 }
 
 func (directory cgroupDirectory) createLeaf() (ownedCgroupLeaf, error) {

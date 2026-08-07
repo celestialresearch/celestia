@@ -305,22 +305,6 @@ func TestCgroupPrimitiveRefusesOrdinaryFilesystem(t *testing.T) {
 	}
 }
 
-func TestCgroupDirectoryDistinguishesFilesystemRoot(t *testing.T) {
-	directory, err := openCgroupDirectory(t.TempDir())
-	if err != nil {
-		t.Fatalf("open directory: %v", err)
-	}
-	defer func() {
-		if err := directory.close(); err != nil {
-			t.Errorf("close directory: %v", err)
-		}
-	}()
-	root, err := directory.mountRoot()
-	if err != nil || root {
-		t.Fatalf("root=%t err=%v", root, err)
-	}
-}
-
 func TestCgroupDirectoryRefusesLinksAndParentTraversal(t *testing.T) {
 	root := t.TempDir()
 	link := filepath.Join(t.TempDir(), "root")
