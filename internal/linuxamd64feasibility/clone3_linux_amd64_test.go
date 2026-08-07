@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -72,6 +73,52 @@ func TestClone3GateRequiresRelease(t *testing.T) {
 	}
 	if !waitClone3Command(command) {
 		t.Fatal("wait helper failed")
+	}
+}
+
+func TestClone3PipeProtocolFailures(t *testing.T) {
+	pipes, err := newClone3Pipes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := errors.Join(pipes.closeChildEnds(), pipes.closeParentEnds()); err != nil {
+			t.Errorf("close pipes: %v", err)
+		}
+	}()
+	if _, err := pipes.readyWrite.Write([]byte{'x'}); err != nil {
+		t.Fatal(err)
+	}
+	if err := pipes.readyEmpty(); !errors.Is(err, errCgroupEventsMalformed) {
+		t.Fatalf("unexpected ready byte: %v", err)
+	}
+	if _, err := pipes.readyWrite.Write([]byte{'x'}); err != nil {
+		t.Fatal(err)
+	}
+	if err := pipes.waitReady(time.Now().Add(time.Second)); !errors.Is(err, errCgroupEventsMalformed) {
+		t.Fatalf("unexpected wait byte: %v", err)
+	}
+	if err := pipes.waitReady(time.Now().Add(-time.Second)); !errors.Is(err, errCgroupDeadlineExceeded) {
+		t.Fatalf("expired wait: %v", err)
+	}
+}
+
+func TestClone3MembershipRequiresPID(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "cgroup.procs"), []byte("41\n42\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeCgroupDirectory(t, directory)
+	leaf := ownedCgroupLeaf{fd: directory.fd}
+	if err := verifyClone3Membership(leaf, 42); err != nil {
+		t.Fatalf("present PID rejected: %v", err)
+	}
+	if err := verifyClone3Membership(leaf, 7); !errors.Is(err, unix.ESRCH) {
+		t.Fatalf("absent PID error = %v", err)
 	}
 }
 
