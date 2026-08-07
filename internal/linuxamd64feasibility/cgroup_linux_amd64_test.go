@@ -102,6 +102,68 @@ func TestCgroupInvalidDescriptors(t *testing.T) {
 	}
 }
 
+func TestCgroupNameBoundaries(t *testing.T) {
+	for _, name := range []string{"", "CPU", "cpu.max", "pids-"} {
+		if validCgroupName(name) {
+			t.Fatalf("invalid cgroup name accepted: %q", name)
+		}
+	}
+	if !validCgroupName("memory_swap") {
+		t.Fatal("valid cgroup name rejected")
+	}
+}
+
+func TestCgroupCleanupBoundaries(t *testing.T) {
+	result := finishCgroupCleanup(cgroupResult{}, nil)
+	if !result.CleanupAttempted || !result.CleanupComplete {
+		t.Fatalf("initial cleanup = %+v", result)
+	}
+	result = finishCgroupCleanup(result, unix.EIO)
+	if result.CleanupComplete {
+		t.Fatalf("failed repeated cleanup = %+v", result)
+	}
+	retained := finishCgroupCleanup(cgroupResult{CleanupAttempted: true}, nil)
+	if retained.CleanupComplete {
+		t.Fatalf("incomplete cleanup promoted = %+v", retained)
+	}
+}
+
+func TestCgroupErrorBoundaries(t *testing.T) {
+	for _, err := range []error{
+		unix.EACCES, unix.EBUSY, unix.EEXIST, unix.EINVAL, unix.EISDIR, unix.ELOOP,
+		unix.ENOENT, unix.ENOTDIR, unix.EOPNOTSUPP, unix.EPERM, unix.EROFS,
+	} {
+		if !cgroupUnavailableError(err) {
+			t.Fatalf("error not classified unavailable: %v", err)
+		}
+	}
+	if cgroupUnavailableError(unix.EIO) {
+		t.Fatal("indeterminate error classified unavailable")
+	}
+}
+
+func TestCgroupDescriptorBoundaries(t *testing.T) {
+	if directory, err := openCgroupDirectory("relative"); err == nil {
+		if closeErr := directory.close(); closeErr != nil {
+			t.Errorf("close relative root: %v", closeErr)
+		}
+		t.Fatal("relative cgroup root accepted")
+	}
+	if directory, err := openCgroupDirectory("/tmp//child"); err == nil {
+		if closeErr := directory.close(); closeErr != nil {
+			t.Errorf("close empty-component root: %v", closeErr)
+		}
+		t.Fatal("empty cgroup component accepted")
+	}
+	leaf := ownedCgroupLeaf{root: -1, fd: -1, name: "missing"}
+	if owned, err := leaf.namedIdentity(); owned || err == nil {
+		t.Fatalf("invalid identity = (%t, %v)", owned, err)
+	}
+	if err := leaf.writable("missing"); err == nil {
+		t.Fatal("invalid writable descriptor accepted")
+	}
+}
+
 func TestOwnedCgroupLeafRemovesCreatedDirectory(t *testing.T) {
 	root := t.TempDir()
 	directory, err := openCgroupDirectory(root)
