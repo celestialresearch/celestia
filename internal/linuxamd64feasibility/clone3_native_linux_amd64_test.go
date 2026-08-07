@@ -151,7 +151,7 @@ func TestClone3PreparationCoverageNative(t *testing.T) {
 	command.Stderr = &stderr
 	result := clone3CgroupPrimitive(root, command, fixture)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
-		t.Fatalf("result=%+v", result)
+		t.Fatalf("result=%+v stderr=%q", result, stderr.String())
 	}
 	if os.Getenv("GOCOVERDIR") != "" && !bytes.Contains(stderr.Bytes(), []byte(clone3CoverageMarker)) {
 		t.Fatalf("coverage marker missing: %q", stderr.String())
