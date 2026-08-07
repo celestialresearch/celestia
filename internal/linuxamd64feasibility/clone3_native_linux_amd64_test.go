@@ -15,12 +15,15 @@ package linuxamd64feasibility
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -29,7 +32,10 @@ const (
 	clone3PreparationHelperArgument = "clone3-preparation-helper"
 )
 
-const clone3CoverageMarker = "clone3 coverage flushed"
+const (
+	clone3CoverageMarker          = "clone3 coverage flushed"
+	clone3BootstrapCoverageMarker = "clone3 bootstrap refusal covered"
+)
 
 func TestClone3BootstrapHelper(t *testing.T) {
 	if len(os.Args) == 0 {
@@ -46,7 +52,17 @@ func TestClone3BootstrapHelper(t *testing.T) {
 	gate := os.NewFile(4, "clone3-gate")
 	ready := os.NewFile(3, "clone3-ready")
 	fixture := os.NewFile(5, "hostile-fixture")
-	if err := Bootstrap(gate, ready, fixture); err != nil {
+	err := Bootstrap(gate, ready, fixture)
+	if argument == clone3BootstrapCoverageArgument {
+		if !errors.Is(err, unix.EACCES) {
+			t.Fatalf("bootstrap refusal: %v", err)
+		}
+		if _, err := fmt.Fprintln(os.Stderr, clone3BootstrapCoverageMarker); err != nil {
+			t.Fatalf("write bootstrap marker: %v", err)
+		}
+		return
+	}
+	if err != nil {
 		t.Fatalf("bootstrap: %v", err)
 	}
 	t.Fatal("bootstrap returned without executing fixture")
@@ -146,6 +162,9 @@ func TestClone3BootstrapCoverageNative(t *testing.T) {
 	result := clone3BootstrapCoverage(root, command, fixture)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
 		t.Fatalf("result=%+v output=%q", result, output.String())
+	}
+	if !bytes.Contains(output.Bytes(), []byte(clone3BootstrapCoverageMarker)) {
+		t.Fatalf("bootstrap marker missing: %q", output.String())
 	}
 }
 
