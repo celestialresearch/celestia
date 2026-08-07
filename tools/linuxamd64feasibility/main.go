@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 
 	"celestia.research/celestia/internal/linuxamd64feasibility"
 )
@@ -32,9 +31,6 @@ func runMain(arguments []string, stdout, stderr io.Writer, bootstrap func() int)
 }
 
 func runBootstrapMain() int {
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		return 1
-	}
 	return runBootstrap(os.NewFile(4, "clone3-gate"), os.NewFile(3, "clone3-ready"),
 		os.NewFile(5, "hostile-fixture"))
 }
