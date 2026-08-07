@@ -509,6 +509,14 @@ func TestCgroupPrimitiveRefusesOrdinaryFilesystem(t *testing.T) {
 	}
 }
 
+func TestCgroupPrimitiveRefusesMissingRoot(t *testing.T) {
+	result := cgroupPrimitive(filepath.Join(t.TempDir(), "missing"))
+	if result.Outcome != "unavailable" || result.Reason != "cgroup_root_unavailable" ||
+		result.CleanupAttempted {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
 func TestCgroupDirectoryRefusesLinksAndParentTraversal(t *testing.T) {
 	root := t.TempDir()
 	link := filepath.Join(t.TempDir(), "root")
