@@ -15,18 +15,31 @@ package linuxamd64feasibility
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
-const clone3BootstrapHelperArgument = "clone3-bootstrap-helper"
+const (
+	clone3BootstrapHelperArgument   = "clone3-bootstrap-helper"
+	clone3PreparationHelperArgument = "clone3-preparation-helper"
+)
 
 const clone3CoverageMarker = "clone3 coverage flushed"
 
 func TestClone3BootstrapHelper(t *testing.T) {
-	if len(os.Args) == 0 || os.Args[len(os.Args)-1] != clone3BootstrapHelperArgument {
+	if len(os.Args) == 0 {
+		return
+	}
+	if os.Args[len(os.Args)-1] == clone3PreparationHelperArgument {
+		runClone3PreparationHelper(t)
+		return
+	}
+	if os.Args[len(os.Args)-1] != clone3BootstrapHelperArgument {
 		return
 	}
 	gate := os.NewFile(4, "clone3-gate")
@@ -45,6 +58,33 @@ func TestClone3BootstrapHelper(t *testing.T) {
 		t.Fatalf("bootstrap: %v", err)
 	}
 	t.Fatal("bootstrap returned without executing fixture")
+}
+
+func runClone3PreparationHelper(t *testing.T) {
+	t.Helper()
+	gate := os.NewFile(4, "clone3-gate")
+	ready := os.NewFile(3, "clone3-ready")
+	err := runClone3Bootstrap(gate, ready, func() error {
+		if err := prepareClone3Namespace(); err != nil {
+			return err
+		}
+		written, err := writeClone3Coverage()
+		if err != nil {
+			return err
+		}
+		if written {
+			_, err = fmt.Fprintln(os.Stderr, clone3CoverageMarker)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatalf("prepare bootstrap: %v", err)
+	}
+	for {
+		if err := unix.Pause(); err != nil && !errors.Is(err, unix.EINTR) {
+			t.Fatalf("pause helper: %v", err)
+		}
+	}
 }
 
 func TestClone3CgroupPrimitiveNative(t *testing.T) {
@@ -92,7 +132,7 @@ func TestClone3BootstrapNative(t *testing.T) {
 	}
 }
 
-func TestClone3BootstrapFailureNative(t *testing.T) {
+func TestClone3PreparationCoverageNative(t *testing.T) {
 	root := os.Getenv("CELESTIA_CGROUP_ROOT")
 	if root == "" {
 		return
@@ -106,7 +146,7 @@ func TestClone3BootstrapFailureNative(t *testing.T) {
 			t.Errorf("close fixture: %v", err)
 		}
 	}()
-	command := clone3CoverageHelperCommand(t, "^TestClone3BootstrapHelper$", clone3BootstrapHelperArgument)
+	command := clone3CoverageHelperCommand(t, "^TestClone3BootstrapHelper$", clone3PreparationHelperArgument)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
 	result := clone3CgroupPrimitive(root, command, fixture)
