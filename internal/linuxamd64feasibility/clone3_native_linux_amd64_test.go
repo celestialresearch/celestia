@@ -15,13 +15,10 @@ package linuxamd64feasibility
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -46,15 +43,6 @@ func TestClone3BootstrapHelper(t *testing.T) {
 	ready := os.NewFile(3, "clone3-ready")
 	fixture := os.NewFile(5, "hostile-fixture")
 	if err := Bootstrap(gate, ready, fixture); err != nil {
-		written, coverageErr := writeClone3Coverage()
-		if coverageErr != nil {
-			t.Fatalf("write coverage: %v; bootstrap: %v", coverageErr, err)
-		}
-		if written {
-			if _, markerErr := fmt.Fprintln(os.Stderr, clone3CoverageMarker); markerErr != nil {
-				t.Fatalf("write coverage marker: %v", markerErr)
-			}
-		}
 		t.Fatalf("bootstrap: %v", err)
 	}
 	t.Fatal("bootstrap returned without executing fixture")
@@ -64,26 +52,17 @@ func runClone3PreparationHelper(t *testing.T) {
 	t.Helper()
 	gate := os.NewFile(4, "clone3-gate")
 	ready := os.NewFile(3, "clone3-ready")
-	err := runClone3Bootstrap(gate, ready, func() error {
-		if err := prepareClone3Namespace(); err != nil {
-			return err
-		}
-		written, err := writeClone3Coverage()
-		if err != nil {
-			return err
-		}
-		if written {
-			_, err = fmt.Fprintln(os.Stderr, clone3CoverageMarker)
-		}
-		return err
-	})
-	if err != nil {
-		t.Fatalf("prepare bootstrap: %v", err)
+	if err := readClone3Byte(gate, clone3GateByte); err != nil {
+		t.Fatalf("read gate: %v", err)
 	}
-	for {
-		if err := unix.Pause(); err != nil && !errors.Is(err, unix.EINTR) {
-			t.Fatalf("pause helper: %v", err)
-		}
+	if err := prepareClone3Namespace(); err != nil {
+		t.Fatalf("prepare namespace: %v", err)
+	}
+	if _, err := fmt.Fprintln(os.Stderr, clone3CoverageMarker); err != nil {
+		t.Fatalf("write coverage marker: %v", err)
+	}
+	if err := writeClone3Byte(ready, clone3ReadyByte); err != nil {
+		t.Fatalf("write ready: %v", err)
 	}
 }
 

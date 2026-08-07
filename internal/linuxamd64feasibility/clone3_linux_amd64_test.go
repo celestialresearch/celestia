@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime/coverage"
 	"syscall"
 	"testing"
 	"time"
@@ -190,16 +189,4 @@ func clone3CoverageHelperCommand(t *testing.T, testName, argument string) *exec.
 	command.Args = append(command.Args[:len(command.Args)-2],
 		"-test.gocoverdir=/proc/self/fd/0", separator, helperArgument)
 	return command
-}
-
-func writeClone3Coverage() (bool, error) {
-	information, err := os.Stdin.Stat()
-	if err != nil {
-		return false, err
-	}
-	if !information.IsDir() {
-		return false, nil
-	}
-	const directory = "/proc/self/fd/0"
-	return true, errors.Join(coverage.WriteMetaDir(directory), coverage.WriteCountersDir(directory))
 }
