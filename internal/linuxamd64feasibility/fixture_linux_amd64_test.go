@@ -200,6 +200,19 @@ func TestFixtureIdentityRejectsUnsealedDescriptor(t *testing.T) {
 	}
 }
 
+func TestSealedFixtureSnapshotRejectsClosedSource(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "closed-source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot, err := sealedFixtureSnapshot(file); snapshot != nil || err == nil {
+		t.Fatalf("snapshot=%v err=%v", snapshot, err)
+	}
+}
+
 func writeStaticTestExecutable(t *testing.T, target string) {
 	t.Helper()
 	if err := os.WriteFile(target, staticTestELF(), 0o600); err != nil {

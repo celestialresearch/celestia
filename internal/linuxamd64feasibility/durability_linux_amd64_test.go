@@ -84,6 +84,37 @@ func TestDurabilityRootRequiresCanonicalAbsolutePath(t *testing.T) {
 	}
 }
 
+func TestOpenDurabilityRootRefusesUnsafeTraversal(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "evidence")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Chmod(parent, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openDurabilityRoot(root); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("unsafe parent error = %v", err)
+	}
+	if err := unix.Chmod(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Chmod(root, 0o722); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openDurabilityRoot(root); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("unsafe root error = %v", err)
+	}
+
+	file := filepath.Join(parent, "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openDurabilityRoot(filepath.Join(file, "evidence")); !errors.Is(err, unix.ENOTDIR) {
+		t.Fatalf("regular component error = %v", err)
+	}
+}
+
 func TestDurabilityWriteHandlesPartialAndInterruptedWrites(t *testing.T) {
 	calls := 0
 	err := writeAll(func(data []byte) (int, error) {

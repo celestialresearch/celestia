@@ -128,3 +128,9 @@ func TestFilesystemInspection(t *testing.T) {
 		t.Fatal("missing cgroup filesystem accepted")
 	}
 }
+
+func TestFilesystemInspectionRejectsMissingTarget(t *testing.T) {
+	if _, err := EvidenceFilesystem(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("missing filesystem target accepted")
+	}
+}
