@@ -98,6 +98,9 @@ func TestFilesystemInspection(t *testing.T) {
 	if _, err := EvidenceFilesystem(root); err != nil {
 		t.Fatalf("root filesystem: %v", err)
 	}
+	if _, err := rootFilesystem(root); err != nil {
+		t.Fatalf("internal root filesystem: %v", err)
+	}
 	if _, err := cgroupV2(root); err != nil {
 		t.Fatalf("cgroup filesystem: %v", err)
 	}
