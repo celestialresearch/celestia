@@ -14,6 +14,7 @@
 package linuxamd64feasibility
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,6 +68,21 @@ func TestMountedFilesystemRejectsInvalidInput(t *testing.T) {
 			t.Fatal("invalid mountinfo accepted")
 		}
 	}
+}
+
+func TestBoundedMountinfoRejectsTruncation(t *testing.T) {
+	if _, err := boundedMountinfo(strings.NewReader(strings.Repeat("a", maxMountinfoBytes+1))); err == nil {
+		t.Fatal("oversized mountinfo accepted")
+	}
+	if _, err := boundedMountinfo(errorReader{}); err == nil {
+		t.Fatal("mountinfo read failure accepted")
+	}
+}
+
+type errorReader struct{}
+
+func (errorReader) Read([]byte) (int, error) {
+	return 0, errors.New("read failure")
 }
 
 func TestMountDeviceRequiresCanonicalPair(t *testing.T) {

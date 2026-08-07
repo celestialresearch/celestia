@@ -15,6 +15,7 @@ package linuxamd64feasibility
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"io"
 	"os"
@@ -31,6 +32,8 @@ const (
 	xfsFilesystem     = 0x58465342
 	maxMountinfoBytes = 1 << 20
 )
+
+var errMountinfoLimit = errors.New("mountinfo exceeds limit")
 
 func cgroupV2(name string) (bool, error) {
 	filesystem, err := filesystemType(name)
@@ -51,11 +54,26 @@ func EvidenceFilesystem(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	mounted, parseErr := mountedFilesystem(io.LimitReader(mounts, maxMountinfoBytes+1), filepath.Clean(name))
-	if err := errors.Join(parseErr, mounts.Close()); err != nil {
+	data, readErr := boundedMountinfo(mounts)
+	if err := errors.Join(readErr, mounts.Close()); err != nil {
+		return "", err
+	}
+	mounted, err := mountedFilesystem(bytes.NewReader(data), filepath.Clean(name))
+	if err != nil {
 		return "", err
 	}
 	return evidenceFilesystem(filesystem, mounted), nil
+}
+
+func boundedMountinfo(reader io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maxMountinfoBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxMountinfoBytes {
+		return nil, errMountinfoLimit
+	}
+	return data, nil
 }
 
 func rootFilesystem(name string) (string, error) {

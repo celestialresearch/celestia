@@ -16,7 +16,6 @@ package linuxamd64feasibility
 import (
 	"bytes"
 	"errors"
-	"io"
 	"os"
 )
 
@@ -25,12 +24,12 @@ func durabilityMount(target string) (mountEntry, error) {
 	if err != nil {
 		return mountEntry{}, err
 	}
-	data, readErr := io.ReadAll(io.LimitReader(file, maxMountinfoBytes+1))
+	data, readErr := boundedMountinfo(file)
 	if err := errors.Join(readErr, file.Close()); err != nil {
+		if errors.Is(err, errMountinfoLimit) {
+			return mountEntry{}, errors.Join(errDurabilityMountMismatch, err)
+		}
 		return mountEntry{}, err
-	}
-	if len(data) > maxMountinfoBytes {
-		return mountEntry{}, errDurabilityMountMismatch
 	}
 	return mountedFilesystemEntry(bytes.NewReader(data), target)
 }
