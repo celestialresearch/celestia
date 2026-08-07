@@ -20,10 +20,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 const (
 	clone3BootstrapHelperArgument   = "clone3-bootstrap-helper"
+	clone3BootstrapCoverageArgument = "clone3-bootstrap-coverage-helper"
 	clone3PreparationHelperArgument = "clone3-preparation-helper"
 )
 
@@ -37,7 +39,8 @@ func TestClone3BootstrapHelper(t *testing.T) {
 		runClone3PreparationHelper(t)
 		return
 	}
-	if os.Args[len(os.Args)-1] != clone3BootstrapHelperArgument {
+	argument := os.Args[len(os.Args)-1]
+	if argument != clone3BootstrapHelperArgument && argument != clone3BootstrapCoverageArgument {
 		return
 	}
 	gate := os.NewFile(4, "clone3-gate")
@@ -122,6 +125,30 @@ func TestClone3PreparationCoverageNative(t *testing.T) {
 	}
 }
 
+func TestClone3BootstrapCoverageNative(t *testing.T) {
+	root := os.Getenv("CELESTIA_CGROUP_ROOT")
+	if root == "" {
+		return
+	}
+	fixture, err := os.Open("/dev/null")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := fixture.Close(); err != nil {
+			t.Errorf("close fixture: %v", err)
+		}
+	}()
+	command := clone3CoverageHelperCommand(t, "^TestClone3BootstrapHelper$", clone3BootstrapCoverageArgument)
+	var output bytes.Buffer
+	command.Stdout = &output
+	command.Stderr = &output
+	result := clone3BootstrapCoverage(root, command, fixture)
+	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
+		t.Fatalf("result=%+v output=%q", result, output.String())
+	}
+}
+
 func clone3PreparationCoverage(root string, command *exec.Cmd) (result cgroupResult) {
 	directory, err := openCgroupDirectory(root)
 	if err != nil {
@@ -145,4 +172,48 @@ func clone3PreparationCoverage(root string, command *exec.Cmd) (result cgroupRes
 		}
 		return cgroupResult{Outcome: "passed", Reason: "clone3_namespace_prepared"}
 	})
+}
+
+func clone3BootstrapCoverage(root string, command *exec.Cmd, fixture *os.File) (result cgroupResult) {
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		return cgroupOpenResult(err)
+	}
+	defer func() {
+		result = finishCgroupCleanup(result, directory.close())
+	}()
+	if result = validateDelegatedCgroup(directory); result.Outcome != "passed" {
+		return result
+	}
+	return useCgroupLeaf(directory, func(leaf ownedCgroupLeaf) cgroupResult {
+		return runBootstrapCoverageLeaf(leaf, command, fixture)
+	})
+}
+
+func runBootstrapCoverageLeaf(leaf ownedCgroupLeaf, command *exec.Cmd, fixture *os.File) cgroupResult {
+	deadline := time.Now().Add(clone3ProbeTimeout)
+	if err := leaf.write("pids.max", []byte(clone3BootstrapTaskLimit)); err != nil {
+		return clone3LimitResult(err)
+	}
+	child, err := startClone3Child(leaf, command, fixture)
+	if child == nil {
+		return clone3StartResult(err)
+	}
+	if err != nil {
+		return cleanupClone3Child(clone3StartResult(err), leaf, child, deadline)
+	}
+	if err := child.pipes.release(); err != nil {
+		return cleanupClone3Child(indeterminateCgroup("clone3_gate_release_failed"), leaf, child, deadline)
+	}
+	if err := child.pipes.waitReady(deadline); err != nil {
+		return cleanupClone3Child(clone3ReadyResult(err), leaf, child, deadline)
+	}
+	if err := child.pipes.release(); err != nil {
+		return cleanupClone3Child(indeterminateCgroup("clone3_gate_release_failed"), leaf, child, deadline)
+	}
+	if !child.reap(deadline) {
+		return cleanupClone3Child(indeterminateCgroup("clone3_gate_indeterminate"), leaf, child, deadline)
+	}
+	complete := child.close() == nil && leaf.waitEmpty(deadline) == nil
+	return cgroupResult{Outcome: "passed", Reason: "clone3_bootstrap_covered", CleanupAttempted: true, CleanupComplete: complete}
 }
