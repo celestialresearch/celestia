@@ -1,8 +1,8 @@
 # Attempt Evidence v1
 
 Status: implemented for the internal URL-reference operation on Windows AMD64.
-The same store semantics are implemented on Linux AMD64 but operation execution
-and native persistence qualification remain unavailable there.
+The same store semantics and bounded native persistence qualification are
+implemented on Linux AMD64 but operation execution remains unavailable there.
 
 ## Layout
 

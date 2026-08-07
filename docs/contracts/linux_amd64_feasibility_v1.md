@@ -2,17 +2,18 @@
 
 ## Status
 
-Proposed feasibility work only. Linux operation execution remains unsupported.
-Linux AMD64 attempt storage is implemented but has no native qualification.
-Windows AMD64 remains the sole qualified operation boundary. The
+Linux operation execution remains unsupported. Native Linux AMD64 hostile
+containment and attempt-persistence qualification pass on the named CI host but
+no canonical native observation is retained. Windows AMD64 remains the sole
+qualified operation boundary. The
 [machine-readable manifest](cel_plat_linux_amd64_feas_001.json) is authoritative;
 this file is its review summary.
 
 ## Outcome
 
 One named native Linux AMD64 host either demonstrates every listed primitive
-or records the first refusal before a Production worker can execute. A feasible
-observation is not Linux support or a persistence qualification.
+or records the first refusal before a Production worker can execute. Passing
+the bounded native fixtures does not enable Linux operation execution.
 
 The maintainer-only `tools/linuxamd64feasibility` preflight performs bounded
 read-only checks and emits only `unavailable` or `indeterminate`. It is not a
@@ -31,9 +32,8 @@ and reaps the bootstrap. Same-authority
 processes outside that custody boundary can defeat filesystem ownership and are
 not an isolation target. The result retains the first primitive outcome
 separately from cleanup completion. This is payload-gate evidence only: it does
-not validate bootstrap identity, claim instruction-level suspension before
-`exec`, retain an observation, enable Linux operation execution or qualify
-attempt persistence.
+not claim instruction-level suspension before `exec`, retain a canonical
+observation or enable Linux operation execution.
 
 The maintainer feasibility executable has a private bootstrap mode used only
 after atomic cgroup placement. The bootstrap requires PID 1 in the new PID
@@ -46,8 +46,9 @@ reporting ready. The new filesystem exposes only the bounded root and private
 the prior filesystem. After the second gate the bootstrap closes every
 descriptor above `5`, marks `5` close-on-exec, closes both control descriptors
 then executes `/proc/self/fd/5` with an empty environment. The fixture therefore
-inherits only descriptors `0`, `1` and `2`. Hostile escape probes remain native
-qualification work.
+inherits only descriptors `0`, `1` and `2`. Native hostile fixtures challenge
+network, host-file, environment, descriptor, process-count, memory and timeout
+boundaries.
 
 The fixture-image checkpoint opens one canonical relative path beneath an
 absolute non-linked root through `openat2`. Resolution refuses symlinks, magic
@@ -68,10 +69,9 @@ temporary record, publishes it with
 `renameat2(RENAME_NOREPLACE)`, syncs the containing directory, reopens and
 verifies the exact record then removes only identity-matched files and syncs
 their parent directories. The first primitive outcome remains separate from
-cleanup completion. This checkpoint retains no record and has no native runtime
-observation. The Production attempt store uses the same declared ext4/XFS
-durability boundary but remains unqualified until native recovery and
-inspection evidence exists.
+cleanup completion. Native tests qualify publication, locking, recovery and
+inspection on the declared ext4/XFS boundary but retain no canonical native
+observation.
 
 ## Required evidence
 - A writable delegated cgroup v2 subtree exposes `cgroup.kill`, `pids.max`,

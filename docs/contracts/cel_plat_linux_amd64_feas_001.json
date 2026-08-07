@@ -5,7 +5,7 @@
   "revision": {
     "class": "initial"
   },
-  "operator_visible_outcome": "A named native Linux AMD64 host is classified feasible or unavailable while Production execution remains unsupported and attempt storage remains unqualified",
+  "operator_visible_outcome": "A named native Linux AMD64 host is classified feasible or unavailable while Production execution remains unsupported",
   "owner": "Linux AMD64 feasibility probe",
   "inputs": [
     {
@@ -24,7 +24,7 @@
     }
   ],
   "canonical_state": [
-    "Linux operation execution remains unsupported and attempt persistence remains unqualified",
+    "Linux operation execution remains unsupported",
     "A feasibility observation is non-authoritative platform evidence",
     "Windows AMD64 remains the only qualified operation boundary",
     "Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes",
@@ -99,7 +99,7 @@
       "os": "linux",
       "arch": "amd64",
       "support": "unsupported",
-      "refusal": "Production execution remains unavailable and attempt persistence remains unqualified during feasibility",
+      "refusal": "Production execution remains unavailable during feasibility",
       "evidence": "No native feasibility observation retained"
     },
     {
@@ -151,11 +151,11 @@
     },
     {
       "id": "CEL-PLAT-INV-002",
-      "statement": "The feasibility slice cannot enable Linux operation constructors or claim qualified attempt persistence",
+      "statement": "Native persistence qualification cannot enable Linux operation constructors",
       "owner": "Production architecture policy",
       "severity": "high",
       "boundary": "Product source and build tags",
-      "falsifier": "A Linux caller constructs the supervisor or operation, or the store is reported qualified without native evidence",
+      "falsifier": "A Linux caller constructs the supervisor or operation, or persistence qualification is treated as execution authority",
       "production_controls": [
         {"id": "CEL-PLAT-PROD-002", "owner": "source policy and unsupported-platform tests"}
       ],
@@ -226,13 +226,13 @@
     {"id": "CEL-PLAT-ASSURE-004", "owner": "independent Linux publication rulepack"}
   ],
   "residual_limitations": [
-    "Feasibility is not Linux operation support or attempt-persistence qualification",
+    "Feasibility and persistence qualification are not Linux operation support",
     "One host does not qualify other kernels or filesystems",
     "Linux ARM64 is outside scope",
     "Seccomp, Landlock, SELinux, AppArmor and other LSM controls are not qualified"
   ],
   "non_goals": [
-    "Enable Linux operation or claim attempt-persistence qualification",
+    "Enable Linux operation",
     "Change Windows semantics",
     "Add a common platform abstraction",
     "Add a dependency, container, daemon, pool or persistent worker",
