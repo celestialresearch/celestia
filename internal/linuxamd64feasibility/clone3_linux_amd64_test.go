@@ -162,8 +162,8 @@ func clone3TestCommand(t *testing.T) *exec.Cmd {
 
 func clone3HelperCommand(t *testing.T, testName, argument string) *exec.Cmd {
 	t.Helper()
-	command := exec.CommandContext(t.Context(), "/proc/self/exe",
-		"-test.run="+testName, "--", argument)
+	command := exec.CommandContext(t.Context(), "/proc/self/exe")
+	command.Args = append(command.Args, "-test.run="+testName, "--", argument)
 	return command
 }
 
@@ -174,10 +174,11 @@ func clone3CoverageHelperCommand(t *testing.T, testName, argument string) *exec.
 	if path == "" {
 		return command
 	}
-	directory, err := os.Open(path)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 	if err != nil {
 		t.Fatalf("open coverage directory: %v", err)
 	}
+	directory := os.NewFile(uintptr(fd), "coverage-directory")
 	t.Cleanup(func() {
 		if err := directory.Close(); err != nil {
 			t.Errorf("close coverage directory: %v", err)
