@@ -148,6 +148,32 @@ func TestClone3StartRejectsCallerOwnedProcessState(t *testing.T) {
 	}
 }
 
+func TestClone3LeafRejectsMissingExecutable(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "pids.max"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeCgroupDirectory(t, directory)
+	fixture, err := os.Open("/dev/null")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := fixture.Close(); err != nil {
+			t.Errorf("close fixture: %v", err)
+		}
+	}()
+	command := exec.CommandContext(t.Context(), "/missing-celestia-helper")
+	result := runClone3Leaf(ownedCgroupLeaf{fd: directory.fd}, command, fixture)
+	if result.Outcome != "unavailable" || result.Reason != "clone3_unavailable" {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
 func TestClone3StartResultDistinguishesPlacementDenial(t *testing.T) {
 	if result := clone3StartResult(unix.EACCES); result.Reason != "clone3_placement_denied" {
 		t.Fatalf("result = %+v", result)
