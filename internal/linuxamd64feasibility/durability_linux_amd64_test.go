@@ -308,6 +308,39 @@ func TestDurabilityRecordIdentityRejectsWrongTypes(t *testing.T) {
 	}
 }
 
+func TestDurabilityFixtureCreationRefusesInvalidRoots(t *testing.T) {
+	root, _ := testDurabilityRoot(t)
+	closedRoot := root
+	closedRoot.fd = -1
+	if _, err := closedRoot.createFixture(); err == nil {
+		t.Fatal("fixture created through closed root")
+	}
+
+	secondRoot, path := testDurabilityRoot(t)
+	name := "not-directory"
+	if err := os.WriteFile(filepath.Join(path, name), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openFixture(secondRoot, name); err == nil {
+		t.Fatal("regular file opened as fixture directory")
+	}
+}
+
+func TestDurabilityFixtureRejectsUnsafeDirectory(t *testing.T) {
+	root, path := testDurabilityRoot(t)
+	name := "unsafe-directory"
+	directory := filepath.Join(path, name)
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Chmod(directory, 0o701); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := openFixture(root, name); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("unsafe fixture directory error = %v", err)
+	}
+}
+
 func TestDurabilityPublicationRejectsInvalidState(t *testing.T) {
 	fixture, cleanup := testOwnedFixture(t)
 	defer cleanup()
