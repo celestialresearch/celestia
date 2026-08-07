@@ -14,12 +14,16 @@
 package linuxamd64feasibility
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 const clone3BootstrapHelperArgument = "clone3-bootstrap-helper"
+
+const clone3CoverageMarker = "clone3 coverage flushed"
 
 func TestClone3BootstrapHelper(t *testing.T) {
 	if len(os.Args) == 0 || os.Args[len(os.Args)-1] != clone3BootstrapHelperArgument {
@@ -29,7 +33,16 @@ func TestClone3BootstrapHelper(t *testing.T) {
 	ready := os.NewFile(3, "clone3-ready")
 	fixture := os.NewFile(5, "hostile-fixture")
 	if err := Bootstrap(gate, ready, fixture); err != nil {
-		t.Fatalf("bootstrap: %v; coverage: %v", err, writeClone3Coverage())
+		written, coverageErr := writeClone3Coverage()
+		if coverageErr != nil {
+			t.Fatalf("write coverage: %v; bootstrap: %v", coverageErr, err)
+		}
+		if written {
+			if _, markerErr := fmt.Fprintln(os.Stderr, clone3CoverageMarker); markerErr != nil {
+				t.Fatalf("write coverage marker: %v", markerErr)
+			}
+		}
+		t.Fatalf("bootstrap: %v", err)
 	}
 	t.Fatal("bootstrap returned without executing fixture")
 }
@@ -94,8 +107,13 @@ func TestClone3BootstrapFailureNative(t *testing.T) {
 		}
 	}()
 	command := clone3CoverageHelperCommand(t, "^TestClone3BootstrapHelper$", clone3BootstrapHelperArgument)
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
 	result := clone3CgroupPrimitive(root, command, fixture)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
 		t.Fatalf("result=%+v", result)
+	}
+	if os.Getenv("GOCOVERDIR") != "" && !bytes.Contains(stderr.Bytes(), []byte(clone3CoverageMarker)) {
+		t.Fatalf("coverage marker missing: %q", stderr.String())
 	}
 }

@@ -193,10 +193,10 @@ func clone3CoverageHelperCommand(t *testing.T, testName, argument string) *exec.
 	return command
 }
 
-func writeClone3Coverage() error {
+func writeClone3Coverage() (bool, error) {
 	directory := os.Getenv(clone3CoverageDirectory)
 	if directory == "" {
-		return nil
+		return false, nil
 	}
-	return errors.Join(coverage.WriteMetaDir(directory), coverage.WriteCountersDir(directory))
+	return true, errors.Join(coverage.WriteMetaDir(directory), coverage.WriteCountersDir(directory))
 }
