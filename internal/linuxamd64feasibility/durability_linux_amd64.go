@@ -220,7 +220,7 @@ func durabilityRootFromFD(fd int, euid uint32) (durabilityRoot, error) {
 	if err := unix.Fstat(fd, &information); err != nil {
 		return durabilityRoot{}, err
 	}
-	if _, err := durabilityFilesystem(fd, information.Dev); err != nil {
+	if err := validateDurabilityFilesystem(fd, information.Dev); err != nil {
 		return durabilityRoot{}, err
 	}
 	return durabilityRoot{
@@ -234,27 +234,27 @@ func (root durabilityRoot) close() error {
 	return unix.Close(root.fd)
 }
 
-func durabilityFilesystem(fd int, device uint64) (string, error) {
+func validateDurabilityFilesystem(fd int, device uint64) error {
 	var information unix.Statfs_t
 	if err := unix.Fstatfs(fd, &information); err != nil {
-		return "", err
+		return err
 	}
 	name, err := durabilityDescriptorPath(fd)
 	if err != nil {
-		return "", err
+		return err
 	}
 	entry, err := durabilityMount(name)
 	if err != nil {
-		return "", err
+		return err
 	}
 	if entry.Major != unix.Major(device) || entry.Minor != unix.Minor(device) {
-		return "", errDurabilityMountMismatch
+		return errDurabilityMountMismatch
 	}
 	filesystem := evidenceFilesystem(information.Type, entry.Filesystem)
 	if filesystem == "unsupported" {
-		return "", errDurabilityFilesystem
+		return errDurabilityFilesystem
 	}
-	return filesystem, nil
+	return nil
 }
 
 func durabilityDescriptorPath(fd int) (string, error) {

@@ -228,7 +228,7 @@ func TestDurabilityFilesystemDescriptorBoundaries(t *testing.T) {
 	if _, err := durabilityRootFromFD(-1, 0); err == nil {
 		t.Fatal("invalid root descriptor accepted")
 	}
-	if _, err := durabilityFilesystem(-1, 0); err == nil {
+	if err := validateDurabilityFilesystem(-1, 0); err == nil {
 		t.Fatal("invalid filesystem descriptor accepted")
 	}
 	root := filepath.Join(t.TempDir(), "deleted")
