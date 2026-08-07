@@ -149,6 +149,66 @@ func TestClone3MembershipRequiresPID(t *testing.T) {
 	}
 }
 
+func TestClone3CleanupClassifiesCompleteTree(t *testing.T) {
+	leaf := cleanupTestLeaf(t)
+	pipes, err := newClone3Pipes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pipes.closeChildEnds(); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.CommandContext(t.Context(), "/bin/true")
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	child := clone3Child{command: command, pidfd: -1, pipes: pipes}
+	result := cleanupClone3Child(passedCgroup(), leaf, &child, time.Now().Add(time.Second))
+	if !result.CleanupAttempted || !result.CleanupComplete {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestClone3CleanupClassifiesIncompleteTree(t *testing.T) {
+	command := exec.CommandContext(t.Context(), "/bin/true")
+	if err := command.Run(); err != nil {
+		t.Fatal(err)
+	}
+	pipes, err := newClone3Pipes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pipes.closeChildEnds(); err != nil {
+		t.Fatal(err)
+	}
+	child := clone3Child{command: command, pidfd: -1, pipes: pipes}
+	result := cleanupClone3Child(passedCgroup(), ownedCgroupLeaf{fd: -1}, &child, time.Now())
+	if !result.CleanupAttempted || result.CleanupComplete {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func cleanupTestLeaf(t *testing.T) ownedCgroupLeaf {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "cgroup.kill"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "cgroup.events"), []byte("populated 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fd, err := unix.Open(root, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := unix.Close(fd); err != nil {
+			t.Errorf("close cleanup leaf: %v", err)
+		}
+	})
+	return ownedCgroupLeaf{fd: fd}
+}
+
 func TestClone3StartRejectsCallerOwnedProcessState(t *testing.T) {
 	file, err := os.Open("/dev/null")
 	if err != nil {
