@@ -152,11 +152,12 @@ func TestNativeFixtureMemoryLimitDisablesSwap(t *testing.T) {
 		t.Fatalf("create leaf: %v", err)
 	}
 	leafPath := filepath.Join(root, leaf.name)
-	for _, name := range []string{"memory.max", "memory.swap.max"} {
+	controls := []string{"pids.max", "memory.max", "memory.swap.max"}
+	for _, name := range controls {
 		writeLeafFile(t, leafPath, name, "")
 	}
 	defer func() {
-		for _, name := range []string{"memory.max", "memory.swap.max"} {
+		for _, name := range controls {
 			if err := os.Remove(filepath.Join(leafPath, name)); err != nil {
 				t.Errorf("remove %s: %v", name, err)
 			}
@@ -170,6 +171,7 @@ func TestNativeFixtureMemoryLimitDisablesSwap(t *testing.T) {
 	if result := applyNativeFixtureLimits(leaf, options); result.Outcome != "passed" {
 		t.Fatalf("result=%+v", result)
 	}
+	assertLeafFile(t, leafPath, "pids.max", clone3FixtureTaskLimit)
 	assertLeafFile(t, leafPath, "memory.max", nativeMemoryLimit)
 	assertLeafFile(t, leafPath, "memory.swap.max", "0")
 
