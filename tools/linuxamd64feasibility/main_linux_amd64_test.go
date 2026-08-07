@@ -23,7 +23,10 @@ import (
 
 func TestBootstrapMainFailsClosed(t *testing.T) {
 	if os.Getenv("CELESTIA_BOOTSTRAP_MAIN_HELPER") == "1" {
-		os.Exit(runBootstrapMain())
+		if status := runBootstrapMain(); status != 1 {
+			t.Fatalf("bootstrap status = %d", status)
+		}
+		return
 	}
 	readyRead, readyWrite, err := os.Pipe()
 	if err != nil {
@@ -57,13 +60,8 @@ func TestBootstrapMainFailsClosed(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := command.Wait(); err == nil {
-		t.Fatal("bootstrap entrypoint succeeded")
-	} else {
-		var exitError *exec.ExitError
-		if !errors.As(err, &exitError) || exitError.ExitCode() != 1 {
-			t.Fatalf("bootstrap entrypoint error = %v", err)
-		}
+	if err := command.Wait(); err != nil {
+		t.Fatalf("bootstrap helper error = %v", err)
 	}
 	data := make([]byte, 1)
 	if count, err := readyRead.Read(data); count != 0 || !errors.Is(err, io.EOF) {
