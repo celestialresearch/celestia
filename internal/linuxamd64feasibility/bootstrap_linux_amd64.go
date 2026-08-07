@@ -49,19 +49,34 @@ func Bootstrap(gate, ready, fixture *os.File) error {
 }
 
 func prepareClone3Namespace() error {
-	if os.Getpid() != 1 {
+	return prepareClone3NamespaceWith(bootstrapNamespaceOps{
+		getpid: os.Getpid, sethostname: unix.Sethostname, mount: unix.Mount,
+		filesystem: prepareClone3Filesystem, interfaceByName: net.InterfaceByName,
+	})
+}
+
+type bootstrapNamespaceOps struct {
+	getpid          func() int
+	sethostname     func([]byte) error
+	mount           func(string, string, string, uintptr, string) error
+	filesystem      func() error
+	interfaceByName func(string) (*net.Interface, error)
+}
+
+func prepareClone3NamespaceWith(operations bootstrapNamespaceOps) error {
+	if operations.getpid() != 1 {
 		return unix.EINVAL
 	}
-	if err := unix.Sethostname([]byte(bootstrapHostname)); err != nil {
+	if err := operations.sethostname([]byte(bootstrapHostname)); err != nil {
 		return err
 	}
-	if err := unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
+	if err := operations.mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""); err != nil {
 		return err
 	}
-	if err := prepareClone3Filesystem(); err != nil {
+	if err := operations.filesystem(); err != nil {
 		return err
 	}
-	loopback, err := net.InterfaceByName("lo")
+	loopback, err := operations.interfaceByName("lo")
 	if err != nil {
 		return err
 	}
@@ -72,33 +87,49 @@ func prepareClone3Namespace() error {
 }
 
 func prepareClone3Filesystem() error {
+	return prepareClone3FilesystemWith(bootstrapFilesystemOps{
+		mount: unix.Mount, mkdir: unix.Mkdir, pivotRoot: unix.PivotRoot,
+		chdir: unix.Chdir, unmount: unix.Unmount, rmdir: unix.Rmdir,
+	})
+}
+
+type bootstrapFilesystemOps struct {
+	mount     func(string, string, string, uintptr, string) error
+	mkdir     func(string, uint32) error
+	pivotRoot func(string, string) error
+	chdir     func(string) error
+	unmount   func(string, int) error
+	rmdir     func(string) error
+}
+
+func prepareClone3FilesystemWith(operations bootstrapFilesystemOps) error {
 	const mountFlags = unix.MS_NOSUID | unix.MS_NODEV | unix.MS_NOEXEC
-	if err := unix.Mount("tmpfs", "/tmp", "tmpfs", mountFlags, "size=16m,nr_inodes=1024,mode=0700"); err != nil {
+	if err := operations.mount("tmpfs", "/tmp", "tmpfs", mountFlags, "size=16m,nr_inodes=1024,mode=0700"); err != nil {
 		return err
 	}
-	if err := unix.Mkdir(bootstrapRoot, 0o700); err != nil {
+	if err := operations.mkdir(bootstrapRoot, 0o700); err != nil {
 		return err
 	}
-	if err := unix.Mount("tmpfs", bootstrapRoot, "tmpfs", mountFlags, "size=16m,nr_inodes=1024,mode=0700"); err != nil {
+	if err := operations.mount("tmpfs", bootstrapRoot, "tmpfs", mountFlags, "size=16m,nr_inodes=1024,mode=0700"); err != nil {
 		return err
 	}
-	if err := unix.Mkdir(bootstrapOldRoot, 0o700); err != nil {
+	if err := operations.mkdir(bootstrapOldRoot, 0o700); err != nil {
 		return err
 	}
-	if err := unix.Mkdir(bootstrapProc, 0o500); err != nil {
+	if err := operations.mkdir(bootstrapProc, 0o500); err != nil {
 		return err
 	}
-	if err := unix.Mount("proc", bootstrapProc, "proc", mountFlags, ""); err != nil {
+	if err := operations.mount("proc", bootstrapProc, "proc", mountFlags, ""); err != nil {
 		return err
 	}
-	if err := unix.PivotRoot(bootstrapRoot, bootstrapOldRoot); err != nil {
+	if err := operations.pivotRoot(bootstrapRoot, bootstrapOldRoot); err != nil {
 		return err
 	}
-	if err := unix.Chdir("/"); err != nil {
+	if err := operations.chdir("/"); err != nil {
 		return err
 	}
-	if err := unix.Unmount("/old-root", unix.MNT_DETACH); err != nil {
+	if err := operations.unmount("/old-root", unix.MNT_DETACH); err != nil {
 		return err
 	}
-	return unix.Rmdir("/old-root")
+	return operations.rmdir("/old-root")
 }
