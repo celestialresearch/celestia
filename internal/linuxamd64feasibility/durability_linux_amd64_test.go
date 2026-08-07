@@ -102,6 +102,9 @@ func TestDurabilityWriteHandlesPartialAndInterruptedWrites(t *testing.T) {
 	if err := writeAll(func(data []byte) (int, error) { return len(data) + 1, nil }, []byte("x")); !errors.Is(err, io.ErrShortWrite) {
 		t.Fatalf("oversized write err=%v", err)
 	}
+	if err := writeAll(func([]byte) (int, error) { return 0, unix.EIO }, []byte("x")); !errors.Is(err, unix.EIO) {
+		t.Fatalf("failed write err=%v", err)
+	}
 }
 
 func TestUnixReadReturnsEOF(t *testing.T) {
@@ -372,6 +375,52 @@ func TestDurabilityTemporaryRejectsExistingRecord(t *testing.T) {
 	}
 	if err := fixture.writeTemporary(); !errors.Is(err, unix.EEXIST) {
 		t.Fatalf("existing temporary error = %v", err)
+	}
+}
+
+func TestDurabilityFailedWriteRetainsOwnedIdentity(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	fd, err := unix.Openat(fixture.fd, durabilityTemporary,
+		unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := fixtureFileIdentity(fd, fixture.root.euid, fixture.root.device)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.temporary = &fixtureFile{name: durabilityTemporary, identity: identity}
+	if _, err := unix.Write(fd, []byte("partial")); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.finishTemporaryFailure(fd, unix.EIO); !errors.Is(err, unix.EIO) {
+		t.Fatalf("finish failed write: %v", err)
+	}
+	if fixture.temporary.identity.size != int64(len("partial")) {
+		t.Fatalf("identity=%+v", fixture.temporary.identity)
+	}
+}
+
+func TestDurabilityFailedWriteRejectsUnownedTemporary(t *testing.T) {
+	fixture, cleanup := testOwnedFixture(t)
+	defer cleanup()
+	fd, err := unix.Openat(fixture.fd, durabilityTemporary,
+		unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.finishTemporaryFailure(fd, unix.EIO); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("unowned temporary error = %v", err)
+	}
+	if err := unix.Unlinkat(fixture.fd, durabilityTemporary, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixtureFileIdentity(-1, fixture.root.euid, fixture.root.device); err == nil {
+		t.Fatal("invalid file descriptor accepted")
+	}
+	if _, err := readDurabilityFile(-1, 1); err == nil {
+		t.Fatal("invalid record descriptor accepted")
 	}
 }
 
