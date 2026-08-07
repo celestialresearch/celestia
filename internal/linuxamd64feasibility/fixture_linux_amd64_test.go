@@ -175,6 +175,31 @@ func TestFixtureRejectsInterpreter(t *testing.T) {
 	}
 }
 
+func TestFixtureIdentityRejectsUnsealedDescriptor(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(staticTestELF()); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Chmod(0o500); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := staticFixtureIdentity(file); err == nil {
+		t.Fatal("unsealed fixture accepted")
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := staticFixtureIdentity(file); err == nil {
+		t.Fatal("closed fixture accepted")
+	}
+	if hasExecutableLoad(&elf.File{}) {
+		t.Fatal("empty ELF has executable load")
+	}
+}
+
 func writeStaticTestExecutable(t *testing.T, target string) {
 	t.Helper()
 	if err := os.WriteFile(target, staticTestELF(), 0o600); err != nil {
