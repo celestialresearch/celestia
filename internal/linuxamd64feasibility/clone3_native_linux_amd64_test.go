@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -50,19 +51,11 @@ func TestClone3BootstrapHelper(t *testing.T) {
 
 func runClone3PreparationHelper(t *testing.T) {
 	t.Helper()
-	gate := os.NewFile(4, "clone3-gate")
-	ready := os.NewFile(3, "clone3-ready")
-	if err := readClone3Byte(gate, clone3GateByte); err != nil {
-		t.Fatalf("read gate: %v", err)
-	}
 	if err := prepareClone3Namespace(); err != nil {
 		t.Fatalf("prepare namespace: %v", err)
 	}
 	if _, err := fmt.Fprintln(os.Stderr, clone3CoverageMarker); err != nil {
 		t.Fatalf("write coverage marker: %v", err)
-	}
-	if err := writeClone3Byte(ready, clone3ReadyByte); err != nil {
-		t.Fatalf("write ready: %v", err)
 	}
 }
 
@@ -116,24 +109,40 @@ func TestClone3PreparationCoverageNative(t *testing.T) {
 	if root == "" {
 		return
 	}
-	fixture, err := os.Open("/dev/null")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := fixture.Close(); err != nil {
-			t.Errorf("close fixture: %v", err)
-		}
-	}()
 	command := clone3CoverageHelperCommand(t, "^TestClone3BootstrapHelper$", clone3PreparationHelperArgument)
 	var output bytes.Buffer
 	command.Stdout = &output
 	command.Stderr = &output
-	result := clone3CgroupPrimitive(root, command, fixture)
+	result := clone3PreparationCoverage(root, command)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
 		t.Fatalf("result=%+v output=%q", result, output.String())
 	}
 	if os.Getenv("GOCOVERDIR") != "" && !bytes.Contains(output.Bytes(), []byte(clone3CoverageMarker)) {
 		t.Fatalf("coverage marker missing: %q", output.String())
 	}
+}
+
+func clone3PreparationCoverage(root string, command *exec.Cmd) (result cgroupResult) {
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		return cgroupOpenResult(err)
+	}
+	defer func() {
+		result = finishCgroupCleanup(result, directory.close())
+	}()
+	if result = validateDelegatedCgroup(directory); result.Outcome != "passed" {
+		return result
+	}
+	return useCgroupLeaf(directory, func(leaf ownedCgroupLeaf) cgroupResult {
+		if err := leaf.write("pids.max", []byte(clone3BootstrapTaskLimit)); err != nil {
+			return clone3LimitResult(err)
+		}
+		if err := configureClone3Namespaces(command, leaf); err != nil {
+			return clone3StartResult(err)
+		}
+		if err := command.Run(); err != nil {
+			return clone3StartResult(err)
+		}
+		return cgroupResult{Outcome: "passed", Reason: "clone3_namespace_prepared"}
+	})
 }
