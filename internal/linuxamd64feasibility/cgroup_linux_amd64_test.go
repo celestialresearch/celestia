@@ -333,6 +333,36 @@ func TestCgroupLeafRefusesMalformedState(t *testing.T) {
 	writeLeafFile(t, leafPath, cgroupLeafFiles[0], "")
 }
 
+func TestCgroupStateReadsDeterministically(t *testing.T) {
+	root := t.TempDir()
+	directory, err := openCgroupDirectory(root)
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer closeCgroupDirectory(t, directory)
+	writeLeafFile(t, root, "cgroup.events", "populated 0\nfrozen 1\n")
+	writeLeafFile(t, root, "cgroup.procs", "41\n42\n")
+	leaf := ownedCgroupLeaf{fd: directory.fd}
+	if err := leaf.waitEvent("frozen", true, time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("wait matching event: %v", err)
+	}
+	if err := leaf.waitEvent("unknown", true, time.Now().Add(time.Second)); !errors.Is(err, errCgroupEventsMalformed) {
+		t.Fatalf("wait malformed event: %v", err)
+	}
+	if found, err := leaf.containsPID(42); err != nil || !found {
+		t.Fatalf("contains PID = (%t, %v)", found, err)
+	}
+	if found, err := leaf.containsPID(7); err != nil || found {
+		t.Fatalf("missing PID = (%t, %v)", found, err)
+	}
+	if err := pollCgroupEvents(directory.fd, time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("poll ready events: %v", err)
+	}
+	if err := pollCgroupEvents(directory.fd, time.Now().Add(-time.Second)); !errors.Is(err, errCgroupDeadlineExceeded) {
+		t.Fatalf("poll expired events: %v", err)
+	}
+}
+
 func TestNativeFixtureMemoryLimitDisablesSwap(t *testing.T) {
 	root := t.TempDir()
 	directory, err := openCgroupDirectory(root)
