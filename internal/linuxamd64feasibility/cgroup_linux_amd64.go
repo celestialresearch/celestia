@@ -100,21 +100,31 @@ func (directory cgroupDirectory) close() error {
 }
 
 func validateDelegatedCgroup(directory cgroupDirectory) cgroupResult {
+	return validateDelegatedCgroupWith(
+		func(information *unix.Statfs_t) error { return unix.Fstatfs(directory.fd, information) },
+		directory.read,
+	)
+}
+
+func validateDelegatedCgroupWith(
+	statfs func(*unix.Statfs_t) error,
+	read func(string, int) ([]byte, error),
+) cgroupResult {
 	var information unix.Statfs_t
-	if err := unix.Fstatfs(directory.fd, &information); err != nil {
+	if err := statfs(&information); err != nil {
 		return indeterminateCgroup("cgroup_filesystem_indeterminate")
 	}
 	if !isCgroupV2(information.Type) {
 		return unavailableCgroup("cgroup_v2_missing")
 	}
-	controllers, err := directory.read("cgroup.controllers", maxCgroupBytes)
+	controllers, err := read("cgroup.controllers", maxCgroupBytes)
 	if err != nil {
 		return cgroupReadResult(err, "cgroup_controllers")
 	}
 	if !requiredDelegatedControllers(controllers) {
 		return unavailableCgroup("cgroup_controllers_unavailable")
 	}
-	delegated, err := directory.read("cgroup.subtree_control", maxCgroupBytes)
+	delegated, err := read("cgroup.subtree_control", maxCgroupBytes)
 	if err != nil {
 		return cgroupReadResult(err, "cgroup_delegation")
 	}

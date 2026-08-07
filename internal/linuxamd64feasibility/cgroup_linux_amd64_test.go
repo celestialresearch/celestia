@@ -56,6 +56,58 @@ func TestCgroupFailureResults(t *testing.T) {
 	}
 }
 
+func TestDelegatedCgroupAdmissionFailures(t *testing.T) {
+	failure := errors.New("cgroup admission failure")
+	validStatfs := func(information *unix.Statfs_t) error {
+		information.Type = cgroup2Filesystem
+		return nil
+	}
+	validRead := func(string, int) ([]byte, error) {
+		return []byte("cpu memory pids\n"), nil
+	}
+	tests := map[string]struct {
+		statfs  func(*unix.Statfs_t) error
+		read    func(string, int) ([]byte, error)
+		outcome string
+		reason  string
+	}{
+		"statfs": {func(*unix.Statfs_t) error { return failure }, validRead,
+			"indeterminate", "cgroup_filesystem_indeterminate"},
+		"filesystem": {func(information *unix.Statfs_t) error {
+			information.Type = ext4Filesystem
+			return nil
+		}, validRead, "unavailable", "cgroup_v2_missing"},
+		"controllers read": {validStatfs, func(string, int) ([]byte, error) { return nil, failure },
+			"indeterminate", "cgroup_controllers_indeterminate"},
+		"controllers missing": {validStatfs, func(string, int) ([]byte, error) {
+			return []byte("cpu memory\n"), nil
+		}, "unavailable", "cgroup_controllers_unavailable"},
+		"delegation read": {validStatfs, func(name string, _ int) ([]byte, error) {
+			if name == "cgroup.subtree_control" {
+				return nil, failure
+			}
+			return []byte("cpu memory pids\n"), nil
+		}, "indeterminate", "cgroup_delegation_indeterminate"},
+		"delegation missing": {validStatfs, func(name string, _ int) ([]byte, error) {
+			if name == "cgroup.subtree_control" {
+				return []byte("cpu memory\n"), nil
+			}
+			return []byte("cpu memory pids\n"), nil
+		}, "unavailable", "cgroup_delegation_missing"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := validateDelegatedCgroupWith(test.statfs, test.read)
+			if result.Outcome != test.outcome || result.Reason != test.reason {
+				t.Fatalf("result=%+v", result)
+			}
+		})
+	}
+	if result := validateDelegatedCgroupWith(validStatfs, validRead); result.Outcome != "passed" {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
 func TestCgroupInvalidLeaf(t *testing.T) {
 	leaf := ownedCgroupLeaf{fd: -1}
 	deadline := time.Now().Add(time.Second)
