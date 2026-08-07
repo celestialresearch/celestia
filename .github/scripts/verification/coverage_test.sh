@@ -123,6 +123,11 @@ grep -Eq 'celestia\.research/coverage/b[[:space:]]+50\.00%' \
     "$output" >&2
   return 1
 }
+[[ "$output" == *'b/b.go:'*'Second'*'0.0%'* ]] || {
+  printf 'coverage output omitted the uncovered function:\n%s\n' \
+    "$output" >&2
+  return 1
+}
 (
   cd "$work_dir"
   go test -covermode=atomic -coverprofile="$work_dir/under.out" ./...

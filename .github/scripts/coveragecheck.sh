@@ -233,6 +233,18 @@ enforce_report() {
   return "$status"
 }
 
+report_uncovered() {
+  go tool cover -func="$1" | awk '
+    $1 != "total:" && $NF != "100.0%" {
+      if (reported < 200) print
+      reported++
+    }
+    END {
+      if (reported > 200) print "... uncovered function output truncated ..."
+    }
+  '
+}
+
 run_check() {
   local failure_output package_file profile report
   local packages
@@ -254,7 +266,11 @@ run_check() {
   trap 'rm -f -- "${profile:-}" "${report:-}" "${package_file:-}" "${failure_output:-}"' EXIT
   printf '%s\n' "$packages" >"$package_file"
   create_report "$profile" "$report" "$package_file" "$failure_output"
-  enforce_report "$report" "$package_file"
+  if ! enforce_report "$report" "$package_file"; then
+    printf '\nNon-fully-covered functions (maximum 200):\n' >&2
+    report_uncovered "$profile" >&2
+    return 1
+  fi
   rm -f -- "$profile" "$report" "$package_file" "$failure_output"
   trap - EXIT
 }
