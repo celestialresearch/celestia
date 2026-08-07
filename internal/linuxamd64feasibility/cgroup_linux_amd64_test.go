@@ -56,7 +56,7 @@ func TestCgroupFailureResults(t *testing.T) {
 	}
 }
 
-func TestCgroupInvalidDescriptors(t *testing.T) {
+func TestCgroupInvalidLeaf(t *testing.T) {
 	leaf := ownedCgroupLeaf{fd: -1}
 	deadline := time.Now().Add(time.Second)
 	for name, operation := range map[string]func() error{
@@ -76,6 +76,9 @@ func TestCgroupInvalidDescriptors(t *testing.T) {
 	if _, err := cgroupEvent(nil, "unknown"); !errors.Is(err, errCgroupEventsMalformed) {
 		t.Fatalf("unknown event error = %v", err)
 	}
+}
+
+func TestCgroupInvalidDescriptors(t *testing.T) {
 	if _, err := pollDescriptor(-1); !errors.Is(err, unix.EOVERFLOW) {
 		t.Fatalf("negative descriptor error = %v", err)
 	}
