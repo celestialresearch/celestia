@@ -14,6 +14,8 @@
 package linuxamd64feasibility
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -182,8 +184,21 @@ func TestNativeFixtureMemoryLimitDisablesSwap(t *testing.T) {
 
 func assertLeafFile(t *testing.T, root, name, expected string) {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, name))
+	directory, err := os.OpenRoot(root)
 	if err != nil {
+		t.Fatalf("open leaf root: %v", err)
+	}
+	defer func() {
+		if err := directory.Close(); err != nil {
+			t.Errorf("close leaf root: %v", err)
+		}
+	}()
+	file, err := directory.Open(name)
+	if err != nil {
+		t.Fatalf("open %s: %v", name, err)
+	}
+	data, readErr := io.ReadAll(file)
+	if err := errors.Join(readErr, file.Close()); err != nil {
 		t.Fatalf("read %s: %v", name, err)
 	}
 	if string(data) != expected {
