@@ -16,6 +16,7 @@ package linuxamd64feasibility
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,6 +101,32 @@ func TestClone3PipeProtocolFailures(t *testing.T) {
 	}
 	if err := pipes.waitReady(time.Now().Add(-time.Second)); !errors.Is(err, errCgroupDeadlineExceeded) {
 		t.Fatalf("expired wait: %v", err)
+	}
+}
+
+func TestClone3PipeDescriptorFailures(t *testing.T) {
+	pipes, err := newClone3Pipes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pipes.readyWrite.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := pipes.readyEmpty(); !errors.Is(err, io.EOF) {
+		t.Fatalf("closed ready pipe: %v", err)
+	}
+	if err := errors.Join(pipes.readyRead.Close(), pipes.gateRead.Close(), pipes.gateWrite.Close()); err != nil {
+		t.Fatalf("close pipes: %v", err)
+	}
+	if err := pollPipe(-1, time.Now().Add(time.Second)); !errors.Is(err, unix.EOVERFLOW) {
+		t.Fatalf("invalid poll descriptor: %v", err)
+	}
+	if waitClone3Command(&exec.Cmd{}) {
+		t.Fatal("unstarted command reported reaped")
+	}
+	child := clone3Child{command: &exec.Cmd{}, pidfd: -1}
+	if child.reap(time.Now().Add(time.Second)) {
+		t.Fatal("unstarted child reported reaped")
 	}
 }
 
