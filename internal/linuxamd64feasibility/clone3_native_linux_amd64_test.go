@@ -93,7 +93,7 @@ func TestClone3BootstrapFailureNative(t *testing.T) {
 			t.Errorf("close fixture: %v", err)
 		}
 	}()
-	command := clone3HelperCommand(t, "^TestClone3BootstrapHelper$", clone3BootstrapHelperArgument)
+	command := clone3CoverageHelperCommand(t, "^TestClone3BootstrapHelper$", clone3BootstrapHelperArgument)
 	result := clone3CgroupPrimitive(root, command, fixture)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
 		t.Fatalf("result=%+v", result)
