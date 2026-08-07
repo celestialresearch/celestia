@@ -108,6 +108,9 @@ func TestDurabilityWriteHandlesPartialAndInterruptedWrites(t *testing.T) {
 }
 
 func TestUnixReadReturnsEOF(t *testing.T) {
+	if count, err := readUnixFD(-1, make([]byte, 1)); count != 0 || !errors.Is(err, unix.EBADF) {
+		t.Fatalf("invalid read = (%d, %v)", count, err)
+	}
 	file, err := os.CreateTemp(t.TempDir(), "read-eof")
 	if err != nil {
 		t.Fatal(err)

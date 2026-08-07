@@ -302,6 +302,9 @@ func readUnixFD(fd int, data []byte) (int, error) {
 		if count == 0 && err == nil {
 			return 0, io.EOF
 		}
+		if count < 0 {
+			count = 0
+		}
 		return count, err
 	}
 }
