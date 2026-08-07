@@ -82,8 +82,8 @@ func TestMountDeviceRequiresCanonicalPair(t *testing.T) {
 }
 
 func TestMountPathRequiresCanonicalEscapes(t *testing.T) {
-	value, err := unescapeMountPath(`/evidence\040root/path\134name`)
-	if err != nil || value != "/evidence root/path\\name" {
+	value, err := unescapeMountPath("/evidence\\040root/path\\134name\\011tab\\012line")
+	if err != nil || value != "/evidence root/path\\name\ttab\nline" {
 		t.Fatalf("value=%q err=%v", value, err)
 	}
 	for _, value := range []string{`/bad\`, `/bad\04`, `/bad\041`, `/bad\999`, "/bad\x00"} {
