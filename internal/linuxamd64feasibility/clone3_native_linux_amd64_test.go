@@ -147,13 +147,14 @@ func TestClone3PreparationCoverageNative(t *testing.T) {
 		}
 	}()
 	command := clone3CoverageHelperCommand(t, "^TestClone3BootstrapHelper$", clone3PreparationHelperArgument)
-	var stderr bytes.Buffer
-	command.Stderr = &stderr
+	var output bytes.Buffer
+	command.Stdout = &output
+	command.Stderr = &output
 	result := clone3CgroupPrimitive(root, command, fixture)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
-		t.Fatalf("result=%+v stderr=%q", result, stderr.String())
+		t.Fatalf("result=%+v output=%q", result, output.String())
 	}
-	if os.Getenv("GOCOVERDIR") != "" && !bytes.Contains(stderr.Bytes(), []byte(clone3CoverageMarker)) {
-		t.Fatalf("coverage marker missing: %q", stderr.String())
+	if os.Getenv("GOCOVERDIR") != "" && !bytes.Contains(output.Bytes(), []byte(clone3CoverageMarker)) {
+		t.Fatalf("coverage marker missing: %q", output.String())
 	}
 }
