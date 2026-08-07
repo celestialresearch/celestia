@@ -15,7 +15,6 @@ package linuxamd64feasibility
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -73,8 +72,7 @@ func TestClone3BootstrapNative(t *testing.T) {
 			t.Errorf("close fixture: %v", err)
 		}
 	}()
-	command := exec.CommandContext(t.Context(), "/proc/self/exe",
-		"-test.run=^TestClone3BootstrapHelper$", "--", clone3BootstrapHelperArgument)
+	command := clone3HelperCommand(t, "^TestClone3BootstrapHelper$", clone3BootstrapHelperArgument)
 	result := clone3CgroupPrimitive(root, command, fixture)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
 		t.Fatalf("result=%+v", result)
@@ -95,8 +93,7 @@ func TestClone3BootstrapFailureNative(t *testing.T) {
 			t.Errorf("close fixture: %v", err)
 		}
 	}()
-	command := exec.CommandContext(t.Context(), "/proc/self/exe",
-		"-test.run=^TestClone3BootstrapHelper$", "--", clone3BootstrapHelperArgument)
+	command := clone3HelperCommand(t, "^TestClone3BootstrapHelper$", clone3BootstrapHelperArgument)
 	result := clone3CgroupPrimitive(root, command, fixture)
 	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
 		t.Fatalf("result=%+v", result)

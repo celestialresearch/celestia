@@ -69,7 +69,12 @@ func runBootstrapHelper(t *testing.T, readyWrite, gateRead, gateWrite, fixture *
 	if err := gateWrite.Close(); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.CommandContext(t.Context(), "/proc/self/exe", "-test.run=^TestBootstrapMainFailsClosed$")
+	arguments := []string{"-test.run=^TestBootstrapMainFailsClosed$"}
+	if directory := os.Getenv("GOCOVERDIR"); directory != "" {
+		arguments = append(arguments, "-test.gocoverdir="+directory)
+	}
+	command := exec.CommandContext(t.Context(), "/proc/self/exe")
+	command.Args = append(command.Args, arguments...)
 	command.Env = append(os.Environ(), "CELESTIA_BOOTSTRAP_MAIN_HELPER=1")
 	command.ExtraFiles = []*os.File{readyWrite, gateRead, fixture}
 	if err := command.Start(); err != nil {

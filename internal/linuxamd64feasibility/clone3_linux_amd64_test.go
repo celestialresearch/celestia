@@ -155,7 +155,19 @@ func TestClone3CgroupPrimitiveRefusesOrdinaryRoot(t *testing.T) {
 
 func clone3TestCommand(t *testing.T) *exec.Cmd {
 	t.Helper()
-	command := exec.CommandContext(t.Context(), "/proc/self/exe", "-test.run=^TestClone3CgroupHelper$", "--", clone3HelperArgument)
+	command := clone3HelperCommand(t, "^TestClone3CgroupHelper$", clone3HelperArgument)
 	command.Stderr = &nativeFixtureOutput{}
+	return command
+}
+
+func clone3HelperCommand(t *testing.T, testName, argument string) *exec.Cmd {
+	t.Helper()
+	arguments := []string{"-test.run=" + testName}
+	if directory := os.Getenv("GOCOVERDIR"); directory != "" {
+		arguments = append(arguments, "-test.gocoverdir="+directory)
+	}
+	arguments = append(arguments, "--", argument)
+	command := exec.CommandContext(t.Context(), "/proc/self/exe")
+	command.Args = append(command.Args, arguments...)
 	return command
 }
