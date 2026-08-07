@@ -224,6 +224,66 @@ func TestDurabilityComponentBoundaries(t *testing.T) {
 	}
 }
 
+func TestDurabilityFilesystemDescriptorBoundaries(t *testing.T) {
+	if _, err := durabilityRootFromFD(-1, 0); err == nil {
+		t.Fatal("invalid root descriptor accepted")
+	}
+	if _, err := durabilityFilesystem(-1, 0); err == nil {
+		t.Fatal("invalid filesystem descriptor accepted")
+	}
+	root := filepath.Join(t.TempDir(), "deleted")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fd, err := unix.Open(root, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := unix.Close(fd); err != nil {
+			t.Errorf("close deleted root: %v", err)
+		}
+	}()
+	if err := os.Remove(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := durabilityDescriptorPath(fd); !errors.Is(err, errDurabilityMountMismatch) {
+		t.Fatalf("deleted descriptor error = %v", err)
+	}
+}
+
+func TestDurabilityDirectoryPermissionBoundaries(t *testing.T) {
+	root := t.TempDir()
+	fd, err := unix.Open(root, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := unix.Close(fd); err != nil {
+			t.Errorf("close root: %v", err)
+		}
+	}()
+	var information unix.Stat_t
+	if err := unix.Fstat(fd, &information); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Fchmod(fd, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureDurabilityComponent(fd, information.Uid, true); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("writable root error = %v", err)
+	}
+	if err := secureDurabilityComponent(fd, information.Uid, false); !errors.Is(err, errDurabilityRootUnsafe) {
+		t.Fatalf("non-sticky parent error = %v", err)
+	}
+	if err := unix.Fchmod(fd, unix.S_ISVTX|0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureDurabilityComponent(fd, information.Uid, false); err != nil {
+		t.Fatalf("sticky parent rejected: %v", err)
+	}
+}
+
 func TestDurabilityRecordIdentityRejectsWrongTypes(t *testing.T) {
 	file, err := os.CreateTemp(t.TempDir(), "identity")
 	if err != nil {
