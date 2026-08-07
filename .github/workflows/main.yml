@@ -193,7 +193,11 @@ jobs:
           DEVCHECK_SELF_TEST: 'false'
           DEVCHECK_SUPPLY_CHAIN: ${{ matrix.supply-chain }}
           GOFLAGS: ${{ matrix.go-flags }}
-        run: bash ./.github/scripts/devcheck.sh
+        run: |
+          if [[ -n ${CELESTIA_CGROUP_DRIVER:-} ]]; then
+            printf '%s\n' "$$" | sudo tee "$CELESTIA_CGROUP_DRIVER/cgroup.procs" >/dev/null
+          fi
+          bash ./.github/scripts/devcheck.sh
       - name: Cleanup Linux Qualification
         if: always() && matrix.name == 'Linux AMD64'
         shell: bash
