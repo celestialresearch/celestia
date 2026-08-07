@@ -163,11 +163,29 @@ func clone3TestCommand(t *testing.T) *exec.Cmd {
 func clone3HelperCommand(t *testing.T, testName, argument string) *exec.Cmd {
 	t.Helper()
 	arguments := []string{"-test.run=" + testName}
-	if directory := os.Getenv("GOCOVERDIR"); directory != "" {
-		arguments = append(arguments, "-test.gocoverdir="+directory)
-	}
-	arguments = append(arguments, "--", argument)
 	command := exec.CommandContext(t.Context(), "/proc/self/exe")
-	command.Args = append(command.Args, arguments...)
+	if attachClone3Coverage(t, command) {
+		arguments = append(arguments, "-test.gocoverdir=/proc/self/fd/0")
+	}
+	command.Args = append(command.Args, append(arguments, "--", argument)...)
 	return command
+}
+
+func attachClone3Coverage(t *testing.T, command *exec.Cmd) bool {
+	t.Helper()
+	path := os.Getenv("GOCOVERDIR")
+	if path == "" {
+		return false
+	}
+	directory, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open coverage directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := directory.Close(); err != nil {
+			t.Errorf("close coverage directory: %v", err)
+		}
+	})
+	command.Stdin = directory
+	return true
 }
