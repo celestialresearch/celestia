@@ -23,8 +23,9 @@ import (
 )
 
 const (
-	clone3ProbeTimeout = 2 * time.Second
-	clone3TaskLimit    = "4"
+	clone3ProbeTimeout       = 2 * time.Second
+	clone3BootstrapTaskLimit = "16"
+	clone3FixtureTaskLimit   = "4"
 )
 
 type clone3Child struct {
@@ -51,7 +52,7 @@ func clone3CgroupPrimitive(root string, command *exec.Cmd, fixture *os.File) (re
 
 func runClone3Leaf(leaf ownedCgroupLeaf, command *exec.Cmd, fixture *os.File) (result cgroupResult) {
 	deadline := time.Now().Add(clone3ProbeTimeout)
-	if err := leaf.write("pids.max", []byte(clone3TaskLimit)); err != nil {
+	if err := leaf.write("pids.max", []byte(clone3BootstrapTaskLimit)); err != nil {
 		return clone3LimitResult(err)
 	}
 	child, err := startClone3Child(leaf, command, fixture)

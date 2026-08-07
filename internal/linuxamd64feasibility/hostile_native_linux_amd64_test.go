@@ -163,7 +163,7 @@ func runNativeFixtureLeaf(
 	options nativeFixtureOptions,
 	state *nativeFixtureState,
 ) (result cgroupResult) {
-	if err := leaf.write("pids.max", []byte(clone3TaskLimit)); err != nil {
+	if err := leaf.write("pids.max", []byte(clone3BootstrapTaskLimit)); err != nil {
 		return clone3LimitResult(err)
 	}
 	var output, stderr nativeFixtureOutput
@@ -332,10 +332,8 @@ func observeNativeFixture(
 }
 
 func applyNativeFixtureLimits(leaf ownedCgroupLeaf, options nativeFixtureOptions) cgroupResult {
-	if options.pidsMax != "" {
-		if err := leaf.write("pids.max", []byte(options.pidsMax)); err != nil {
-			return clone3LimitResult(err)
-		}
+	if err := leaf.write("pids.max", []byte(nativeFixtureTaskLimit(options))); err != nil {
+		return clone3LimitResult(err)
 	}
 	if options.memoryMax != "" {
 		if err := leaf.write("memory.max", []byte(options.memoryMax)); err != nil {
@@ -346,6 +344,24 @@ func applyNativeFixtureLimits(leaf ownedCgroupLeaf, options nativeFixtureOptions
 		}
 	}
 	return passedCgroup()
+}
+
+func nativeFixtureTaskLimit(options nativeFixtureOptions) string {
+	if options.pidsMax != "" {
+		return options.pidsMax
+	}
+	return clone3FixtureTaskLimit
+}
+
+func TestNativeFixtureTaskLimit(t *testing.T) {
+	t.Parallel()
+
+	if actual := nativeFixtureTaskLimit(nativeFixtureOptions{}); actual != "4" {
+		t.Fatalf("default task limit = %q", actual)
+	}
+	if actual := nativeFixtureTaskLimit(nativeFixtureOptions{pidsMax: "1"}); actual != "1" {
+		t.Fatalf("process challenge task limit = %q", actual)
+	}
 }
 
 func cleanupNativeFixture(

@@ -21,13 +21,13 @@ release artefact and cannot qualify the platform.
 The internal cgroup checkpoint validates a caller-supplied delegated cgroup v2
 root under exclusive same-authority custody then creates and removes one owned
 empty leaf. A native qualification harness may provide one bootstrap command to
-the placement primitive. The primitive sets `pids.max` to four then starts the
-bootstrap through Go's clone3-backed cgroup file descriptor path. The Go
-bootstrap receives only `GOMAXPROCS=1` so its runtime remains within that task
-ceiling. It blocks on an inherited gate before its payload; the checkpoint
-verifies leaf
-membership, freezes the leaf, releases the gate, proves that no ready byte is
-produced before thaw then kills and reaps the bootstrap. Same-authority
+the placement primitive. The primitive sets `pids.max` to 16 for the trusted Go
+bootstrap then starts it through Go's clone3-backed cgroup file descriptor path.
+The bootstrap receives only `GOMAXPROCS=1` and blocks on an inherited gate
+before its payload. The harness lowers `pids.max` to four before releasing the
+hostile fixture; the checkpoint verifies leaf membership, freezes the leaf,
+releases the gate, proves that no ready byte is produced before thaw then kills
+and reaps the bootstrap. Same-authority
 processes outside that custody boundary can defeat filesystem ownership and are
 not an isolation target. The result retains the first primitive outcome
 separately from cleanup completion. This is payload-gate evidence only: it does
@@ -80,9 +80,11 @@ inspection evidence exists.
 - The launch primitive is `clone3` with `CLONE_INTO_CGROUP`; it places the
   bootstrap in the owned cgroup atomically. Missing kernel support, an invalid
   cgroup file descriptor or any other placement method is unavailable.
-- `pids.max` permits four accounted probe roles: bootstrap or fixture, one
-  deliberate descendant, one challenge helper and one remaining owned slot.
-  The observation records every member PID and role before cleanup.
+- `pids.max` permits at most 16 kernel tasks for the trusted gated Go bootstrap
+  then four tasks for the hostile fixture: the fixture, one deliberate
+  descendant, one challenge helper and one remaining owned slot. The process
+  challenge lowers the fixture limit to one. The observation records every
+  member PID and role before cleanup.
 - A user namespace has explicit host-to-namespace UID and GID mappings and
   the required cgroup delegation. Mount propagation is private. The mount
   allowlist is the owned fixture root plus required read-only runtime mounts.
