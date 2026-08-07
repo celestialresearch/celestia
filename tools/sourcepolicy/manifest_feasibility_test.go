@@ -69,7 +69,7 @@ func TestLinuxAMD64FeasibilityManifestPreservesQualificationBoundary(t *testing.
 		{"clone3(CLONE_INTO_CGROUP)", "post-start cgroup placement"},
 		{"Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes", "Resolve paths beneath the temporary root"},
 		{"A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2", "A fixture uses isolated namespaces"},
-		{"A fixture is an x86-64 static ELF executable with no PT_INTERP and is bound by SHA-256, device and inode", "A fixture has an identity"},
+		{"A fixture is copied into a sealed non-writable descriptor then validated as an x86-64 static ELF executable with no PT_INTERP and bound by SHA-256, device and inode", "A fixture has an identity"},
 		{"named local ext4 or XFS evidence root", "named local evidence root"},
 		{"Fsync the temporary file, publish with renameat2(RENAME_NOREPLACE), fsync the parent directory", "Publish the temporary file"},
 		{"A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values", "A feasible observation records the platform"},
@@ -109,7 +109,7 @@ func linuxCanonicalStateRetained(state []string) bool {
 		"Windows AMD64 remains the only qualified operation boundary",
 		"Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes",
 		"A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2",
-		"A fixture is an x86-64 static ELF executable with no PT_INTERP and is bound by SHA-256, device and inode",
+		"A fixture is copied into a sealed non-writable descriptor then validated as an x86-64 static ELF executable with no PT_INTERP and bound by SHA-256, device and inode",
 		"A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values, Linux architecture, kernel release, boot ID, cgroup mount and subtree identities, filesystem type and device, namespace configuration and primitive outcomes",
 	}
 	if len(state) < len(required) {
@@ -144,6 +144,7 @@ func linuxInvariantRetained(invariants []linuxInvariant) bool {
 	}
 	return strings.Contains(ids["CEL-PLAT-INV-001"], "private PID, IPC, UTS, mount and network namespaces") &&
 		strings.Contains(ids["CEL-PLAT-INV-001"], "only descriptors 0, 1 and 2") &&
+		strings.Contains(ids["CEL-PLAT-INV-001"], "sealed non-writable") &&
 		strings.Contains(ids["CEL-PLAT-INV-001"], "static x86-64 ELF identity with no PT_INTERP") &&
 		strings.Contains(ids["CEL-PLAT-INV-001"], "root-relative resolution refuses links and path escapes") &&
 		ids["CEL-PLAT-INV-002"] == "The feasibility slice cannot enable Linux operation constructors or claim qualified attempt persistence" &&

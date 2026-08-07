@@ -53,9 +53,10 @@ The fixture-image checkpoint opens one canonical relative path beneath an
 absolute non-linked root through `openat2`. Resolution refuses symlinks, magic
 links, mount crossings and path escapes. The opened descriptor must identify a
 single-linked, same-user, size-bounded AMD64 ELF executable that is not
-group-writable or world-writable and has no `PT_INTERP`; its SHA-256, device and
-inode are derived from that descriptor. The bootstrap execution described
-above consumes this identity inside the bounded namespace filesystem view.
+group-writable or world-writable. Its bytes are copied into a sealed in-memory
+descriptor before ELF validation. The SHA-256, device and inode identify that
+non-writable static AMD64 ELF snapshot with no `PT_INTERP`; the bootstrap
+executes the same descriptor inside the bounded namespace filesystem view.
 Native observation of that boundary remains unavailable.
 
 The internal durability checkpoint accepts one caller-supplied absolute root

@@ -29,6 +29,8 @@ import (
 
 const maxFixtureBytes = 16 << 20
 
+const fixtureSeals = unix.F_SEAL_SEAL | unix.F_SEAL_SHRINK | unix.F_SEAL_GROW | unix.F_SEAL_WRITE
+
 type fixtureIdentity struct {
 	SHA256     string
 	ELFMachine string
@@ -58,12 +60,48 @@ func openStaticFixture(root, relative string) (*os.File, fixtureIdentity, error)
 		}
 		return nil, fixtureIdentity{}, err
 	}
-	file := os.NewFile(uintptr(fd), relative)
-	identity, err := staticFixtureIdentity(file)
-	if err != nil {
-		return nil, fixtureIdentity{}, errors.Join(err, file.Close())
+	source := os.NewFile(uintptr(fd), relative)
+	snapshot, snapshotErr := sealedFixtureSnapshot(source)
+	if err := errors.Join(snapshotErr, source.Close()); err != nil {
+		if snapshot != nil {
+			err = errors.Join(err, snapshot.Close())
+		}
+		return nil, fixtureIdentity{}, err
 	}
-	return file, identity, nil
+	identity, err := staticFixtureIdentity(snapshot)
+	if err != nil {
+		return nil, fixtureIdentity{}, errors.Join(err, snapshot.Close())
+	}
+	return snapshot, identity, nil
+}
+
+func sealedFixtureSnapshot(source *os.File) (*os.File, error) {
+	if source == nil {
+		return nil, errors.New("unsafe fixture file")
+	}
+	var information unix.Stat_t
+	if err := unix.Fstat(int(source.Fd()), &information); err != nil {
+		return nil, err
+	}
+	euid := os.Geteuid()
+	if euid < 0 || uint64(euid) > math.MaxUint32 || !validFixtureStat(information, uint32(euid)) {
+		return nil, errors.New("unsafe fixture file")
+	}
+	fd, err := unix.MemfdCreate("celestia-hostile-fixture", unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := os.NewFile(uintptr(fd), "celestia-hostile-fixture")
+	count, copyErr := io.Copy(snapshot, io.NewSectionReader(source, 0, information.Size))
+	modeErr := unix.Fchmod(fd, 0o500)
+	_, sealErr := unix.FcntlInt(uintptr(fd), unix.F_ADD_SEALS, fixtureSeals)
+	if err := errors.Join(copyErr, modeErr, sealErr); err != nil || count != information.Size {
+		if count != information.Size {
+			err = errors.Join(err, io.ErrUnexpectedEOF)
+		}
+		return nil, errors.Join(err, snapshot.Close())
+	}
+	return snapshot, nil
 }
 
 func openFixtureRoot(root string) (int, error) {
@@ -105,8 +143,10 @@ func staticFixtureIdentity(file *os.File) (fixtureIdentity, error) {
 	if err := unix.Fstat(int(file.Fd()), &information); err != nil {
 		return fixtureIdentity{}, err
 	}
-	euid := os.Geteuid()
-	if euid < 0 || uint64(euid) > math.MaxUint32 || !validFixtureStat(information, uint32(euid)) {
+	seals, err := unix.FcntlInt(file.Fd(), unix.F_GET_SEALS, 0)
+	if err != nil || seals&fixtureSeals != fixtureSeals ||
+		information.Mode&unix.S_IFMT != unix.S_IFREG || information.Mode&0o777 != 0o500 ||
+		information.Size <= 0 || information.Size > maxFixtureBytes {
 		return fixtureIdentity{}, errors.New("unsafe fixture file")
 	}
 	fixtureType, err := staticELFType(file)

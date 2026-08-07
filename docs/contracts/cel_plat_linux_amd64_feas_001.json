@@ -29,7 +29,7 @@
     "Windows AMD64 remains the only qualified operation boundary",
     "Root-relative resolution beneath the owned temporary root refuses symbolic links, magic links, parent escapes and absolute-path escapes",
     "A fixture uses private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback and only descriptors 0, 1 and 2",
-    "A fixture is an x86-64 static ELF executable with no PT_INTERP and is bound by SHA-256, device and inode",
+    "A fixture is copied into a sealed non-writable descriptor then validated as an x86-64 static ELF executable with no PT_INTERP and bound by SHA-256, device and inode",
     "A feasible observation records exact Product and probe commits, probe and fixture SHA-256 values, Linux architecture, kernel release, boot ID, cgroup mount and subtree identities, filesystem type and device, namespace configuration and primitive outcomes"
   ],
   "derived_state": [
@@ -135,7 +135,7 @@
   "invariants": [
     {
       "id": "CEL-PLAT-INV-001",
-      "statement": "No fixture process executes before clone3(CLONE_INTO_CGROUP) places its bootstrap in the owned cgroup; the fixture has private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback, only descriptors 0, 1 and 2, static x86-64 ELF identity with no PT_INTERP and root-relative resolution refuses links and path escapes",
+      "statement": "No fixture process executes before clone3(CLONE_INTO_CGROUP) places its bootstrap in the owned cgroup; the fixture has private PID, IPC, UTS, mount and network namespaces, a private proc mount, disabled loopback, only descriptors 0, 1 and 2, sealed non-writable static x86-64 ELF identity with no PT_INTERP and root-relative resolution refuses links and path escapes",
       "owner": "Linux AMD64 feasibility probe",
       "severity": "high",
       "boundary": "native process creation",

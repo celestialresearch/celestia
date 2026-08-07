@@ -16,6 +16,7 @@ package linuxamd64feasibility
 import (
 	"debug/elf"
 	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,6 +38,27 @@ func TestOpenStaticFixtureBindsExactImage(t *testing.T) {
 		(identity.ELFType != "ET_EXEC" && identity.ELFType != "ET_DYN") ||
 		identity.Device == 0 || identity.Inode == 0 || len(identity.SHA256) != 64 {
 		t.Fatalf("identity = %+v", identity)
+	}
+}
+
+func TestOpenStaticFixtureSealsSnapshot(t *testing.T) {
+	root := t.TempDir()
+	writeStaticTestExecutable(t, filepath.Join(root, "fixture"))
+	file, _, err := openStaticFixture(root, "fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Errorf("close fixture: %v", err)
+		}
+	}()
+	if _, err := file.WriteAt([]byte{0}, 0); !errors.Is(err, unix.EPERM) {
+		t.Fatalf("write sealed fixture: %v", err)
+	}
+	seals, err := unix.FcntlInt(file.Fd(), unix.F_GET_SEALS, 0)
+	if err != nil || seals&fixtureSeals != fixtureSeals {
+		t.Fatalf("seals=%#x error=%v", seals, err)
 	}
 }
 
