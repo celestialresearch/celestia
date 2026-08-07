@@ -44,10 +44,11 @@ type nativeFixtureOptions struct {
 }
 
 type nativeFixtureState struct {
-	output    string
-	success   bool
-	timedOut  bool
-	oomKilled bool
+	output     string
+	diagnostic string
+	success    bool
+	timedOut   bool
+	oomKilled  bool
 }
 
 type nativeFixtureOutput struct {
@@ -177,6 +178,7 @@ func runNativeFixtureLeaf(
 	}
 	reaped := false
 	defer func() {
+		state.diagnostic = stderr.String()
 		result = cleanupNativeFixture(result, leaf, child, reaped)
 	}()
 	if err != nil {

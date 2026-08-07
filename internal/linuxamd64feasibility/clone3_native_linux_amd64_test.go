@@ -14,6 +14,7 @@
 package linuxamd64feasibility
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +31,7 @@ func TestClone3BootstrapHelper(t *testing.T) {
 	ready := os.NewFile(3, "clone3-ready")
 	fixture := os.NewFile(5, "hostile-fixture")
 	if err := Bootstrap(gate, ready, fixture); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err)
 		os.Exit(4)
 	}
 	os.Exit(5)
