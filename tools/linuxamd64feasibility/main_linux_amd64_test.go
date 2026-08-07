@@ -28,28 +28,41 @@ func TestBootstrapMainFailsClosed(t *testing.T) {
 		}
 		return
 	}
-	readyRead, readyWrite, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	gateRead, gateWrite, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
+	testBootstrapMainFailsClosed(t)
+}
+
+func testBootstrapMainFailsClosed(t *testing.T) {
+	readyRead, readyWrite := testPipe(t)
+	gateRead, gateWrite := testPipe(t)
 	fixture, err := os.Open(os.DevNull)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, file := range []*os.File{readyRead, readyWrite, gateRead, gateWrite, fixture} {
-		t.Cleanup(func() { _ = file.Close() })
+	cleanupBootstrapFiles(t, readyRead, readyWrite, gateRead, gateWrite, fixture)
+	runBootstrapHelper(t, readyWrite, gateRead, gateWrite, fixture)
+	assertBootstrapNotReady(t, readyRead)
+}
+
+func cleanupBootstrapFiles(t *testing.T, files ...*os.File) {
+	t.Helper()
+	for _, file := range files {
+		t.Cleanup(func() {
+			if err := file.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
+				t.Errorf("close bootstrap file: %v", err)
+			}
+		})
 	}
+}
+
+func runBootstrapHelper(t *testing.T, readyWrite, gateRead, gateWrite, fixture *os.File) {
+	t.Helper()
 	if _, err := gateWrite.Write([]byte{'g'}); err != nil {
 		t.Fatal(err)
 	}
 	if err := gateWrite.Close(); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(os.Args[0], "-test.run=^TestBootstrapMainFailsClosed$")
+	command := exec.CommandContext(t.Context(), "/proc/self/exe", "-test.run=^TestBootstrapMainFailsClosed$")
 	command.Env = append(os.Environ(), "CELESTIA_BOOTSTRAP_MAIN_HELPER=1")
 	command.ExtraFiles = []*os.File{readyWrite, gateRead, fixture}
 	if err := command.Start(); err != nil {
@@ -63,6 +76,10 @@ func TestBootstrapMainFailsClosed(t *testing.T) {
 	if err := command.Wait(); err != nil {
 		t.Fatalf("bootstrap helper error = %v", err)
 	}
+}
+
+func assertBootstrapNotReady(t *testing.T, readyRead *os.File) {
+	t.Helper()
 	data := make([]byte, 1)
 	if count, err := readyRead.Read(data); count != 0 || !errors.Is(err, io.EOF) {
 		t.Fatalf("bootstrap readiness count=%d error=%v", count, err)
@@ -70,4 +87,13 @@ func TestBootstrapMainFailsClosed(t *testing.T) {
 	if err := readyRead.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func testPipe(t *testing.T) (*os.File, *os.File) {
+	t.Helper()
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return read, write
 }
