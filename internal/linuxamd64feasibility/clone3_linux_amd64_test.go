@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime/coverage"
 	"syscall"
 	"testing"
 	"time"
@@ -25,7 +26,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const clone3HelperArgument = "clone3-gate-helper"
+const (
+	clone3HelperArgument    = "clone3-gate-helper"
+	clone3CoverageDirectory = "CELESTIA_HELPER_COVERAGE_DIR"
+)
 
 func TestClone3CgroupHelper(t *testing.T) {
 	if len(os.Args) == 0 || os.Args[len(os.Args)-1] != clone3HelperArgument {
@@ -185,7 +189,14 @@ func clone3CoverageHelperCommand(t *testing.T, testName, argument string) *exec.
 		}
 	})
 	command.Stdin = directory
-	command.Args = append(command.Args[:2],
-		"-test.gocoverdir=/proc/self/fd/0", "--", argument)
+	command.Env = append(os.Environ(), clone3CoverageDirectory+"=/proc/self/fd/0")
 	return command
+}
+
+func writeClone3Coverage() error {
+	directory := os.Getenv(clone3CoverageDirectory)
+	if directory == "" {
+		return nil
+	}
+	return errors.Join(coverage.WriteMetaDir(directory), coverage.WriteCountersDir(directory))
 }

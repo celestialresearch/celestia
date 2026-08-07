@@ -29,7 +29,7 @@ func TestClone3BootstrapHelper(t *testing.T) {
 	ready := os.NewFile(3, "clone3-ready")
 	fixture := os.NewFile(5, "hostile-fixture")
 	if err := Bootstrap(gate, ready, fixture); err != nil {
-		t.Fatalf("bootstrap: %v", err)
+		t.Fatalf("bootstrap: %v; coverage: %v", err, writeClone3Coverage())
 	}
 	t.Fatal("bootstrap returned without executing fixture")
 }
