@@ -14,7 +14,6 @@
 package linuxamd64feasibility
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,10 +30,9 @@ func TestClone3BootstrapHelper(t *testing.T) {
 	ready := os.NewFile(3, "clone3-ready")
 	fixture := os.NewFile(5, "hostile-fixture")
 	if err := Bootstrap(gate, ready, fixture); err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		os.Exit(4)
+		t.Fatalf("bootstrap: %v", err)
 	}
-	os.Exit(5)
+	t.Fatal("bootstrap returned without executing fixture")
 }
 
 func TestClone3CgroupPrimitiveNative(t *testing.T) {
@@ -67,6 +65,28 @@ func TestClone3BootstrapNative(t *testing.T) {
 	fixtureName := "fixture"
 	writeStaticTestExecutable(t, filepath.Join(fixtureRoot, fixtureName))
 	fixture, _, err := openStaticFixture(fixtureRoot, fixtureName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := fixture.Close(); err != nil {
+			t.Errorf("close fixture: %v", err)
+		}
+	}()
+	command := exec.CommandContext(t.Context(), "/proc/self/exe",
+		"-test.run=^TestClone3BootstrapHelper$", "--", clone3BootstrapHelperArgument)
+	result := clone3CgroupPrimitive(root, command, fixture)
+	if result.Outcome != "passed" || !result.CleanupAttempted || !result.CleanupComplete {
+		t.Fatalf("result=%+v", result)
+	}
+}
+
+func TestClone3BootstrapFailureNative(t *testing.T) {
+	root := os.Getenv("CELESTIA_CGROUP_ROOT")
+	if root == "" {
+		return
+	}
+	fixture, err := os.Open("/dev/null")
 	if err != nil {
 		t.Fatal(err)
 	}
