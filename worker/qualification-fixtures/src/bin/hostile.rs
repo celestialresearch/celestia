@@ -55,8 +55,10 @@ fn run_fixture() {
         "grandchild" => spawn_child(),
         "network" => report(connect(value)),
         "file" => report(fs::read(value).is_ok()),
+        "environment" => report(env::vars_os().next().is_some()),
+        "descriptors" => report(unexpected_descriptors()),
         "credentials" => report(credentials_available()),
-        "memory" => exhaust_memory(),
+        "memory" => exhaust_memory(value),
         _ => std::process::exit(64),
     }
 }
@@ -253,14 +255,29 @@ fn credentials_available() -> bool {
     false
 }
 
-fn exhaust_memory() {
-    let mut memory = Vec::<u8>::new();
-    if memory.try_reserve_exact(134_217_728).is_err() {
+fn exhaust_memory(value: &str) {
+    let Ok(bytes) = value.parse::<usize>() else {
+        std::process::exit(64);
+    };
+    if bytes == 0 {
         report(false);
         return;
     }
-    memory.resize(134_217_728, 1);
-    report(memory.len() == 134_217_728);
+    let mut memory = Vec::<u8>::new();
+    if memory.try_reserve_exact(bytes).is_err() {
+        report(false);
+        return;
+    }
+    memory.resize(bytes, 0);
+    for offset in (0..bytes).step_by(4096) {
+        // SAFETY: offset is within the allocated vector.
+        unsafe { memory.as_mut_ptr().add(offset).write_volatile(1) };
+    }
+    let committed = (0..bytes).step_by(4096).all(|offset| {
+        // SAFETY: offset is within the allocated vector.
+        unsafe { memory.as_ptr().add(offset).read_volatile() == 1 }
+    });
+    report(committed);
 }
 
 fn connect(value: &str) -> bool {
@@ -268,4 +285,14 @@ fn connect(value: &str) -> bool {
         return false;
     };
     TcpStream::connect_timeout(&address, Duration::from_millis(100)).is_ok()
+}
+
+#[cfg(target_os = "linux")]
+fn unexpected_descriptors() -> bool {
+    (3..64).any(|descriptor| fs::read_link(format!("/proc/self/fd/{descriptor}")).is_ok())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn unexpected_descriptors() -> bool {
+    false
 }

@@ -43,7 +43,7 @@ const (
 	splitManifestPath       = "docs/contracts/cel_split_001.json"
 	splitManifestSHA        = "7985a96078eecb71200cfe7fabbdc5c8368afd0e7ef17e9d1a996868fc401c5d"
 	attemptSplitPath        = "docs/contracts/cel_split_002.json"
-	attemptSplitSHA         = "9c9ccaa4732cb47123e80148d5b7611644c98df7103489c89bd8aa59af997269"
+	attemptSplitSHA         = "05e28c3d3d3a708e9c0be7c38e0217ea6492647bfe285415f98135696f50a89b"
 	supervisionSplitPath    = "docs/contracts/cel_split_003.json"
 	supervisionSplitSHA     = "347b056e760c122cabe9f970c35cbf0e7abcbeab9d9e5781bb34768d6ebf3305"
 	operationSplitPath      = "docs/contracts/cel_split_004.json"
@@ -56,6 +56,8 @@ const (
 	assuranceSplitSHA       = "9c4f5785d284471430c5045d50ebcafd14f7f64dfc6c704c6799985b769bddd2"
 	freezeSplitPath         = "docs/contracts/cel_split_008.json"
 	freezeSplitSHA          = "5a82cf664db889462ab050c2585ef9130fd117acda5703f07f85d38fb88e1c6a"
+	linuxFeasibilityPath    = "docs/contracts/cel_plat_linux_amd64_feas_001.json"
+	linuxFeasibilitySHA     = "e8d6ac4050fe5d76ce08d44a8ae11d596319f1c66cabff18b6bc5e3e4068cda6"
 )
 
 func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) int {
@@ -81,6 +83,7 @@ func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) 
 		{policyTestSplitPath, policyTestSplitSHA},
 		{assuranceSplitPath, assuranceSplitSHA},
 		{freezeSplitPath, freezeSplitSHA},
+		{linuxFeasibilityPath, linuxFeasibilitySHA},
 	}
 	status := 0
 	for _, manifest := range manifests {

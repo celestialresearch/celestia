@@ -109,7 +109,7 @@ func readSourcePolicySplitBaseline(
 	if err := expectJSONEnd(decoder); err != nil {
 		return baseline, err
 	}
-	const reviewedSHA256 = "d4fbead6aa95ee7772577dd6027ed2bf971e744a8971ff0c0596b14d5e327d39"
+	const reviewedSHA256 = "6e3ba908794f0cd3ab22ef745df55a403a02db9afea6f5d609fb563bfdf929cd"
 	digest := sha256.Sum256(data)
 	if hex.EncodeToString(digest[:]) != reviewedSHA256 ||
 		baseline.Schema != sourcePolicyBaselineSchema {
@@ -226,6 +226,7 @@ var sourcePolicySplitInventory = []string{
 	"main_failures_test.go",
 	"main_test.go",
 	"main.go",
+	"manifest_feasibility_test.go",
 	"manifest_test.go",
 	"manifest.go",
 	"module_replacement.go",

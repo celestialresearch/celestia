@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows || (linux && amd64)
 
 package attemptstore
 
@@ -34,7 +34,7 @@ func TestStageCreatesOwnershipMarker(t *testing.T) {
 	if err != nil || !present {
 		t.Fatalf("ownership marker: present=%t error=%v", present, err)
 	}
-	if err := store.createOwnershipMarker(accepted.Request.AttemptID); !errors.Is(err, ErrDuplicate) {
+	if _, err := store.createOwnershipMarkerState(accepted.Request.AttemptID); !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("duplicate ownership marker: %v", err)
 	}
 	markerPath := filepath.Join(

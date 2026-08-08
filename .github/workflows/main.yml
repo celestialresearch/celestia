@@ -95,18 +95,93 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Setup Rust
-        uses: taiki-e/install-action@cb33e69fad06166ca28a42b2575e4dadabf62ee8 # v2.85.8
+        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
         with:
           tool: |
             rust@1.97.1 + rustfmt + clippy + llvm-tools-preview
             cargo-llvm-cov@0.8.7
       - name: Setup Rust Security
         if: matrix.supply-chain == 'true'
-        uses: taiki-e/install-action@cb33e69fad06166ca28a42b2575e4dadabf62ee8 # v2.85.8
+        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
         with:
           tool: |
             cargo-audit@0.22.2
             cargo-deny@0.20.2
+      - name: Setup Linux Qualification
+        if: matrix.name == 'Linux AMD64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add x86_64-unknown-linux-musl
+          cargo build --release --locked \
+            --target x86_64-unknown-linux-musl \
+            --manifest-path worker/qualification-fixtures/Cargo.toml \
+            --bin celestia-hostile-worker
+          built=$PWD/worker/qualification-fixtures/target/x86_64-unknown-linux-musl/release/celestia-hostile-worker
+          test -x "$built"
+          fixture_dir=$(mktemp -d "$RUNNER_TEMP/celestia-hostile.XXXXXX")
+          printf 'CELESTIA_HOSTILE_FIXTURE_DIR=%s\n' "$fixture_dir" >>"$GITHUB_ENV"
+          fixture=$fixture_dir/celestia-hostile-worker
+          install -m 0500 "$built" "$fixture"
+          test "$(stat -c %u "$fixture")" = "$(id -u)"
+          test "$(stat -c %h "$fixture")" = 1
+          test "$(stat -c %a "$fixture")" = 500
+          printf 'CELESTIA_HOSTILE_FIXTURE=%s\n' "$fixture" >>"$GITHUB_ENV"
+          evidence_root=$(mktemp -d "$RUNNER_TEMP/celestia-evidence.XXXXXX")
+          printf 'CELESTIA_EVIDENCE_ROOT=%s\n' "$evidence_root" >>"$GITHUB_ENV"
+          filesystem=$(findmnt -n -o FSTYPE --target "$evidence_root")
+          case $filesystem in
+            ext4|xfs) ;;
+            *) printf 'Unsupported evidence filesystem: %s\n' "$filesystem" >&2; exit 1 ;;
+          esac
+          printf 'CELESTIA_EVIDENCE_FILESYSTEM=%s\n' "$filesystem" >>"$GITHUB_ENV"
+          unit=celestia-qualification-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}
+          sudo systemd-run --quiet --unit="$unit" --property=Delegate=yes \
+            --property=DelegateSubgroup=keeper \
+            --service-type=exec --uid="$(id -u)" sleep infinity
+          printf 'CELESTIA_CGROUP_UNIT=%s\n' "$unit" >>"$GITHUB_ENV"
+          group=$(systemctl show --property=ControlGroup --value "$unit")
+          test -n "$group"
+          root="/sys/fs/cgroup$group"
+          printf '+cpu +memory +pids\n' >"$root/cgroup.subtree_control"
+          grep -qw cpu "$root/cgroup.subtree_control"
+          grep -qw memory "$root/cgroup.subtree_control"
+          grep -qw pids "$root/cgroup.subtree_control"
+          driver="$root/driver"
+          mkdir "$driver"
+          printf 'CELESTIA_CGROUP_ROOT=%s\n' "$root" >>"$GITHUB_ENV"
+          printf 'CELESTIA_CGROUP_DRIVER=%s\n' "$driver" >>"$GITHUB_ENV"
+          restriction=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          if [[ -e $restriction ]]; then
+            original=$(<"$restriction")
+            printf 'CELESTIA_USERNS_RESTRICTION=%s\n' "$original" >>"$GITHUB_ENV"
+            if [[ $original != 0 ]]; then
+              sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0
+            fi
+          fi
+      - name: Qualify Linux Placement
+        if: matrix.name == 'Linux AMD64'
+        shell: bash
+        run: |
+          test -n "$CELESTIA_CGROUP_ROOT"
+          test -d "$CELESTIA_CGROUP_DRIVER"
+          test -x "$CELESTIA_HOSTILE_FIXTURE"
+          printf '%s\n' "$$" | sudo tee "$CELESTIA_CGROUP_DRIVER/cgroup.procs" >/dev/null
+          go test -count=1 \
+            -run '^(TestClone3CgroupPrimitiveNative|TestClone3BootstrapNative|TestLinuxHostileFixtureNative)$' \
+            ./internal/linuxamd64feasibility
+      - name: Qualify Linux Persistence
+        if: matrix.name == 'Linux AMD64'
+        shell: bash
+        env:
+          TMPDIR: ${{ env.CELESTIA_EVIDENCE_ROOT }}
+        run: |
+          test -n "$CELESTIA_EVIDENCE_ROOT"
+          test -d "$CELESTIA_EVIDENCE_ROOT"
+          case $CELESTIA_EVIDENCE_FILESYSTEM in ext4|xfs) ;; *) exit 1 ;; esac
+          go test -count=1 \
+            -run '^(TestLinuxPublicationDoesNotReplace|TestLinuxPublicationMovesExactEntry|TestLinuxAttemptLockExcludesSecondOwner|TestStorePublishesAndInspects|TestStoreRecoversPendingAttempt|TestRecoverRejectsActiveAttempt|TestReleasedAttemptCannotPublish|TestAttemptLockCrossProcess|TestRecoverAfterOwnerProcessDeath|TestRecoverAfterTerminalPublicationCrashPoints|TestRecoverCleansUncommittedCrashPoints)$' \
+            ./internal/operation/urlreference/attempt
       - name: Verify
         shell: bash
         env:
@@ -118,7 +193,41 @@ jobs:
           DEVCHECK_SELF_TEST: 'false'
           DEVCHECK_SUPPLY_CHAIN: ${{ matrix.supply-chain }}
           GOFLAGS: ${{ matrix.go-flags }}
-        run: bash ./.github/scripts/devcheck.sh
+        run: |
+          if [[ -n ${CELESTIA_CGROUP_DRIVER:-} ]]; then
+            printf '%s\n' "$$" | sudo tee "$CELESTIA_CGROUP_DRIVER/cgroup.procs" >/dev/null
+          fi
+          bash ./.github/scripts/devcheck.sh
+      - name: Cleanup Linux Qualification
+        if: always() && matrix.name == 'Linux AMD64'
+        shell: bash
+        run: |
+          status=0
+          if [[ -n ${CELESTIA_CGROUP_UNIT:-} ]]; then
+            sudo systemctl stop "$CELESTIA_CGROUP_UNIT" || status=$?
+          fi
+          if [[ -n ${CELESTIA_USERNS_RESTRICTION:-} ]]; then
+            sudo sysctl -q -w \
+              kernel.apparmor_restrict_unprivileged_userns="$CELESTIA_USERNS_RESTRICTION" || status=$?
+          fi
+          if [[ -n ${CELESTIA_HOSTILE_FIXTURE_DIR:-} ]]; then
+            case $CELESTIA_HOSTILE_FIXTURE_DIR in
+              "$RUNNER_TEMP"/celestia-hostile.*)
+                rm -f -- "$CELESTIA_HOSTILE_FIXTURE_DIR/celestia-hostile-worker" || status=$?
+                rmdir -- "$CELESTIA_HOSTILE_FIXTURE_DIR" || status=$?
+                ;;
+              *) status=1 ;;
+            esac
+          fi
+          if [[ -n ${CELESTIA_EVIDENCE_ROOT:-} ]]; then
+            case $CELESTIA_EVIDENCE_ROOT in
+              "$RUNNER_TEMP"/celestia-evidence.*)
+                rmdir -- "$CELESTIA_EVIDENCE_ROOT" || status=$?
+                ;;
+              *) status=1 ;;
+            esac
+          fi
+          exit "$status"
 
   go-campaign:
     name: Go Campaign (${{ matrix.name }})
@@ -156,7 +265,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Setup Rust
-        uses: taiki-e/install-action@cb33e69fad06166ca28a42b2575e4dadabf62ee8 # v2.85.8
+        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
         with:
           tool: rust@1.97.1
       - name: Verify Race
@@ -187,7 +296,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Setup Rust
-        uses: taiki-e/install-action@cb33e69fad06166ca28a42b2575e4dadabf62ee8 # v2.85.8
+        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
         with:
           tool: |
             rust@1.97.1 + rustfmt + clippy + llvm-tools-preview

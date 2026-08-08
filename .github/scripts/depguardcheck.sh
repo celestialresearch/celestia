@@ -331,6 +331,14 @@ add_case "$suite" execution-reject internal/execution/supervision/example.go \
 add_case "$suite" execution-test-reject internal/execution/supervision/rogue_test.go \
   celestia.research/celestia/internal/operation/urlreference \
   'execution packages must not import operation packages'
+add_case "$suite" linux-feasibility-reject internal/linuxamd64feasibility/example.go \
+  celestia.research/celestia/internal/operation/urlreference \
+  'Linux feasibility preflight must not import Production owners'
+add_case "$suite" linux-feasibility-tool-accept tools/linuxamd64feasibility/allowed.go \
+  celestia.research/celestia/internal/linuxamd64feasibility
+add_case "$suite" linux-feasibility-tool-reject tools/linuxamd64feasibility/example.go \
+  celestia.research/celestia/internal/operation/urlreference \
+  'Linux feasibility tool imports only its preflight owner'
 add_case "$suite" execution-integration-reject \
   internal/execution/supervision/supervisor_windows_test.go \
   celestia.research/celestia/internal/operation/urlreference \
@@ -341,6 +349,9 @@ add_case "$suite" command-reject cmd/example/main.go \
 add_case "$suite" operation-reject internal/operation/urlreference/example.go \
   celestia.research/celestia/internal/operation/other \
   'operation roots import only their own declared subpackages'
+add_case "$suite" attempt-linux-filesystem-accept \
+  internal/operation/urlreference/attempt/allowed_linux.go \
+  celestia.research/celestia/internal/linuxamd64feasibility
 add_case "$suite" attempt-reject internal/operation/urlreference/attempt/example.go \
   celestia.research/celestia/internal/execution/supervision \
   'attempt evidence imports only lower URL-reference owners'

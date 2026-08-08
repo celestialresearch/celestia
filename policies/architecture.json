@@ -60,6 +60,7 @@
   ],
   "declared_packages": [
     "internal/execution/supervision",
+    "internal/linuxamd64feasibility",
     "internal/testcargo",
     "internal/operation/urlreference",
     "internal/operation/urlreference/admission",
@@ -67,6 +68,7 @@
     "internal/operation/urlreference/protocol",
     "internal/operation/urlreference/transform",
     "tools/actionpolicy",
+    "tools/linuxamd64feasibility",
     "tools/sourcepolicy"
   ],
   "declared_rust_packages": [

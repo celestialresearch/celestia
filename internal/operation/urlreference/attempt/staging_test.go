@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows || (linux && amd64)
 
 package attemptstore
 
@@ -156,7 +156,7 @@ func TestStageRejectsMarkerOnlyAttempt(t *testing.T) {
 	store := newTestStore(t)
 	accepted, admittedAt := testAccepted(t)
 	attemptID := accepted.Request.AttemptID
-	if err := store.createOwnershipMarker(attemptID); err != nil {
+	if _, err := store.createOwnershipMarkerState(attemptID); err != nil {
 		t.Fatalf("create ownership marker: %v", err)
 	}
 	if _, err := store.Stage(accepted, admittedAt); !errors.Is(err, ErrDuplicate) {
@@ -240,7 +240,7 @@ func TestStageRollbackKeepsMarkerWhenPendingSurvives(t *testing.T) {
 	store := newTestStore(t)
 	accepted, _ := testAccepted(t)
 	attemptID := accepted.Request.AttemptID
-	if err := store.createOwnershipMarker(attemptID); err != nil {
+	if _, err := store.createOwnershipMarkerState(attemptID); err != nil {
 		t.Fatalf("create ownership marker: %v", err)
 	}
 	removeErr := errors.New("injected pending rollback failure")

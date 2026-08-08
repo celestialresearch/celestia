@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows || (linux && amd64)
 
 package attemptstore
 
@@ -30,7 +30,7 @@ func TestInspectReadsOwnedPublication(t *testing.T) {
 		t.Fatalf("stage: %v", err)
 	}
 	cleanupAttempt(t, attempt)
-	if err := attempt.publishLocked(
+	if _, err := attempt.publishLockedMeasured(
 		testObservationFor(t, accepted),
 	); err != nil {
 		t.Fatalf("publish while retaining ownership: %v", err)
@@ -86,7 +86,7 @@ func TestInspectLocksBeforeClassifyingPublication(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupAttempt(t, attempt)
 	})
-	if err := attempt.publishLocked(testObservationFor(t, accepted)); err != nil {
+	if _, err := attempt.publishLockedMeasured(testObservationFor(t, accepted)); err != nil {
 		t.Fatalf("publish while retaining ownership: %v", err)
 	}
 	path, err := store.attemptPath(accepted.Request.AttemptID)

@@ -9,7 +9,7 @@
 //
 // See the LICENSE file at the repository root for the complete terms.
 
-//go:build windows
+//go:build windows || (linux && amd64)
 
 package attemptstore
 
@@ -75,5 +75,40 @@ func TestStoreRejectsPendingPathReplacementDuringCleanup(t *testing.T) {
 	}
 	if err := removePendingDirectory(path); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("pending file replacement accepted: %v", err)
+	}
+}
+
+func TestRemovePendingSyncsParent(t *testing.T) {
+	t.Parallel()
+
+	info, err := os.Stat(t.TempDir())
+	if err != nil {
+		t.Fatalf("stat fixture: %v", err)
+	}
+	failure := errors.New("injected pending sync failure")
+	removed := false
+	err = removePendingDirectoryWith(
+		filepath.Join("parent", "pending"),
+		pendingRemovalOperations{
+			lstat:  func(string) (os.FileInfo, error) { return info, nil },
+			linked: func(string, os.FileInfo) bool { return false },
+			secure: func(string) error { return nil },
+			remove: func(string) error {
+				removed = true
+				return nil
+			},
+			sync: func(path string) error {
+				if !removed {
+					t.Fatal("sync called before removal")
+				}
+				if path != "parent" {
+					t.Fatalf("sync path = %q, want parent", path)
+				}
+				return failure
+			},
+		},
+	)
+	if !errors.Is(err, failure) {
+		t.Fatalf("removePendingDirectoryWith() error = %v", err)
 	}
 }
