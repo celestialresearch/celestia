@@ -128,6 +128,9 @@ func forbiddenCommandImport(importer, imported string) string {
 }
 
 func forbiddenOperationImport(importer, imported string) string {
+	if reason := forbiddenFileReplaceImport(importer, imported); reason != "" {
+		return reason
+	}
 	if reason := forbiddenURLReferenceImport(importer, imported); reason != "" {
 		return reason
 	}
@@ -143,6 +146,15 @@ func forbiddenOperationImport(importer, imported string) string {
 		return "operation subpackages must not import their orchestration root"
 	}
 	return ""
+}
+
+func forbiddenFileReplaceImport(importer, imported string) string {
+	const root = "internal/operation/filereplace"
+	if importer == root || !strings.HasPrefix(importer, root+"/") ||
+		!strings.HasPrefix(imported, "internal/") {
+		return ""
+	}
+	return "file-replacement subpackage imports a forbidden Production owner"
 }
 
 func forbiddenURLReferenceImport(importer, imported string) string {

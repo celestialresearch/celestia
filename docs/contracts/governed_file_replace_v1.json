@@ -1,0 +1,664 @@
+{
+  "schema_version": "celestia.assurance.slice-manifest.v1",
+  "slice_id": "governed-file-replace",
+  "contract_version": "1.0.0",
+  "revision": {
+    "class": "initial"
+  },
+  "operator_visible_outcome": "Replace one admitted file and report its durable governed outcome",
+  "owner": "internal/operation/filereplace",
+  "inputs": [
+    {
+      "id": "CEL-INPUT-FILE-001",
+      "media_type": "application/vnd.celestia.file-reference+json",
+      "maximum_bytes": 4096,
+      "validation": "Direct-child target and lowercase SHA-256 precondition"
+    },
+    {
+      "id": "CEL-INPUT-FILE-002",
+      "media_type": "application/octet-stream",
+      "maximum_bytes": 1048576,
+      "validation": "Bounded replacement bytes"
+    }
+  ],
+  "outputs": [
+    {
+      "id": "CEL-OUTPUT-FILE-001",
+      "media_type": "application/vnd.celestia.file-replace-result+json",
+      "maximum_bytes": 4096,
+      "validation": "Canonical terminal state and independently observed digest"
+    }
+  ],
+  "canonical_state": [
+    "Target bytes beneath the configured target root",
+    "Canonical admitted and terminal evidence beneath the configured evidence root"
+  ],
+  "derived_state": [
+    "Caller-facing result and terminal receipt"
+  ],
+  "external_effects": [
+    {
+      "id": "CEL-EFFECT-FILE-001",
+      "kind": "atomic replacement of one existing regular file",
+      "authority": "CEL-AUTH-EFFECT-001"
+    },
+    {
+      "id": "CEL-EFFECT-EVIDENCE-001",
+      "kind": "durable operation evidence",
+      "authority": "CEL-AUTH-EVIDENCE-001"
+    }
+  ],
+  "authorities": [
+    {
+      "id": "CEL-AUTH-ADMISSION-001",
+      "owner": "internal/operation/filereplace/admission",
+      "grant": "Admit one bounded direct-child replacement request",
+      "refusal": "Reject malformed, ambiguous, unsupported or oversized input"
+    },
+    {
+      "id": "CEL-AUTH-EFFECT-001",
+      "owner": "internal/operation/filereplace",
+      "grant": "Replace the configured-root target after final authority and precondition validation",
+      "refusal": "Refuse unsafe roots, unsafe targets, changed preconditions or unavailable atomic replacement"
+    },
+    {
+      "id": "CEL-AUTH-VERIFY-001",
+      "owner": "internal/operation/filereplace",
+      "grant": "Assign verified only from a new post-commit target observation",
+      "refusal": "Treat write-path claims and unavailable or mismatched observations as non-verified"
+    },
+    {
+      "id": "CEL-AUTH-EVIDENCE-001",
+      "owner": "internal/operation/filereplace/attempt",
+      "grant": "Publish one bounded canonical terminal bundle under exclusive ownership",
+      "refusal": "Reject duplicates, corruption, contradictory records and incomplete ownership"
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "id": "CEL-TRUST-REQUEST-001",
+      "source": "operator request",
+      "target": "internal/operation/filereplace/admission",
+      "treatment": "Bound and validate the complete typed request before filesystem access"
+    },
+    {
+      "id": "CEL-TRUST-TARGET-001",
+      "source": "configured target filesystem",
+      "target": "internal/operation/filereplace",
+      "treatment": "Use a rooted handle and reject unsafe volume, ownership, link and reparse state"
+    },
+    {
+      "id": "CEL-TRUST-COMMIT-001",
+      "source": "prepared replacement",
+      "target": "internal/operation/filereplace",
+      "treatment": "Revalidate target authority and precondition immediately before rooted atomic rename"
+    },
+    {
+      "id": "CEL-TRUST-VERIFY-001",
+      "source": "committed target",
+      "target": "internal/operation/filereplace",
+      "treatment": "Open anew and independently hash the observed target before verification"
+    },
+    {
+      "id": "CEL-TRUST-EVIDENCE-001",
+      "source": "filesystem evidence",
+      "target": "internal/operation/filereplace/attempt",
+      "treatment": "Validate ownership, canonical records, identities, transitions and hashes"
+    }
+  ],
+  "bounds": {
+    "processes": 0,
+    "memory_bytes": 2097152,
+    "output_bytes": 4096,
+    "worker_time_milliseconds": 0,
+    "persistence_bytes": 1048576
+  },
+  "resources": [
+    {
+      "id": "CEL-RESOURCE-ROOT-001",
+      "kind": "directory",
+      "owner": "internal/operation/filereplace",
+      "acquisition": "Open configured target root as one rooted capability",
+      "bound": "One fixed local Windows volume",
+      "release": "Close when the owning Operation is closed",
+      "cleanup_failure": "Retain cleanup failure separately from the primary outcome"
+    },
+    {
+      "id": "CEL-RESOURCE-TEMP-001",
+      "kind": "file",
+      "owner": "internal/operation/filereplace",
+      "acquisition": "Create one exclusive same-root private temporary file",
+      "bound": "1048576 replacement bytes",
+      "release": "Commit by rooted rename or remove before return",
+      "cleanup_failure": "Record cleanup failure and preserve the primary outcome"
+    },
+    {
+      "id": "CEL-RESOURCE-EVIDENCE-001",
+      "kind": "durable",
+      "owner": "internal/operation/filereplace/attempt",
+      "acquisition": "Create one exclusive pending attempt bundle",
+      "bound": "1048576 bytes",
+      "release": "Publish one terminal bundle or retain recoverable pending state",
+      "cleanup_failure": "Record indeterminate when required evidence cannot become durable",
+      "recovery": "Never repeat a rename; observe target and reconcile retained intent"
+    },
+    {
+      "id": "CEL-RESOURCE-LOCK-001",
+      "kind": "lock",
+      "owner": "internal/operation/filereplace/attempt",
+      "acquisition": "Acquire one shared inspection or exclusive execution and recovery lock",
+      "bound": "One retained operation-lock handle per active owner",
+      "release": "Release after terminal publication",
+      "cleanup_failure": "Preserve the primary outcome and return the release error without rewriting the terminal receipt"
+    }
+  ],
+  "platforms": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "support": "supported",
+      "refusal": "",
+      "evidence": "Native rooted replacement and recovery qualification"
+    },
+    {
+      "os": "windows",
+      "arch": "arm64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Compile-only refusal evidence"
+    },
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Native hosted refusal test"
+    },
+    {
+      "os": "linux",
+      "arch": "arm64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Native hosted refusal test"
+    },
+    {
+      "os": "darwin",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Native hosted refusal test"
+    },
+    {
+      "os": "darwin",
+      "arch": "arm64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Native hosted refusal test"
+    },
+    {
+      "os": "freebsd",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Guest-native refusal test"
+    },
+    {
+      "os": "openbsd",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Guest-native refusal test"
+    },
+    {
+      "os": "netbsd",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Guest-native refusal test"
+    },
+    {
+      "os": "dragonfly",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Guest-native refusal test"
+    },
+    {
+      "os": "plan9",
+      "arch": "amd64",
+      "support": "unsupported",
+      "refusal": "Return unsupported before admission",
+      "evidence": "Compile-only refusal evidence"
+    }
+  ],
+  "states": [
+    {
+      "id": "requested",
+      "kind": "intermediate"
+    },
+    {
+      "id": "admitted",
+      "kind": "intermediate"
+    },
+    {
+      "id": "prepared",
+      "kind": "intermediate"
+    },
+    {
+      "id": "rejected",
+      "kind": "refusal"
+    },
+    {
+      "id": "failed",
+      "kind": "failure"
+    },
+    {
+      "id": "cancelled",
+      "kind": "cancellation"
+    },
+    {
+      "id": "verified",
+      "kind": "success"
+    },
+    {
+      "id": "indeterminate",
+      "kind": "indeterminate"
+    }
+  ],
+  "allowed_transitions": [
+    {
+      "from": "requested",
+      "to": "rejected"
+    },
+    {
+      "from": "requested",
+      "to": "admitted"
+    },
+    {
+      "from": "admitted",
+      "to": "prepared"
+    },
+    {
+      "from": "admitted",
+      "to": "failed"
+    },
+    {
+      "from": "admitted",
+      "to": "cancelled"
+    },
+    {
+      "from": "admitted",
+      "to": "indeterminate"
+    },
+    {
+      "from": "prepared",
+      "to": "failed"
+    },
+    {
+      "from": "prepared",
+      "to": "cancelled"
+    },
+    {
+      "from": "prepared",
+      "to": "verified"
+    },
+    {
+      "from": "prepared",
+      "to": "indeterminate"
+    }
+  ],
+  "prohibited_transitions": [
+    {
+      "from": "requested",
+      "to": "prepared"
+    },
+    {
+      "from": "requested",
+      "to": "failed"
+    },
+    {
+      "from": "requested",
+      "to": "cancelled"
+    },
+    {
+      "from": "requested",
+      "to": "verified"
+    },
+    {
+      "from": "requested",
+      "to": "indeterminate"
+    },
+    {
+      "from": "admitted",
+      "to": "requested"
+    },
+    {
+      "from": "admitted",
+      "to": "rejected"
+    },
+    {
+      "from": "admitted",
+      "to": "verified"
+    },
+    {
+      "from": "prepared",
+      "to": "requested"
+    },
+    {
+      "from": "prepared",
+      "to": "admitted"
+    },
+    {
+      "from": "prepared",
+      "to": "rejected"
+    },
+    {
+      "from": "rejected",
+      "to": "requested"
+    },
+    {
+      "from": "rejected",
+      "to": "admitted"
+    },
+    {
+      "from": "rejected",
+      "to": "prepared"
+    },
+    {
+      "from": "rejected",
+      "to": "failed"
+    },
+    {
+      "from": "rejected",
+      "to": "cancelled"
+    },
+    {
+      "from": "rejected",
+      "to": "verified"
+    },
+    {
+      "from": "rejected",
+      "to": "indeterminate"
+    },
+    {
+      "from": "failed",
+      "to": "requested"
+    },
+    {
+      "from": "failed",
+      "to": "admitted"
+    },
+    {
+      "from": "failed",
+      "to": "prepared"
+    },
+    {
+      "from": "failed",
+      "to": "rejected"
+    },
+    {
+      "from": "failed",
+      "to": "cancelled"
+    },
+    {
+      "from": "failed",
+      "to": "verified"
+    },
+    {
+      "from": "failed",
+      "to": "indeterminate"
+    },
+    {
+      "from": "cancelled",
+      "to": "requested"
+    },
+    {
+      "from": "cancelled",
+      "to": "admitted"
+    },
+    {
+      "from": "cancelled",
+      "to": "prepared"
+    },
+    {
+      "from": "cancelled",
+      "to": "rejected"
+    },
+    {
+      "from": "cancelled",
+      "to": "failed"
+    },
+    {
+      "from": "cancelled",
+      "to": "verified"
+    },
+    {
+      "from": "cancelled",
+      "to": "indeterminate"
+    },
+    {
+      "from": "verified",
+      "to": "requested"
+    },
+    {
+      "from": "verified",
+      "to": "admitted"
+    },
+    {
+      "from": "verified",
+      "to": "prepared"
+    },
+    {
+      "from": "verified",
+      "to": "rejected"
+    },
+    {
+      "from": "verified",
+      "to": "failed"
+    },
+    {
+      "from": "verified",
+      "to": "cancelled"
+    },
+    {
+      "from": "verified",
+      "to": "indeterminate"
+    },
+    {
+      "from": "indeterminate",
+      "to": "requested"
+    },
+    {
+      "from": "indeterminate",
+      "to": "admitted"
+    },
+    {
+      "from": "indeterminate",
+      "to": "prepared"
+    },
+    {
+      "from": "indeterminate",
+      "to": "rejected"
+    },
+    {
+      "from": "indeterminate",
+      "to": "failed"
+    },
+    {
+      "from": "indeterminate",
+      "to": "cancelled"
+    },
+    {
+      "from": "indeterminate",
+      "to": "verified"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "CEL-FILE-INV-001",
+      "statement": "Invalid or unauthorised requests never reach filesystem mutation",
+      "owner": "internal/operation/filereplace/admission",
+      "severity": "critical",
+      "boundary": "operator request to filesystem authority",
+      "falsifier": "Observe target mutation for a rejected request",
+      "production_controls": [
+        {
+          "id": "CEL-FILE-PROD-001",
+          "owner": "admission and operation refusal tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-FILE-ASSURE-001",
+          "owner": "file replacement authority rule"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Administrator and Celestia account remain trusted"
+    },
+    {
+      "id": "CEL-FILE-INV-002",
+      "statement": "Commit replaces only the configured-root target whose current digest matches the admitted precondition",
+      "owner": "internal/operation/filereplace",
+      "severity": "critical",
+      "boundary": "prepared replacement to atomic commit",
+      "falsifier": "Replace an out-of-root, linked, reparse or changed target",
+      "production_controls": [
+        {
+          "id": "CEL-FILE-PROD-002",
+          "owner": "native effect boundary tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-FILE-ASSURE-002",
+          "owner": "authority and hostile target campaign"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Filesystem and kernel correctness are assumed"
+    },
+    {
+      "id": "CEL-FILE-INV-003",
+      "statement": "Verified is assigned only from an independent post-commit target observation",
+      "owner": "internal/operation/filereplace",
+      "severity": "critical",
+      "boundary": "committed target to terminal state",
+      "falsifier": "Return verified when the observed target differs or is unavailable",
+      "production_controls": [
+        {
+          "id": "CEL-FILE-PROD-003",
+          "owner": "postcondition verification tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-FILE-ASSURE-003",
+          "owner": "state transition and verification rule"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Same-account evidence rewrite remains possible"
+    },
+    {
+      "id": "CEL-FILE-INV-004",
+      "statement": "Recovery never repeats a rename whose commitment is uncertain",
+      "owner": "internal/operation/filereplace/attempt",
+      "severity": "critical",
+      "boundary": "interrupted evidence to recovery",
+      "falsifier": "Observe recovery performing a second replacement",
+      "production_controls": [
+        {
+          "id": "CEL-FILE-PROD-004",
+          "owner": "durable checkpoint recovery tests"
+        }
+      ],
+      "assurance_controls": [
+        {
+          "id": "CEL-FILE-ASSURE-004",
+          "owner": "recovery mutation campaign"
+        }
+      ],
+      "platforms": [
+        "windows/amd64"
+      ],
+      "residual_uncertainty": "Power-loss semantics depend on the qualified filesystem"
+    }
+  ],
+  "success_semantics": "Verified means a rooted atomic replacement committed, a new target handle matched the replacement digest and terminal evidence became durable",
+  "refusal_semantics": "Rejected requests perform no replacement and retain no replacement bytes",
+  "failure_semantics": "Failed means evidence establishes that the target replacement did not occur",
+  "cancellation_semantics": "Cancellation is terminal only before commitment; after commitment starts the result is verified or indeterminate",
+  "indeterminate_semantics": "A possibly committed effect without a verified postcondition or required durable evidence is indeterminate",
+  "recovery_semantics": "Recovery never repeats the effect; it reconciles retained intent against a new target observation",
+  "compatibility_or_reset_policy": "No pre-release persistence compatibility is promised and superseded unused formats are deleted coherently",
+  "falsifiers": [
+    "Rejected input mutates a target",
+    "An out-of-root, linked, reparse or changed target is replaced",
+    "Cancellation after commitment is reported as no effect",
+    "Recovery repeats an uncertain replacement",
+    "Write-path bytes are accepted as independent verification",
+    "Cleanup failure overwrites the primary outcome",
+    "Unsupported platforms access a configured root"
+  ],
+  "production_controls": [
+    {
+      "id": "CEL-FILE-PROD-001",
+      "owner": "admission and operation refusal tests"
+    },
+    {
+      "id": "CEL-FILE-PROD-002",
+      "owner": "native effect boundary tests"
+    },
+    {
+      "id": "CEL-FILE-PROD-003",
+      "owner": "postcondition verification tests"
+    },
+    {
+      "id": "CEL-FILE-PROD-004",
+      "owner": "durable checkpoint recovery tests"
+    }
+  ],
+  "assurance_controls": [
+    {
+      "id": "CEL-FILE-ASSURE-001",
+      "owner": "file replacement authority rule"
+    },
+    {
+      "id": "CEL-FILE-ASSURE-002",
+      "owner": "authority and hostile target campaign"
+    },
+    {
+      "id": "CEL-FILE-ASSURE-003",
+      "owner": "state transition and verification rule"
+    },
+    {
+      "id": "CEL-FILE-ASSURE-004",
+      "owner": "recovery mutation campaign"
+    }
+  ],
+  "residual_limitations": [
+    "Windows AMD64 on a qualified fixed local volume is the only supported execution boundary",
+    "Administrator and code running as the Celestia account can rewrite target and evidence files",
+    "Synchronous filesystem calls cannot be pre-empted safely",
+    "The manifest bounds schema represents the absence of a worker with zero process and worker time"
+  ],
+  "non_goals": [
+    "Worker execution or worker protocol",
+    "Dynamic discovery, plug-ins, generic operation interfaces or catalogues",
+    "Shared abstractions extracted before two operations prove identical ownership",
+    "Nested targets, file creation, directories, alternate data streams or network filesystems",
+    "Compatibility readers or migrations for unused pre-release formats"
+  ],
+  "deletion_criteria": [
+    "Delete the operation if rooted atomic replacement cannot be qualified on Windows AMD64",
+    "Delete the operation if recovery cannot distinguish verified from indeterminate without repeating an effect",
+    "Delete any shared abstraction introduced before a second proven owner requires it"
+  ]
+}

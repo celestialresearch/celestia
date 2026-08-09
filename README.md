@@ -1,11 +1,13 @@
 # Governed Deterministic Operation
 
-Celestia implementation repository. One internal governed URL-reference
-operation is qualified locally on Windows. No public CLI exists and other
+Celestia implementation repository. It contains internal governed URL-reference
+and file-replacement operations for Windows AMD64. File replacement remains a
+candidate until its exact-candidate gates pass. No public CLI exists and other
 platforms fail closed.
 
-The first operation is constrained by
-[`docs/contracts/url_reference_v1.md`](docs/contracts/url_reference_v1.md).
+The operation contracts are:
+- [`docs/contracts/url_reference_v1.md`](docs/contracts/url_reference_v1.md);
+- [`docs/contracts/file_replace_v1.md`](docs/contracts/file_replace_v1.md).
 
 Repository history and push requirements are defined in
 [`policies/commit.md`](policies/commit.md).

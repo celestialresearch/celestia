@@ -39,6 +39,30 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	"operation-imports-operation": func(architecturePolicy) bool {
 		return forbiddenArchitectureImport("internal/operation/alpha", architectureModule+"/internal/operation/beta") != ""
 	},
+	"file-replace-imports-url-reference": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport(
+			"internal/operation/filereplace",
+			architectureModule+"/internal/operation/urlreference",
+		) != ""
+	},
+	"execution-imports-file-replace": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport(
+			"internal/execution/supervision",
+			architectureModule+"/internal/operation/filereplace",
+		) != ""
+	},
+	"file-replace-subpackage-imports-root": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport(
+			"internal/operation/filereplace/admission",
+			architectureModule+"/internal/operation/filereplace",
+		) != ""
+	},
+	"file-replace-admission-imports-attempt": func(architecturePolicy) bool {
+		return forbiddenArchitectureImport(
+			"internal/operation/filereplace/admission",
+			architectureModule+"/internal/operation/filereplace/attempt",
+		) != ""
+	},
 	"subpackage-imports-root": func(architecturePolicy) bool {
 		return forbiddenArchitectureImport("internal/operation/alpha/transform", architectureModule+"/internal/operation/alpha") != ""
 	},
@@ -117,6 +141,15 @@ var architectureFixtureChecks = map[string]func(architecturePolicy) bool{
 	},
 	"unregistered-flat-package": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"internal/newpackage/file.go"}, policy)
+	},
+	"unregistered-file-replace": func(policy architecturePolicy) bool {
+		policy.Packages = slices.DeleteFunc(policy.Packages, func(value string) bool {
+			return value == "internal/operation/filereplace" ||
+				strings.HasPrefix(value, "internal/operation/filereplace/")
+		})
+		return hasArchitecturePathFinding(
+			[]string{"internal/operation/filereplace/operation.go"}, policy,
+		)
 	},
 	"unregistered-testdata-package": func(policy architecturePolicy) bool {
 		return hasArchitecturePathFinding([]string{"tools/sourcepolicy/testdata/rogue/main.go"}, policy)

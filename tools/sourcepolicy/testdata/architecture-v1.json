@@ -3,6 +3,10 @@
   "cases": [
     {"name": "known-good-current-tree", "mutation": "none", "rule": "current-tree", "expected": "accept"},
     {"name": "operation-imports-operation", "mutation": "operation-imports-operation", "rule": "import-operation-sibling", "expected": "reject"},
+    {"name": "file-replace-imports-url-reference", "mutation": "file-replace-imports-url-reference", "rule": "import-operation-sibling", "expected": "reject"},
+    {"name": "execution-imports-file-replace", "mutation": "execution-imports-file-replace", "rule": "import-execution-operation", "expected": "reject"},
+    {"name": "file-replace-subpackage-imports-root", "mutation": "file-replace-subpackage-imports-root", "rule": "import-operation-root", "expected": "reject"},
+    {"name": "file-replace-admission-imports-attempt", "mutation": "file-replace-admission-imports-attempt", "rule": "file-replace-admission-edge", "expected": "reject"},
     {"name": "subpackage-imports-root", "mutation": "subpackage-imports-root", "rule": "import-operation-root", "expected": "reject"},
     {"name": "execution-imports-operation", "mutation": "execution-imports-operation", "rule": "import-execution-operation", "expected": "reject"},
     {"name": "production-imports-assurance", "mutation": "production-imports-assurance", "rule": "import-assurance", "expected": "reject"},
@@ -27,6 +31,7 @@
     {"name": "root-src", "mutation": "root-src", "rule": "approved-root", "expected": "reject"},
     {"name": "worker-private-key-path", "mutation": "worker-private-key-path", "rule": "composed-private-key-policy", "expected": "reject"},
     {"name": "unregistered-flat-package", "mutation": "unregistered-flat-package", "rule": "package-declaration", "expected": "reject"},
+    {"name": "unregistered-file-replace", "mutation": "unregistered-file-replace", "rule": "package-declaration", "expected": "reject"},
     {"name": "unregistered-testdata-package", "mutation": "unregistered-testdata-package", "rule": "package-declaration", "expected": "reject"},
     {"name": "unregistered-rust-package", "mutation": "unregistered-rust-package", "rule": "rust-package-declaration", "expected": "reject"},
     {"name": "unregistered-script", "mutation": "unregistered-script", "rule": "script-declaration", "expected": "reject"},

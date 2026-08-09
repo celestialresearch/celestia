@@ -1,6 +1,6 @@
 {
   "schema_version": "celestia.production.architecture.v1",
-  "current_slice": "CEL-STRUCT-005",
+  "current_slice": "CEL-FILE-001",
   "base_commit": "ea8f840aa230f0498f82f3cd00dca22760cf6020",
   "module_path": "celestia.research/celestia",
   "inventory_format": "sha256-lf-paths-v1",
@@ -62,6 +62,9 @@
     "internal/execution/supervision",
     "internal/linuxamd64feasibility",
     "internal/testcargo",
+    "internal/operation/filereplace",
+    "internal/operation/filereplace/admission",
+    "internal/operation/filereplace/attempt",
     "internal/operation/urlreference",
     "internal/operation/urlreference/admission",
     "internal/operation/urlreference/attempt",

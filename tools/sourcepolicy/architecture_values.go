@@ -37,6 +37,8 @@ func expectedPackages() []string {
 		"internal/execution/supervision",
 		"internal/linuxamd64feasibility",
 		"internal/testcargo",
+		"internal/operation/filereplace", "internal/operation/filereplace/admission",
+		"internal/operation/filereplace/attempt",
 		"internal/operation/urlreference",
 		"internal/operation/urlreference/admission", "internal/operation/urlreference/attempt",
 		"internal/operation/urlreference/protocol", "internal/operation/urlreference/transform",

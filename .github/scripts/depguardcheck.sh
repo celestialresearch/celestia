@@ -331,6 +331,10 @@ add_case "$suite" execution-reject internal/execution/supervision/example.go \
 add_case "$suite" execution-test-reject internal/execution/supervision/rogue_test.go \
   celestia.research/celestia/internal/operation/urlreference \
   'execution packages must not import operation packages'
+add_case "$suite" execution-file-replace-reject \
+  internal/execution/supervision/file_replace.go \
+  celestia.research/celestia/internal/operation/filereplace \
+  'execution packages must not import operations'
 add_case "$suite" linux-feasibility-reject internal/linuxamd64feasibility/example.go \
   celestia.research/celestia/internal/operation/urlreference \
   'Linux feasibility preflight must not import Production owners'
@@ -349,6 +353,10 @@ add_case "$suite" command-reject cmd/example/main.go \
 add_case "$suite" operation-reject internal/operation/urlreference/example.go \
   celestia.research/celestia/internal/operation/other \
   'operation roots import only their own declared subpackages'
+add_case "$suite" file-replace-operation-reject \
+  internal/operation/filereplace/example.go \
+  celestia.research/celestia/internal/operation/urlreference \
+  'operation roots import only their own declared subpackages'
 add_case "$suite" attempt-linux-filesystem-accept \
   internal/operation/urlreference/attempt/allowed_linux.go \
   celestia.research/celestia/internal/linuxamd64feasibility
@@ -358,6 +366,14 @@ add_case "$suite" attempt-reject internal/operation/urlreference/attempt/example
 add_case "$suite" admission-reject internal/operation/urlreference/admission/example.go \
   celestia.research/celestia/internal/operation/urlreference/attempt \
   'admission imports only protocol and transformation'
+add_case "$suite" file-replace-admission-reject \
+  internal/operation/filereplace/admission/example.go \
+  celestia.research/celestia/internal/operation/filereplace/attempt \
+  'file-replacement admission imports no Production internals'
+add_case "$suite" file-replace-attempt-reject \
+  internal/operation/filereplace/attempt/example.go \
+  celestia.research/celestia/internal/operation/filereplace \
+  'file-replacement evidence imports no Production internals'
 add_case "$suite" protocol-reject \
   internal/operation/urlreference/protocol/example.go \
   celestia.research/celestia/internal/operation/urlreference/admission \

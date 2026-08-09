@@ -70,6 +70,32 @@ linters:
           deny:
             - pkg: "celestia.research/celestia/internal/operation"
               desc: commands import declared operation roots only
+        file-replace-admission:
+          list-mode: lax
+          files:
+            - "**/internal/operation/filereplace/admission/*.go"
+            - "**/internal/operation/filereplace/admission/**/*.go"
+          deny:
+            - pkg: "celestia.research/celestia/internal"
+              desc: file-replacement admission imports no Production internals
+        file-replace-attempt:
+          list-mode: lax
+          files:
+            - "**/internal/operation/filereplace/attempt/*.go"
+            - "**/internal/operation/filereplace/attempt/**/*.go"
+          deny:
+            - pkg: "celestia.research/celestia/internal"
+              desc: file-replacement evidence imports no Production internals
+        file-replace-operation:
+          list-mode: lax
+          files:
+            - "**/internal/operation/filereplace/*.go"
+          allow:
+            - "celestia.research/celestia/internal/operation/filereplace/admission"
+            - "celestia.research/celestia/internal/operation/filereplace/attempt"
+          deny:
+            - pkg: "celestia.research/celestia/internal/operation"
+              desc: operation roots import only their own declared subpackages
         url-reference-operation:
           list-mode: lax
           files:
