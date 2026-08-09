@@ -94,6 +94,32 @@ func TestRecordPublicationRejectsDifferentFinalRecord(t *testing.T) {
 	}
 }
 
+func TestPublicationHandlesInterruptedStaging(t *testing.T) {
+	store := newTestStore(t)
+	data := []byte("record\n")
+	if err := store.writeRecord("record.json", data); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.publishStaging("missing.publishing", "record.json", data); err != nil {
+		t.Fatalf("publishStaging(existing final) error = %v", err)
+	}
+	if err := store.publishStaging("missing.publishing", "missing.json", data); err == nil {
+		t.Fatal("publishStaging(missing files) error = nil")
+	}
+	if err := store.root.Mkdir("staging", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.writeStaging("staging", data); err == nil {
+		t.Fatal("writeStaging(directory) error = nil")
+	}
+	if err := store.prepareStaging("record.json", []byte("replacement\n")); err != nil {
+		t.Fatalf("prepareStaging(different final) error = %v", err)
+	}
+	if _, err := store.root.Open("record.json"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("removed final error = %v", err)
+	}
+}
+
 func TestIdentifyRootMatchesDifferentPathSpellings(t *testing.T) {
 	store := newTestStore(t)
 	second, err := openDirectory(store.path + string(os.PathSeparator) + ".")
@@ -109,6 +135,37 @@ func TestIdentifyRootMatchesDifferentPathSpellings(t *testing.T) {
 	secondID, secondErr := IdentifyRoot(second)
 	if firstErr != nil || secondErr != nil || firstID != secondID {
 		t.Fatalf("identities = %+v, %+v; errors = %v, %v", firstID, secondID, firstErr, secondErr)
+	}
+}
+
+func TestStoreIdentityAndRecordBoundaries(t *testing.T) {
+	store := newTestStore(t)
+	if store.Identity() == (RootIdentity{}) || (*Store)(nil).Identity() != (RootIdentity{}) {
+		t.Fatal("Identity() did not preserve the store boundary")
+	}
+	if _, err := IdentifyRoot(nil); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("IdentifyRoot(nil) error = %v", err)
+	}
+	for _, identity := range []RootIdentity{
+		{FileID: "short"},
+		{FileID: strings.Repeat("G", 32)},
+	} {
+		if validRootIdentity(identity) {
+			t.Fatalf("validRootIdentity(%+v) = true", identity)
+		}
+	}
+	if err := store.writeRecord("", []byte("record\n")); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("writeRecord() error = %v", err)
+	}
+	match, err := store.recordMatches("missing.json", nil)
+	if err != nil || match {
+		t.Fatalf("recordMatches(missing) = %t, %v", match, err)
+	}
+	if err := store.root.Mkdir("directory.json", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.recordMatches("directory.json", nil); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("recordMatches(directory) error = %v", err)
 	}
 }
 
@@ -465,6 +522,19 @@ func TestStoreRejectsInvalidConstructionAndInput(t *testing.T) {
 	if _, _, err := store.Inspect("invalid"); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("Inspect() error = %v", err)
 	}
+	attempt, err := store.Begin(validBeginData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := attempt.RecordVerification(Verification{Matched: true}); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("RecordVerification() error = %v", err)
+	}
+	if _, err := attempt.Publish(StateFailed, true, "wrong", ""); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if err := attempt.Close(); err != nil {
+		t.Fatal(err)
+	}
 	var nilStore *Store
 	if err := nilStore.Close(); err != nil {
 		t.Fatalf("nil Store.Close() error = %v", err)
@@ -486,6 +556,23 @@ func TestStoreRejectsUnsafeEvidenceRoot(t *testing.T) {
 	}
 	if store, err := New(path); err == nil || store != nil {
 		t.Fatalf("New() = %+v, %v", store, err)
+	}
+}
+
+func TestStoreRejectsMissingAndNonDirectoryRoots(t *testing.T) {
+	parent := t.TempDir()
+	for _, path := range []string{
+		filepath.Join(parent, "missing"),
+		filepath.Join(parent, "file"),
+	} {
+		if path == filepath.Join(parent, "file") {
+			if err := os.WriteFile(path, []byte("not a directory"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := New(path); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("New(%q) error = %v", path, err)
+		}
 	}
 }
 
