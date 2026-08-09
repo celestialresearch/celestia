@@ -20,6 +20,8 @@ import (
 )
 
 const (
+	fileReplaceManifestPath = "docs/contracts/governed_file_replace_v1.json"
+	fileReplaceManifestSHA  = "ba863f73d80571b14bd0683be97678ec53a7d7514690bf98a610f7537b57e705"
 	governedManifestPath    = "docs/contracts/governed_url_reference_v1.json"
 	governedManifestSHA     = "a9afb81c9c40d5e35cab4833bc04bba809c3ae0590a99e035ed28a81453b23b3"
 	performanceManifestPath = "docs/contracts/governed_url_reference_performance_v1.json"
@@ -65,6 +67,7 @@ func runManifestPolicy(stderr io.Writer, readFile func(string) ([]byte, error)) 
 		path   string
 		digest string
 	}{
+		{fileReplaceManifestPath, fileReplaceManifestSHA},
 		{governedManifestPath, governedManifestSHA},
 		{performanceManifestPath, performanceManifestSHA},
 		{structureManifestPath, structureManifestSHA},

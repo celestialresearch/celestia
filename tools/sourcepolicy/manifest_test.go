@@ -255,7 +255,8 @@ func readReviewedManifest(path string) ([]byte, error) {
 
 func reviewedManifestReaders() map[string]func() ([]byte, error) {
 	return map[string]func() ([]byte, error){
-		governedManifestPath: func() ([]byte, error) { return os.ReadFile(governedManifestPath) },
+		fileReplaceManifestPath: func() ([]byte, error) { return os.ReadFile(fileReplaceManifestPath) },
+		governedManifestPath:    func() ([]byte, error) { return os.ReadFile(governedManifestPath) },
 		performanceManifestPath: func() ([]byte, error) {
 			return os.ReadFile(performanceManifestPath)
 		},
