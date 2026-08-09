@@ -178,8 +178,8 @@ func runNativeFixtureLeaf(
 	}
 	reaped := false
 	defer func() {
-		state.diagnostic = stderr.String()
 		result = cleanupNativeFixture(result, leaf, child, reaped)
+		state.diagnostic = stderr.String()
 	}()
 	if err != nil {
 		return clone3StartResult(err)
