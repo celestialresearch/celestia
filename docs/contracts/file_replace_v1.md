@@ -18,8 +18,9 @@ The request contains:
 
 The filename is one ordinary Windows filename. It cannot be empty, absolute,
 `.` or `..`; contain a separator, colon, control character, trailing space or
-trailing full stop; or name a reserved Windows device. Nested paths, alternate
-data streams, wildcard expansion and path normalisation are not supported.
+trailing full stop; or name a reserved Windows device including the documented
+`COM` and `LPT` forms using superscript digits. Nested paths, alternate data
+streams, wildcard expansion and path normalisation are not supported.
 
 The target must already exist as one regular non-reparse file with one hard
 link. Creation, directory replacement and replacement across volumes are not
@@ -31,6 +32,9 @@ Application configuration supplies separate target and evidence roots. User
 input cannot select either root. Both roots must be absolute paths on fixed
 local Windows volumes. The operation opens each root as a rooted filesystem
 capability and refuses unsafe ownership, permissions, links or volume types.
+It compares the opened roots by volume serial and 128-bit file identifier. The
+same identity is retained in each intent and must match before recovery touches
+the target root.
 
 Admission validates request shape but grants no filesystem authority. The
 final effect boundary reopens the target beneath the retained root capability,
@@ -86,6 +90,7 @@ resource error but cannot rewrite the append-only receipt.
 
 Evidence is operation-specific and versioned. It retains:
 - admitted request, attempt identity and timestamp;
+- the opened target-root volume serial and 128-bit file identifier;
 - expected and replacement digests plus replacement length;
 - the private temporary filename;
 - whether commitment was attempted and the native result;
@@ -94,11 +99,17 @@ Evidence is operation-specific and versioned. It retains:
 - hashes of every retained record in one terminal receipt.
 
 Records never retain replacement bytes. Evidence publication is bounded to
-1 MiB per attempt. A record is canonical JSON with one trailing line feed.
+1 MiB per attempt. A record is canonical JSON with one trailing line feed. A
+record is written to an exclusive staging name, synchronised, closed, atomically
+published to its final name then followed by directory synchronisation. A retry
+accepts the same canonical record and rejects different bytes.
 
 ## Recovery
 
 Recovery requires exclusive operation ownership. It never repeats a rename.
+No new attempt may begin while any non-terminal intent exists. A corrupt
+non-terminal record also requires operator recovery rather than allowing a new
+effect.
 It removes a retained temporary file only when evidence proves commitment was
 not attempted. Once commitment may have started, recovery observes the target:
 - a target matching the replacement digest can become `verified`;
@@ -106,7 +117,11 @@ not attempted. Once commitment may have started, recovery observes the target:
   occur;
 - every other or unavailable observation becomes `indeterminate`.
 
-Recovery records its own observation and publishes one terminal receipt.
+Recovery records its own observation and publishes one terminal receipt only
+after every referenced record is present and hash-matching. Retried recovery
+reuses an identical durable verification record and rejects a changed record.
+Inspection derives the match result from the retained intent, observed digest
+and observed length; it rejects a contradictory stored `matched` value.
 
 ## Platforms
 

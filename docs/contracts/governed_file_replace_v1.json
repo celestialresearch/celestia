@@ -12,7 +12,7 @@
       "id": "CEL-INPUT-FILE-001",
       "media_type": "application/vnd.celestia.file-reference+json",
       "maximum_bytes": 4096,
-      "validation": "Direct-child target and lowercase SHA-256 precondition"
+      "validation": "Direct-child non-device target and lowercase SHA-256 precondition"
     },
     {
       "id": "CEL-INPUT-FILE-002",
@@ -70,8 +70,8 @@
     {
       "id": "CEL-AUTH-EVIDENCE-001",
       "owner": "internal/operation/filereplace/attempt",
-      "grant": "Publish one bounded canonical terminal bundle under exclusive ownership",
-      "refusal": "Reject duplicates, corruption, contradictory records and incomplete ownership"
+      "grant": "Publish one bounded canonical terminal bundle bound to the target-root identity under exclusive ownership",
+      "refusal": "Reject unresolved attempts, root mismatches, duplicates, corruption, contradictory records and incomplete ownership"
     }
   ],
   "trust_boundaries": [
@@ -103,7 +103,7 @@
       "id": "CEL-TRUST-EVIDENCE-001",
       "source": "filesystem evidence",
       "target": "internal/operation/filereplace/attempt",
-      "treatment": "Validate ownership, canonical records, identities, transitions and hashes"
+      "treatment": "Validate ownership, target-root identity, canonical records, transitions and hashes then recompute verification from intent"
     }
   ],
   "bounds": {
@@ -136,11 +136,11 @@
       "id": "CEL-RESOURCE-EVIDENCE-001",
       "kind": "durable",
       "owner": "internal/operation/filereplace/attempt",
-      "acquisition": "Create one exclusive pending attempt bundle",
+      "acquisition": "Create one exclusive target-root-bound pending attempt after all earlier attempts are terminal",
       "bound": "1048576 bytes",
       "release": "Publish one terminal bundle or retain recoverable pending state",
       "cleanup_failure": "Record indeterminate when required evidence cannot become durable",
-      "recovery": "Never repeat a rename; observe target and reconcile retained intent"
+      "recovery": "Match the retained target-root identity, never repeat a rename, observe the target and publish prerequisites atomically"
     },
     {
       "id": "CEL-RESOURCE-LOCK-001",
@@ -544,7 +544,7 @@
     },
     {
       "id": "CEL-FILE-INV-003",
-      "statement": "Verified is assigned only from an independent post-commit target observation",
+      "statement": "Verified is assigned only from an independent post-commit target observation reconciled with retained intent",
       "owner": "internal/operation/filereplace",
       "severity": "critical",
       "boundary": "committed target to terminal state",
@@ -568,11 +568,11 @@
     },
     {
       "id": "CEL-FILE-INV-004",
-      "statement": "Recovery never repeats a rename whose commitment is uncertain",
+      "statement": "Recovery is target-root-bound, excludes later effects and never repeats a rename whose commitment is uncertain",
       "owner": "internal/operation/filereplace/attempt",
       "severity": "critical",
       "boundary": "interrupted evidence to recovery",
-      "falsifier": "Observe recovery performing a second replacement",
+      "falsifier": "Observe recovery touching another root, overlapping a later effect or performing a second replacement",
       "production_controls": [
         {
           "id": "CEL-FILE-PROD-004",
@@ -596,13 +596,16 @@
   "failure_semantics": "Failed means evidence establishes that the target replacement did not occur",
   "cancellation_semantics": "Cancellation is terminal only before commitment; after commitment starts the result is verified or indeterminate",
   "indeterminate_semantics": "A possibly committed effect without a verified postcondition or required durable evidence is indeterminate",
-  "recovery_semantics": "Recovery never repeats the effect; it reconciles retained intent against a new target observation",
+  "recovery_semantics": "Recovery requires the retained target-root identity and exclusive ownership, never repeats the effect, reuses identical durable records and reconciles retained intent against a new target observation",
   "compatibility_or_reset_policy": "No pre-release persistence compatibility is promised and superseded unused formats are deleted coherently",
   "falsifiers": [
     "Rejected input mutates a target",
     "An out-of-root, linked, reparse or changed target is replaced",
     "Cancellation after commitment is reported as no effect",
+    "Recovery touches a target root not retained in the intent",
+    "A new effect begins while an earlier intent is non-terminal",
     "Recovery repeats an uncertain replacement",
+    "A terminal receipt references a missing or contradictory record",
     "Write-path bytes are accepted as independent verification",
     "Cleanup failure overwrites the primary outcome",
     "Unsupported platforms access a configured root"
