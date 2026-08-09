@@ -57,8 +57,14 @@ func TestAdmitRejectsTargets(t *testing.T) {
 	targets := []string{
 		"", ".", "..", `sub\file`, "sub/file", `C:\file`, "stream:name",
 		"*.txt", "trailing.", "trailing ", "CON", "con.txt", "COM1.log",
-		"Lpt9", "NUL", "CLOCK$", "control\x1f", string([]byte{0xff}),
+		"Lpt9", "COM¹", "com².txt", "COM³.log", "LPT¹", "lpt².txt", "LPT³.log",
+		"PRN", "aux.txt", "NUL", "CLOCK$", "control\x1f", string([]byte{0xff}),
 		strings.Repeat("a", maxFilenameUnits+1),
+	}
+	for _, prefix := range []string{"COM", "LPT"} {
+		for digit := '1'; digit <= '9'; digit++ {
+			targets = append(targets, prefix+string(digit))
+		}
 	}
 	for _, target := range targets {
 		t.Run(target, func(t *testing.T) {

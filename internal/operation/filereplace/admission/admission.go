@@ -109,10 +109,12 @@ func reservedTarget(stem string) bool {
 			return true
 		}
 	}
-	if len(stem) != 4 {
+	runes := []rune(stem)
+	if len(runes) != 4 {
 		return false
 	}
-	prefix := stem[:3]
+	prefix := string(runes[:3])
+	digit := runes[3]
 	return (strings.EqualFold(prefix, "COM") || strings.EqualFold(prefix, "LPT")) &&
-		stem[3] >= '1' && stem[3] <= '9'
+		(digit >= '1' && digit <= '9' || digit == '¹' || digit == '²' || digit == '³')
 }
