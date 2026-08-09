@@ -95,14 +95,14 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Setup Rust
-        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2.85.11
         with:
           tool: |
             rust@1.97.1 + rustfmt + clippy + llvm-tools-preview
             cargo-llvm-cov@0.8.7
       - name: Setup Rust Security
         if: matrix.supply-chain == 'true'
-        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2.85.11
         with:
           tool: |
             cargo-audit@0.22.2
@@ -265,7 +265,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Setup Rust
-        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2.85.11
         with:
           tool: rust@1.97.1
       - name: Verify Race
@@ -296,7 +296,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Setup Rust
-        uses: taiki-e/install-action@6c6fd71fe4fb72c3697d269963d0e15df8adedad # v2.85.10
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2.85.11
         with:
           tool: |
             rust@1.97.1 + rustfmt + clippy + llvm-tools-preview
