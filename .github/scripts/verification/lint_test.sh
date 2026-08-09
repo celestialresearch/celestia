@@ -104,11 +104,11 @@ grep -Fq "https://pkg.dragonflybsd.org/pkg/\${ABI}/LATEST" \
   printf 'DragonFly package repository is missing\n' >&2
   return 1
 }
-grep -Fq 'mirror_type: "HTTP"' \
-  "$root/.github/scripts/dragonfly-bootstrap.sh" || {
-  printf 'DragonFly mirror mode is missing\n' >&2
+if grep -Fq 'mirror_type:' \
+  "$root/.github/scripts/dragonfly-bootstrap.sh"; then
+  printf 'DragonFly direct repository incorrectly enables mirror discovery\n' >&2
   return 1
-}
+fi
 grep -Fq "if [[ \"\$attempts\" -ge 5 ]]" \
   "$root/.github/scripts/dragonfly-bootstrap.sh" || {
   printf 'DragonFly retry budget is missing\n' >&2
