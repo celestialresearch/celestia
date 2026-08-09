@@ -97,6 +97,7 @@
     ".github/scripts/modcheck.sh",
     ".github/scripts/platformlint.sh",
     ".github/scripts/policycheck.sh",
+    ".github/scripts/rustadvisorycheck.sh",
     ".github/scripts/rustcheck.sh",
     ".github/scripts/testcheck.sh",
     ".github/scripts/source_policy_driver_test.sh",

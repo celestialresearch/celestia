@@ -435,11 +435,12 @@ if [[ -f Cargo.toml ]]; then
     run_check 'Rust Build Outputs' bash ./.github/scripts/rustcheck.sh artefacts
   fi
   if [[ "$profile" != quick && "${DEVCHECK_SUPPLY_CHAIN:-true}" == true ]]; then
-    run_check 'Rust Advisories' cargo audit --deny warnings
+    run_check 'Rust Advisories' bash ./.github/scripts/rustadvisorycheck.sh \
+      Cargo.lock
     run_check 'Rust Dependencies' cargo deny check
-    run_check 'Fixture Advisories' \
-      cargo audit --deny warnings \
-      --file worker/qualification-fixtures/Cargo.lock
+    run_check 'Fixture Advisories' bash \
+      ./.github/scripts/rustadvisorycheck.sh \
+      worker/qualification-fixtures/Cargo.lock
     run_check 'Fixture Dependencies' \
       cargo deny --manifest-path worker/qualification-fixtures/Cargo.toml \
       check

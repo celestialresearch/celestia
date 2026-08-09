@@ -58,6 +58,32 @@ if ! grep -Fq 'Config' <<<"$output" ||
 fi
 cp "$root/rust-toolchain.toml" "$repo_dir/rust-toolchain.toml"
 
+audit_home="$work_dir/audit-home"
+audit_bin="$work_dir/audit-bin"
+mkdir -p "$audit_home/advisory-db" "$audit_bin"
+: >"$audit_home/advisory-db/corrupt"
+cat >"$audit_bin/cargo" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+calls=${CARGO_HOME:?}/calls
+count=0
+[[ ! -f "$calls" ]] || count=$(cat "$calls")
+count=$((count + 1))
+printf '%s\n' "$count" >"$calls"
+if [[ "$count" -eq 1 ]]; then
+  printf 'error: error loading advisory database: git operation failed: corrupt fixture\n' >&2
+  exit 1
+fi
+[[ ! -e "$CARGO_HOME/advisory-db" ]] || exit 3
+EOF
+chmod +x "$audit_bin/cargo"
+PATH="$audit_bin:$PATH" CARGO_HOME="$audit_home" \
+  bash "$root/.github/scripts/rustadvisorycheck.sh" "$root/Cargo.lock"
+[[ $(cat "$audit_home/calls") -eq 2 && ! -e "$audit_home/advisory-db" ]] || {
+  printf 'Rust advisory check did not repair the corrupt database once\n' >&2
+  return 1
+}
+
 mkdir -p "$work_dir/ambient/actionlint/cmd/actionlint"
 cat >"$work_dir/ambient/go.work" <<'EOF'
 go 1.26.5
