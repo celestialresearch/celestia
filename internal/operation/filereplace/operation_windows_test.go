@@ -564,7 +564,7 @@ func TestAllowedACESIDRejectsTruncatedSID(t *testing.T) {
 
 func TestTargetSecurityHelpersRejectInvalidValues(t *testing.T) {
 	if ownedProtectedTargetRoot(nil) || exclusiveTargetDACL(nil, nil) ||
-		ownedExclusiveTarget(nil) || sameRoot(`C:\a`, `C:\b`) {
+		ownedExclusiveTarget(nil) {
 		t.Fatal("target security helper accepted invalid state")
 	}
 	if err := syncTargetDirectory(nil); !errors.Is(err, ErrTarget) {
@@ -704,6 +704,51 @@ func TestRecoveryPreservesUncertainCommit(t *testing.T) {
 	}
 }
 
+func TestRecoveryRejectsDifferentTargetRoot(t *testing.T) {
+	firstRoot, secondRoot, evidenceRoot := recoveryRootPair(t)
+	first, err := New(Config{TargetRoot: firstRoot, EvidenceRoot: evidenceRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := admitTestRequest(t, []byte("before"), []byte("after"))
+	journal := beginInterruptedAttempt(t, first, request)
+	if err := journal.MarkPrepared(); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := New(Config{TargetRoot: secondRoot, EvidenceRoot: evidenceRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanupOperation(t, second)
+	if _, err := second.Recover(context.Background()); !errors.Is(err, ErrConfiguration) || !errors.Is(err, attempt.ErrCorrupt) {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	data, err := readTestTarget(second)
+	if err != nil || string(data) != "before" {
+		t.Fatalf("second target = %q, %v", data, err)
+	}
+}
+
+func recoveryRootPair(t *testing.T) (string, string, string) {
+	t.Helper()
+	base := t.TempDir()
+	first := secureTestDirectory(t, filepath.Join(base, "first"))
+	second := secureTestDirectory(t, filepath.Join(base, "second"))
+	evidence := secureTestDirectory(t, filepath.Join(base, "evidence"))
+	for _, root := range []string{first, second} {
+		if err := os.WriteFile(filepath.Join(root, "target.txt"), []byte("before"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return first, second, evidence
+}
+
 func TestRecoveryAfterProcessDeath(t *testing.T) {
 	for _, test := range []struct {
 		stage  string
@@ -720,6 +765,120 @@ func TestRecoveryAfterProcessDeath(t *testing.T) {
 		t.Run(test.stage, func(t *testing.T) {
 			runDeathCase(t, test.stage, test.state, test.target)
 		})
+	}
+}
+
+func TestOperationRequiresRecoveryAfterOwnerDeath(t *testing.T) {
+	for _, replacement := range [][]byte{[]byte("after"), []byte("different")} {
+		t.Run(string(replacement), func(t *testing.T) {
+			targetRoot, evidenceRoot := deathTestRoots(t)
+			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+			defer cancel()
+			// #nosec G204,G702 -- os.Args[0] is the current Go test binary.
+			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestFileReplaceDeathHelper$")
+			command.Env = append(os.Environ(),
+				deathStageEnvironment+"=commit",
+				"CELESTIA_FILE_REPLACE_TARGET_ROOT="+targetRoot,
+				"CELESTIA_FILE_REPLACE_EVIDENCE_ROOT="+evidenceRoot,
+			)
+			waitForDeathCheckpoint(t, command)
+			operation, err := New(Config{TargetRoot: targetRoot, EvidenceRoot: evidenceRoot})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cleanupOperation(t, operation)
+			request := admitTestRequest(t, []byte("before"), replacement)
+			if _, err := operation.Execute(context.Background(), request); !errors.Is(err, attempt.ErrRecoveryRequired) {
+				t.Fatalf("Execute() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestRecoveryVerificationSurvivesProcessDeath(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		name := "unchanged"
+		if changed {
+			name = "changed"
+		}
+		t.Run(name, func(t *testing.T) { runRecoveryVerificationDeath(t, changed) })
+	}
+}
+
+func runRecoveryVerificationDeath(t *testing.T, changed bool) {
+	t.Helper()
+	targetRoot, evidenceRoot := deathTestRoots(t)
+	stageCommittedAttempt(t, targetRoot, evidenceRoot)
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	// #nosec G204,G702 -- os.Args[0] is the current Go test binary.
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestFileReplaceDeathHelper$")
+	command.Env = append(os.Environ(),
+		deathStageEnvironment+"=recovery-verification",
+		"CELESTIA_FILE_REPLACE_TARGET_ROOT="+targetRoot,
+		"CELESTIA_FILE_REPLACE_EVIDENCE_ROOT="+evidenceRoot,
+	)
+	waitForDeathCheckpoint(t, command)
+	if changed {
+		if err := os.WriteFile(filepath.Join(targetRoot, "target.txt"), []byte("changed"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	operation, err := New(Config{TargetRoot: targetRoot, EvidenceRoot: evidenceRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanupOperation(t, operation)
+	results, recoverErr := operation.Recover(context.Background())
+	if !changed {
+		if recoverErr != nil || len(results) != 1 || results[0].State != attempt.StateVerified {
+			t.Fatalf("Recover() = %+v, %v", results, recoverErr)
+		}
+		return
+	}
+	if !errors.Is(recoverErr, ErrIndeterminate) || !errors.Is(recoverErr, attempt.ErrDuplicate) ||
+		len(results) != 1 || results[0].State != attempt.StateIndeterminate {
+		t.Fatalf("Recover() = %+v, %v", results, recoverErr)
+	}
+}
+
+func cleanupOperation(t *testing.T, operation *Operation) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := operation.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	})
+}
+
+func stageCommittedAttempt(t *testing.T, targetRoot, evidenceRoot string) {
+	t.Helper()
+	operation, err := New(Config{TargetRoot: targetRoot, EvidenceRoot: evidenceRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := admitTestRequest(t, []byte("before"), []byte("after"))
+	journal := beginInterruptedAttempt(t, operation, request)
+	if err := operation.platform.prepare(journal.Intent().Temporary, []byte("after")); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.MarkPrepared(); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.MarkCommit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := operation.platform.target.Rename(journal.Intent().Temporary, "target.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.RecordEffect(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := operation.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -808,6 +967,18 @@ func TestFileReplaceDeathHelper(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if stage == "recovery-verification" {
+		operation.platform.faults.afterRecoveryVerification = func() {
+			if _, err := fmt.Fprintln(os.Stdout, "ready"); err != nil {
+				t.Fatal(err)
+			}
+			select {}
+		}
+		if _, err := operation.Recover(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		t.Fatal("Recover() returned before the death checkpoint")
 	}
 	request := admitTestRequest(t, []byte("before"), []byte("after"))
 	journal := beginInterruptedAttempt(t, operation, request)
@@ -971,7 +1142,8 @@ func beginInterruptedAttempt(
 	replacementHash := sha256.Sum256(replacement)
 	expected := request.ExpectedSHA256()
 	journal, err := operation.platform.store.Begin(attempt.BeginData{
-		Target: request.Target(), ExpectedSHA256: hex.EncodeToString(expected[:]),
+		TargetRoot: operation.platform.targetID,
+		Target:     request.Target(), ExpectedSHA256: hex.EncodeToString(expected[:]),
 		ReplacementSHA256: hex.EncodeToString(replacementHash[:]),
 		ReplacementLength: int64(len(replacement)),
 	})

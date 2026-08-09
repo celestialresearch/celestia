@@ -28,6 +28,11 @@ import (
 
 const recordDigest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
+var testRootIdentity = RootIdentity{
+	VolumeSerial: 1,
+	FileID:       "0123456789abcdef0123456789abcdef",
+}
+
 func TestStoreWritesAppendOnlyJournal(t *testing.T) {
 	store := newTestStore(t)
 	journal := publishTestAttempt(t, store)
@@ -39,8 +44,71 @@ func TestStoreWritesAppendOnlyJournal(t *testing.T) {
 			t.Fatalf("record %s missing: %v", suffix, err)
 		}
 	}
-	if err := journal.MarkPrepared(); !errors.Is(err, ErrDuplicate) {
-		t.Fatalf("duplicate checkpoint error = %v", err)
+	if err := journal.MarkPrepared(); err != nil {
+		t.Fatalf("idempotent checkpoint error = %v", err)
+	}
+}
+
+func TestRecordPublicationRecoversEveryCheckpointFailure(t *testing.T) {
+	failure := errors.New("injected record failure")
+	for _, test := range []struct {
+		name  string
+		fault recordFaults
+	}{
+		{"write", recordFaults{write: failure}},
+		{"short write", recordFaults{shortWrite: true}},
+		{"sync", recordFaults{sync: failure}},
+		{"close", recordFaults{close: failure}},
+		{"publish", recordFaults{publish: failure}},
+		{"directory sync", recordFaults{directorySync: failure}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store := newTestStore(t)
+			data := []byte("{\"record\":true}\n")
+			store.faults = test.fault
+			if err := store.writeRecord("record.json", data); err == nil {
+				t.Fatal("writeRecord() error = nil")
+			}
+			store.faults = recordFaults{}
+			if err := store.writeRecord("record.json", data); err != nil {
+				t.Fatalf("retry writeRecord() error = %v", err)
+			}
+			got, err := os.ReadFile(filepath.Join(store.path, "record.json"))
+			if err != nil || !bytes.Equal(got, data) {
+				t.Fatalf("record = %q, %v", got, err)
+			}
+			if _, err := os.Stat(filepath.Join(store.path, ".record.json.publishing")); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("staging stat error = %v", err)
+			}
+		})
+	}
+}
+
+func TestRecordPublicationRejectsDifferentFinalRecord(t *testing.T) {
+	store := newTestStore(t)
+	if err := store.writeRecord("record.json", []byte("first\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.writeRecord("record.json", []byte("second\n")); !errors.Is(err, ErrDuplicate) {
+		t.Fatalf("writeRecord() error = %v", err)
+	}
+}
+
+func TestIdentifyRootMatchesDifferentPathSpellings(t *testing.T) {
+	store := newTestStore(t)
+	second, err := openDirectory(store.path + string(os.PathSeparator) + ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := second.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
+		}
+	})
+	firstID, firstErr := IdentifyRoot(store.directory)
+	secondID, secondErr := IdentifyRoot(second)
+	if firstErr != nil || secondErr != nil || firstID != secondID {
+		t.Fatalf("identities = %+v, %+v; errors = %v, %v", firstID, secondID, firstErr, secondErr)
 	}
 }
 
@@ -48,7 +116,7 @@ func publishTestAttempt(t *testing.T, store *Store) *Attempt {
 	t.Helper()
 
 	attempt, err := store.Begin(BeginData{
-		Target: "target", ExpectedSHA256: recordDigest,
+		TargetRoot: testRootIdentity, Target: "target", ExpectedSHA256: recordDigest,
 		ReplacementSHA256: recordDigest, ReplacementLength: 4,
 	})
 	if err != nil {
@@ -197,6 +265,33 @@ func TestStoreExcludesConcurrentAttempt(t *testing.T) {
 	}
 }
 
+func TestStoreRequiresRecoveryBeforeNewAttempt(t *testing.T) {
+	store := newTestStore(t)
+	first, err := store.Begin(validBeginData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.MarkPrepared(); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if second, err := store.Begin(validBeginData()); !errors.Is(err, ErrRecoveryRequired) || second != nil {
+		t.Fatalf("second Begin() = %+v, %v", second, err)
+	}
+}
+
+func TestStoreRequiresRecoveryForCorruptPendingAttempt(t *testing.T) {
+	store := newTestStore(t)
+	if err := os.WriteFile(filepath.Join(store.path, strings.Repeat("a", 43)+".intent.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if next, err := store.Begin(validBeginData()); !errors.Is(err, ErrRecoveryRequired) || !errors.Is(err, ErrCorrupt) || next != nil {
+		t.Fatalf("Begin() = %+v, %v", next, err)
+	}
+}
+
 func TestInspectRejectsAttemptWithoutReceipt(t *testing.T) {
 	store := newTestStore(t)
 	journal, err := store.Begin(validBeginData())
@@ -237,6 +332,106 @@ func TestRecoverySessionPublishesPendingAttempt(t *testing.T) {
 	}
 	if receipt, _, err := store.Inspect(pending[0].Intent.AttemptID); err != nil || receipt.State != StateVerified {
 		t.Fatalf("Inspect() = %+v, %v", receipt, err)
+	}
+}
+
+func TestPublicationRequiresRetainedVerification(t *testing.T) {
+	store := newTestStore(t)
+	pendingRecoveryAttempt(t, store)
+	session, pending, err := store.BeginRecovery()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("BeginRecovery() = %+v, %v", pending, err)
+	}
+	if _, err := session.Publish(pending[0], StateVerified, true, recordDigest); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Publish() error = %v", err)
+	}
+	if _, err := store.root.Stat(pending[0].Intent.AttemptID + ".receipt.json"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("receipt Stat() error = %v", err)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRecoveryVerificationSurvivesInterruption(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		record  Verification
+		wantErr error
+	}{
+		{
+			name: "unchanged",
+			record: Verification{
+				Observed: true, ObservedSHA256: recordDigest,
+				ObservedLength: 4, Matched: true,
+			},
+		},
+		{
+			name: "changed",
+			record: Verification{
+				Observed: true, ObservedSHA256: strings.Repeat("1", 64),
+				ObservedLength: 4,
+			},
+			wantErr: ErrDuplicate,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runRecoveryVerificationInterruption(t, test.record, test.wantErr)
+		})
+	}
+}
+
+func runRecoveryVerificationInterruption(t *testing.T, record Verification, wantErr error) {
+	t.Helper()
+	store := newTestStore(t)
+	pendingRecoveryAttempt(t, store)
+	first, pending, err := store.BeginRecovery()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("BeginRecovery() = %+v, %v", pending, err)
+	}
+	retained := Verification{
+		Observed: true, ObservedSHA256: recordDigest,
+		ObservedLength: 4, Matched: true,
+	}
+	firstDigest, err := first.RecordVerification(pending[0].Intent.AttemptID, retained)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, pending, err := store.BeginRecovery()
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("second BeginRecovery() = %+v, %v", pending, err)
+	}
+	assertRecoveryVerificationRetry(t, second, pending[0], record, wantErr, firstDigest)
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertRecoveryVerificationRetry(
+	t *testing.T,
+	session *RecoverySession,
+	pending Pending,
+	record Verification,
+	wantErr error,
+	firstDigest string,
+) {
+	t.Helper()
+	digest, recordErr := session.RecordVerification(pending.Intent.AttemptID, record)
+	if !errors.Is(recordErr, wantErr) {
+		t.Fatalf("RecordVerification() = %q, %v", digest, recordErr)
+	}
+	if wantErr == nil {
+		if digest != firstDigest {
+			t.Fatalf("digest = %q, want %q", digest, firstDigest)
+		}
+		if _, err := session.Publish(pending, StateVerified, true, digest); err != nil {
+			t.Fatal(err)
+		}
+	} else if _, err := session.store.root.Stat(pending.Intent.AttemptID + ".receipt.json"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("receipt Stat() error = %v", err)
 	}
 }
 
@@ -316,6 +511,55 @@ func TestInspectRejectsContradictoryVerificationRecords(t *testing.T) {
 	}
 }
 
+func TestInspectRejectsVerificationContradictingIntent(t *testing.T) {
+	store := newTestStore(t)
+	journal, err := store.Begin(validBeginData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.MarkPrepared(); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.MarkCommit(); err != nil {
+		t.Fatal(err)
+	}
+	effectHash, err := journal.RecordEffect(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verification := Verification{
+		Schema: SchemaVersion, AttemptID: journal.intent.AttemptID,
+		Observed: true, ObservedSHA256: strings.Repeat("1", 64),
+		ObservedLength: 4, Matched: true,
+	}
+	data, verificationHash, err := encodeRecord(verification)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.writeRecord(journal.intent.AttemptID+".verification.json", data); err != nil {
+		t.Fatal(err)
+	}
+	receipt := Receipt{
+		Schema: SchemaVersion, AttemptID: journal.intent.AttemptID,
+		State: StateVerified, CleanupComplete: true,
+		IntentSHA256: journal.intentHash, EffectSHA256: effectHash,
+		VerificationSHA: verificationHash,
+	}
+	data, _, err = encodeRecord(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.writeRecord(journal.intent.AttemptID+".receipt.json", data); err != nil {
+		t.Fatal(err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Inspect(journal.intent.AttemptID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+}
+
 func TestRecordHelpersRejectInvalidValues(t *testing.T) {
 	if _, _, err := encodeRecord(make(chan int)); err == nil {
 		t.Fatal("encodeRecord() accepted an unsupported value")
@@ -387,13 +631,19 @@ func TestDecodeRecordRejectsMalformedForms(t *testing.T) {
 }
 
 func TestVerificationValidationRejectsContradictions(t *testing.T) {
+	intent := Intent{ReplacementSHA256: recordDigest, ReplacementLength: 4}
 	for _, value := range []Verification{
 		{Schema: SchemaVersion, AttemptID: "wrong", ObservedSHA256: recordDigest},
 		{Schema: SchemaVersion, AttemptID: "id", ObservedSHA256: "bad"},
 		{Schema: SchemaVersion, AttemptID: "id", ObservedSHA256: recordDigest, Matched: true},
+		{
+			Schema: SchemaVersion, AttemptID: "id", Observed: true,
+			ObservedSHA256: strings.Repeat("1", 64), ObservedLength: 4, Matched: true,
+		},
+		{Schema: SchemaVersion, AttemptID: "id", ObservedSHA256: recordDigest, ObservedLength: 4},
 		{Schema: SchemaVersion, AttemptID: "id", ObservedSHA256: recordDigest, ObservedLength: 1<<20 + 1},
 	} {
-		if validVerification("id", value) {
+		if validVerification("id", value, intent) {
 			t.Fatalf("validVerification(%+v) = true", value)
 		}
 	}
@@ -462,7 +712,7 @@ func TestReadRecordRejectsDirectory(t *testing.T) {
 
 func validBeginData() BeginData {
 	return BeginData{
-		Target: "target", ExpectedSHA256: recordDigest,
+		TargetRoot: testRootIdentity, Target: "target", ExpectedSHA256: recordDigest,
 		ReplacementSHA256: recordDigest, ReplacementLength: 4,
 	}
 }

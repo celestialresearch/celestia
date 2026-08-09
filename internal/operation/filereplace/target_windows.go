@@ -16,15 +16,10 @@ package filereplace
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
-
-func sameRoot(left, right string) bool {
-	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
-}
 
 func secureTargetRoot(path string) (string, error) {
 	clean := filepath.Clean(path)

@@ -35,12 +35,14 @@ import (
 const maxRecordBytes = 64 << 10
 
 var (
-	ErrCorrupt   = errors.New("corrupt file-replacement evidence")
-	ErrDuplicate = errors.New("duplicate file-replacement attempt")
-	ErrLockHeld  = errors.New("file-replacement operation lock held")
+	ErrCorrupt          = errors.New("corrupt file-replacement evidence")
+	ErrDuplicate        = errors.New("duplicate file-replacement attempt")
+	ErrLockHeld         = errors.New("file-replacement operation lock held")
+	ErrRecoveryRequired = errors.New("file-replacement recovery required")
 )
 
 type BeginData struct {
+	TargetRoot        RootIdentity
 	Target            string
 	ExpectedSHA256    string
 	ReplacementSHA256 string
@@ -51,6 +53,17 @@ type Store struct {
 	path      string
 	root      *os.Root
 	directory *os.File
+	identity  RootIdentity
+	faults    recordFaults
+}
+
+type recordFaults struct {
+	write         error
+	shortWrite    bool
+	sync          error
+	close         error
+	publish       error
+	directorySync error
 }
 
 type Attempt struct {
@@ -88,7 +101,18 @@ func New(path string) (*Store, error) {
 	if err != nil {
 		return nil, errors.Join(err, root.Close())
 	}
-	return &Store{path: clean, root: root, directory: directory}, nil
+	identity, err := IdentifyRoot(directory)
+	if err != nil {
+		return nil, errors.Join(err, directory.Close(), root.Close())
+	}
+	return &Store{path: clean, root: root, directory: directory, identity: identity}, nil
+}
+
+func (s *Store) Identity() RootIdentity {
+	if s == nil {
+		return RootIdentity{}
+	}
+	return s.identity
 }
 
 func (s *Store) Close() error {
@@ -102,14 +126,15 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) Begin(data BeginData) (*Attempt, error) {
-	if s == nil || s.root == nil || data.Target == "" ||
-		!validDigest(data.ExpectedSHA256) || !validDigest(data.ReplacementSHA256) ||
-		data.ReplacementLength < 0 || data.ReplacementLength > 1<<20 {
+	if s == nil || s.root == nil || !validBeginRequest(data) {
 		return nil, ErrCorrupt
 	}
 	lock, err := s.lock()
 	if err != nil {
 		return nil, err
+	}
+	if err := s.requireNoPending(); err != nil {
+		return nil, errors.Join(err, releaseLock(lock))
 	}
 	id, err := newIdentity()
 	if err != nil {
@@ -117,7 +142,8 @@ func (s *Store) Begin(data BeginData) (*Attempt, error) {
 	}
 	intent := Intent{
 		Schema: SchemaVersion, AttemptID: id, AdmittedAt: time.Now().UTC(),
-		Target: data.Target, ExpectedSHA256: data.ExpectedSHA256,
+		TargetRoot: data.TargetRoot, Target: data.Target,
+		ExpectedSHA256:    data.ExpectedSHA256,
 		ReplacementSHA256: data.ReplacementSHA256,
 		ReplacementLength: data.ReplacementLength,
 		Temporary:         ".celestia-" + id + ".replace",
@@ -130,6 +156,23 @@ func (s *Store) Begin(data BeginData) (*Attempt, error) {
 		return nil, errors.Join(err, releaseLock(lock))
 	}
 	return &Attempt{store: s, lock: lock, intent: intent, intentHash: digest}, nil
+}
+
+func validBeginRequest(data BeginData) bool {
+	return data.Target != "" && validRootIdentity(data.TargetRoot) &&
+		validDigest(data.ExpectedSHA256) && validDigest(data.ReplacementSHA256) &&
+		data.ReplacementLength >= 0 && data.ReplacementLength <= 1<<20
+}
+
+func (s *Store) requireNoPending() error {
+	pending, err := s.pending()
+	if err != nil {
+		return errors.Join(ErrRecoveryRequired, err)
+	}
+	if len(pending) != 0 {
+		return ErrRecoveryRequired
+	}
+	return nil
 }
 
 func (s *Store) BeginRecovery() (*RecoverySession, []Pending, error) {
@@ -169,7 +212,7 @@ func (s *Store) inspectUnlocked(id string) (Receipt, Verification, error) {
 	if !validReceiptBinding(id, receipt, pending) {
 		return Receipt{}, Verification{}, ErrCorrupt
 	}
-	verification, verificationHash, err := s.readTerminalVerification(id)
+	verification, verificationHash, err := s.readTerminalVerification(id, pending.Intent)
 	if err != nil || receipt.VerificationSHA != verificationHash {
 		return Receipt{}, Verification{}, ErrCorrupt
 	}
@@ -191,7 +234,10 @@ func validReceiptBinding(id string, receipt Receipt, pending Pending) bool {
 		receipt.EffectSHA256 == pending.EffectHash
 }
 
-func (s *Store) readTerminalVerification(id string) (Verification, string, error) {
+func (s *Store) readTerminalVerification(
+	id string,
+	intent Intent,
+) (Verification, string, error) {
 	var ordinary Verification
 	ordinaryData, err := s.readOptional(id+".verification.json", &ordinary)
 	if err != nil {
@@ -203,13 +249,13 @@ func (s *Store) readTerminalVerification(id string) (Verification, string, error
 		return Verification{}, "", ErrCorrupt
 	}
 	if ordinaryData != nil {
-		if !validVerification(id, ordinary) {
+		if !validVerification(id, ordinary, intent) {
 			return Verification{}, "", ErrCorrupt
 		}
 		return ordinary, digestBytes(ordinaryData), nil
 	}
 	if recoveredData != nil {
-		if !validVerification(id, recovered) {
+		if !validVerification(id, recovered, intent) {
 			return Verification{}, "", ErrCorrupt
 		}
 		return recovered, digestBytes(recoveredData), nil
@@ -329,11 +375,29 @@ func (s *RecoverySession) RecordVerification(
 ) (string, error) {
 	record.Schema = SchemaVersion
 	record.AttemptID = id
-	data, digest, err := encodeRecord(record)
-	if err == nil {
-		err = s.store.writeRecord(id+".recovery-verification.json", data)
+	pending, err := s.store.loadPending(id)
+	if err != nil || !validVerification(id, record, pending.Intent) {
+		return "", errors.Join(ErrCorrupt, err)
 	}
-	return digest, err
+	data, digest, err := encodeRecord(record)
+	if err != nil {
+		return "", err
+	}
+	_, retainedDigest, err := s.store.readTerminalVerification(id, pending.Intent)
+	if err != nil {
+		return "", err
+	}
+	if retainedDigest != "" {
+		if retainedDigest == digest {
+			return digest, nil
+		}
+		return "", ErrDuplicate
+	}
+	err = s.store.writeRecord(id+".recovery-verification.json", data)
+	if err != nil {
+		return "", err
+	}
+	return digest, nil
 }
 
 func (s *RecoverySession) Publish(
@@ -342,6 +406,9 @@ func (s *RecoverySession) Publish(
 	cleanup bool,
 	verificationHash string,
 ) (Receipt, error) {
+	if err := s.store.validatePublication(pending, state, verificationHash); err != nil {
+		return Receipt{}, err
+	}
 	receipt := Receipt{
 		Schema: SchemaVersion, AttemptID: pending.Intent.AttemptID, State: state,
 		CleanupComplete: cleanup, IntentSHA256: pending.IntentHash,
@@ -384,6 +451,9 @@ func (a *Attempt) RecordEffect(succeeded bool) (string, error) {
 func (a *Attempt) RecordVerification(record Verification) (string, error) {
 	record.Schema = SchemaVersion
 	record.AttemptID = a.intent.AttemptID
+	if !validVerification(a.intent.AttemptID, record, a.intent) {
+		return "", ErrCorrupt
+	}
 	return a.write("verification", record)
 }
 
@@ -393,13 +463,48 @@ func (a *Attempt) Publish(
 	effectHash,
 	verificationHash string,
 ) (Receipt, error) {
+	pending, err := a.store.loadPending(a.intent.AttemptID)
+	if err != nil || pending.IntentHash != a.intentHash || pending.EffectHash != effectHash {
+		return Receipt{}, errors.Join(ErrCorrupt, err)
+	}
+	if err := a.store.validatePublication(pending, state, verificationHash); err != nil {
+		return Receipt{}, err
+	}
 	receipt := Receipt{
 		Schema: SchemaVersion, AttemptID: a.intent.AttemptID, State: state,
 		CleanupComplete: cleanup, IntentSHA256: a.intentHash,
 		EffectSHA256: effectHash, VerificationSHA: verificationHash,
 	}
-	_, err := a.write("receipt", receipt)
+	_, err = a.write("receipt", receipt)
 	return receipt, err
+}
+
+func (s *Store) validatePublication(
+	pending Pending,
+	state State,
+	verificationHash string,
+) error {
+	current, err := s.loadPending(pending.Intent.AttemptID)
+	if err != nil || current.IntentHash != pending.IntentHash ||
+		current.EffectHash != pending.EffectHash {
+		return errors.Join(ErrCorrupt, err)
+	}
+	progress := current.Progress
+	if verificationHash != "" {
+		verification, retainedHash, readErr := s.readTerminalVerification(
+			pending.Intent.AttemptID, current.Intent,
+		)
+		if readErr != nil || retainedHash != verificationHash {
+			return errors.Join(ErrCorrupt, readErr)
+		}
+		progress.Observed = verification.Observed
+		progress.Matched = verification.Matched
+	}
+	derived, err := progress.Terminal(state == StateCancelled)
+	if err != nil || derived != state {
+		return errors.Join(ErrCorrupt, err)
+	}
+	return nil
 }
 
 func (a *Attempt) Close() error {
@@ -424,23 +529,6 @@ func (a *Attempt) write(name string, record any) (string, error) {
 		return "", err
 	}
 	return digest, nil
-}
-
-func (s *Store) writeRecord(name string, data []byte) error {
-	file, err := s.root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		return ErrDuplicate
-	}
-	if err != nil {
-		return err
-	}
-	written, writeErr := file.Write(data)
-	if writeErr == nil && written != len(data) {
-		writeErr = io.ErrShortWrite
-	}
-	syncErr := file.Sync()
-	closeErr := file.Close()
-	return errors.Join(writeErr, syncErr, closeErr, syncDirectory(s.directory))
 }
 
 func (s *Store) lock() (*os.File, error) {
@@ -528,6 +616,7 @@ func validIntent(id string, intent Intent) bool {
 	return validIdentity(id) && intent.Schema == SchemaVersion &&
 		intent.AttemptID == id && !intent.AdmittedAt.IsZero() &&
 		intent.AdmittedAt.Location() == time.UTC && intent.Target != "" &&
+		validRootIdentity(intent.TargetRoot) &&
 		validDigest(intent.ExpectedSHA256) && validDigest(intent.ReplacementSHA256) &&
 		intent.ReplacementLength >= 0 && intent.ReplacementLength <= 1<<20 &&
 		intent.Temporary == ".celestia-"+id+".replace"
@@ -539,13 +628,19 @@ func validIdentity(id string) bool {
 		base64.RawURLEncoding.EncodeToString(decoded) == id
 }
 
-func validVerification(id string, value Verification) bool {
+func validVerification(id string, value Verification, intent Intent) bool {
 	if value.Schema != SchemaVersion || value.AttemptID != id ||
 		value.ObservedLength < 0 || value.ObservedLength > 1<<20 ||
 		!validDigest(value.ObservedSHA256) {
 		return false
 	}
-	return value.Observed || !value.Matched
+	if !value.Observed {
+		return !value.Matched && value.ObservedLength == 0 &&
+			value.ObservedSHA256 == strings.Repeat("0", 64)
+	}
+	matched := value.ObservedSHA256 == intent.ReplacementSHA256 &&
+		value.ObservedLength == intent.ReplacementLength
+	return value.Matched == matched
 }
 
 func digestBytes(data []byte) string {

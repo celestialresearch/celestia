@@ -29,19 +29,21 @@ type platformOperation struct {
 	targetPath string
 	target     *os.Root
 	directory  *os.File
+	targetID   attempt.RootIdentity
 	store      *attempt.Store
 	faults     operationFaults
 }
 
 type operationFaults struct {
-	beforeFinalCheck func()
-	afterCommit      func()
-	targetSync       error
-	effectRecord     error
-	verification     error
-	cleanup          error
-	partialWrite     bool
-	publication      error
+	beforeFinalCheck          func()
+	afterCommit               func()
+	afterRecoveryVerification func()
+	targetSync                error
+	effectRecord              error
+	verification              error
+	cleanup                   error
+	partialWrite              bool
+	publication               error
 }
 
 func newPlatformOperation(config Config) (platformOperation, error) {
@@ -57,8 +59,9 @@ func newPlatformOperation(config Config) (platformOperation, error) {
 	if err != nil {
 		return platformOperation{}, errors.Join(ErrConfiguration, err, target.Close())
 	}
-	if sameRoot(targetPath, config.EvidenceRoot) {
-		return platformOperation{}, errors.Join(ErrConfiguration, target.Close(), directory.Close())
+	targetID, err := attempt.IdentifyRoot(directory)
+	if err != nil {
+		return platformOperation{}, errors.Join(ErrConfiguration, err, target.Close(), directory.Close())
 	}
 	store, err := attempt.New(config.EvidenceRoot)
 	if err != nil {
@@ -66,8 +69,14 @@ func newPlatformOperation(config Config) (platformOperation, error) {
 			ErrConfiguration, err, target.Close(), directory.Close(),
 		)
 	}
+	if targetID == store.Identity() {
+		return platformOperation{}, errors.Join(
+			ErrConfiguration, store.Close(), target.Close(), directory.Close(),
+		)
+	}
 	return platformOperation{
-		targetPath: targetPath, target: target, directory: directory, store: store,
+		targetPath: targetPath, target: target, directory: directory,
+		targetID: targetID, store: store,
 	}, nil
 }
 
@@ -82,6 +91,7 @@ func (p *platformOperation) execute(
 	replacementHash := sha256.Sum256(replacement)
 	expectedHash := request.ExpectedSHA256()
 	journal, err := p.store.Begin(attempt.BeginData{
+		TargetRoot:        p.targetID,
 		Target:            request.Target(),
 		ExpectedSHA256:    hex.EncodeToString(expectedHash[:]),
 		ReplacementSHA256: hex.EncodeToString(replacementHash[:]),
@@ -310,6 +320,9 @@ func (p *platformOperation) recoverAttempt(
 	pending attempt.Pending,
 ) (Result, error) {
 	result := Result{AttemptID: pending.Intent.AttemptID}
+	if pending.Intent.TargetRoot != p.targetID {
+		return result, errors.Join(ErrConfiguration, attempt.ErrCorrupt)
+	}
 	if !pending.Progress.CommitAttempted {
 		removeErr := p.removeTemporary(pending.Intent.Temporary)
 		result.State = attempt.StateFailed
@@ -332,6 +345,9 @@ func (p *platformOperation) recoverAttempt(
 			ObservedLength: length, Matched: matched,
 		},
 	)
+	if recordErr == nil && p.faults.afterRecoveryVerification != nil {
+		p.faults.afterRecoveryVerification()
+	}
 	progress := pending.Progress
 	progress.Observed = observeErr == nil
 	progress.Matched = matched
@@ -339,8 +355,11 @@ func (p *platformOperation) recoverAttempt(
 	result.State = state
 	result.ObservedSHA256 = observed
 	result.CleanupComplete = true
+	if recordErr != nil {
+		return result, errors.Join(ErrIndeterminate, decodeErr, observeErr, recordErr, stateErr)
+	}
 	_, publishErr := session.Publish(pending, state, true, verificationHash)
-	err := errors.Join(decodeErr, observeErr, recordErr, stateErr, publishErr)
+	err := errors.Join(decodeErr, observeErr, stateErr, publishErr)
 	if state == attempt.StateIndeterminate {
 		err = errors.Join(ErrIndeterminate, err)
 	}

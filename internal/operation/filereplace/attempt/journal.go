@@ -13,17 +13,23 @@ package attempt
 
 import "time"
 
-const SchemaVersion = "celestia.file-replace.attempt.v1"
+const SchemaVersion = "celestia.file-replace.attempt.v2"
+
+type RootIdentity struct {
+	VolumeSerial uint64 `json:"volume_serial"`
+	FileID       string `json:"file_id"`
+}
 
 type Intent struct {
-	Schema            string    `json:"schema_version"`
-	AttemptID         string    `json:"attempt_id"`
-	AdmittedAt        time.Time `json:"admitted_at"`
-	Target            string    `json:"target"`
-	ExpectedSHA256    string    `json:"expected_sha256"`
-	ReplacementSHA256 string    `json:"replacement_sha256"`
-	ReplacementLength int64     `json:"replacement_length"`
-	Temporary         string    `json:"temporary"`
+	Schema            string       `json:"schema_version"`
+	AttemptID         string       `json:"attempt_id"`
+	AdmittedAt        time.Time    `json:"admitted_at"`
+	TargetRoot        RootIdentity `json:"target_root"`
+	Target            string       `json:"target"`
+	ExpectedSHA256    string       `json:"expected_sha256"`
+	ReplacementSHA256 string       `json:"replacement_sha256"`
+	ReplacementLength int64        `json:"replacement_length"`
+	Temporary         string       `json:"temporary"`
 }
 
 type Checkpoint struct {
