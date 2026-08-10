@@ -922,13 +922,29 @@ func runDeathCase(t *testing.T, stage string, wantState attempt.State, wantTarge
 
 func waitForDeathCheckpoint(t *testing.T, command *exec.Cmd) {
 	t.Helper()
+	stdin, err := command.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr, err := command.StderrPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
+	defer stdin.Close()
+	waited := make(chan error, 1)
+	go func() { waited <- command.Wait() }()
+	diagnostics := make(chan []byte, 1)
+	go func() {
+		data, _ := io.ReadAll(io.LimitReader(stderr, 64<<10+1))
+		diagnostics <- data
+	}()
 	ready := make(chan error, 1)
 	go func() {
 		line, readErr := bufio.NewReader(stdout).ReadString('\n')
@@ -940,20 +956,42 @@ func waitForDeathCheckpoint(t *testing.T, command *exec.Cmd) {
 	select {
 	case err := <-ready:
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("death helper checkpoint: %v; stderr=%q", err, <-diagnostics)
 		}
+	case err := <-waited:
+		t.Fatalf("death helper exited before checkpoint: %v; stderr=%q", err, <-diagnostics)
 	case <-time.After(10 * time.Second):
-		if err := command.Process.Kill(); err != nil {
-			t.Errorf("Kill() error = %v", err)
-		}
-		t.Fatal("death helper did not reach checkpoint")
+		terminateDeathHelper(t, command, waited, diagnostics, "checkpoint timeout")
 	}
 	if err := command.Process.Kill(); err != nil {
-		t.Fatal(err)
+		select {
+		case waitErr := <-waited:
+			t.Fatalf("death helper exited before termination: %v; kill=%v; stderr=%q",
+				waitErr, err, <-diagnostics)
+		default:
+			t.Fatalf("terminate death helper: %v", err)
+		}
 	}
-	if err := command.Wait(); err == nil {
+	if err := <-waited; err == nil {
 		t.Fatal("killed helper exited successfully")
 	}
+	if data := <-diagnostics; len(data) != 0 {
+		t.Fatalf("killed helper wrote stderr: %q", data)
+	}
+}
+
+func terminateDeathHelper(
+	t *testing.T,
+	command *exec.Cmd,
+	waited <-chan error,
+	diagnostics <-chan []byte,
+	reason string,
+) {
+	t.Helper()
+	killErr := command.Process.Kill()
+	waitErr := <-waited
+	t.Fatalf("death helper %s: kill=%v wait=%v stderr=%q",
+		reason, killErr, waitErr, <-diagnostics)
 }
 
 func TestFileReplaceDeathHelper(t *testing.T) {
@@ -973,7 +1011,7 @@ func TestFileReplaceDeathHelper(t *testing.T) {
 			if _, err := fmt.Fprintln(os.Stdout, "ready"); err != nil {
 				t.Fatal(err)
 			}
-			select {}
+			waitForDeathParent(t)
 		}
 		if _, err := operation.Recover(context.Background()); err != nil {
 			t.Fatal(err)
@@ -986,7 +1024,16 @@ func TestFileReplaceDeathHelper(t *testing.T) {
 	if _, err := fmt.Fprintln(os.Stdout, "ready"); err != nil {
 		t.Fatal(err)
 	}
-	select {}
+	waitForDeathParent(t)
+}
+
+func waitForDeathParent(t *testing.T) {
+	t.Helper()
+	var data [1]byte
+	if _, err := os.Stdin.Read(data[:]); err != nil {
+		t.Fatalf("death helper parent boundary closed: %v", err)
+	}
+	t.Fatal("death helper received unexpected parent data")
 }
 
 func advanceDeathHelper(
