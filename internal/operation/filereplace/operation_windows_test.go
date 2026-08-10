@@ -939,7 +939,6 @@ type deathDiagnostics struct {
 type deathHelperProcess struct {
 	command    *exec.Cmd
 	input      io.WriteCloser
-	waited     <-chan error
 	stdout     <-chan deathDiagnostics
 	stderr     <-chan deathDiagnostics
 	checkpoint <-chan error
@@ -955,14 +954,6 @@ func runDeathCheckpoint(command *exec.Cmd, timeout time.Duration) error {
 	select {
 	case checkpointErr := <-helper.checkpoint:
 		return helper.finish(checkpointErr)
-	case waitErr := <-helper.waited:
-		closeErr := helper.input.Close()
-		stdout, stdoutErr := awaitDeathDiagnostics(helper.stdout, timeout)
-		stderr, stderrErr := awaitDeathDiagnostics(helper.stderr, timeout)
-		return deathHelperError(
-			"death helper exited before checkpoint", stdout, stderr,
-			waitErr, closeErr, stdoutErr, stderrErr,
-		)
 	case <-timer.C:
 		return helper.finish(errors.New("checkpoint timeout"))
 	}
@@ -984,8 +975,6 @@ func startDeathHelper(command *exec.Cmd) (*deathHelperProcess, error) {
 	if err := command.Start(); err != nil {
 		return nil, errors.Join(err, stdin.Close(), stdout.Close(), stderr.Close())
 	}
-	waited := make(chan error, 1)
-	go func() { waited <- command.Wait() }()
 	stderrDiagnostics := make(chan deathDiagnostics, 1)
 	go func() {
 		stderrDiagnostics <- readDeathDiagnostics(stderr)
@@ -996,7 +985,7 @@ func startDeathHelper(command *exec.Cmd) (*deathHelperProcess, error) {
 		readDeathStdout(stdout, checkpoint, stdoutDiagnostics)
 	}()
 	return &deathHelperProcess{
-		command: command, input: stdin, waited: waited,
+		command: command, input: stdin,
 		stdout: stdoutDiagnostics, stderr: stderrDiagnostics,
 		checkpoint: checkpoint,
 	}, nil
@@ -1042,9 +1031,11 @@ func readDeathDiagnostics(reader io.Reader) deathDiagnostics {
 func (helper *deathHelperProcess) finish(checkpointErr error) error {
 	killErr := helper.command.Process.Kill()
 	closeErr := helper.input.Close()
-	waitErr := awaitDeathWait(helper.waited, 10*time.Second)
 	stdout, stdoutErr := awaitDeathDiagnostics(helper.stdout, 10*time.Second)
 	stderr, stderrErr := awaitDeathDiagnostics(helper.stderr, 10*time.Second)
+	waited := make(chan error, 1)
+	go func() { waited <- helper.command.Wait() }()
+	waitErr := awaitDeathWait(waited, 10*time.Second)
 	if checkpointErr != nil {
 		return deathHelperError(
 			"death helper checkpoint failed", stdout, stderr,
