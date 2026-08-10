@@ -926,18 +926,20 @@ func waitForDeathCheckpoint(t *testing.T, command *exec.Cmd) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stdin.Close()
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stdout.Close()
 	stderr, err := command.StderrPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stderr.Close()
 	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
-	defer stdin.Close()
 	waited := make(chan error, 1)
 	go func() { waited <- command.Wait() }()
 	diagnostics := make(chan []byte, 1)
@@ -956,10 +958,12 @@ func waitForDeathCheckpoint(t *testing.T, command *exec.Cmd) {
 	select {
 	case err := <-ready:
 		if err != nil {
-			t.Fatalf("death helper checkpoint: %v; stderr=%q", err, <-diagnostics)
+			terminateDeathHelper(t, command, waited, diagnostics,
+				fmt.Sprintf("checkpoint failed: %v", err))
 		}
 	case err := <-waited:
-		t.Fatalf("death helper exited before checkpoint: %v; stderr=%q", err, <-diagnostics)
+		t.Fatalf("death helper exited before checkpoint: %v; stderr=%q",
+			err, awaitDeathDiagnostics(t, diagnostics))
 	case <-time.After(10 * time.Second):
 		terminateDeathHelper(t, command, waited, diagnostics, "checkpoint timeout")
 	}
@@ -972,10 +976,10 @@ func waitForDeathCheckpoint(t *testing.T, command *exec.Cmd) {
 			t.Fatalf("terminate death helper: %v", err)
 		}
 	}
-	if err := <-waited; err == nil {
+	if err := awaitDeathWait(t, waited); err == nil {
 		t.Fatal("killed helper exited successfully")
 	}
-	if data := <-diagnostics; len(data) != 0 {
+	if data := awaitDeathDiagnostics(t, diagnostics); len(data) != 0 {
 		t.Fatalf("killed helper wrote stderr: %q", data)
 	}
 }
@@ -989,9 +993,31 @@ func terminateDeathHelper(
 ) {
 	t.Helper()
 	killErr := command.Process.Kill()
-	waitErr := <-waited
+	waitErr := awaitDeathWait(t, waited)
 	t.Fatalf("death helper %s: kill=%v wait=%v stderr=%q",
-		reason, killErr, waitErr, <-diagnostics)
+		reason, killErr, waitErr, awaitDeathDiagnostics(t, diagnostics))
+}
+
+func awaitDeathWait(t *testing.T, waited <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-waited:
+		return err
+	case <-time.After(10 * time.Second):
+		t.Fatal("death helper wait timed out")
+		return nil
+	}
+}
+
+func awaitDeathDiagnostics(t *testing.T, diagnostics <-chan []byte) []byte {
+	t.Helper()
+	select {
+	case data := <-diagnostics:
+		return data
+	case <-time.After(10 * time.Second):
+		t.Fatal("death helper diagnostics timed out")
+		return nil
+	}
 }
 
 func TestFileReplaceDeathHelper(t *testing.T) {
