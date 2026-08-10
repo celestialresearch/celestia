@@ -36,6 +36,8 @@ import (
 
 const deathStageEnvironment = "CELESTIA_FILE_REPLACE_DEATH_STAGE"
 
+var errDeathWaitTimeout = errors.New("death helper wait timed out")
+
 func TestOperationReplacesAndVerifies(t *testing.T) {
 	operation := newTestOperation(t, []byte("before"))
 	request := admitTestRequest(t, []byte("before"), []byte("after"))
@@ -922,101 +924,144 @@ func runDeathCase(t *testing.T, stage string, wantState attempt.State, wantTarge
 
 func waitForDeathCheckpoint(t *testing.T, command *exec.Cmd) {
 	t.Helper()
+	if err := runDeathCheckpoint(command, 10*time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type deathDiagnostics struct {
+	data []byte
+	err  error
+}
+
+type deathHelperProcess struct {
+	command     *exec.Cmd
+	waited      <-chan error
+	diagnostics <-chan deathDiagnostics
+	checkpoint  <-chan error
+}
+
+func runDeathCheckpoint(command *exec.Cmd, timeout time.Duration) error {
+	helper, err := startDeathHelper(command)
+	if err != nil {
+		return err
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case checkpointErr := <-helper.checkpoint:
+		return helper.finish(checkpointErr)
+	case waitErr := <-helper.waited:
+		diagnostics, diagnosticErr := awaitDeathDiagnostics(helper.diagnostics, timeout)
+		return deathHelperError(
+			"death helper exited before checkpoint", diagnostics,
+			waitErr, diagnosticErr,
+		)
+	case <-timer.C:
+		return helper.finish(errors.New("checkpoint timeout"))
+	}
+}
+
+func startDeathHelper(command *exec.Cmd) (*deathHelperProcess, error) {
 	stdin, err := command.StdinPipe()
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	defer stdin.Close()
 	stdout, err := command.StdoutPipe()
 	if err != nil {
-		t.Fatal(err)
+		return nil, errors.Join(err, stdin.Close())
 	}
-	defer stdout.Close()
 	stderr, err := command.StderrPipe()
 	if err != nil {
-		t.Fatal(err)
+		return nil, errors.Join(err, stdin.Close(), stdout.Close())
 	}
-	defer stderr.Close()
 	if err := command.Start(); err != nil {
-		t.Fatal(err)
+		return nil, errors.Join(err, stdin.Close(), stdout.Close(), stderr.Close())
 	}
 	waited := make(chan error, 1)
 	go func() { waited <- command.Wait() }()
-	diagnostics := make(chan []byte, 1)
+	diagnostics := make(chan deathDiagnostics, 1)
 	go func() {
-		data, _ := io.ReadAll(io.LimitReader(stderr, 64<<10+1))
-		diagnostics <- data
+		data, readErr := io.ReadAll(io.LimitReader(stderr, 64<<10+1))
+		diagnostics <- deathDiagnostics{data: data, err: readErr}
 	}()
-	ready := make(chan error, 1)
+	checkpoint := make(chan error, 1)
 	go func() {
 		line, readErr := bufio.NewReader(stdout).ReadString('\n')
 		if readErr == nil && line != "ready\n" {
 			readErr = fmt.Errorf("helper output %q", line)
 		}
-		ready <- readErr
+		checkpoint <- readErr
 	}()
-	select {
-	case err := <-ready:
-		if err != nil {
-			terminateDeathHelper(t, command, waited, diagnostics,
-				fmt.Sprintf("checkpoint failed: %v", err))
-		}
-	case err := <-waited:
-		t.Fatalf("death helper exited before checkpoint: %v; stderr=%q",
-			err, awaitDeathDiagnostics(t, diagnostics))
-	case <-time.After(10 * time.Second):
-		terminateDeathHelper(t, command, waited, diagnostics, "checkpoint timeout")
-	}
-	if err := command.Process.Kill(); err != nil {
-		select {
-		case waitErr := <-waited:
-			t.Fatalf("death helper exited before termination: %v; kill=%v; stderr=%q",
-				waitErr, err, <-diagnostics)
-		default:
-			t.Fatalf("terminate death helper: %v", err)
-		}
-	}
-	if err := awaitDeathWait(t, waited); err == nil {
-		t.Fatal("killed helper exited successfully")
-	}
-	if data := awaitDeathDiagnostics(t, diagnostics); len(data) != 0 {
-		t.Fatalf("killed helper wrote stderr: %q", data)
-	}
+	return &deathHelperProcess{
+		command: command, waited: waited,
+		diagnostics: diagnostics, checkpoint: checkpoint,
+	}, nil
 }
 
-func terminateDeathHelper(
-	t *testing.T,
-	command *exec.Cmd,
-	waited <-chan error,
-	diagnostics <-chan []byte,
-	reason string,
-) {
-	t.Helper()
-	killErr := command.Process.Kill()
-	waitErr := awaitDeathWait(t, waited)
-	t.Fatalf("death helper %s: kill=%v wait=%v stderr=%q",
-		reason, killErr, waitErr, awaitDeathDiagnostics(t, diagnostics))
+func (helper *deathHelperProcess) finish(checkpointErr error) error {
+	killErr := helper.command.Process.Kill()
+	waitErr := awaitDeathWait(helper.waited, 10*time.Second)
+	diagnostics, diagnosticErr := awaitDeathDiagnostics(
+		helper.diagnostics, 10*time.Second,
+	)
+	if checkpointErr != nil {
+		return deathHelperError(
+			"death helper checkpoint failed", diagnostics,
+			checkpointErr, killErr, waitErr, diagnosticErr,
+		)
+	}
+	if killErr != nil || waitErr == nil || errors.Is(waitErr, errDeathWaitTimeout) ||
+		len(diagnostics) != 0 || diagnosticErr != nil {
+		return deathHelperError(
+			"death helper termination failed", diagnostics,
+			killErr, waitErr, diagnosticErr,
+		)
+	}
+	return nil
 }
 
-func awaitDeathWait(t *testing.T, waited <-chan error) error {
-	t.Helper()
+func deathHelperError(reason string, diagnostics []byte, causes ...error) error {
+	cause := errors.Join(causes...)
+	if cause == nil {
+		cause = errors.New(reason)
+	}
+	return fmt.Errorf("%s; stderr=%q: %w", reason, diagnostics, cause)
+}
+
+func awaitDeathWait(waited <-chan error, timeout time.Duration) error {
 	select {
 	case err := <-waited:
 		return err
-	case <-time.After(10 * time.Second):
-		t.Fatal("death helper wait timed out")
-		return nil
+	case <-time.After(timeout):
+		return errDeathWaitTimeout
 	}
 }
 
-func awaitDeathDiagnostics(t *testing.T, diagnostics <-chan []byte) []byte {
-	t.Helper()
+func awaitDeathDiagnostics(
+	diagnostics <-chan deathDiagnostics,
+	timeout time.Duration,
+) ([]byte, error) {
 	select {
-	case data := <-diagnostics:
-		return data
-	case <-time.After(10 * time.Second):
-		t.Fatal("death helper diagnostics timed out")
-		return nil
+	case result := <-diagnostics:
+		return result.data, result.err
+	case <-time.After(timeout):
+		return nil, errors.New("death helper diagnostics timed out")
+	}
+}
+
+func TestDeathCheckpointRejectsLiveMalformedHelper(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	// #nosec G204,G702 -- os.Args[0] is the current Go test binary.
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestFileReplaceDeathHelper$")
+	command.Env = append(os.Environ(), deathStageEnvironment+"=malformed-checkpoint")
+	err := runDeathCheckpoint(command, 2*time.Second)
+	if err == nil || !strings.Contains(err.Error(), `helper output "wrong\n"`) {
+		t.Fatalf("runDeathCheckpoint() error = %v", err)
+	}
+	if command.ProcessState == nil {
+		t.Fatal("malformed death helper was not joined")
 	}
 }
 
@@ -1024,6 +1069,12 @@ func TestFileReplaceDeathHelper(t *testing.T) {
 	stage := os.Getenv(deathStageEnvironment)
 	if stage == "" {
 		return
+	}
+	if stage == "malformed-checkpoint" {
+		if _, err := fmt.Fprintln(os.Stdout, "wrong"); err != nil {
+			t.Fatal(err)
+		}
+		waitForDeathParent(t)
 	}
 	operation, err := New(Config{
 		TargetRoot:   os.Getenv("CELESTIA_FILE_REPLACE_TARGET_ROOT"),
