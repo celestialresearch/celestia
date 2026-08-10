@@ -1118,6 +1118,24 @@ func TestDeathCheckpointRetainsEarlyFailure(t *testing.T) {
 	}
 }
 
+func TestDeathCheckpointTimeoutJoinsSilentHelper(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	// #nosec G204,G702 -- os.Args[0] is the current Go test binary.
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestFileReplaceDeathHelper$")
+	command.Env = append(os.Environ(), deathStageEnvironment+"=silent-checkpoint")
+	err := runDeathCheckpoint(command, 100*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "checkpoint timeout") {
+		t.Fatalf("runDeathCheckpoint() error = %v", err)
+	}
+	if command.ProcessState == nil {
+		t.Fatal("silent death helper was not joined")
+	}
+	if ctx.Err() != nil {
+		t.Fatalf("silent death helper relied on context cancellation: %v", ctx.Err())
+	}
+}
+
 func TestDeathDiagnosticsAreBounded(t *testing.T) {
 	data := strings.Repeat("x", deathDiagnosticLimit+1)
 	result := readDeathDiagnostics(strings.NewReader(data))
@@ -1160,6 +1178,9 @@ func TestFileReplaceDeathHelper(t *testing.T) {
 	}
 	if stage == "failed-before-checkpoint" {
 		t.Fatal("unique early failure marker\nsemantic cause: forced helper failure")
+	}
+	if stage == "silent-checkpoint" {
+		waitForDeathParent(t)
 	}
 	operation, err := New(Config{
 		TargetRoot:   os.Getenv("CELESTIA_FILE_REPLACE_TARGET_ROOT"),
