@@ -99,14 +99,9 @@ grep -Fq 'sudo pkg_add go' \
   printf 'OpenBSD Go bootstrap is missing\n' >&2
   return 1
 }
-grep -Fq "https://pkg.dragonflybsd.org/pkg/\${ABI}/LATEST" \
-  "$root/.github/scripts/dragonfly-bootstrap.sh" || {
-  printf 'DragonFly package repository is missing\n' >&2
-  return 1
-}
-if grep -Fq 'mirror_type:' \
+if grep -Eq 'pkg/repos|mirror_type:|pkg\.dragonflybsd\.org/pkg/' \
   "$root/.github/scripts/dragonfly-bootstrap.sh"; then
-  printf 'DragonFly direct repository incorrectly enables mirror discovery\n' >&2
+  printf 'DragonFly bootstrap replaces the guest repository configuration\n' >&2
   return 1
 fi
 grep -Fq "if [[ \"\$attempts\" -ge 5 ]]" \
