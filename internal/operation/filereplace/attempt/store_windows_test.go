@@ -522,6 +522,22 @@ func TestStoreRejectsInvalidConstructionAndInput(t *testing.T) {
 	if _, _, err := store.Inspect("invalid"); !errors.Is(err, ErrCorrupt) {
 		t.Fatalf("Inspect() error = %v", err)
 	}
+	var nilStore *Store
+	if err := nilStore.Close(); err != nil {
+		t.Fatalf("nil Store.Close() error = %v", err)
+	}
+	var nilAttempt *Attempt
+	if err := nilAttempt.Close(); err != nil {
+		t.Fatalf("nil Attempt.Close() error = %v", err)
+	}
+	var nilSession *RecoverySession
+	if err := nilSession.Close(); err != nil {
+		t.Fatalf("nil RecoverySession.Close() error = %v", err)
+	}
+}
+
+func TestAttemptRejectsInvalidPublication(t *testing.T) {
+	store := newTestStore(t)
 	attempt, err := store.Begin(validBeginData())
 	if err != nil {
 		t.Fatal(err)
@@ -534,18 +550,6 @@ func TestStoreRejectsInvalidConstructionAndInput(t *testing.T) {
 	}
 	if err := attempt.Close(); err != nil {
 		t.Fatal(err)
-	}
-	var nilStore *Store
-	if err := nilStore.Close(); err != nil {
-		t.Fatalf("nil Store.Close() error = %v", err)
-	}
-	var nilAttempt *Attempt
-	if err := nilAttempt.Close(); err != nil {
-		t.Fatalf("nil Attempt.Close() error = %v", err)
-	}
-	var nilSession *RecoverySession
-	if err := nilSession.Close(); err != nil {
-		t.Fatalf("nil RecoverySession.Close() error = %v", err)
 	}
 }
 
