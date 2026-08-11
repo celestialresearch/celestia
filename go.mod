@@ -12,7 +12,7 @@ tool (
 require (
 	github.com/BurntSushi/toml v1.6.0
 	go.yaml.in/yaml/v3 v3.0.5
-	golang.org/x/mod v0.38.0
+	golang.org/x/mod v0.39.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/tools v0.48.0
 	mvdan.cc/sh/v3 v3.13.1
