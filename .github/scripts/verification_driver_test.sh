@@ -731,6 +731,7 @@ for family_event_order in cancellation-first timeout-first; do
   env "$event_checkpoint_variable=$family_event_checkpoint" \
     CELESTIA_DESCENDANT_PID="$work/descendant.pid" \
     CELESTIA_FAMILY_PID="$work/family.pid" \
+    CELESTIA_SNAPSHOT_PATH="$work/$family_event_order-snapshot" \
     CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
     CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
     CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
@@ -789,6 +790,7 @@ set +e
 TMPDIR="$spawn_temp" \
   CELESTIA_DESCENDANT_PID="$work/descendant.pid" \
   CELESTIA_FAMILY_PID="$work/family.pid" \
+  CELESTIA_SNAPSHOT_PATH="$work/spawn-cancellation-snapshot" \
   CELESTIA_VERIFICATION_DRIVER_SPAWN_CHECKPOINT="$spawn_checkpoint" \
   CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
   CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
@@ -842,6 +844,7 @@ for wait_boundary in driver family; do
     TMPDIR="$wait_temp" \
     CELESTIA_DESCENDANT_PID="$work/descendant.pid" \
     CELESTIA_FAMILY_PID="$work/family.pid" \
+    CELESTIA_SNAPSHOT_PATH="$work/$wait_boundary-wait-snapshot" \
     CELESTIA_VERIFICATION_FAMILY_DIR="$verification_dir" \
     CELESTIA_VERIFICATION_FAMILY_REPO="$verification_repo" \
     CELESTIA_VERIFICATION_FAMILY_PREFIX=verification \
